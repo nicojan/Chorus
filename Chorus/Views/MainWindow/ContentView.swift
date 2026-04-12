@@ -29,5 +29,10 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 800, minHeight: 500)
+        .sheet(isPresented: $state.showAddService) {
+            if let spaceID = appState.selectedSpaceID {
+                AddServiceSheet(spaceID: spaceID)
+            }
+        }
     }
 }

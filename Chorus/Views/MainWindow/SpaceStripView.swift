@@ -4,6 +4,10 @@ import SwiftData
 struct SpaceStripView: View {
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
     @Binding var selectedSpaceID: UUID?
+    @Environment(\.modelContext) private var modelContext
+
+    @State private var showingAddSpace = false
+    @State private var editingSpace: Space?
 
     var body: some View {
         VStack(spacing: 4) {
@@ -17,12 +21,52 @@ struct SpaceStripView: View {
                 ) {
                     selectedSpaceID = space.id
                 }
+                .contextMenu {
+                    Button("Edit Space...") {
+                        editingSpace = space
+                    }
+                    Divider()
+                    Button("Delete Space", role: .destructive) {
+                        deleteSpace(space)
+                    }
+                }
             }
 
             Spacer()
+
+            Divider()
+                .padding(.horizontal, 8)
+
+            Button {
+                showingAddSpace = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .medium))
+                    .frame(width: 36, height: 36)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Add space")
+
+            Spacer()
+                .frame(height: 8)
         }
         .frame(width: 48)
         .background(.background)
+        .sheet(isPresented: $showingAddSpace) {
+            SpaceEditorSheet(editingSpace: nil)
+        }
+        .sheet(item: $editingSpace) { space in
+            SpaceEditorSheet(editingSpace: space)
+        }
+    }
+
+    private func deleteSpace(_ space: Space) {
+        if selectedSpaceID == space.id {
+            selectedSpaceID = spaces.first(where: { $0.id != space.id })?.id
+        }
+        modelContext.delete(space)
+        try? modelContext.save()
     }
 }
 
@@ -63,3 +107,5 @@ private struct SpaceButton: View {
         return .clear
     }
 }
+
+extension Space: @retroactive Identifiable {}
