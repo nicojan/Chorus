@@ -1,0 +1,51 @@
+name: Chorus
+options:
+  bundleIdPrefix: com.nicojan
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "15.0"
+  createIntermediateGroups: true
+
+targets:
+  Chorus:
+    type: application
+    platform: macOS
+    sources:
+      - path: Chorus
+        excludes:
+          - "**/.DS_Store"
+    resources:
+      - path: Chorus/Resources/ServiceCatalog.json
+      - path: Chorus/Resources/NotificationScripts
+        optional: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nicojan.Chorus
+        PRODUCT_NAME: Chorus
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.9"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        INFOPLIST_FILE: Chorus/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Chorus/Chorus.entitlements
+        ENABLE_HARDENED_RUNTIME: true
+        COMBINE_HIDPI_IMAGES: true
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: true
+        INFOPLIST_KEY_NSUserNotificationsUsageDescription: "Chorus forwards notifications from your web services to macOS."
+    scheme:
+      testTargets:
+        - ChorusTests
+
+  ChorusTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: ChorusTests
+    dependencies:
+      - target: Chorus
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nicojan.ChorusTests
+        SWIFT_VERSION: "5.9"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"

@@ -1,0 +1,202 @@
+[
+    {
+        "id": "gmail",
+        "name": "Gmail",
+        "url": "https://mail.google.com",
+        "icon": "gmail-icon",
+        "category": "Email",
+        "badgeJS": "(() => { const el = document.querySelector('.aim .bsU'); return el ? parseInt(el.textContent) || 0 : 0; })()",
+        "userAgent": null,
+        "description": "Google's email service"
+    },
+    {
+        "id": "outlook",
+        "name": "Outlook",
+        "url": "https://outlook.live.com",
+        "icon": "outlook-icon",
+        "category": "Email",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Microsoft's email service"
+    },
+    {
+        "id": "protonmail",
+        "name": "ProtonMail",
+        "url": "https://mail.proton.me",
+        "icon": "protonmail-icon",
+        "category": "Email",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Encrypted email by Proton"
+    },
+    {
+        "id": "slack",
+        "name": "Slack",
+        "url": "https://app.slack.com",
+        "icon": "slack-icon",
+        "category": "Messaging",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Team messaging and collaboration"
+    },
+    {
+        "id": "teams",
+        "name": "Microsoft Teams",
+        "url": "https://teams.microsoft.com",
+        "icon": "teams-icon",
+        "category": "Messaging",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Microsoft's collaboration platform"
+    },
+    {
+        "id": "discord",
+        "name": "Discord",
+        "url": "https://discord.com/app",
+        "icon": "discord-icon",
+        "category": "Messaging",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Voice, video, and text chat"
+    },
+    {
+        "id": "whatsapp",
+        "name": "WhatsApp",
+        "url": "https://web.whatsapp.com",
+        "icon": "whatsapp-icon",
+        "category": "Messaging",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Messaging by Meta"
+    },
+    {
+        "id": "telegram",
+        "name": "Telegram",
+        "url": "https://web.telegram.org",
+        "icon": "telegram-icon",
+        "category": "Messaging",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Cloud-based messaging"
+    },
+    {
+        "id": "twitter",
+        "name": "X (Twitter)",
+        "url": "https://x.com",
+        "icon": "twitter-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Social media platform"
+    },
+    {
+        "id": "linkedin",
+        "name": "LinkedIn",
+        "url": "https://www.linkedin.com",
+        "icon": "linkedin-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Professional networking"
+    },
+    {
+        "id": "facebook",
+        "name": "Facebook",
+        "url": "https://www.facebook.com",
+        "icon": "facebook-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Social network by Meta"
+    },
+    {
+        "id": "instagram",
+        "name": "Instagram",
+        "url": "https://www.instagram.com",
+        "icon": "instagram-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Photo and video sharing"
+    },
+    {
+        "id": "reddit",
+        "name": "Reddit",
+        "url": "https://www.reddit.com",
+        "icon": "reddit-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Community discussion platform"
+    },
+    {
+        "id": "notion",
+        "name": "Notion",
+        "url": "https://www.notion.so",
+        "icon": "notion-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "All-in-one workspace"
+    },
+    {
+        "id": "trello",
+        "name": "Trello",
+        "url": "https://trello.com",
+        "icon": "trello-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Visual project management"
+    },
+    {
+        "id": "asana",
+        "name": "Asana",
+        "url": "https://app.asana.com",
+        "icon": "asana-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Work management platform"
+    },
+    {
+        "id": "google-calendar",
+        "name": "Google Calendar",
+        "url": "https://calendar.google.com",
+        "icon": "gcal-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Google's calendar service"
+    },
+    {
+        "id": "google-drive",
+        "name": "Google Drive",
+        "url": "https://drive.google.com",
+        "icon": "gdrive-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Cloud file storage by Google"
+    },
+    {
+        "id": "chatgpt",
+        "name": "ChatGPT",
+        "url": "https://chatgpt.com",
+        "icon": "chatgpt-icon",
+        "category": "AI",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "AI assistant by OpenAI"
+    },
+    {
+        "id": "claude",
+        "name": "Claude",
+        "url": "https://claude.ai",
+        "icon": "claude-icon",
+        "category": "AI",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "AI assistant by Anthropic"
+    }
+]
