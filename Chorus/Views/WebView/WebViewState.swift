@@ -1,6 +1,5 @@
 import Foundation
 import WebKit
-import Combine
 
 @MainActor
 @Observable
@@ -23,32 +22,38 @@ final class WebViewState {
 
         observations.append(
             webView.observe(\.canGoBack, options: [.new]) { [weak self] _, change in
-                self?.canGoBack = change.newValue ?? false
+                let value = change.newValue ?? false
+                Task { @MainActor in self?.canGoBack = value }
             }
         )
         observations.append(
             webView.observe(\.canGoForward, options: [.new]) { [weak self] _, change in
-                self?.canGoForward = change.newValue ?? false
+                let value = change.newValue ?? false
+                Task { @MainActor in self?.canGoForward = value }
             }
         )
         observations.append(
             webView.observe(\.isLoading, options: [.new]) { [weak self] _, change in
-                self?.isLoading = change.newValue ?? false
+                let value = change.newValue ?? false
+                Task { @MainActor in self?.isLoading = value }
             }
         )
         observations.append(
             webView.observe(\.estimatedProgress, options: [.new]) { [weak self] _, change in
-                self?.estimatedProgress = change.newValue ?? 0
+                let value = change.newValue ?? 0
+                Task { @MainActor in self?.estimatedProgress = value }
             }
         )
         observations.append(
             webView.observe(\.url, options: [.new]) { [weak self] _, change in
-                self?.currentURL = change.newValue ?? nil
+                let value = change.newValue ?? nil
+                Task { @MainActor in self?.currentURL = value }
             }
         )
         observations.append(
             webView.observe(\.title, options: [.new]) { [weak self] _, change in
-                self?.title = change.newValue ?? nil
+                let value = change.newValue ?? nil
+                Task { @MainActor in self?.title = value }
             }
         )
     }

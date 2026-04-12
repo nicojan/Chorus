@@ -13,13 +13,14 @@ struct NotificationPayload: Codable {
 final class UserScriptManager {
     private var messageHandlers: [UUID: NotificationMessageHandler] = [:]
 
-    var isServiceMuted: ((UUID) -> Bool)?
+    var isServiceMuted: (@Sendable (UUID) -> Bool)?
 
     func configureScripts(for instance: ServiceInstance, on controller: WKUserContentController) {
+        let mutedCheck = isServiceMuted
         let handler = NotificationMessageHandler(
             serviceID: instance.id,
-            isMutedCheck: { [weak self] id in
-                self?.isServiceMuted?(id) ?? false
+            isMutedCheck: { id in
+                mutedCheck?(id) ?? false
             }
         )
         controller.add(handler, name: "chorusNotification")
@@ -67,13 +68,13 @@ final class UserScriptManager {
     }
 }
 
-final class NotificationMessageHandler: NSObject, WKScriptMessageHandler {
+final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unchecked Sendable {
     let serviceID: UUID
-    let isMutedCheck: (UUID) -> Bool
+    let isMutedCheck: @Sendable (UUID) -> Bool
 
     private static let logger = Logger(subsystem: "com.nicojan.Chorus", category: "NotificationHandler")
 
-    init(serviceID: UUID, isMutedCheck: @escaping (UUID) -> Bool) {
+    init(serviceID: UUID, isMutedCheck: @escaping @Sendable (UUID) -> Bool) {
         self.serviceID = serviceID
         self.isMutedCheck = isMutedCheck
         super.init()

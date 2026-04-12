@@ -2,7 +2,7 @@ import Foundation
 import WebKit
 import AppKit
 
-final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, @unchecked Sendable {
 
     private var popupWebView: WKWebView?
     private var popupWindow: NSWindow?

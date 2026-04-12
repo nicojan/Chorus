@@ -3,6 +3,7 @@ import SwiftData
 import WebKit
 import os
 
+@MainActor
 @Observable
 final class AppState {
     let modelContainer: ModelContainer
@@ -56,7 +57,6 @@ final class AppState {
         }
     }
 
-    @MainActor
     private func restoreWindowState() {
         let context = modelContainer.mainContext
         let descriptor = FetchDescriptor<AppPreferences>()
@@ -70,7 +70,6 @@ final class AppState {
         }
     }
 
-    @MainActor
     private func seedDefaultDataIfNeeded() {
         let context = modelContainer.mainContext
 

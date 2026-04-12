@@ -107,5 +107,3 @@ private struct SpaceButton: View {
         return .clear
     }
 }
-
-extension Space: @retroactive Identifiable {}

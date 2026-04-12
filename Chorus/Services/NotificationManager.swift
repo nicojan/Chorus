@@ -6,13 +6,13 @@ import os
 @MainActor
 @Observable
 final class NotificationManager {
-    private var pollTimers: [UUID: Timer] = [:]
+    private var pollTasks: [UUID: Task<Void, Never>] = [:]
     private let badgeManager: BadgeManager
     private var pendingServiceID: UUID?
 
     private static let logger = Logger(subsystem: "com.nicojan.Chorus", category: "NotificationManager")
 
-    var onServiceRequested: ((UUID) -> Void)?
+    var onServiceRequested: (@MainActor (UUID) -> Void)?
 
     init(badgeManager: BadgeManager) {
         self.badgeManager = badgeManager
@@ -23,57 +23,38 @@ final class NotificationManager {
     func startPolling(for instanceID: UUID, webView: WKWebView, isMuted: Bool, catalogEntry: ServiceCatalogEntry?) {
         stopPolling(for: instanceID)
 
-        // Title polling every 5 seconds
-        let timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self, weak webView] _ in
-            guard let self, let webView else { return }
-            Task { @MainActor in
-                self.pollTitle(webView: webView, instanceID: instanceID, isMuted: isMuted)
-            }
-        }
-        pollTimers[instanceID] = timer
+        let task = Task { @MainActor [weak self, weak webView] in
+            var tick = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, let webView, !Task.isCancelled else { break }
 
-        // DOM badge polling every 10 seconds for curated services
-        if let entry = catalogEntry, entry.badgeJS != nil {
-            let domTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self, weak webView] _ in
-                guard let self, let webView else { return }
-                Task { @MainActor in
-                    self.pollBadge(webView: webView, instanceID: instanceID, isMuted: isMuted, catalogEntry: entry)
+                tick += 1
+
+                // Title polling every 5 seconds
+                if tick % 5 == 0 {
+                    await pollTitle(webView: webView, instanceID: instanceID, isMuted: isMuted)
+                }
+
+                // DOM badge polling every 10 seconds for curated services
+                if tick % 10 == 0, let entry = catalogEntry, entry.badgeJS != nil {
+                    await pollBadge(webView: webView, instanceID: instanceID, isMuted: isMuted, catalogEntry: entry)
                 }
             }
-            // Store DOM timer with a modified key
-            let domKey = UUID(uuid: (
-                instanceID.uuid.0 ^ 0xFF, instanceID.uuid.1, instanceID.uuid.2,
-                instanceID.uuid.3, instanceID.uuid.4, instanceID.uuid.5,
-                instanceID.uuid.6, instanceID.uuid.7, instanceID.uuid.8,
-                instanceID.uuid.9, instanceID.uuid.10, instanceID.uuid.11,
-                instanceID.uuid.12, instanceID.uuid.13, instanceID.uuid.14,
-                instanceID.uuid.15
-            ))
-            pollTimers[domKey] = domTimer
         }
+        pollTasks[instanceID] = task
     }
 
     func stopPolling(for instanceID: UUID) {
-        pollTimers[instanceID]?.invalidate()
-        pollTimers.removeValue(forKey: instanceID)
-
-        let domKey = UUID(uuid: (
-            instanceID.uuid.0 ^ 0xFF, instanceID.uuid.1, instanceID.uuid.2,
-            instanceID.uuid.3, instanceID.uuid.4, instanceID.uuid.5,
-            instanceID.uuid.6, instanceID.uuid.7, instanceID.uuid.8,
-            instanceID.uuid.9, instanceID.uuid.10, instanceID.uuid.11,
-            instanceID.uuid.12, instanceID.uuid.13, instanceID.uuid.14,
-            instanceID.uuid.15
-        ))
-        pollTimers[domKey]?.invalidate()
-        pollTimers.removeValue(forKey: domKey)
+        pollTasks[instanceID]?.cancel()
+        pollTasks.removeValue(forKey: instanceID)
     }
 
     func stopAllPolling() {
-        for timer in pollTimers.values {
-            timer.invalidate()
+        for task in pollTasks.values {
+            task.cancel()
         }
-        pollTimers.removeAll()
+        pollTasks.removeAll()
     }
 
     func handlePendingNotification() -> UUID? {
@@ -84,20 +65,22 @@ final class NotificationManager {
 
     // MARK: - Polling
 
-    private func pollTitle(webView: WKWebView, instanceID: UUID, isMuted: Bool) {
-        webView.evaluateJavaScript("document.title") { [weak self] result, _ in
-            guard let self, let title = result as? String else { return }
-            let count = Self.extractBadgeCount(from: title)
-            Task { @MainActor in
-                self.badgeManager.updateBadge(for: instanceID, count: count, isMuted: isMuted)
+    private func pollTitle(webView: WKWebView, instanceID: UUID, isMuted: Bool) async {
+        do {
+            let result = try await webView.evaluateJavaScript("document.title")
+            if let title = result as? String {
+                let count = Self.extractBadgeCount(from: title)
+                badgeManager.updateBadge(for: instanceID, count: count, isMuted: isMuted)
             }
+        } catch {
+            // Page may not be ready yet
         }
     }
 
-    private func pollBadge(webView: WKWebView, instanceID: UUID, isMuted: Bool, catalogEntry: ServiceCatalogEntry) {
+    private func pollBadge(webView: WKWebView, instanceID: UUID, isMuted: Bool, catalogEntry: ServiceCatalogEntry) async {
         guard let badgeJS = catalogEntry.badgeJS else { return }
-        webView.evaluateJavaScript(badgeJS) { [weak self] result, _ in
-            guard let self else { return }
+        do {
+            let result = try await webView.evaluateJavaScript(badgeJS)
             let count: Int
             if let intResult = result as? Int {
                 count = intResult
@@ -106,9 +89,9 @@ final class NotificationManager {
             } else {
                 return
             }
-            Task { @MainActor in
-                self.badgeManager.updateBadge(for: instanceID, count: count, isMuted: isMuted)
-            }
+            badgeManager.updateBadge(for: instanceID, count: count, isMuted: isMuted)
+        } catch {
+            // Badge extraction failed — page may have changed
         }
     }
 
@@ -123,7 +106,7 @@ final class NotificationManager {
 
     // MARK: - Notifications
 
-    private func requestNotificationPermission() {
+    private nonisolated func requestNotificationPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             if let error {
                 Self.logger.error("Notification permission error: \(error.localizedDescription)")
@@ -138,19 +121,17 @@ final class NotificationManager {
             }
         }
         UNUserNotificationCenter.current().delegate = delegate
-        // Retain the delegate
-        Self._notificationDelegate = delegate
+        NotificationCenterDelegate.retained = delegate
     }
-
-    private static var _notificationDelegate: NotificationCenterDelegate?
 }
 
 // MARK: - Notification Center Delegate
 
-private final class NotificationCenterDelegate: NSObject, UNUserNotificationCenterDelegate {
-    let onServiceRequested: (UUID) -> Void
+private final class NotificationCenterDelegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
+    let onServiceRequested: @Sendable (UUID) -> Void
+    static var retained: NotificationCenterDelegate?
 
-    init(onServiceRequested: @escaping (UUID) -> Void) {
+    init(onServiceRequested: @escaping @Sendable (UUID) -> Void) {
         self.onServiceRequested = onServiceRequested
         super.init()
     }
