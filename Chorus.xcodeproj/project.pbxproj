@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		03162EF33AE4EEB6E524E5B1 /* CatalogGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F17BFF4DCC563429E130A13 /* CatalogGridView.swift */; };
 		0551F23E1A9E226486C1A0BB /* AddServiceSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECCC4A3133903E40BFB42AA6 /* AddServiceSheet.swift */; };
+		091825995DF2FD9C4A7BC86F /* KeyboardShortcutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2AC7E996360A4BC660FD194 /* KeyboardShortcutManager.swift */; };
 		1C5CD1937EFECD06DA479F86 /* Space.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC9767949C165F7DCD9A281 /* Space.swift */; };
 		230144499E6BE9FD41C03338 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7458024AA17BF508D4807018 /* ContentView.swift */; };
 		2D9A102388157D9B3C660F70 /* ServiceCatalogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3506A7D95472D8F3E822A39 /* ServiceCatalogEntry.swift */; };
@@ -19,6 +20,8 @@
 		5561BE9B6C6D8AA46CD42884 /* WebViewContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D9F34755F65BE5A3C76C88 /* WebViewContainer.swift */; };
 		5E59730D46AE1AED21F82ECA /* AppPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88C307C75776869CE8A82618 /* AppPreferences.swift */; };
 		69FF2932CDD4A1208CA5DA71 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D9D707C0F9A04B5E0744F59 /* SettingsView.swift */; };
+		701984CFE765170D8EAE50EE /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D811CC9D75730152E17859C /* MenuBarView.swift */; };
+		71E467BDECC180049BF6708B /* AppPresenceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1D24379DD182D4A7B6DD11 /* AppPresenceManager.swift */; };
 		75C395B384D9E21AF94FBC4F /* UserScriptManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBBF69E002BB39BB6EFF9BDB /* UserScriptManager.swift */; };
 		783EF6C467034D74DE8D5F52 /* WebViewState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 192C907C2215D62E02FF8408 /* WebViewState.swift */; };
 		8AEFF9F928EBEA5194112A21 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DD7FF3D960F0FCA3A2F310B1 /* Assets.xcassets */; };
@@ -65,6 +68,7 @@
 		4666C49AA129F26D936B0715 /* ServiceInstance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceInstance.swift; sourceTree = "<group>"; };
 		537DF7ABA3D6DED64273776A /* SpaceStripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceStripView.swift; sourceTree = "<group>"; };
 		538A1641C210F10E3CD43E14 /* WebToolbarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebToolbarView.swift; sourceTree = "<group>"; };
+		5A1D24379DD182D4A7B6DD11 /* AppPresenceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPresenceManager.swift; sourceTree = "<group>"; };
 		608B27F538D778C6FC4B1697 /* WebViewPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewPool.swift; sourceTree = "<group>"; };
 		706D85D3C09C182826CD4EBA /* BadgeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeManager.swift; sourceTree = "<group>"; };
 		7458024AA17BF508D4807018 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -73,10 +77,12 @@
 		88C307C75776869CE8A82618 /* AppPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreferences.swift; sourceTree = "<group>"; };
 		8F17BFF4DCC563429E130A13 /* CatalogGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogGridView.swift; sourceTree = "<group>"; };
 		94326A5DEE01135F945E9DF3 /* Chorus.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Chorus.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9D811CC9D75730152E17859C /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		AD49B64B44CC548574DA2348 /* DataStoreManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStoreManager.swift; sourceTree = "<group>"; };
 		B3506A7D95472D8F3E822A39 /* ServiceCatalogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceCatalogEntry.swift; sourceTree = "<group>"; };
 		B84763F63532609A902F453A /* ServiceSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceSidebarView.swift; sourceTree = "<group>"; };
 		CBBF69E002BB39BB6EFF9BDB /* UserScriptManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserScriptManager.swift; sourceTree = "<group>"; };
+		D2AC7E996360A4BC660FD194 /* KeyboardShortcutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardShortcutManager.swift; sourceTree = "<group>"; };
 		D533B667501DF0913FF62B9A /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		DA4617D503719C1701307F28 /* WebContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebContentView.swift; sourceTree = "<group>"; };
 		DCE1C5083FF8571A533E856F /* ChorusTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChorusTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -125,8 +131,10 @@
 		385199E85C64EC6FCEE24516 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				5A1D24379DD182D4A7B6DD11 /* AppPresenceManager.swift */,
 				706D85D3C09C182826CD4EBA /* BadgeManager.swift */,
 				AD49B64B44CC548574DA2348 /* DataStoreManager.swift */,
+				D2AC7E996360A4BC660FD194 /* KeyboardShortcutManager.swift */,
 				3BEC6FCF1B60E1B9CD89A3A2 /* NotificationManager.swift */,
 				7ED4702F3BA12C0880BCCEF1 /* ProcessPoolManager.swift */,
 				E30F23AFD0B5D81AF103BF37 /* ServiceCatalog.swift */,
@@ -175,11 +183,20 @@
 			children = (
 				2F68812BE3F937F3228F7FBA /* AddService */,
 				A85A2DE22EC0FC06376105BE /* MainWindow */,
+				92F8715D55CA305648DE985C /* MenuBar */,
 				7E4310DD7A9D95A50DC0F075 /* Settings */,
 				216138496901373232936657 /* SpaceEditor */,
 				1E8D1445F53AC2640039824D /* WebView */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		92F8715D55CA305648DE985C /* MenuBar */ = {
+			isa = PBXGroup;
+			children = (
+				9D811CC9D75730152E17859C /* MenuBarView.swift */,
+			);
+			path = MenuBar;
 			sourceTree = "<group>";
 		};
 		A85A2DE22EC0FC06376105BE /* MainWindow */ = {
@@ -337,6 +354,7 @@
 			files = (
 				0551F23E1A9E226486C1A0BB /* AddServiceSheet.swift in Sources */,
 				5E59730D46AE1AED21F82ECA /* AppPreferences.swift in Sources */,
+				71E467BDECC180049BF6708B /* AppPresenceManager.swift in Sources */,
 				D341B327E1C20FA11DEC2C2B /* AppState.swift in Sources */,
 				F709F5524B2146C260A0BCB0 /* BadgeManager.swift in Sources */,
 				03162EF33AE4EEB6E524E5B1 /* CatalogGridView.swift in Sources */,
@@ -345,6 +363,8 @@
 				542D3E32DA8EA90EC36BB6A0 /* DataStoreManager.swift in Sources */,
 				92BF212550953DD2E21A12E7 /* EmojiPickerView.swift in Sources */,
 				AD626D3375822E9E5BC358BE /* FaviconFetcher.swift in Sources */,
+				091825995DF2FD9C4A7BC86F /* KeyboardShortcutManager.swift in Sources */,
+				701984CFE765170D8EAE50EE /* MenuBarView.swift in Sources */,
 				FC24793EEE444C3F48F17559 /* NotificationManager.swift in Sources */,
 				910712C1D78BD0D5B3E90707 /* ProcessPoolManager.swift in Sources */,
 				C65C95AB514FF50CEE9A75D6 /* ServiceCatalog.swift in Sources */,

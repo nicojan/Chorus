@@ -47,11 +47,26 @@ final class AppState {
 
         setupNotificationNavigation()
         seedDefaultDataIfNeeded()
+        restoreWindowState()
     }
 
     private func setupNotificationNavigation() {
         notificationManager.onServiceRequested = { [weak self] serviceID in
             self?.selectedServiceID = serviceID
+        }
+    }
+
+    @MainActor
+    private func restoreWindowState() {
+        let context = modelContainer.mainContext
+        let descriptor = FetchDescriptor<AppPreferences>()
+        guard let prefs = try? context.fetch(descriptor).first else { return }
+
+        if let savedSpaceID = prefs.selectedSpaceID {
+            selectedSpaceID = savedSpaceID
+        }
+        if let savedServiceID = prefs.selectedServiceID {
+            selectedServiceID = savedServiceID
         }
     }
 

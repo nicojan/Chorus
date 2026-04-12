@@ -19,12 +19,55 @@ struct SettingsView: View {
 }
 
 struct GeneralSettingsView: View {
+    @Query private var preferences: [AppPreferences]
+    @Environment(\.modelContext) private var modelContext
+
+    private let presenceManager = AppPresenceManager()
+
+    private var prefs: AppPreferences {
+        preferences.first ?? AppPreferences()
+    }
+
     var body: some View {
         Form {
-            Text("More settings coming soon.")
-                .foregroundStyle(.secondary)
+            Section("Appearance") {
+                Picker("Show Chorus in", selection: Binding(
+                    get: { prefs.appPresenceMode },
+                    set: { mode in
+                        ensurePrefs().appPresenceMode = mode
+                        presenceManager.apply(mode: mode)
+                        try? modelContext.save()
+                    }
+                )) {
+                    Text("Dock only").tag(AppPresenceMode.dock)
+                    Text("Menu bar only").tag(AppPresenceMode.menuBar)
+                    Text("Both").tag(AppPresenceMode.both)
+                }
+
+                Toggle("Show badge count on dock icon", isOn: Binding(
+                    get: { prefs.showBadgeCountInDock },
+                    set: { value in
+                        ensurePrefs().showBadgeCountInDock = value
+                        try? modelContext.save()
+                    }
+                ))
+            }
+
+            Section("Startup") {
+                Toggle("Open at login", isOn: Binding(
+                    get: { presenceManager.isLaunchAtLoginEnabled },
+                    set: { presenceManager.setLaunchAtLogin($0) }
+                ))
+            }
         }
         .padding()
+    }
+
+    private func ensurePrefs() -> AppPreferences {
+        if let existing = preferences.first { return existing }
+        let newPrefs = AppPreferences()
+        modelContext.insert(newPrefs)
+        return newPrefs
     }
 }
 
