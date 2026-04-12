@@ -10,6 +10,8 @@ final class AppState {
     let dataStoreManager: DataStoreManager
     let processPoolManager: ProcessPoolManager
     let userScriptManager: UserScriptManager
+    let badgeManager: BadgeManager
+    let notificationManager: NotificationManager
 
     var selectedSpaceID: UUID?
     var selectedServiceID: UUID?
@@ -35,13 +37,22 @@ final class AppState {
         self.dataStoreManager = DataStoreManager()
         self.processPoolManager = ProcessPoolManager()
         self.userScriptManager = UserScriptManager()
+        self.badgeManager = BadgeManager()
+        self.notificationManager = NotificationManager(badgeManager: badgeManager)
         self.webViewPool = WebViewPool(
             dataStoreManager: dataStoreManager,
             processPoolManager: processPoolManager,
             userScriptManager: userScriptManager
         )
 
+        setupNotificationNavigation()
         seedDefaultDataIfNeeded()
+    }
+
+    private func setupNotificationNavigation() {
+        notificationManager.onServiceRequested = { [weak self] serviceID in
+            self?.selectedServiceID = serviceID
+        }
     }
 
     @MainActor

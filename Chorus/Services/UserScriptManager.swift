@@ -1,10 +1,27 @@
 import WebKit
+import UserNotifications
+import os
+
+struct NotificationPayload: Codable {
+    let title: String
+    let body: String
+    let icon: String
+    let tag: String
+    let serviceID: String
+}
 
 final class UserScriptManager {
     private var messageHandlers: [UUID: NotificationMessageHandler] = [:]
 
+    var isServiceMuted: ((UUID) -> Bool)?
+
     func configureScripts(for instance: ServiceInstance, on controller: WKUserContentController) {
-        let handler = NotificationMessageHandler(serviceID: instance.id)
+        let handler = NotificationMessageHandler(
+            serviceID: instance.id,
+            isMutedCheck: { [weak self] id in
+                self?.isServiceMuted?(id) ?? false
+            }
+        )
         controller.add(handler, name: "chorusNotification")
         messageHandlers[instance.id] = handler
 
@@ -52,9 +69,13 @@ final class UserScriptManager {
 
 final class NotificationMessageHandler: NSObject, WKScriptMessageHandler {
     let serviceID: UUID
+    let isMutedCheck: (UUID) -> Bool
 
-    init(serviceID: UUID) {
+    private static let logger = Logger(subsystem: "com.nicojan.Chorus", category: "NotificationHandler")
+
+    init(serviceID: UUID, isMutedCheck: @escaping (UUID) -> Bool) {
         self.serviceID = serviceID
+        self.isMutedCheck = isMutedCheck
         super.init()
     }
 
@@ -62,7 +83,29 @@ final class NotificationMessageHandler: NSObject, WKScriptMessageHandler {
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
-        // Notification handling will be fully implemented in Phase 3
-        guard message.name == "chorusNotification" else { return }
+        guard message.name == "chorusNotification",
+              let jsonString = message.body as? String,
+              let data = jsonString.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(NotificationPayload.self, from: data)
+        else { return }
+
+        guard !isMutedCheck(serviceID) else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = payload.title
+        content.body = payload.body
+        content.userInfo = ["serviceID": serviceID.uuidString]
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                Self.logger.error("Failed to post notification: \(error.localizedDescription)")
+            }
+        }
     }
 }

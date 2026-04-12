@@ -38,6 +38,8 @@
 		D341B327E1C20FA11DEC2C2B /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D533B667501DF0913FF62B9A /* AppState.swift */; };
 		DF712EA56B5AE10C7BF77176 /* WebViewCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438D78C9503E732B7792FA10 /* WebViewCoordinator.swift */; };
 		EA76A0A9EF76E4CD3DE9217C /* ServiceSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B84763F63532609A902F453A /* ServiceSidebarView.swift */; };
+		F709F5524B2146C260A0BCB0 /* BadgeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 706D85D3C09C182826CD4EBA /* BadgeManager.swift */; };
+		FC24793EEE444C3F48F17559 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BEC6FCF1B60E1B9CD89A3A2 /* NotificationManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -58,11 +60,13 @@
 		1ACFB877AD2138035F9E3EAE /* FaviconFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaviconFetcher.swift; sourceTree = "<group>"; };
 		1D9D707C0F9A04B5E0744F59 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		312995FF05808961FD519D76 /* SpaceServiceLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceServiceLink.swift; sourceTree = "<group>"; };
+		3BEC6FCF1B60E1B9CD89A3A2 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		438D78C9503E732B7792FA10 /* WebViewCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewCoordinator.swift; sourceTree = "<group>"; };
 		4666C49AA129F26D936B0715 /* ServiceInstance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceInstance.swift; sourceTree = "<group>"; };
 		537DF7ABA3D6DED64273776A /* SpaceStripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceStripView.swift; sourceTree = "<group>"; };
 		538A1641C210F10E3CD43E14 /* WebToolbarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebToolbarView.swift; sourceTree = "<group>"; };
 		608B27F538D778C6FC4B1697 /* WebViewPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewPool.swift; sourceTree = "<group>"; };
+		706D85D3C09C182826CD4EBA /* BadgeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeManager.swift; sourceTree = "<group>"; };
 		7458024AA17BF508D4807018 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		7ED4702F3BA12C0880BCCEF1 /* ProcessPoolManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessPoolManager.swift; sourceTree = "<group>"; };
 		8223D66D602364046AF98EDC /* Chorus.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Chorus.entitlements; sourceTree = "<group>"; };
@@ -121,7 +125,9 @@
 		385199E85C64EC6FCEE24516 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				706D85D3C09C182826CD4EBA /* BadgeManager.swift */,
 				AD49B64B44CC548574DA2348 /* DataStoreManager.swift */,
+				3BEC6FCF1B60E1B9CD89A3A2 /* NotificationManager.swift */,
 				7ED4702F3BA12C0880BCCEF1 /* ProcessPoolManager.swift */,
 				E30F23AFD0B5D81AF103BF37 /* ServiceCatalog.swift */,
 				CBBF69E002BB39BB6EFF9BDB /* UserScriptManager.swift */,
@@ -332,12 +338,14 @@
 				0551F23E1A9E226486C1A0BB /* AddServiceSheet.swift in Sources */,
 				5E59730D46AE1AED21F82ECA /* AppPreferences.swift in Sources */,
 				D341B327E1C20FA11DEC2C2B /* AppState.swift in Sources */,
+				F709F5524B2146C260A0BCB0 /* BadgeManager.swift in Sources */,
 				03162EF33AE4EEB6E524E5B1 /* CatalogGridView.swift in Sources */,
 				A33A7902903C731E069B6CD5 /* ChorusApp.swift in Sources */,
 				230144499E6BE9FD41C03338 /* ContentView.swift in Sources */,
 				542D3E32DA8EA90EC36BB6A0 /* DataStoreManager.swift in Sources */,
 				92BF212550953DD2E21A12E7 /* EmojiPickerView.swift in Sources */,
 				AD626D3375822E9E5BC358BE /* FaviconFetcher.swift in Sources */,
+				FC24793EEE444C3F48F17559 /* NotificationManager.swift in Sources */,
 				910712C1D78BD0D5B3E90707 /* ProcessPoolManager.swift in Sources */,
 				C65C95AB514FF50CEE9A75D6 /* ServiceCatalog.swift in Sources */,
 				2D9A102388157D9B3C660F70 /* ServiceCatalogEntry.swift in Sources */,
