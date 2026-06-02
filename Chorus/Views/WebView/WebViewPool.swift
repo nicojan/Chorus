@@ -19,6 +19,11 @@ final class WebViewPool {
     /// soft hibernation (media pause) and full eviction.
     private var neverHibernateIDs: Set<UUID> = []
 
+    /// Services pinned by external callers (e.g. the selected service
+    /// during initial preload, before WebContentView attaches and sets
+    /// `activeServiceID`). Exempt from eviction.
+    private var pinnedIDs: Set<UUID> = []
+
     private let dataStoreManager: DataStoreManager
     private let userScriptManager: UserScriptManager
 
@@ -211,6 +216,18 @@ final class WebViewPool {
         webViews.count
     }
 
+    /// Mark a service as un-evictable. Used by callers that know a service
+    /// will become active soon (e.g. preload of the selected service) but
+    /// can't set `activeServiceID` themselves.
+    func pin(_ id: UUID) {
+        pinnedIDs.insert(id)
+    }
+
+    /// Remove the pin set by `pin(_:)`. Safe to call for an unpinned id.
+    func unpin(_ id: UUID) {
+        pinnedIDs.remove(id)
+    }
+
     // MARK: - Soft Hibernate (resource offloading without destroying the web view)
 
     /// Suspends media playback and captures a snapshot.
@@ -281,7 +298,8 @@ final class WebViewPool {
         let sorted = lastAccessTimes
             .filter { $0.key != activeServiceID
                    && !evictionInFlight.contains($0.key)
-                   && !neverHibernateIDs.contains($0.key) }
+                   && !neverHibernateIDs.contains($0.key)
+                   && !pinnedIDs.contains($0.key) }
             .sorted { $0.value < $1.value }
 
         var evicted = 0

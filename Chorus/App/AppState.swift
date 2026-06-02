@@ -153,11 +153,28 @@ final class AppState {
         let services = servicesForSpace(spaceID)
         guard !services.isEmpty else { return }
 
+        // Move the selected service to the front so it preloads first.
+        // We can't use sorted { a,_ in a.id == selected } — that violates
+        // Swift's strict-weak-ordering and the sort is undefined.
         let selected = selectedServiceID
-        let ordered = services.sorted { a, _ in a.id == selected }
+        var ordered = services
+        if let selected, let idx = ordered.firstIndex(where: { $0.id == selected }) {
+            let item = ordered.remove(at: idx)
+            ordered.insert(item, at: 0)
+        }
+
+        // Pin the selected service so the LRU sweep that fires after each
+        // preload can't evict it before WebContentView attaches and sets
+        // `activeServiceID` (which would otherwise protect it).
+        if let selected {
+            webViewPool.pin(selected)
+        }
 
         Task {
             await webViewPool.preloadAll(ordered)
+            if let selected {
+                webViewPool.unpin(selected)
+            }
         }
     }
 
