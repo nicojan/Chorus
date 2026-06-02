@@ -90,10 +90,15 @@ final class WebViewPool {
         webViews[instance.id] = webView
         lastAccessTimes[instance.id] = Date()
 
-        // Always load the service home URL (including when waking from full hibernation)
-        suspendedURLs.removeValue(forKey: instance.id)
-        if let url = URL(string: instance.url) {
+        // Restore the last-visited URL when waking from full hibernation
+        // so the user lands back where they left off, not at the home URL.
+        // Falls back to the service home URL on first creation or when no
+        // suspended URL is recorded.
+        let resumeURLString = suspendedURLs.removeValue(forKey: instance.id) ?? instance.url
+        if let url = URL(string: resumeURLString), !resumeURLString.isEmpty {
             webView.load(URLRequest(url: url))
+        } else if let homeURL = URL(string: instance.url) {
+            webView.load(URLRequest(url: homeURL))
         }
 
         // Check eviction asynchronously (needs to query JS for active calls)
