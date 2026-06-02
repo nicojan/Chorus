@@ -21,6 +21,7 @@ struct SettingsView: View {
 struct GeneralSettingsView: View {
     @Query private var preferences: [AppPreferences]
     @Environment(\.modelContext) private var modelContext
+    @Environment(AppState.self) private var appState
 
     private let presenceManager = AppPresenceManager()
 
@@ -48,6 +49,7 @@ struct GeneralSettingsView: View {
                     get: { prefs.showBadgeCountInDock },
                     set: { value in
                         ensurePrefs().showBadgeCountInDock = value
+                        appState.badgeManager.showBadgeCountInDock = value
                         save("badge count in dock")
                     }
                 ))

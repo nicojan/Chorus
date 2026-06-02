@@ -19,7 +19,13 @@ final class NotificationManager {
 
     /// Title poll interval starts at 5s and backs off to 30s after 10 minutes of no badge changes.
     /// DOM badge poll runs at 2x the title interval. Resets to fast polling when badge count changes.
-    func startPolling(for instanceID: UUID, webView: WKWebView, isMuted: Bool, catalogEntry: ServiceCatalogEntry?) {
+    func startPolling(
+        for instanceID: UUID,
+        webView: WKWebView,
+        isMuted: Bool,
+        showBadge: Bool,
+        catalogEntry: ServiceCatalogEntry?
+    ) {
         stopPolling(for: instanceID)
 
         let task = Task { @MainActor [weak self, weak webView] in
@@ -35,9 +41,12 @@ final class NotificationManager {
 
                 // Title polling at adaptive interval
                 if tick % titleInterval == 0 {
-                    let previousCount = self.badgeManager.badgeCount(for: instanceID)
-                    await pollTitle(webView: webView, instanceID: instanceID, isMuted: isMuted)
-                    let newCount = self.badgeManager.badgeCount(for: instanceID)
+                    // Use raw counts here so the DND mask doesn't make every
+                    // poll appear "unchanged" and prematurely back off the
+                    // interval while DND is active.
+                    let previousCount = self.badgeManager.rawCount(for: instanceID)
+                    await pollTitle(webView: webView, instanceID: instanceID, isMuted: isMuted, showBadge: showBadge)
+                    let newCount = self.badgeManager.rawCount(for: instanceID)
 
                     if newCount == previousCount {
                         unchangedCycles += 1
@@ -56,7 +65,7 @@ final class NotificationManager {
                 // DOM badge polling at 2x the title interval
                 let badgeInterval = titleInterval * 2
                 if tick % badgeInterval == 0, let entry = catalogEntry, entry.badgeJS != nil {
-                    await pollBadge(webView: webView, instanceID: instanceID, isMuted: isMuted, catalogEntry: entry)
+                    await pollBadge(webView: webView, instanceID: instanceID, isMuted: isMuted, showBadge: showBadge, catalogEntry: entry)
                 }
             }
         }
@@ -83,19 +92,19 @@ final class NotificationManager {
 
     // MARK: - Polling
 
-    private func pollTitle(webView: WKWebView, instanceID: UUID, isMuted: Bool) async {
+    private func pollTitle(webView: WKWebView, instanceID: UUID, isMuted: Bool, showBadge: Bool) async {
         do {
             let result = try await webView.evaluateJavaScript("document.title")
             if let title = result as? String {
                 let count = Self.extractBadgeCount(from: title)
-                badgeManager.updateBadge(for: instanceID, count: count, isMuted: isMuted)
+                badgeManager.updateBadge(for: instanceID, count: count, isMuted: isMuted, showBadge: showBadge)
             }
         } catch {
             // Page may not be ready yet
         }
     }
 
-    private func pollBadge(webView: WKWebView, instanceID: UUID, isMuted: Bool, catalogEntry: ServiceCatalogEntry) async {
+    private func pollBadge(webView: WKWebView, instanceID: UUID, isMuted: Bool, showBadge: Bool, catalogEntry: ServiceCatalogEntry) async {
         guard let badgeJS = catalogEntry.badgeJS else { return }
         do {
             let result = try await webView.evaluateJavaScript(badgeJS)
@@ -107,7 +116,7 @@ final class NotificationManager {
             } else {
                 return
             }
-            badgeManager.updateBadge(for: instanceID, count: count, isMuted: isMuted)
+            badgeManager.updateBadge(for: instanceID, count: count, isMuted: isMuted, showBadge: showBadge)
         } catch {
             // Badge extraction failed — page may have changed
         }

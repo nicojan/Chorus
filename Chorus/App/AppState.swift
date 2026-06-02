@@ -182,9 +182,11 @@ final class AppState {
         do {
             let prefs = try context.fetch(descriptor).first
             userScriptManager.autoDismissCookieBanners = prefs?.autoDismissCookieBanners ?? true
+            badgeManager.showBadgeCountInDock = prefs?.showBadgeCountInDock ?? true
         } catch {
-            AppLogger.dataStore.error("Failed to load cookie banner preference: \(error.localizedDescription)")
+            AppLogger.dataStore.error("Failed to load preferences: \(error.localizedDescription)")
             userScriptManager.autoDismissCookieBanners = true
+            badgeManager.showBadgeCountInDock = true
         }
     }
 

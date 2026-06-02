@@ -83,6 +83,7 @@ struct WebContentView: View {
             for: service.id,
             webView: webView,
             isMuted: service.isMuted,
+            showBadge: service.showBadge,
             catalogEntry: catalogEntry
         )
     }
