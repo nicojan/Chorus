@@ -93,39 +93,64 @@ final class AppState {
         cleanUpOrphanedDataStores()
     }
 
-    /// Deletes any per-service `WKWebsiteDataStore` whose identifier is no
-    /// longer referenced by a `ServiceInstance`. Runs at launch and after
-    /// a service is deleted so we don't leak cookies, IndexedDB, or cache
-    /// for removed services.
-    ///
-    /// The work is dispatched off the main actor with a short delay so any
-    /// in-flight `WKWebView` teardown from a just-deleted service completes
-    /// before its data store is removed (WebKit traps if the store goes
-    /// away while a live view still holds it).
+    /// Tombstone list of `WKWebsiteDataStore` identifiers for services the
+    /// user deleted but whose on-disk data hasn't been removed yet. Tracked
+    /// in UserDefaults rather than via `WKWebsiteDataStore.allDataStoreIdentifiers`
+    /// — that API has been observed to crash on macOS 26 when WebKit
+    /// hands the returned `Vector<UUID>` to the Swift bridge (`BridgeObjectBox`
+    /// initializeWithTake EXC_BAD_ACCESS during preload).
+    private static let orphanedDataStoresKey = "chorus.orphanedDataStoreIdentifiers"
+
+    /// Mark a per-service data store identifier as orphaned. Called from
+    /// the delete paths; the actual `WKWebsiteDataStore.remove(...)` is
+    /// deferred to `cleanUpOrphanedDataStores()` so the live WKWebView has
+    /// time to tear down first.
+    func markDataStoreOrphaned(_ identifier: UUID) {
+        var orphans = Self.loadOrphanedIdentifiers()
+        orphans.insert(identifier)
+        Self.saveOrphanedIdentifiers(orphans)
+    }
+
+    /// Removes any data store identifiers previously marked as orphaned.
+    /// Runs at launch (deferred) and after the user deletes a service.
     func cleanUpOrphanedDataStores() {
-        let context = modelContainer.mainContext
-        let descriptor = FetchDescriptor<ServiceInstance>()
-        let inUse: Set<UUID>
-        do {
-            inUse = Set(try context.fetch(descriptor).map(\.dataStoreIdentifier))
-        } catch {
-            AppLogger.dataStore.error("Failed to enumerate services for orphan cleanup: \(error.localizedDescription)")
-            return
-        }
+        let orphans = Self.loadOrphanedIdentifiers()
+        guard !orphans.isEmpty else { return }
 
         Task.detached(priority: .utility) {
-            // Give SwiftUI a moment to drop any WKWebView that referenced
-            // a just-deleted service's data store.
-            try? await Task.sleep(for: .seconds(1))
-            let allIdentifiers = await WKWebsiteDataStore.allDataStoreIdentifiers
-            for identifier in allIdentifiers where !inUse.contains(identifier) {
+            // Let SwiftUI finish dropping any WKWebView that referenced
+            // a just-deleted service's data store before removing it —
+            // WebKit traps when an in-use store is removed.
+            try? await Task.sleep(for: .seconds(2))
+
+            var remaining = orphans
+            for identifier in orphans {
                 do {
                     try await WKWebsiteDataStore.remove(forIdentifier: identifier)
+                    remaining.remove(identifier)
                     AppLogger.dataStore.info("Removed orphaned data store \(identifier)")
                 } catch {
                     AppLogger.dataStore.warning("Failed to remove orphaned data store \(identifier): \(error.localizedDescription)")
                 }
             }
+            await MainActor.run {
+                Self.saveOrphanedIdentifiers(remaining)
+            }
+        }
+    }
+
+    private static func loadOrphanedIdentifiers() -> Set<UUID> {
+        guard let raw = UserDefaults.standard.array(forKey: orphanedDataStoresKey) as? [String] else {
+            return []
+        }
+        return Set(raw.compactMap(UUID.init(uuidString:)))
+    }
+
+    private static func saveOrphanedIdentifiers(_ identifiers: Set<UUID>) {
+        if identifiers.isEmpty {
+            UserDefaults.standard.removeObject(forKey: orphanedDataStoresKey)
+        } else {
+            UserDefaults.standard.set(identifiers.map(\.uuidString), forKey: orphanedDataStoresKey)
         }
     }
 
@@ -204,12 +229,19 @@ final class AppState {
             prefs = nil
         }
 
+        // No AppKit/dockTile/setActivationPolicy access in this scope — it
+        // runs inside AppState.init via @State, which fires before the
+        // SwiftUI App scene has finished wiring up NSApp. Touching AppKit
+        // there can race with NSApplication bootstrap. Defer the
+        // AppKit-facing mutations to the next runloop tick.
         userScriptManager.autoDismissCookieBanners = prefs?.autoDismissCookieBanners ?? true
-        badgeManager.showBadgeCountInDock = prefs?.showBadgeCountInDock ?? true
-        // Apply the persisted presence mode at launch — previously this was
-        // only invoked when the user actively changed the Settings picker,
-        // so the stored mode was ignored after restart.
-        AppPresenceManager().apply(mode: prefs?.appPresenceMode ?? .dock)
+
+        let resolvedShowBadge = prefs?.showBadgeCountInDock ?? true
+        let resolvedPresenceMode = prefs?.appPresenceMode ?? .dock
+        Task { @MainActor in
+            self.badgeManager.showBadgeCountInDock = resolvedShowBadge
+            AppPresenceManager().apply(mode: resolvedPresenceMode)
+        }
     }
 
     private func setupHibernationCallbacks() {

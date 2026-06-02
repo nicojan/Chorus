@@ -149,13 +149,15 @@ struct ServiceSidebarView: View {
 
         // Check remaining links *after* the delete so the count is current
         let hasOtherLinks = service.spaceLinks.contains { $0.id != link.id }
+        let orphanedIdentifier: UUID? = hasOtherLinks ? nil : service.dataStoreIdentifier
         if !hasOtherLinks {
             appState.webViewPool.removeWebView(for: serviceID)
             modelContext.delete(service)
         }
 
         save("remove service from space")
-        if !hasOtherLinks {
+        if let orphanedIdentifier {
+            appState.markDataStoreOrphaned(orphanedIdentifier)
             appState.cleanUpOrphanedDataStores()
         }
     }
@@ -232,6 +234,7 @@ struct ServiceSidebarView: View {
     private func deleteService(link: SpaceServiceLink) {
         let service = link.service
         let serviceID = service.id
+        let dataStoreIdentifier = service.dataStoreIdentifier
 
         if selectedServiceID == serviceID {
             selectedServiceID = nil
@@ -247,6 +250,7 @@ struct ServiceSidebarView: View {
         modelContext.delete(service)
 
         save("delete service")
+        appState.markDataStoreOrphaned(dataStoreIdentifier)
         appState.cleanUpOrphanedDataStores()
     }
 }
