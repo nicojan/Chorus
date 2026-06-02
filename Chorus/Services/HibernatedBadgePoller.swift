@@ -1,10 +1,12 @@
 import Foundation
+import WebKit
 
 /// Polls badge counts for fully hibernated services by fetching their page title
 /// via a lightweight URLSession request (no WKWebView needed).
 ///
 /// Most web apps include unread counts in their `<title>` tag, e.g. "(3) Slack".
-/// This lets us show badge counts even when a service is fully hibernated.
+/// We seed each request with the service's own `WKWebsiteDataStore` cookies
+/// so the poll sees the authenticated page, not the unauth landing page.
 @MainActor
 @Observable
 final class HibernatedBadgePoller {
@@ -27,8 +29,8 @@ final class HibernatedBadgePoller {
 
     init(badgeManager: BadgeManager) {
         self.badgeManager = badgeManager
-        // Use a simple ephemeral session — we only need the HTML title, not cookies/auth
-        // (the title is usually set before auth gates, but we try anyway)
+        // Ephemeral session — we attach per-service cookies manually on
+        // each request so the title we read is the authenticated one.
         self.session = URLSession(configuration: .ephemeral)
     }
 
@@ -97,6 +99,11 @@ final class HibernatedBadgePoller {
     private func pollService(id: UUID, tracked: TrackedService) async {
         guard let url = URL(string: tracked.url) else { return }
 
+        let dataStore = WKWebsiteDataStore(forIdentifier: tracked.dataStoreIdentifier)
+        let allCookies = await Self.allCookies(from: dataStore.httpCookieStore)
+        let matchingCookies = Self.cookies(allCookies, matching: url)
+        let cookieHeaders = HTTPCookie.requestHeaderFields(with: matchingCookies)
+
         do {
             var request = URLRequest(url: url, timeoutInterval: 15)
             // Some sites return lighter content for bots / non-browser UA,
@@ -105,6 +112,9 @@ final class HibernatedBadgePoller {
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
                 forHTTPHeaderField: "User-Agent"
             )
+            for (name, value) in cookieHeaders {
+                request.setValue(value, forHTTPHeaderField: name)
+            }
 
             let (data, response) = try await session.data(for: request)
 
@@ -133,6 +143,35 @@ final class HibernatedBadgePoller {
             }
         } catch {
             AppLogger.badges.debug("Failed to poll \(tracked.url): \(error.localizedDescription)")
+        }
+    }
+
+    /// Bridges WKHTTPCookieStore's completion-handler API to async.
+    nonisolated private static func allCookies(from store: WKHTTPCookieStore) async -> [HTTPCookie] {
+        await withCheckedContinuation { (cont: CheckedContinuation<[HTTPCookie], Never>) in
+            store.getAllCookies { cookies in
+                cont.resume(returning: cookies)
+            }
+        }
+    }
+
+    /// Subset of `cookies` that URLSession would attach for a request to `url`.
+    /// Mirrors the standard cookie-attribute rules (domain match, path prefix,
+    /// secure flag, expiry).
+    nonisolated static func cookies(_ cookies: [HTTPCookie], matching url: URL) -> [HTTPCookie] {
+        guard let host = url.host?.lowercased() else { return [] }
+        let path = url.path.isEmpty ? "/" : url.path
+        let isSecure = (url.scheme?.lowercased() == "https")
+        let now = Date()
+
+        return cookies.filter { cookie in
+            let raw = cookie.domain.lowercased()
+            let domain = raw.hasPrefix(".") ? String(raw.dropFirst()) : raw
+            let domainMatches = host == domain || host.hasSuffix("." + domain)
+            let pathMatches = path.hasPrefix(cookie.path)
+            let secureOK = !cookie.isSecure || isSecure
+            let notExpired = (cookie.expiresDate ?? .distantFuture) > now
+            return domainMatches && pathMatches && secureOK && notExpired
         }
     }
 
