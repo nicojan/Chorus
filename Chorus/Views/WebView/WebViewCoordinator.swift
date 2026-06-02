@@ -23,18 +23,14 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             return
         }
 
-        // Allow same-domain navigations (SPA routing, login flows, etc.)
-        if navigationAction.navigationType == .linkActivated,
-           let currentHost = webView.url?.host,
-           let targetHost = url.host,
-           !Self.areSameDomain(currentHost, targetHost) {
-            // Cross-domain user-clicked links open in the system browser
-            NSWorkspace.shared.open(url)
-            decisionHandler(.cancel)
-            return
-        }
-
-        // target=_blank links to external sites open in system browser
+        // Allow in-frame navigation — including cross-domain — so OAuth/SSO
+        // round-trips (e.g. "Sign in with Google" from Slack) can complete.
+        // Their cookies must land in the WKWebsiteDataStore, not Safari.
+        //
+        // We only divert popup-style links (target=_blank, no targetFrame)
+        // to the system browser when they're cross-domain — this matches
+        // user expectation for "Open in browser" actions while leaving
+        // cross-domain in-frame navigations untouched.
         if navigationAction.targetFrame == nil,
            let currentHost = webView.url?.host,
            let targetHost = url.host,
