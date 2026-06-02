@@ -122,13 +122,27 @@ final class NotificationManager {
         }
     }
 
-    static func extractBadgeCount(from title: String) -> Int {
-        let pattern = /\((\d+)\)/
-        if let match = title.firstMatch(of: pattern),
-           let count = Int(match.1) {
-            return count
+    nonisolated static func extractBadgeCount(from title: String) -> Int {
+        // Look only at the part of the title before the first common
+        // separator. Empirically: Gmail = "(3) Inbox - user - Gmail",
+        // Discord = "(3) Discord", WhatsApp = "(3) WhatsApp Web". Folder
+        // and document titles like "Annual Report (2024) - Drive" or
+        // "Photos (2023) — Drive" carry years in parens that look like
+        // huge unread counts; bound the value and exclude likely years.
+        let separators = [" - ", " | ", " — ", " : ", " · "]
+        var head = title
+        for sep in separators {
+            if let range = head.range(of: sep) {
+                head = String(head[..<range.lowerBound])
+            }
         }
-        return 0
+        let pattern = /\((\d+)\)/
+        guard let match = head.firstMatch(of: pattern),
+              let count = Int(match.1),
+              count > 0, count <= 999,
+              !(1900...2099).contains(count)
+        else { return 0 }
+        return count
     }
 
     // MARK: - Notifications

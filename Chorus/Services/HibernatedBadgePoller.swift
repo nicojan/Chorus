@@ -177,17 +177,10 @@ final class HibernatedBadgePoller {
 
     /// Extracts badge count from HTML by finding the <title> tag and parsing "(N)".
     nonisolated static func extractBadgeFromTitle(html: String) -> Int {
-        // Find <title>...</title>
-        let titlePattern = /<title[^>]*>(.*?)<\/title>/
+        // Find <title>...</title> — most pages emit lowercase but be lenient.
+        let titlePattern = /<title[^>]*>([\s\S]*?)<\/title>/.ignoresCase()
         guard let match = html.firstMatch(of: titlePattern) else { return 0 }
         let title = String(match.1)
-
-        // Reuse the same pattern as NotificationManager
-        let badgePattern = /\((\d+)\)/
-        if let badgeMatch = title.firstMatch(of: badgePattern),
-           let count = Int(badgeMatch.1) {
-            return count
-        }
-        return 0
+        return NotificationManager.extractBadgeCount(from: title)
     }
 }
