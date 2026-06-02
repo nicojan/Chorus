@@ -57,6 +57,16 @@ struct ContentView: View {
         .onChange(of: appState.selectedSpaceID) { _, newSpaceID in
             if let spaceID = newSpaceID {
                 appState.preloadServicesForSpace(spaceID)
+                // Don't overwrite a serviceID that was set in the same
+                // render tick by QuickSwitcher or the menu-bar handler
+                // (they write spaceID + serviceID together). Only fall
+                // back to selectFirstService when the current selection
+                // isn't valid for the new space — e.g., the user clicked
+                // a space chip in SpaceStripView.
+                let validIDs = Set(appState.servicesForSpace(spaceID).map(\.id))
+                if let currentID = appState.selectedServiceID, validIDs.contains(currentID) {
+                    return
+                }
                 selectFirstService(in: spaceID)
             }
         }
