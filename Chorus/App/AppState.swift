@@ -55,6 +55,21 @@ final class AppState {
         self.dataStoreManager = DataStoreManager()
         self.userScriptManager = UserScriptManager()
         self.badgeManager = BadgeManager()
+
+        // Capture the modelContainer locally so the @Sendable closure below
+        // doesn't capture `self` before all stored properties are assigned.
+        let container = self.modelContainer
+        self.userScriptManager.isServiceMuted = { @Sendable serviceID in
+            // WKScriptMessageHandler.didReceive is invoked on the main
+            // thread, so we can safely hop into the main actor here to
+            // read the service's persisted mute state.
+            MainActor.assumeIsolated {
+                let context = container.mainContext
+                let descriptor = FetchDescriptor<ServiceInstance>()
+                guard let services = try? context.fetch(descriptor) else { return false }
+                return services.first { $0.id == serviceID }?.isMuted ?? false
+            }
+        }
         self.notificationManager = NotificationManager(badgeManager: badgeManager)
         self.hibernatedBadgePoller = HibernatedBadgePoller(badgeManager: badgeManager)
         self.webViewPool = WebViewPool(
