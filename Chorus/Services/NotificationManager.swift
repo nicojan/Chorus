@@ -135,11 +135,17 @@ final class NotificationManager {
     }
 
     private func configureNotificationDelegate() {
-        let delegate = NotificationCenterDelegate { [weak self] serviceID in
-            Task { @MainActor in
-                self?.onServiceRequested?(serviceID)
+        let badgeManager = self.badgeManager
+        let delegate = NotificationCenterDelegate(
+            onServiceRequested: { [weak self] serviceID in
+                Task { @MainActor in
+                    self?.onServiceRequested?(serviceID)
+                }
+            },
+            isDoNotDisturb: {
+                MainActor.assumeIsolated { badgeManager.doNotDisturb }
             }
-        }
+        )
         UNUserNotificationCenter.current().delegate = delegate
         NotificationCenterDelegate.retained = delegate
     }
@@ -149,10 +155,15 @@ final class NotificationManager {
 
 private final class NotificationCenterDelegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     let onServiceRequested: @Sendable (UUID) -> Void
+    let isDoNotDisturb: @Sendable () -> Bool
     static var retained: NotificationCenterDelegate?
 
-    init(onServiceRequested: @escaping @Sendable (UUID) -> Void) {
+    init(
+        onServiceRequested: @escaping @Sendable (UUID) -> Void,
+        isDoNotDisturb: @escaping @Sendable () -> Bool
+    ) {
         self.onServiceRequested = onServiceRequested
+        self.isDoNotDisturb = isDoNotDisturb
         super.init()
     }
 
@@ -173,6 +184,11 @@ private final class NotificationCenterDelegate: NSObject, UNUserNotificationCent
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler([.banner, .sound])
+        // Suppress all banners and sounds while Do Not Disturb is active.
+        if isDoNotDisturb() {
+            completionHandler([])
+        } else {
+            completionHandler([.banner, .sound])
+        }
     }
 }

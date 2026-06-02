@@ -59,6 +59,7 @@ final class AppState {
         // Capture the modelContainer locally so the @Sendable closure below
         // doesn't capture `self` before all stored properties are assigned.
         let container = self.modelContainer
+        let badgeManager = self.badgeManager
         self.userScriptManager.isServiceMuted = { @Sendable serviceID in
             // WKScriptMessageHandler.didReceive is invoked on the main
             // thread, so we can safely hop into the main actor here to
@@ -69,6 +70,9 @@ final class AppState {
                 guard let services = try? context.fetch(descriptor) else { return false }
                 return services.first { $0.id == serviceID }?.isMuted ?? false
             }
+        }
+        self.userScriptManager.isDoNotDisturbActive = { @Sendable in
+            MainActor.assumeIsolated { badgeManager.doNotDisturb }
         }
         self.notificationManager = NotificationManager(badgeManager: badgeManager)
         self.hibernatedBadgePoller = HibernatedBadgePoller(badgeManager: badgeManager)

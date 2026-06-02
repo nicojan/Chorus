@@ -13,14 +13,19 @@ final class UserScriptManager {
     private var messageHandlers: [UUID: NotificationMessageHandler] = [:]
 
     var isServiceMuted: (@Sendable (UUID) -> Bool)?
+    var isDoNotDisturbActive: (@Sendable () -> Bool)?
     var autoDismissCookieBanners: Bool = true
 
     func configureScripts(for instance: ServiceInstance, on controller: WKUserContentController) {
         let mutedCheck = isServiceMuted
+        let dndCheck = isDoNotDisturbActive
         let handler = NotificationMessageHandler(
             serviceID: instance.id,
             isMutedCheck: { id in
                 mutedCheck?(id) ?? false
+            },
+            isDoNotDisturbCheck: {
+                dndCheck?() ?? false
             }
         )
         controller.add(handler, name: "chorusNotification")
@@ -147,10 +152,16 @@ final class UserScriptManager {
 final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unchecked Sendable {
     let serviceID: UUID
     let isMutedCheck: @Sendable (UUID) -> Bool
+    let isDoNotDisturbCheck: @Sendable () -> Bool
 
-    init(serviceID: UUID, isMutedCheck: @escaping @Sendable (UUID) -> Bool) {
+    init(
+        serviceID: UUID,
+        isMutedCheck: @escaping @Sendable (UUID) -> Bool,
+        isDoNotDisturbCheck: @escaping @Sendable () -> Bool
+    ) {
         self.serviceID = serviceID
         self.isMutedCheck = isMutedCheck
+        self.isDoNotDisturbCheck = isDoNotDisturbCheck
         super.init()
     }
 
@@ -172,6 +183,7 @@ final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unche
         }
 
         guard !isMutedCheck(serviceID) else { return }
+        guard !isDoNotDisturbCheck() else { return }
 
         let content = UNMutableNotificationContent()
         content.title = payload.title
