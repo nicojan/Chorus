@@ -2,22 +2,22 @@
     {
         "id": "gmail",
         "name": "Gmail",
-        "url": "https://mail.google.com",
+        "url": "https://mail.google.com/mail/u/0/#inbox",
         "icon": "gmail-icon",
         "category": "Email",
         "badgeJS": "(() => { const el = document.querySelector('.aim .bsU'); return el ? parseInt(el.textContent) || 0 : 0; })()",
         "userAgent": null,
-        "description": "Google's email service"
+        "description": "Google's webmail"
     },
     {
         "id": "outlook",
         "name": "Outlook",
-        "url": "https://outlook.live.com",
+        "url": "https://outlook.cloud.microsoft/mail/",
         "icon": "outlook-icon",
         "category": "Email",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Microsoft's email service"
+        "description": "Microsoft 365 webmail"
     },
     {
         "id": "protonmail",
@@ -30,9 +30,19 @@
         "description": "Encrypted email by Proton"
     },
     {
+        "id": "messenger",
+        "name": "Messenger",
+        "url": "https://www.facebook.com/messages/t/",
+        "icon": "messenger-icon",
+        "category": "Messaging",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Facebook Messenger"
+    },
+    {
         "id": "slack",
         "name": "Slack",
-        "url": "https://app.slack.com",
+        "url": "https://app.slack.com/client",
         "icon": "slack-icon",
         "category": "Messaging",
         "badgeJS": null,
@@ -42,7 +52,7 @@
     {
         "id": "teams",
         "name": "Microsoft Teams",
-        "url": "https://teams.microsoft.com",
+        "url": "https://teams.microsoft.com/v2/",
         "icon": "teams-icon",
         "category": "Messaging",
         "badgeJS": null,
@@ -52,7 +62,7 @@
     {
         "id": "discord",
         "name": "Discord",
-        "url": "https://discord.com/app",
+        "url": "https://discord.com/channels/@me",
         "icon": "discord-icon",
         "category": "Messaging",
         "badgeJS": null,
@@ -62,17 +72,17 @@
     {
         "id": "whatsapp",
         "name": "WhatsApp",
-        "url": "https://web.whatsapp.com",
+        "url": "https://web.whatsapp.com/",
         "icon": "whatsapp-icon",
         "category": "Messaging",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Messaging by Meta"
+        "description": "Messaging by Meta — requires QR pairing"
     },
     {
         "id": "telegram",
         "name": "Telegram",
-        "url": "https://web.telegram.org",
+        "url": "https://web.telegram.org/a/",
         "icon": "telegram-icon",
         "category": "Messaging",
         "badgeJS": null,
@@ -80,24 +90,54 @@
         "description": "Cloud-based messaging"
     },
     {
-        "id": "twitter",
-        "name": "X (Twitter)",
-        "url": "https://x.com",
-        "icon": "twitter-icon",
-        "category": "Social",
+        "id": "google-chat",
+        "name": "Google Chat",
+        "url": "https://chat.google.com/",
+        "icon": "gchat-icon",
+        "category": "Messaging",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Social media platform"
+        "description": "Google Workspace messaging"
+    },
+    {
+        "id": "skype",
+        "name": "Skype",
+        "url": "https://web.skype.com/",
+        "icon": "skype-icon",
+        "category": "Messaging",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Video calling and messaging"
     },
     {
         "id": "linkedin",
         "name": "LinkedIn",
-        "url": "https://www.linkedin.com",
+        "url": "https://www.linkedin.com/messaging/",
         "icon": "linkedin-icon",
+        "category": "Messaging",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Professional networking and messaging"
+    },
+    {
+        "id": "x",
+        "name": "X (Twitter)",
+        "url": "https://x.com/messages",
+        "icon": "x-icon",
         "category": "Social",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Professional networking"
+        "description": "Social media and direct messages"
+    },
+    {
+        "id": "instagram",
+        "name": "Instagram",
+        "url": "https://www.instagram.com/direct/inbox/",
+        "icon": "instagram-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Photo sharing and direct messages"
     },
     {
         "id": "facebook",
@@ -108,16 +148,6 @@
         "badgeJS": null,
         "userAgent": null,
         "description": "Social network by Meta"
-    },
-    {
-        "id": "instagram",
-        "name": "Instagram",
-        "url": "https://www.instagram.com",
-        "icon": "instagram-icon",
-        "category": "Social",
-        "badgeJS": null,
-        "userAgent": null,
-        "description": "Photo and video sharing"
     },
     {
         "id": "reddit",
@@ -160,6 +190,16 @@
         "description": "Work management platform"
     },
     {
+        "id": "linear",
+        "name": "Linear",
+        "url": "https://linear.app",
+        "icon": "linear-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Issue tracking for software teams"
+    },
+    {
         "id": "google-calendar",
         "name": "Google Calendar",
         "url": "https://calendar.google.com",
@@ -180,6 +220,26 @@
         "description": "Cloud file storage by Google"
     },
     {
+        "id": "figma",
+        "name": "Figma",
+        "url": "https://www.figma.com/files/recents-and-sharing",
+        "icon": "figma-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Collaborative design tool"
+    },
+    {
+        "id": "github",
+        "name": "GitHub",
+        "url": "https://github.com",
+        "icon": "github-icon",
+        "category": "Developer",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Code hosting and collaboration"
+    },
+    {
         "id": "chatgpt",
         "name": "ChatGPT",
         "url": "https://chatgpt.com",
@@ -198,5 +258,25 @@
         "badgeJS": null,
         "userAgent": null,
         "description": "AI assistant by Anthropic"
+    },
+    {
+        "id": "gemini",
+        "name": "Gemini",
+        "url": "https://gemini.google.com",
+        "icon": "gemini-icon",
+        "category": "AI",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "AI assistant by Google"
+    },
+    {
+        "id": "perplexity",
+        "name": "Perplexity",
+        "url": "https://www.perplexity.ai",
+        "icon": "perplexity-icon",
+        "category": "AI",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "AI-powered search engine"
     }
 ]

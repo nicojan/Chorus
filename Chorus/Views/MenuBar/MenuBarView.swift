@@ -1,6 +1,10 @@
 import SwiftUI
 import SwiftData
 
+extension Notification.Name {
+    static let menuBarServiceActivated = Notification.Name("menuBarServiceActivated")
+}
+
 struct MenuBarView: View {
     @Query private var services: [ServiceInstance]
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
@@ -13,8 +17,22 @@ struct MenuBarView: View {
                         Button {
                             activateService(service.id, inSpace: space.id)
                         } label: {
-                            Label(service.label, systemImage: "globe")
+                            if let iconData = service.customIconData ?? service.fetchedIconData,
+                               let nsImage = NSImage(data: iconData) {
+                                Label {
+                                    Text(service.label)
+                                } icon: {
+                                    Image(nsImage: nsImage)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(width: 16, height: 16)
+                                }
+                            } else {
+                                Label(service.label, systemImage: "globe")
+                            }
                         }
+                        .accessibilityLabel("\(service.label) — \(space.name)")
+                        .help("Open \(service.label) in \(space.name)")
                     }
                 } header: {
                     Text("\(space.emoji) \(space.name)")
@@ -41,12 +59,21 @@ struct MenuBarView: View {
 
     private func servicesForSpace(_ space: Space) -> [ServiceInstance] {
         space.serviceLinks
+            .filter { $0.modelContext != nil && $0.service.modelContext != nil }
             .sorted { $0.sortOrder < $1.sortOrder }
             .map(\.service)
     }
 
     private func activateService(_ serviceID: UUID, inSpace spaceID: UUID) {
         NSApp.activate(ignoringOtherApps: true)
-        // The actual navigation is handled via AppState bindings in the main window
+        // Post notification for AppState to handle navigation
+        NotificationCenter.default.post(
+            name: .menuBarServiceActivated,
+            object: nil,
+            userInfo: ["serviceID": serviceID, "spaceID": spaceID]
+        )
+        if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) {
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 }

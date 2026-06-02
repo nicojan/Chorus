@@ -20,40 +20,44 @@ final class WebViewState {
         self.webView = webView
         observations.removeAll()
 
+        // WKWebView fires KVO on the main thread in practice, but this is not
+        // contractually guaranteed. Use DispatchQueue.main.async for safety —
+        // it's a no-op if already on main, and handles the off-main edge case
+        // without the crash risk of MainActor.assumeIsolated.
         observations.append(
             webView.observe(\.canGoBack, options: [.new]) { [weak self] _, change in
                 let value = change.newValue ?? false
-                Task { @MainActor in self?.canGoBack = value }
+                DispatchQueue.main.async { self?.canGoBack = value }
             }
         )
         observations.append(
             webView.observe(\.canGoForward, options: [.new]) { [weak self] _, change in
                 let value = change.newValue ?? false
-                Task { @MainActor in self?.canGoForward = value }
+                DispatchQueue.main.async { self?.canGoForward = value }
             }
         )
         observations.append(
             webView.observe(\.isLoading, options: [.new]) { [weak self] _, change in
                 let value = change.newValue ?? false
-                Task { @MainActor in self?.isLoading = value }
+                DispatchQueue.main.async { self?.isLoading = value }
             }
         )
         observations.append(
             webView.observe(\.estimatedProgress, options: [.new]) { [weak self] _, change in
                 let value = change.newValue ?? 0
-                Task { @MainActor in self?.estimatedProgress = value }
+                DispatchQueue.main.async { self?.estimatedProgress = value }
             }
         )
         observations.append(
             webView.observe(\.url, options: [.new]) { [weak self] _, change in
                 let value = change.newValue ?? nil
-                Task { @MainActor in self?.currentURL = value }
+                DispatchQueue.main.async { self?.currentURL = value }
             }
         )
         observations.append(
             webView.observe(\.title, options: [.new]) { [weak self] _, change in
                 let value = change.newValue ?? nil
-                Task { @MainActor in self?.title = value }
+                DispatchQueue.main.async { self?.title = value }
             }
         )
     }

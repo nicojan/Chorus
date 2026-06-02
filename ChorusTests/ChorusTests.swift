@@ -33,20 +33,17 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(entries[0].category, "Email")
     }
 
-    func testProcessPoolManager() {
-        let manager = ProcessPoolManager()
-        let id = UUID()
+    @MainActor
+    func testBadgeCountExtraction() {
+        XCTAssertEqual(NotificationManager.extractBadgeCount(from: "Inbox (5) - Gmail"), 5)
+        XCTAssertEqual(NotificationManager.extractBadgeCount(from: "(12) Slack"), 12)
+        XCTAssertEqual(NotificationManager.extractBadgeCount(from: "No badges here"), 0)
+    }
 
-        let pool1 = manager.processPool(for: id)
-        let pool2 = manager.processPool(for: id)
-        XCTAssertTrue(pool1 === pool2, "Same ID should return same pool")
-
-        let otherId = UUID()
-        let pool3 = manager.processPool(for: otherId)
-        XCTAssertFalse(pool1 === pool3, "Different IDs should return different pools")
-
-        manager.removePool(for: id)
-        let pool4 = manager.processPool(for: id)
-        XCTAssertFalse(pool1 === pool4, "After removal, should create new pool")
+    func testHibernatedBadgeExtraction() {
+        XCTAssertEqual(HibernatedBadgePoller.extractBadgeFromTitle(html: "<title>(3) Slack</title>"), 3)
+        XCTAssertEqual(HibernatedBadgePoller.extractBadgeFromTitle(html: "<title>Gmail</title>"), 0)
+        XCTAssertEqual(HibernatedBadgePoller.extractBadgeFromTitle(html: "<title>Inbox (42) - Gmail</title>"), 42)
+        XCTAssertEqual(HibernatedBadgePoller.extractBadgeFromTitle(html: "no title tag"), 0)
     }
 }

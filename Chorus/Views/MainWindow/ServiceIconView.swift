@@ -3,42 +3,69 @@ import SwiftUI
 struct ServiceIconView: View {
     let instance: ServiceInstance
     let isSelected: Bool
+    var badgeCount: Int = 0
+    var isHibernated: Bool = false
 
     @State private var isHovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        VStack(spacing: 2) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(backgroundColor)
-                    .frame(width: 44, height: 44)
+        HStack(spacing: 0) {
+            // Selection indicator — matches the space strip's accent pill
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(isSelected ? Color.accentColor : .clear)
+                .frame(width: 3, height: 28)
 
+            ZStack(alignment: .topTrailing) {
                 iconContent
-                    .frame(width: 28, height: 28)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-            }
-            .scaleEffect(isHovering ? 1.06 : 1.0)
-            .animation(.easeOut(duration: 0.15), value: isHovering)
+                    .frame(width: 32, height: 32)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(backgroundColor)
+                            .frame(width: 40, height: 40)
+                    )
 
-            Text(instance.label)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(isSelected ? .primary : .secondary)
-                .lineLimit(1)
-                .frame(width: 56)
+                if badgeCount > 0 && instance.showBadge {
+                    BadgeCountView(count: badgeCount)
+                        .offset(x: 4, y: -4)
+                }
+
+                if isHibernated {
+                    Image(systemName: "moon.zzz.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(.secondary)
+                        .offset(x: -12, y: -4)
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(width: 40, height: 40)
+            .opacity(isHibernated ? 0.5 : 1.0)
+            .frame(maxWidth: .infinity)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 3)
         .onHover { hovering in
             isHovering = hovering
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(instance.label)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityLabel({
+            var label = instance.label
+            if badgeCount > 0 { label += ", \(badgeCount) unread" }
+            if isHibernated { label += ", hibernated" }
+            return label
+        }())
+        .accessibilityAddTraits([.isButton, isSelected ? .isSelected : []])
     }
 
     @ViewBuilder
     private var iconContent: some View {
         if let iconData = instance.customIconData,
            let nsImage = NSImage(data: iconData) {
+            Image(nsImage: nsImage)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+        } else if let iconData = instance.fetchedIconData,
+                  let nsImage = NSImage(data: iconData) {
             Image(nsImage: nsImage)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
@@ -56,9 +83,9 @@ struct ServiceIconView: View {
 
     private var backgroundColor: Color {
         if isSelected {
-            return Color.accentColor.opacity(0.15)
+            return Color.accentColor.opacity(0.12)
         } else if isHovering {
-            return Color.primary.opacity(0.05)
+            return Color.primary.opacity(0.06)
         }
         return .clear
     }
@@ -75,13 +102,32 @@ struct ServiceIconView: View {
         return colors[hash % colors.count]
     }
 
-    /// Deterministic hash that stays consistent across app launches
-    /// (unlike Swift's randomized Hashable).
     private static func stableHash(_ string: String) -> Int {
         var hash: UInt64 = 5381
         for byte in string.utf8 {
             hash = hash &* 33 &+ UInt64(byte)
         }
         return Int(hash % UInt64(Int.max))
+    }
+}
+
+struct BadgeCountView: View {
+    let count: Int
+
+    var body: some View {
+        Text(count > 99 ? "99+" : "\(count)")
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 4)
+            .frame(minWidth: 16, minHeight: 16)
+            .background(
+                Capsule()
+                    .fill(.red)
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(.white.opacity(0.3), lineWidth: 0.5)
+                    )
+            )
+            .accessibilityHidden(true)
     }
 }

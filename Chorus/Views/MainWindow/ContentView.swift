@@ -7,10 +7,30 @@ struct ContentView: View {
     var body: some View {
         @Bindable var state = appState
 
-        HStack(spacing: 0) {
+        VStack(spacing: 0) {
+            if let error = appState.storeError {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.yellow)
+                        .accessibilityHidden(true)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.yellow.opacity(0.15))
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Warning: \(error)")
+            }
+
+            HStack(spacing: 0) {
             SpaceStripView(
                 selectedSpaceID: $state.selectedSpaceID
             )
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Spaces")
 
             Divider()
 
@@ -19,6 +39,8 @@ struct ContentView: View {
                     spaceID: spaceID,
                     selectedServiceID: $state.selectedServiceID
                 )
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Services")
 
                 Divider()
             }
@@ -27,12 +49,30 @@ struct ContentView: View {
                 selectedServiceID: appState.selectedServiceID
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Web content")
         }
         .frame(minWidth: 800, minHeight: 500)
+        }
+        .onChange(of: appState.selectedSpaceID) { _, newSpaceID in
+            if let spaceID = newSpaceID {
+                appState.preloadServicesForSpace(spaceID)
+                selectFirstService(in: spaceID)
+            }
+        }
         .sheet(isPresented: $state.showAddService) {
             if let spaceID = appState.selectedSpaceID {
                 AddServiceSheet(spaceID: spaceID)
             }
         }
+        .sheet(isPresented: $state.showQuickSwitcher) {
+            QuickSwitcherView()
+                .environment(appState)
+                .modelContainer(appState.modelContainer)
+        }
+    }
+
+    private func selectFirstService(in spaceID: UUID) {
+        appState.selectedServiceID = appState.servicesForSpace(spaceID).first?.id
     }
 }

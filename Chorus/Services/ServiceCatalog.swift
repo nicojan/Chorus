@@ -1,16 +1,13 @@
 import Foundation
-import os
 
 final class ServiceCatalog {
     static let shared = ServiceCatalog()
 
     let entries: [ServiceCatalogEntry]
 
-    private static let logger = Logger(subsystem: "com.nicojan.Chorus", category: "ServiceCatalog")
-
     private init() {
         guard let url = Bundle.main.url(forResource: "ServiceCatalog", withExtension: "json") else {
-            Self.logger.warning("ServiceCatalog.json not found in bundle")
+            AppLogger.general.warning("ServiceCatalog.json not found in bundle")
             self.entries = []
             return
         }
@@ -18,7 +15,7 @@ final class ServiceCatalog {
             let data = try Data(contentsOf: url)
             self.entries = try JSONDecoder().decode([ServiceCatalogEntry].self, from: data)
         } catch {
-            Self.logger.error("Failed to load ServiceCatalog.json: \(error.localizedDescription)")
+            AppLogger.general.error("Failed to load ServiceCatalog.json: \(error.localizedDescription)")
             self.entries = []
         }
     }

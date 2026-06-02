@@ -1,7 +1,6 @@
 import Foundation
 import WebKit
 import UserNotifications
-import os
 
 @MainActor
 @Observable
@@ -9,8 +8,6 @@ final class NotificationManager {
     private var pollTasks: [UUID: Task<Void, Never>] = [:]
     private let badgeManager: BadgeManager
     private var pendingServiceID: UUID?
-
-    private static let logger = Logger(subsystem: "com.nicojan.Chorus", category: "NotificationManager")
 
     var onServiceRequested: (@MainActor (UUID) -> Void)?
 
@@ -20,24 +17,45 @@ final class NotificationManager {
         configureNotificationDelegate()
     }
 
+    /// Title poll interval starts at 5s and backs off to 30s after 10 minutes of no badge changes.
+    /// DOM badge poll runs at 2x the title interval. Resets to fast polling when badge count changes.
     func startPolling(for instanceID: UUID, webView: WKWebView, isMuted: Bool, catalogEntry: ServiceCatalogEntry?) {
         stopPolling(for: instanceID)
 
         let task = Task { @MainActor [weak self, weak webView] in
+            var titleInterval = 5   // seconds between title polls — starts fast
             var tick = 0
+            var unchangedCycles = 0 // how many title polls returned the same count
+
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 guard let self, let webView, !Task.isCancelled else { break }
 
                 tick += 1
 
-                // Title polling every 5 seconds
-                if tick % 5 == 0 {
+                // Title polling at adaptive interval
+                if tick % titleInterval == 0 {
+                    let previousCount = self.badgeManager.badgeCount(for: instanceID)
                     await pollTitle(webView: webView, instanceID: instanceID, isMuted: isMuted)
+                    let newCount = self.badgeManager.badgeCount(for: instanceID)
+
+                    if newCount == previousCount {
+                        unchangedCycles += 1
+                        // Back off: 5s → 10s → 15s → 20s → 30s (cap)
+                        if unchangedCycles >= 120 { // ~10 min at 5s
+                            titleInterval = min(titleInterval + 5, 30)
+                            unchangedCycles = 0
+                        }
+                    } else {
+                        // Badge changed — reset to fast polling
+                        titleInterval = 5
+                        unchangedCycles = 0
+                    }
                 }
 
-                // DOM badge polling every 10 seconds for curated services
-                if tick % 10 == 0, let entry = catalogEntry, entry.badgeJS != nil {
+                // DOM badge polling at 2x the title interval
+                let badgeInterval = titleInterval * 2
+                if tick % badgeInterval == 0, let entry = catalogEntry, entry.badgeJS != nil {
                     await pollBadge(webView: webView, instanceID: instanceID, isMuted: isMuted, catalogEntry: entry)
                 }
             }
@@ -107,9 +125,11 @@ final class NotificationManager {
     // MARK: - Notifications
 
     private nonisolated func requestNotificationPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if let error {
-                Self.logger.error("Notification permission error: \(error.localizedDescription)")
+        Task {
+            do {
+                try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+            } catch {
+                // Permission denied or error — non-critical
             }
         }
     }

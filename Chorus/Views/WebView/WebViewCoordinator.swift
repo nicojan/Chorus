@@ -7,6 +7,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     private var popupWebView: WKWebView?
     private var popupWindow: NSWindow?
 
+    deinit {
+        cleanupPopup()
+    }
+
     // MARK: - Navigation Delegate
 
     func webView(
@@ -19,9 +23,19 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             return
         }
 
-        // Open external-domain links (target=_blank) in system browser
+        // Allow same-domain navigations (SPA routing, login flows, etc.)
         if navigationAction.navigationType == .linkActivated,
-           navigationAction.targetFrame == nil,
+           let currentHost = webView.url?.host,
+           let targetHost = url.host,
+           !Self.areSameDomain(currentHost, targetHost) {
+            // Cross-domain user-clicked links open in the system browser
+            NSWorkspace.shared.open(url)
+            decisionHandler(.cancel)
+            return
+        }
+
+        // target=_blank links to external sites open in system browser
+        if navigationAction.targetFrame == nil,
            let currentHost = webView.url?.host,
            let targetHost = url.host,
            !Self.areSameDomain(currentHost, targetHost) {
@@ -61,22 +75,32 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
         let html = """
         <html>
-        <head><meta name="viewport" content="width=device-width"></head>
-        <body style="display:flex;justify-content:center;align-items:center;
-            height:100vh;font-family:-apple-system,system-ui;color:#64748b;
-            text-align:center;background:#f8fafc;margin:0;">
-            <div style="max-width:400px;padding:20px;">
-                <div style="font-size:48px;margin-bottom:16px;">⚠️</div>
-                <h2 style="color:#1e293b;font-weight:600;margin:0 0 8px;">
-                    Unable to connect
-                </h2>
-                <p style="margin:0 0 20px;line-height:1.5;">\(description)</p>
-                <button onclick="location.reload()"
-                    style="padding:10px 24px;font-size:14px;cursor:pointer;
+        <head>
+            <meta name="viewport" content="width=device-width">
+            <style>
+                body { display:flex;justify-content:center;align-items:center;
+                    height:100vh;font-family:-apple-system,system-ui;color:#64748b;
+                    text-align:center;background:#f8fafc;margin:0; }
+                h2 { color:#1e293b;font-weight:600;margin:0 0 8px; }
+                p { margin:0 0 20px;line-height:1.5; }
+                button { padding:10px 24px;font-size:14px;cursor:pointer;
                     background:#2563eb;color:white;border:none;border-radius:8px;
-                    font-weight:500;">
-                    Try Again
-                </button>
+                    font-weight:500; }
+                .icon { font-size:48px;margin-bottom:16px; }
+                .container { max-width:400px;padding:20px; }
+                @media (prefers-color-scheme: dark) {
+                    body { background:#0f172a;color:#94a3b8; }
+                    h2 { color:#e2e8f0; }
+                    button { background:#3b82f6; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="icon">⚠️</div>
+                <h2>Unable to connect</h2>
+                <p>\(description)</p>
+                <button onclick="location.reload()">Try Again</button>
             </div>
         </body></html>
         """
@@ -91,9 +115,13 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         for navigationAction: WKNavigationAction,
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
+        // Clean up any existing popup before opening a new one
+        cleanupPopup()
+
         // CRITICAL: Use the configuration passed in — it inherits the parent's data store
         let popup = WKWebView(frame: .zero, configuration: configuration)
         popup.navigationDelegate = self
+        popup.uiDelegate = self
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
@@ -109,14 +137,41 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         self.popupWebView = popup
         self.popupWindow = window
 
+        // Observe window close to clean up even when closed via OS button
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(popupWindowWillClose(_:)),
+            name: NSWindow.willCloseNotification,
+            object: window
+        )
+
         return popup
+    }
+
+    @objc private func popupWindowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+              window === popupWindow else { return }
+        cleanupPopup()
+    }
+
+    private func cleanupPopup() {
+        if let window = popupWindow {
+            NotificationCenter.default.removeObserver(
+                self,
+                name: NSWindow.willCloseNotification,
+                object: window
+            )
+        }
+        popupWebView?.navigationDelegate = nil
+        popupWebView?.uiDelegate = nil
+        popupWindow?.close()
+        popupWebView = nil
+        popupWindow = nil
     }
 
     func webViewDidClose(_ webView: WKWebView) {
         if webView === popupWebView {
-            popupWindow?.close()
-            popupWebView = nil
-            popupWindow = nil
+            cleanupPopup()
         }
     }
 
@@ -162,10 +217,45 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     // MARK: - Helpers
 
     private static func areSameDomain(_ a: String, _ b: String) -> Bool {
-        let normalize: (String) -> String = { host in
-            host.replacingOccurrences(of: "www.", with: "")
-                .split(separator: ".").suffix(2).joined(separator: ".")
+        let normalizedA = effectiveDomain(a)
+        let normalizedB = effectiveDomain(b)
+        return normalizedA == normalizedB
+    }
+
+    private static func effectiveDomain(_ host: String) -> String {
+        var h = host.lowercased()
+        if h.hasPrefix("www.") {
+            h = String(h.dropFirst(4))
         }
-        return normalize(a) == normalize(b)
+
+        let parts = h.split(separator: ".")
+        guard parts.count >= 2 else { return h }
+
+        // Known two-part TLDs (country-code second-level domains)
+        let twoPartTLDs: Set<String> = [
+            "co.uk", "org.uk", "ac.uk", "gov.uk",
+            "com.au", "net.au", "org.au", "edu.au",
+            "co.nz", "net.nz", "org.nz",
+            "co.jp", "or.jp", "ne.jp",
+            "com.br", "org.br", "net.br",
+            "co.kr", "or.kr",
+            "co.in", "net.in", "org.in",
+            "com.cn", "net.cn", "org.cn",
+            "co.za", "org.za",
+            "com.mx", "org.mx",
+            "co.il", "org.il",
+            "com.sg", "org.sg",
+            "com.hk", "org.hk",
+            "co.th", "or.th",
+        ]
+
+        let lastTwo = parts.suffix(2).joined(separator: ".")
+        if twoPartTLDs.contains(lastTwo) && parts.count >= 3 {
+            // eTLD+1 is last 3 parts
+            return parts.suffix(3).joined(separator: ".")
+        }
+
+        // Standard: eTLD+1 is last 2 parts
+        return lastTwo
     }
 }

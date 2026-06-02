@@ -21,6 +21,20 @@ struct ChorusApp: App {
                     appState.showAddService = true
                 }
                 .keyboardShortcut("n", modifiers: .command)
+
+                Button("Quick Switcher") {
+                    appState.showQuickSwitcher.toggle()
+                }
+                .keyboardShortcut("k", modifiers: .command)
+
+                Divider()
+
+                Button(appState.doNotDisturb ? "Turn Off Do Not Disturb" : "Do Not Disturb") {
+                    appState.doNotDisturb.toggle()
+                    appState.badgeManager.doNotDisturb = appState.doNotDisturb
+                    appState.badgeManager.updateDockBadge()
+                }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
             }
 
             KeyboardShortcutCommands(
@@ -48,6 +62,7 @@ struct ChorusApp: App {
 
         Settings {
             SettingsView()
+                .environment(appState)
                 .modelContainer(appState.modelContainer)
         }
     }
@@ -56,25 +71,42 @@ struct ChorusApp: App {
     private func servicesForSpace(_ spaceID: UUID) -> [ServiceInstance] {
         let context = appState.modelContainer.mainContext
         let descriptor = FetchDescriptor<SpaceServiceLink>()
-        let links = (try? context.fetch(descriptor)) ?? []
-        return links
-            .filter { $0.space.id == spaceID }
-            .sorted { $0.sortOrder < $1.sortOrder }
-            .map(\.service)
+        do {
+            let links = try context.fetch(descriptor)
+            return links
+                .filter { $0.space.id == spaceID }
+                .sorted { $0.sortOrder < $1.sortOrder }
+                .map(\.service)
+        } catch {
+            AppLogger.dataStore.error("Failed to fetch services for space: \(error.localizedDescription)")
+            return []
+        }
     }
 
     @MainActor
     private func allSpaces() -> [Space] {
         let context = appState.modelContainer.mainContext
         let descriptor = FetchDescriptor<Space>(sortBy: [SortDescriptor(\.sortOrder)])
-        return (try? context.fetch(descriptor)) ?? []
+        do {
+            return try context.fetch(descriptor)
+        } catch {
+            AppLogger.dataStore.error("Failed to fetch spaces: \(error.localizedDescription)")
+            return []
+        }
     }
 
     @MainActor
     private func saveWindowState() {
         let context = appState.modelContainer.mainContext
         let descriptor = FetchDescriptor<AppPreferences>()
-        let prefs = (try? context.fetch(descriptor))?.first ?? AppPreferences()
+
+        let prefs: AppPreferences
+        do {
+            prefs = try context.fetch(descriptor).first ?? AppPreferences()
+        } catch {
+            AppLogger.dataStore.error("Failed to fetch preferences for window state: \(error.localizedDescription)")
+            return
+        }
 
         if prefs.modelContext == nil {
             context.insert(prefs)
@@ -82,6 +114,11 @@ struct ChorusApp: App {
 
         prefs.selectedSpaceID = appState.selectedSpaceID
         prefs.selectedServiceID = appState.selectedServiceID
-        try? context.save()
+
+        do {
+            try context.save()
+        } catch {
+            AppLogger.dataStore.error("Failed to save window state: \(error.localizedDescription)")
+        }
     }
 }

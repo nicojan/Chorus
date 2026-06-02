@@ -9,11 +9,12 @@ enum AppPresenceMode: String, Codable {
 
 @Model
 final class AppPreferences {
-    var id: UUID
+    @Attribute(.unique) var id: UUID
     var appPresenceMode: AppPresenceMode
     var launchAtLogin: Bool
     var globalKeyboardShortcutsEnabled: Bool
     var showBadgeCountInDock: Bool
+    var autoDismissCookieBanners: Bool
     var selectedSpaceID: UUID?
     var selectedServiceID: UUID?
 
@@ -23,6 +24,7 @@ final class AppPreferences {
         launchAtLogin: Bool = false,
         globalKeyboardShortcutsEnabled: Bool = true,
         showBadgeCountInDock: Bool = true,
+        autoDismissCookieBanners: Bool = true,
         selectedSpaceID: UUID? = nil,
         selectedServiceID: UUID? = nil
     ) {
@@ -31,6 +33,7 @@ final class AppPreferences {
         self.launchAtLogin = launchAtLogin
         self.globalKeyboardShortcutsEnabled = globalKeyboardShortcutsEnabled
         self.showBadgeCountInDock = showBadgeCountInDock
+        self.autoDismissCookieBanners = autoDismissCookieBanners
         self.selectedSpaceID = selectedSpaceID
         self.selectedServiceID = selectedServiceID
     }

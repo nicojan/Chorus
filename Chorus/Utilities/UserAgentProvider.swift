@@ -1,7 +1,8 @@
 import Foundation
 
 enum UserAgentProvider {
-    /// Default Safari-like user agent for macOS.
-    /// Some services (WhatsApp Web, Google) block non-Safari user agents.
-    static let safariDefault = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+    /// Safari user agent string used when a service has no custom userAgent set.
+    /// Matches a real Safari release so services like Gmail, Outlook, and WhatsApp
+    /// recognise the browser and serve their full web app instead of a degraded view.
+    static let safariDefault = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15"
 }

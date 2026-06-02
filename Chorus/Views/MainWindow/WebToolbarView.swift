@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WebToolbarView: View {
     let webViewState: WebViewState
+    var homeURL: URL?
     @State private var showingSearch = false
     @State private var searchQuery = ""
 
@@ -17,6 +18,7 @@ struct WebToolbarView: View {
                 .disabled(!webViewState.canGoBack)
                 .buttonStyle(.plain)
                 .help("Back")
+                .accessibilityLabel("Back")
 
                 Button {
                     webViewState.webView?.goForward()
@@ -27,6 +29,7 @@ struct WebToolbarView: View {
                 .disabled(!webViewState.canGoForward)
                 .buttonStyle(.plain)
                 .help("Forward")
+                .accessibilityLabel("Forward")
 
                 Button {
                     if webViewState.isLoading {
@@ -40,6 +43,20 @@ struct WebToolbarView: View {
                 }
                 .buttonStyle(.plain)
                 .help(webViewState.isLoading ? "Stop" : "Reload")
+                .accessibilityLabel(webViewState.isLoading ? "Stop loading" : "Reload page")
+
+                if let homeURL {
+                    Button {
+                        webViewState.webView?.load(URLRequest(url: homeURL))
+                    } label: {
+                        Image(systemName: "house")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Home")
+                    .accessibilityLabel("Go to home page")
+                    .disabled(webViewState.currentURL == homeURL)
+                }
 
                 if webViewState.isLoading {
                     ProgressView(value: webViewState.estimatedProgress)
@@ -53,6 +70,7 @@ struct WebToolbarView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .accessibilityLabel(webViewState.currentURL.map { "Current page: \($0.host ?? "")" } ?? "")
 
                 Button {
                     showingSearch.toggle()
@@ -65,6 +83,7 @@ struct WebToolbarView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Find in page")
+                .accessibilityLabel("Find in page")
                 .keyboardShortcut("f", modifiers: .command)
             }
             .padding(.horizontal, 12)
@@ -84,12 +103,18 @@ struct WebToolbarView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
 
             TextField("Find in page...", text: $searchQuery)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12))
                 .onSubmit {
                     performSearch()
+                }
+                .onExitCommand {
+                    showingSearch = false
+                    searchQuery = ""
+                    clearSearch()
                 }
                 .onChange(of: searchQuery) {
                     if searchQuery.isEmpty {
@@ -107,6 +132,7 @@ struct WebToolbarView: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Close search")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
@@ -118,6 +144,10 @@ struct WebToolbarView: View {
         let escaped = searchQuery
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
         webViewState.webView?.evaluateJavaScript(
             "window.find('\(escaped)', false, false, true)"
         )

@@ -58,6 +58,7 @@ struct AddServiceSheet: View {
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
                 TextField("Search services...", text: $searchText)
                     .textFieldStyle(.plain)
             }
@@ -102,8 +103,8 @@ struct AddServiceSheet: View {
 
     private func addCustomService() {
         let trimmed = customURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("https://") else {
-            urlError = "URL must start with https://"
+        guard trimmed.hasPrefix("https://") || trimmed.hasPrefix("http://") else {
+            urlError = "URL must start with https:// or http://"
             return
         }
         guard URL(string: trimmed) != nil else {
@@ -127,12 +128,39 @@ struct AddServiceSheet: View {
         )
         modelContext.insert(link)
 
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            AppLogger.dataStore.error("Failed to save custom service: \(error.localizedDescription)")
+        }
+
+        // Fetch favicon in background — capture ID before the await
+        let serviceID = service.id
+        let serviceURL = trimmed
+        Task {
+            let data = await FaviconFetcher.shared.fetchFavicon(for: serviceURL)
+            guard let data else { return }
+            let desc = FetchDescriptor<ServiceInstance>(predicate: #Predicate { $0.id == serviceID })
+            guard let svc = try? modelContext.fetch(desc).first else { return }
+            svc.fetchedIconData = data
+            svc.faviconFetchedAt = Date()
+            do {
+                try modelContext.save()
+            } catch {
+                AppLogger.dataStore.error("Failed to save fetched favicon: \(error.localizedDescription)")
+            }
+        }
+
         dismiss()
     }
 
     private func fetchSpace(id: UUID) -> Space? {
         let descriptor = FetchDescriptor<Space>(predicate: #Predicate { $0.id == id })
-        return try? modelContext.fetch(descriptor).first
+        do {
+            return try modelContext.fetch(descriptor).first
+        } catch {
+            AppLogger.dataStore.error("Failed to fetch space: \(error.localizedDescription)")
+            return nil
+        }
     }
 }

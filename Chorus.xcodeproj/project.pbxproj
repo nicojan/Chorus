@@ -16,6 +16,12 @@
 		3291B385E6F0AED73FAE2B61 /* ServiceInstance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4666C49AA129F26D936B0715 /* ServiceInstance.swift */; };
 		365FD38EBDA7455F8E86BEEF /* ServiceIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E84C935C8A82FD6B6B969E6B /* ServiceIconView.swift */; };
 		4129642FB0AD19AC83F01A30 /* UserAgentProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E431CF7CE145D536081A23 /* UserAgentProvider.swift */; };
+		A1B2C3D4E5F6000200000002 /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000001 /* AppLogger.swift */; };
+		A1B2C3D4E5F6000400000004 /* EmojiData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000300000003 /* EmojiData.swift */; };
+		A1B2C3D4E5F6000600000006 /* CookieConsentManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000500000005 /* CookieConsentManager.swift */; };
+		A1B2C3D4E5F6000800000008 /* HibernatedBadgePoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000700000007 /* HibernatedBadgePoller.swift */; };
+		A1B2C3D4E5F6000A0000000A /* QuickSwitcherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000900000009 /* QuickSwitcherView.swift */; };
+		B1C2D3E4F5A6000200000002 /* CatalogIconCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6000100000001 /* CatalogIconCache.swift */; };
 		542D3E32DA8EA90EC36BB6A0 /* DataStoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD49B64B44CC548574DA2348 /* DataStoreManager.swift */; };
 		5561BE9B6C6D8AA46CD42884 /* WebViewContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D9F34755F65BE5A3C76C88 /* WebViewContainer.swift */; };
 		5E59730D46AE1AED21F82ECA /* AppPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88C307C75776869CE8A82618 /* AppPreferences.swift */; };
@@ -26,7 +32,7 @@
 		783EF6C467034D74DE8D5F52 /* WebViewState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 192C907C2215D62E02FF8408 /* WebViewState.swift */; };
 		8AEFF9F928EBEA5194112A21 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DD7FF3D960F0FCA3A2F310B1 /* Assets.xcassets */; };
 		8F6E2C62BD277E5577FBE480 /* WebContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA4617D503719C1701307F28 /* WebContentView.swift */; };
-		910712C1D78BD0D5B3E90707 /* ProcessPoolManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED4702F3BA12C0880BCCEF1 /* ProcessPoolManager.swift */; };
+
 		92BF212550953DD2E21A12E7 /* EmojiPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01EC3720B49A4D8B953CDA90 /* EmojiPickerView.swift */; };
 		A22B72681582D92F92938917 /* WebToolbarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 538A1641C210F10E3CD43E14 /* WebToolbarView.swift */; };
 		A33A7902903C731E069B6CD5 /* ChorusApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E143D686890F381C5B42761F /* ChorusApp.swift */; };
@@ -72,7 +78,7 @@
 		608B27F538D778C6FC4B1697 /* WebViewPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewPool.swift; sourceTree = "<group>"; };
 		706D85D3C09C182826CD4EBA /* BadgeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeManager.swift; sourceTree = "<group>"; };
 		7458024AA17BF508D4807018 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		7ED4702F3BA12C0880BCCEF1 /* ProcessPoolManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessPoolManager.swift; sourceTree = "<group>"; };
+
 		8223D66D602364046AF98EDC /* Chorus.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Chorus.entitlements; sourceTree = "<group>"; };
 		88C307C75776869CE8A82618 /* AppPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreferences.swift; sourceTree = "<group>"; };
 		8F17BFF4DCC563429E130A13 /* CatalogGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogGridView.swift; sourceTree = "<group>"; };
@@ -90,6 +96,12 @@
 		DEE60F6F23AE3708B57614F2 /* SpaceEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceEditorSheet.swift; sourceTree = "<group>"; };
 		E143D686890F381C5B42761F /* ChorusApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChorusApp.swift; sourceTree = "<group>"; };
 		E1E431CF7CE145D536081A23 /* UserAgentProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAgentProvider.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100000001 /* AppLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogger.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000300000003 /* EmojiData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiData.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000500000005 /* CookieConsentManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookieConsentManager.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000700000007 /* HibernatedBadgePoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HibernatedBadgePoller.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000900000009 /* QuickSwitcherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickSwitcherView.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6000100000001 /* CatalogIconCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogIconCache.swift; sourceTree = "<group>"; };
 		E30F23AFD0B5D81AF103BF37 /* ServiceCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceCatalog.swift; sourceTree = "<group>"; };
 		E84C935C8A82FD6B6B969E6B /* ServiceIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceIconView.swift; sourceTree = "<group>"; };
 		EA17C93CEDF437318D536482 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -133,10 +145,13 @@
 			children = (
 				5A1D24379DD182D4A7B6DD11 /* AppPresenceManager.swift */,
 				706D85D3C09C182826CD4EBA /* BadgeManager.swift */,
+				A1B2C3D4E5F6000500000005 /* CookieConsentManager.swift */,
+				B1C2D3E4F5A6000100000001 /* CatalogIconCache.swift */,
 				AD49B64B44CC548574DA2348 /* DataStoreManager.swift */,
+				A1B2C3D4E5F6000700000007 /* HibernatedBadgePoller.swift */,
 				D2AC7E996360A4BC660FD194 /* KeyboardShortcutManager.swift */,
 				3BEC6FCF1B60E1B9CD89A3A2 /* NotificationManager.swift */,
-				7ED4702F3BA12C0880BCCEF1 /* ProcessPoolManager.swift */,
+	
 				E30F23AFD0B5D81AF103BF37 /* ServiceCatalog.swift */,
 				CBBF69E002BB39BB6EFF9BDB /* UserScriptManager.swift */,
 			);
@@ -156,6 +171,7 @@
 			isa = PBXGroup;
 			children = (
 				DD7FF3D960F0FCA3A2F310B1 /* Assets.xcassets */,
+				A1B2C3D4E5F6000300000003 /* EmojiData.swift */,
 				0F2F565F064A603E639DC26E /* ServiceCatalog.json */,
 			);
 			path = Resources;
@@ -173,6 +189,7 @@
 			isa = PBXGroup;
 			children = (
 				1ACFB877AD2138035F9E3EAE /* FaviconFetcher.swift */,
+				A1B2C3D4E5F6000100000001 /* AppLogger.swift */,
 				E1E431CF7CE145D536081A23 /* UserAgentProvider.swift */,
 			);
 			path = Utilities;
@@ -184,6 +201,7 @@
 				2F68812BE3F937F3228F7FBA /* AddService */,
 				A85A2DE22EC0FC06376105BE /* MainWindow */,
 				92F8715D55CA305648DE985C /* MenuBar */,
+				A1B2C3D4E5F6000B0000000B /* QuickSwitcher */,
 				7E4310DD7A9D95A50DC0F075 /* Settings */,
 				216138496901373232936657 /* SpaceEditor */,
 				1E8D1445F53AC2640039824D /* WebView */,
@@ -197,6 +215,14 @@
 				9D811CC9D75730152E17859C /* MenuBarView.swift */,
 			);
 			path = MenuBar;
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F6000B0000000B /* QuickSwitcher */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F6000900000009 /* QuickSwitcherView.swift */,
+			);
+			path = QuickSwitcher;
 			sourceTree = "<group>";
 		};
 		A85A2DE22EC0FC06376105BE /* MainWindow */ = {
@@ -366,7 +392,7 @@
 				091825995DF2FD9C4A7BC86F /* KeyboardShortcutManager.swift in Sources */,
 				701984CFE765170D8EAE50EE /* MenuBarView.swift in Sources */,
 				FC24793EEE444C3F48F17559 /* NotificationManager.swift in Sources */,
-				910712C1D78BD0D5B3E90707 /* ProcessPoolManager.swift in Sources */,
+	
 				C65C95AB514FF50CEE9A75D6 /* ServiceCatalog.swift in Sources */,
 				2D9A102388157D9B3C660F70 /* ServiceCatalogEntry.swift in Sources */,
 				365FD38EBDA7455F8E86BEEF /* ServiceIconView.swift in Sources */,
@@ -377,6 +403,12 @@
 				C87E607C9406DB3117992594 /* SpaceEditorSheet.swift in Sources */,
 				CF6CC3C4CC580F7733D24212 /* SpaceServiceLink.swift in Sources */,
 				C1E4CE7879BB117DBA721C35 /* SpaceStripView.swift in Sources */,
+				A1B2C3D4E5F6000200000002 /* AppLogger.swift in Sources */,
+				A1B2C3D4E5F6000400000004 /* EmojiData.swift in Sources */,
+				A1B2C3D4E5F6000600000006 /* CookieConsentManager.swift in Sources */,
+				B1C2D3E4F5A6000200000002 /* CatalogIconCache.swift in Sources */,
+				A1B2C3D4E5F6000800000008 /* HibernatedBadgePoller.swift in Sources */,
+				A1B2C3D4E5F6000A0000000A /* QuickSwitcherView.swift in Sources */,
 				4129642FB0AD19AC83F01A30 /* UserAgentProvider.swift in Sources */,
 				75C395B384D9E21AF94FBC4F /* UserScriptManager.swift in Sources */,
 				8F6E2C62BD277E5577FBE480 /* WebContentView.swift in Sources */,
@@ -412,6 +444,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -597,6 +630,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
