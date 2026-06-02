@@ -7,6 +7,7 @@ final class Space {
     var name: String
     var emoji: String
     var sortOrder: Int
+    var isMuted: Bool
 
     @Relationship(deleteRule: .cascade)
     var serviceLinks: [SpaceServiceLink]
@@ -17,12 +18,14 @@ final class Space {
         id: UUID = UUID(),
         name: String,
         emoji: String,
-        sortOrder: Int = 0
+        sortOrder: Int = 0,
+        isMuted: Bool = false
     ) {
         self.id = id
         self.name = name
         self.emoji = emoji
         self.sortOrder = sortOrder
+        self.isMuted = isMuted
         self.serviceLinks = []
         self.createdAt = Date()
     }

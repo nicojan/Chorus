@@ -63,12 +63,17 @@ final class AppState {
         self.userScriptManager.isServiceMuted = { @Sendable serviceID in
             // WKScriptMessageHandler.didReceive is invoked on the main
             // thread, so we can safely hop into the main actor here to
-            // read the service's persisted mute state.
+            // read the persisted mute state. A service is muted when its
+            // own isMuted flag is true *or* any of its parent spaces is
+            // muted (mute-the-space cascades to its members).
             MainActor.assumeIsolated {
                 let context = container.mainContext
                 let descriptor = FetchDescriptor<ServiceInstance>()
-                guard let services = try? context.fetch(descriptor) else { return false }
-                return services.first { $0.id == serviceID }?.isMuted ?? false
+                guard let services = try? context.fetch(descriptor),
+                      let service = services.first(where: { $0.id == serviceID })
+                else { return false }
+                if service.isMuted { return true }
+                return service.spaceLinks.contains { $0.space.isMuted }
             }
         }
         self.userScriptManager.isDoNotDisturbActive = { @Sendable in
@@ -91,6 +96,32 @@ final class AppState {
         fetchCatalogIcons()
         preloadActiveSpaceServices()
         cleanUpOrphanedDataStores()
+    }
+
+    /// Effective mute state for a service: true if its own `isMuted` flag is
+    /// set, or any space it belongs to has `isMuted` set. Used by polling and
+    /// notification gating so that a muted space cascades to every member.
+    nonisolated func isServiceEffectivelyMuted(_ serviceID: UUID) -> Bool {
+        MainActor.assumeIsolated {
+            let context = modelContainer.mainContext
+            let descriptor = FetchDescriptor<ServiceInstance>()
+            guard let services = try? context.fetch(descriptor),
+                  let service = services.first(where: { $0.id == serviceID })
+            else { return false }
+            if service.isMuted { return true }
+            return service.spaceLinks.contains { $0.space.isMuted }
+        }
+    }
+
+    /// Per-service "show badge" flag, queried live so the polling task picks
+    /// up toggles without restart.
+    nonisolated func isServiceShowingBadge(_ serviceID: UUID) -> Bool {
+        MainActor.assumeIsolated {
+            let context = modelContainer.mainContext
+            let descriptor = FetchDescriptor<ServiceInstance>()
+            guard let services = try? context.fetch(descriptor) else { return true }
+            return services.first { $0.id == serviceID }?.showBadge ?? true
+        }
     }
 
     /// Tombstone list of `WKWebsiteDataStore` identifiers for services the
@@ -264,7 +295,7 @@ final class AppState {
             self.hibernatedBadgePoller.track(
                 serviceID: serviceID,
                 url: service.url,
-                isMuted: service.isMuted,
+                isMuted: self.isServiceEffectivelyMuted(serviceID),
                 showBadge: service.showBadge,
                 dataStoreIdentifier: service.dataStoreIdentifier
             )
@@ -275,7 +306,15 @@ final class AppState {
         }
 
         webViewPool.onServiceSoftHibernated = { [weak self] serviceID in
-            self?.notificationManager.stopPolling(for: serviceID)
+            guard let self else { return }
+            // Downgrade the active 5s-adaptive poll to a flat 30s background
+            // poll. We keep the WKWebView around (soft hibernation) so we can
+            // still read its `document.title` without waking the service.
+            guard let webView = self.webViewPool.liveWebView(for: serviceID) else {
+                self.notificationManager.stopPolling(for: serviceID)
+                return
+            }
+            self.startBackgroundPolling(for: serviceID, webView: webView)
         }
 
         webViewPool.onServiceSoftWoke = { _ in
@@ -283,11 +322,44 @@ final class AppState {
             // No action needed here — startPolling is called from the view layer
         }
 
+        webViewPool.onServicePreloaded = { [weak self] serviceID, webView in
+            // A freshly-preloaded service has a live WKWebView but isn't on
+            // screen. Start it on the background poll so its <title>-based
+            // badge count contributes to the sidebar and the per-space
+            // aggregate as soon as the page finishes loading.
+            self?.startBackgroundPolling(for: serviceID, webView: webView)
+        }
+
         webViewPool.onServiceRemoved = { [weak self] serviceID in
             guard let self else { return }
             self.notificationManager.stopPolling(for: serviceID)
             self.hibernatedBadgePoller.untrack(serviceID: serviceID)
             self.badgeManager.removeBadge(for: serviceID)
+        }
+    }
+
+    /// Starts (or replaces) a background-mode poll for a service with a live
+    /// WKWebView that isn't currently displayed.
+    private func startBackgroundPolling(for serviceID: UUID, webView: WKWebView) {
+        let catalogEntry = catalogEntry(for: serviceID)
+        notificationManager.startPolling(
+            for: serviceID,
+            webView: webView,
+            isMuted: { [weak self] in self?.isServiceEffectivelyMuted(serviceID) ?? false },
+            showBadge: { [weak self] in self?.isServiceShowingBadge(serviceID) ?? true },
+            catalogEntry: catalogEntry,
+            mode: .background
+        )
+    }
+
+    private nonisolated func catalogEntry(for serviceID: UUID) -> ServiceCatalogEntry? {
+        MainActor.assumeIsolated {
+            let context = modelContainer.mainContext
+            let descriptor = FetchDescriptor<ServiceInstance>()
+            guard let services = try? context.fetch(descriptor),
+                  let entryID = services.first(where: { $0.id == serviceID })?.catalogEntryID
+            else { return nil }
+            return ServiceCatalog.shared.entry(for: entryID)
         }
     }
 

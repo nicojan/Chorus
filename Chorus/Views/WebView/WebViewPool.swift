@@ -48,6 +48,19 @@ final class WebViewPool {
     /// Called when a service's web view is permanently removed (deletion, not hibernation)
     var onServiceRemoved: ((UUID) -> Void)?
 
+    /// Called after a service has been preloaded (web view created and load
+    /// dispatched, but not yet displayed). Allows callers to start background
+    /// polling so the service can collect badge counts before the user clicks it.
+    var onServicePreloaded: ((UUID, WKWebView) -> Void)?
+
+    /// Exposes the live `WKWebView` for a service, if one currently exists.
+    /// Used by callers that need to attach background polling to a soft-
+    /// hibernated or preloaded webview without going through `webView(for:)`,
+    /// which has the side-effect of marking the service active.
+    func liveWebView(for instanceID: UUID) -> WKWebView? {
+        webViews[instanceID]
+    }
+
     init(
         dataStoreManager: DataStoreManager,
         userScriptManager: UserScriptManager
@@ -141,6 +154,7 @@ final class WebViewPool {
         }
 
         AppLogger.webView.debug("Preloaded service \(instance.label)")
+        onServicePreloaded?(instance.id, webView)
 
         Task {
             await evictIfNeeded()

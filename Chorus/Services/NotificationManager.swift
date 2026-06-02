@@ -17,59 +17,110 @@ final class NotificationManager {
         configureNotificationDelegate()
     }
 
-    /// Title poll interval starts at 5s and backs off to 30s after 10 minutes of no badge changes.
-    /// DOM badge poll runs at 2x the title interval. Resets to fast polling when badge count changes.
+    /// Polling cadence for a service.
+    /// - `active`: adaptive 5s→30s title polling + 2× DOM badge polling for
+    ///   the service currently displayed to the user.
+    /// - `background`: flat 30s title polling for preloaded or soft-hibernated
+    ///   services. No DOM badge polling because hidden views may have skipped
+    ///   rendering; the page title is enough signal for "(N)" badges.
+    enum PollMode {
+        case active
+        case background
+    }
+
+    /// Title poll interval starts at 5s and backs off to 30s after 10 minutes of
+    /// no badge changes. DOM badge poll runs at 2× the title interval. Resets to
+    /// fast polling when badge count changes. `isMuted`/`showBadge` are passed as
+    /// closures so live toggles take effect on the next tick instead of waiting
+    /// for the polling task to be restarted.
     func startPolling(
         for instanceID: UUID,
         webView: WKWebView,
-        isMuted: Bool,
-        showBadge: Bool,
-        catalogEntry: ServiceCatalogEntry?
+        isMuted: @escaping @Sendable () -> Bool,
+        showBadge: @escaping @Sendable () -> Bool,
+        catalogEntry: ServiceCatalogEntry?,
+        mode: PollMode = .active
     ) {
         stopPolling(for: instanceID)
 
         let task = Task { @MainActor [weak self, weak webView] in
-            var titleInterval = 5   // seconds between title polls — starts fast
-            var tick = 0
-            var unchangedCycles = 0 // how many title polls returned the same count
-
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                guard let self, let webView, !Task.isCancelled else { break }
-
-                tick += 1
-
-                // Title polling at adaptive interval
-                if tick % titleInterval == 0 {
-                    // Use raw counts here so the DND mask doesn't make every
-                    // poll appear "unchanged" and prematurely back off the
-                    // interval while DND is active.
-                    let previousCount = self.badgeManager.rawCount(for: instanceID)
-                    await pollTitle(webView: webView, instanceID: instanceID, isMuted: isMuted, showBadge: showBadge)
-                    let newCount = self.badgeManager.rawCount(for: instanceID)
-
-                    if newCount == previousCount {
-                        unchangedCycles += 1
-                        // Back off: 5s → 10s → 15s → 20s → 30s (cap)
-                        if unchangedCycles >= 120 { // ~10 min at 5s
-                            titleInterval = min(titleInterval + 5, 30)
-                            unchangedCycles = 0
-                        }
-                    } else {
-                        // Badge changed — reset to fast polling
-                        titleInterval = 5
-                        unchangedCycles = 0
-                    }
-                }
-
-                // DOM badge polling at 2x the title interval
-                let badgeInterval = titleInterval * 2
-                if tick % badgeInterval == 0, let entry = catalogEntry, entry.badgeJS != nil {
-                    await pollBadge(webView: webView, instanceID: instanceID, isMuted: isMuted, showBadge: showBadge, catalogEntry: entry)
-                }
+            switch mode {
+            case .active:
+                await Self.runActivePoll(
+                    instanceID: instanceID,
+                    weakSelf: { [weak self] in self },
+                    weakWebView: { [weak webView] in webView },
+                    isMuted: isMuted,
+                    showBadge: showBadge,
+                    catalogEntry: catalogEntry
+                )
+            case .background:
+                await Self.runBackgroundPoll(
+                    instanceID: instanceID,
+                    weakSelf: { [weak self] in self },
+                    weakWebView: { [weak webView] in webView },
+                    isMuted: isMuted,
+                    showBadge: showBadge
+                )
             }
         }
         pollTasks[instanceID] = task
+    }
+
+    private static func runActivePoll(
+        instanceID: UUID,
+        weakSelf: @MainActor () -> NotificationManager?,
+        weakWebView: @MainActor () -> WKWebView?,
+        isMuted: @Sendable () -> Bool,
+        showBadge: @Sendable () -> Bool,
+        catalogEntry: ServiceCatalogEntry?
+    ) async {
+        var titleInterval = 5
+        var tick = 0
+        var unchangedCycles = 0
+
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(1))
+            guard let manager = weakSelf(), let webView = weakWebView(), !Task.isCancelled else { break }
+
+            tick += 1
+
+            if tick % titleInterval == 0 {
+                let previousCount = manager.badgeManager.rawCount(for: instanceID)
+                await manager.pollTitle(webView: webView, instanceID: instanceID, isMuted: isMuted(), showBadge: showBadge())
+                let newCount = manager.badgeManager.rawCount(for: instanceID)
+
+                if newCount == previousCount {
+                    unchangedCycles += 1
+                    if unchangedCycles >= 120 {
+                        titleInterval = min(titleInterval + 5, 30)
+                        unchangedCycles = 0
+                    }
+                } else {
+                    titleInterval = 5
+                    unchangedCycles = 0
+                }
+            }
+
+            let badgeInterval = titleInterval * 2
+            if tick % badgeInterval == 0, let entry = catalogEntry, entry.badgeJS != nil {
+                await manager.pollBadge(webView: webView, instanceID: instanceID, isMuted: isMuted(), showBadge: showBadge(), catalogEntry: entry)
+            }
+        }
+    }
+
+    private static func runBackgroundPoll(
+        instanceID: UUID,
+        weakSelf: @MainActor () -> NotificationManager?,
+        weakWebView: @MainActor () -> WKWebView?,
+        isMuted: @Sendable () -> Bool,
+        showBadge: @Sendable () -> Bool
+    ) async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(30))
+            guard let manager = weakSelf(), let webView = weakWebView(), !Task.isCancelled else { break }
+            await manager.pollTitle(webView: webView, instanceID: instanceID, isMuted: isMuted(), showBadge: showBadge())
+        }
     }
 
     func stopPolling(for instanceID: UUID) {

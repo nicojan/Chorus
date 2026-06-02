@@ -77,14 +77,19 @@ struct WebContentView: View {
         webViewState.attach(to: webView)
         previousServiceID = service.id
 
-        // Start badge/title polling for the active service
+        // Start active-mode badge/title polling for the displayed service.
+        // Pass closures (rather than the captured bool) so the next poll tick
+        // sees fresh values after the user toggles mute or per-service badge.
         let catalogEntry = service.catalogEntryID.flatMap { ServiceCatalog.shared.entry(for: $0) }
+        let serviceID = service.id
+        let appStateRef = appState
         appState.notificationManager.startPolling(
             for: service.id,
             webView: webView,
-            isMuted: service.isMuted,
-            showBadge: service.showBadge,
-            catalogEntry: catalogEntry
+            isMuted: { appStateRef.isServiceEffectivelyMuted(serviceID) },
+            showBadge: { appStateRef.isServiceShowingBadge(serviceID) },
+            catalogEntry: catalogEntry,
+            mode: .active
         )
     }
 
