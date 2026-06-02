@@ -45,11 +45,17 @@ final class BadgeManager {
     }
 
     func updateDockBadge() {
+        // Use NSApplication.shared rather than the NSApp global — the
+        // global is an implicitly-unwrapped optional that can still be
+        // nil during early AppState init (and in test hosts), and reading
+        // .dockTile through it then traps. NSApplication.shared is lazy
+        // and safe even before the run loop is up.
+        let dockTile = NSApplication.shared.dockTile
         if doNotDisturb || !showBadgeCountInDock {
-            NSApp.dockTile.badgeLabel = nil
+            dockTile.badgeLabel = nil
         } else {
             let total = counts.values.reduce(0, +)
-            NSApp.dockTile.badgeLabel = total > 0 ? "\(total)" : nil
+            dockTile.badgeLabel = total > 0 ? "\(total)" : nil
         }
     }
 }
