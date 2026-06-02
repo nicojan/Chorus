@@ -29,22 +29,48 @@ enum CookieConsentManager {
                 '.ncb2f',
             ];
 
+            // Only cookie-specific phrases — generic words like "OK",
+            // "Accept", "Allow", "Agree", "Got it" were clicking unrelated
+            // confirmation/payment dialogs.
             const TEXT_PATTERNS = [
-                /^accept all$/i,
                 /^accept all cookies$/i,
-                /^allow all$/i,
                 /^allow all cookies$/i,
-                /^agree$/i,
-                /^agree & proceed$/i,
-                /^i agree$/i,
-                /^got it$/i,
-                /^ok$/i,
-                /^accept$/i,
-                /^allow$/i,
-                /^consent$/i,
+                /^accept all$/i,
+                /^allow all$/i,
+                /^accept all and continue$/i,
                 /^accept & close$/i,
                 /^accept and close$/i,
+                /^agree & proceed$/i,
+                /^agree and proceed$/i,
             ];
+
+            // Containers that strongly suggest a cookie/consent dialog.
+            // Text-pattern matching is scoped to buttons inside one of
+            // these — that way "Accept all" inside an unrelated wizard
+            // can't trigger us.
+            const CONSENT_CONTAINER_HINTS = [
+                'cookie', 'consent', 'gdpr', 'privacy', 'cmp',
+                'onetrust', 'cookiebot', 'didomi', 'trustarc',
+                'usercentrics', 'sourcepoint', 'quantcast',
+            ];
+
+            function isInsideConsentContainer(el) {
+                let node = el;
+                while (node && node !== document.body) {
+                    const attrs = [
+                        node.id || '',
+                        node.className && node.className.toString ? node.className.toString() : '',
+                        node.getAttribute && (node.getAttribute('aria-label') || ''),
+                        node.getAttribute && (node.getAttribute('role') || ''),
+                        node.getAttribute && (node.getAttribute('data-testid') || ''),
+                    ].join(' ').toLowerCase();
+                    if (CONSENT_CONTAINER_HINTS.some(h => attrs.indexOf(h) !== -1)) {
+                        return true;
+                    }
+                    node = node.parentElement;
+                }
+                return false;
+            }
 
             function tryDismiss() {
                 for (const sel of SELECTORS) {
@@ -60,12 +86,12 @@ enum CookieConsentManager {
                 );
                 for (const btn of buttons) {
                     const text = (btn.textContent || btn.value || '').trim();
-                    if (TEXT_PATTERNS.some(p => p.test(text))) {
-                        const style = window.getComputedStyle(btn);
-                        if (style.display !== 'none' && style.visibility !== 'hidden' && btn.offsetParent !== null) {
-                            btn.click();
-                            return true;
-                        }
+                    if (!TEXT_PATTERNS.some(p => p.test(text))) continue;
+                    if (!isInsideConsentContainer(btn)) continue;
+                    const style = window.getComputedStyle(btn);
+                    if (style.display !== 'none' && style.visibility !== 'hidden' && btn.offsetParent !== null) {
+                        btn.click();
+                        return true;
                     }
                 }
                 return false;
