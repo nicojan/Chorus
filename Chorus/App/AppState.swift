@@ -35,41 +35,21 @@ final class AppState {
         do {
             self.modelContainer = try ModelContainer(for: schema, configurations: [config])
         } catch {
-            AppLogger.dataStore.error("Schema migration failed: \(error.localizedDescription). Backing up and recreating store.")
-            let storeURL = config.url
-            // Attempt backup before deleting
-            let backupURL = storeURL.deletingLastPathComponent()
-                .appendingPathComponent("default-backup-\(Date().timeIntervalSince1970).store")
-
+            // Never auto-delete the user's persistent store: silent destruction
+            // is data loss without consent. Fall back to in-memory storage so
+            // the app stays usable, surface a banner with the on-disk path,
+            // and let the user choose whether to reset via Settings.
+            AppLogger.dataStore.error("Persistent store could not be opened: \(error.localizedDescription). Falling back to in-memory storage; on-disk data is preserved at \(config.url.path).")
+            let inMemoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
             do {
-                try FileManager.default.copyItem(at: storeURL, to: backupURL)
+                self.modelContainer = try ModelContainer(for: schema, configurations: [inMemoryConfig])
             } catch {
-                AppLogger.dataStore.error("Failed to create backup: \(error.localizedDescription)")
+                // In-memory containers should never fail with this schema; if
+                // they do the app cannot run at all.
+                AppLogger.dataStore.fault("In-memory model container failed: \(error.localizedDescription)")
+                fatalError("Failed to initialize any model container: \(error.localizedDescription)")
             }
-
-            let related = [
-                storeURL,
-                storeURL.appendingPathExtension("shm"),
-                storeURL.appendingPathExtension("wal"),
-            ]
-            for url in related {
-                do {
-                    try FileManager.default.removeItem(at: url)
-                } catch {
-                    AppLogger.dataStore.warning("Failed to remove store file \(url.lastPathComponent): \(error.localizedDescription)")
-                }
-            }
-            do {
-                self.modelContainer = try ModelContainer(for: schema, configurations: [config])
-                AppLogger.dataStore.info("Store recreated successfully. Backup saved to \(backupURL.path)")
-            } catch {
-                // Last resort: fall back to in-memory store so the app remains usable
-                AppLogger.dataStore.fault("Persistent store irrecoverable: \(error.localizedDescription). Falling back to in-memory store.")
-                let inMemoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-                // swiftlint:disable:next force_try
-                self.modelContainer = try! ModelContainer(for: schema, configurations: [inMemoryConfig])
-                self.storeError = "Your data could not be loaded. The app is running with temporary storage — changes will not be saved. A backup was saved to: \(backupURL.path)"
-            }
+            self.storeError = "Your saved data couldn't be loaded. Chorus is running with temporary storage — changes won't be saved. Your data file is at: \(config.url.path)"
         }
 
         self.dataStoreManager = DataStoreManager()
