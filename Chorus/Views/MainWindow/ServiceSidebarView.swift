@@ -211,10 +211,16 @@ struct ServiceSidebarView: View {
     private func reorderService(droppedLinkID: UUID, beforeLink target: SpaceServiceLink) {
         var links = filteredLinks
         guard let fromIndex = links.firstIndex(where: { $0.id == droppedLinkID }),
-              let toIndex = links.firstIndex(where: { $0.id == target.id })
+              let originalToIndex = links.firstIndex(where: { $0.id == target.id })
         else { return }
 
         let moved = links.remove(at: fromIndex)
+        // Removing fromIndex shifts every later element left by one — so
+        // when dragging downward (fromIndex < originalToIndex) we need to
+        // insert one slot earlier to land *before* the target. Without
+        // this, every downward drag drops the item one past where the
+        // user pointed.
+        let toIndex = fromIndex < originalToIndex ? originalToIndex - 1 : originalToIndex
         links.insert(moved, at: toIndex)
 
         for (index, link) in links.enumerated() {
