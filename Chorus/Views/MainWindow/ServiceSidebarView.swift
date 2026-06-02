@@ -152,12 +152,12 @@ struct ServiceSidebarView: View {
         if !hasOtherLinks {
             appState.webViewPool.removeWebView(for: serviceID)
             modelContext.delete(service)
-            // Data store cleanup is deferred to app launch — removing a data store
-            // while its WKWebView is still in SwiftUI's view hierarchy causes a
-            // WebKit-internal trap (EXC_BREAKPOINT).
         }
 
         save("remove service from space")
+        if !hasOtherLinks {
+            appState.cleanUpOrphanedDataStores()
+        }
     }
 
     private func pickCustomIcon(for service: ServiceInstance) {
@@ -241,6 +241,6 @@ struct ServiceSidebarView: View {
         modelContext.delete(service)
 
         save("delete service")
-        // Data store cleanup is deferred to app launch — see AppState.cleanUpOrphanedDataStores()
+        appState.cleanUpOrphanedDataStores()
     }
 }

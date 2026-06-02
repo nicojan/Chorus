@@ -71,6 +71,43 @@ final class AppState {
         fetchMissingAndStaleFavicons()
         fetchCatalogIcons()
         preloadActiveSpaceServices()
+        cleanUpOrphanedDataStores()
+    }
+
+    /// Deletes any per-service `WKWebsiteDataStore` whose identifier is no
+    /// longer referenced by a `ServiceInstance`. Runs at launch and after
+    /// a service is deleted so we don't leak cookies, IndexedDB, or cache
+    /// for removed services.
+    ///
+    /// The work is dispatched off the main actor with a short delay so any
+    /// in-flight `WKWebView` teardown from a just-deleted service completes
+    /// before its data store is removed (WebKit traps if the store goes
+    /// away while a live view still holds it).
+    func cleanUpOrphanedDataStores() {
+        let context = modelContainer.mainContext
+        let descriptor = FetchDescriptor<ServiceInstance>()
+        let inUse: Set<UUID>
+        do {
+            inUse = Set(try context.fetch(descriptor).map(\.dataStoreIdentifier))
+        } catch {
+            AppLogger.dataStore.error("Failed to enumerate services for orphan cleanup: \(error.localizedDescription)")
+            return
+        }
+
+        Task.detached(priority: .utility) {
+            // Give SwiftUI a moment to drop any WKWebView that referenced
+            // a just-deleted service's data store.
+            try? await Task.sleep(for: .seconds(1))
+            let allIdentifiers = await WKWebsiteDataStore.allDataStoreIdentifiers
+            for identifier in allIdentifiers where !inUse.contains(identifier) {
+                do {
+                    try await WKWebsiteDataStore.remove(forIdentifier: identifier)
+                    AppLogger.dataStore.info("Removed orphaned data store \(identifier)")
+                } catch {
+                    AppLogger.dataStore.warning("Failed to remove orphaned data store \(identifier): \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
     /// Preloads web views for all services in the currently selected space.
