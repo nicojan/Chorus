@@ -81,7 +81,7 @@ final class AppState {
             userScriptManager: userScriptManager
         )
 
-        loadCookieBannerPreference()
+        loadAppPreferences()
         setupNotificationNavigation()
         setupHibernationCallbacks()
         setupMenuBarNavigation()
@@ -193,18 +193,23 @@ final class AppState {
         }
     }
 
-    private func loadCookieBannerPreference() {
+    private func loadAppPreferences() {
         let context = modelContainer.mainContext
         let descriptor = FetchDescriptor<AppPreferences>()
+        let prefs: AppPreferences?
         do {
-            let prefs = try context.fetch(descriptor).first
-            userScriptManager.autoDismissCookieBanners = prefs?.autoDismissCookieBanners ?? true
-            badgeManager.showBadgeCountInDock = prefs?.showBadgeCountInDock ?? true
+            prefs = try context.fetch(descriptor).first
         } catch {
             AppLogger.dataStore.error("Failed to load preferences: \(error.localizedDescription)")
-            userScriptManager.autoDismissCookieBanners = true
-            badgeManager.showBadgeCountInDock = true
+            prefs = nil
         }
+
+        userScriptManager.autoDismissCookieBanners = prefs?.autoDismissCookieBanners ?? true
+        badgeManager.showBadgeCountInDock = prefs?.showBadgeCountInDock ?? true
+        // Apply the persisted presence mode at launch — previously this was
+        // only invoked when the user actively changed the Settings picker,
+        // so the stored mode was ignored after restart.
+        AppPresenceManager().apply(mode: prefs?.appPresenceMode ?? .dock)
     }
 
     private func setupHibernationCallbacks() {
