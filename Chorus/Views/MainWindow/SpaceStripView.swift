@@ -19,11 +19,12 @@ struct SpaceStripView: View {
 
             ForEach(spaces) { space in
                 let serviceIDs = space.serviceLinks.map(\.service.id)
-                let badgeCount = appState.badgeManager.aggregateCount(for: serviceIDs)
+                let badgeCount = space.isMuted ? 0 : appState.badgeManager.aggregateCount(for: serviceIDs)
                 SpaceButton(
                     space: space,
                     isSelected: selectedSpaceID == space.id,
-                    badgeCount: badgeCount
+                    badgeCount: badgeCount,
+                    isMuted: space.isMuted
                 ) {
                     selectedSpaceID = space.id
                 }
@@ -49,6 +50,29 @@ struct SpaceStripView: View {
                 .accessibilityAction(named: "Move up") { moveSpaceUp(space) }
                 .accessibilityAction(named: "Move down") { moveSpaceDown(space) }
                 .contextMenu {
+                    Toggle("Mute Notifications", isOn: Binding(
+                        get: { space.isMuted },
+                        set: { newValue in
+                            space.isMuted = newValue
+                            save("toggle space mute")
+                            // Refresh BadgeManager for every member service so
+                            // the per-service sidebar badge and the aggregate
+                            // chip badge zero out (or come back) immediately,
+                            // without waiting for the next poll tick.
+                            for link in space.serviceLinks {
+                                let id = link.service.id
+                                let count = appState.badgeManager.rawCount(for: id)
+                                appState.badgeManager.updateBadge(
+                                    for: id,
+                                    count: count,
+                                    isMuted: appState.isServiceEffectivelyMuted(id),
+                                    showBadge: link.service.showBadge
+                                )
+                            }
+                        }
+                    ))
+
+                    Divider()
                     Button("Edit Space...") {
                         editingSpace = space
                     }
@@ -158,6 +182,7 @@ private struct SpaceButton: View {
     let space: Space
     let isSelected: Bool
     var badgeCount: Int = 0
+    var isMuted: Bool = false
     let action: () -> Void
 
     @State private var isHovering = false
@@ -176,6 +201,7 @@ private struct SpaceButton: View {
 
                     Text(space.emoji)
                         .font(.title2)
+                        .opacity(isMuted ? 0.5 : 1.0)
                         .frame(maxWidth: .infinity)
                         .frame(height: 40)
                         .background(
@@ -190,15 +216,25 @@ private struct SpaceButton: View {
                     BadgeCountView(count: badgeCount)
                         .offset(x: 4, y: -4)
                 }
+
+                if isMuted {
+                    Image(systemName: "bell.slash.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                        .padding(2)
+                        .background(Circle().fill(.background))
+                        .offset(x: -2, y: 28)
+                        .accessibilityHidden(true)
+                }
             }
         }
         .buttonStyle(.plain)
-        .help(space.name)
+        .help(isMuted ? "\(space.name) (muted)" : space.name)
         .onHover { hovering in
             isHovering = hovering
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(space.name)
+        .accessibilityLabel(isMuted ? "\(space.name), muted" : space.name)
         .accessibilityAddTraits([.isButton, isSelected ? .isSelected : []])
     }
 

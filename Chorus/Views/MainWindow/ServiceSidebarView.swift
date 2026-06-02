@@ -33,7 +33,8 @@ struct ServiceSidebarView: View {
                                 isSelected: selectedServiceID == link.service.id,
                                 badgeCount: appState.badgeManager.badgeCount(for: link.service.id),
                                 isHibernated: selectedServiceID != link.service.id
-                                    && appState.webViewPool.isHibernated(link.service.id)
+                                    && appState.webViewPool.isHibernated(link.service.id),
+                                isMuted: appState.isServiceEffectivelyMuted(link.service.id)
                             )
                         }
                         .buttonStyle(.plain)
@@ -59,6 +60,17 @@ struct ServiceSidebarView: View {
                         .accessibilityAction(named: "Move up") { moveServiceUp(link) }
                         .accessibilityAction(named: "Move down") { moveServiceDown(link) }
                         .contextMenu {
+                            Toggle("Mute Notifications", isOn: Binding(
+                                get: { link.service.isMuted },
+                                set: { newValue in
+                                    link.service.isMuted = newValue
+                                    save("toggle service mute")
+                                    syncBadge(for: link.service)
+                                }
+                            ))
+
+                            Divider()
+
                             if appState.webViewPool.hasWebView(for: link.service.id) {
                                 Button("Hibernate") {
                                     appState.webViewPool.hibernate(link.service.id)
@@ -135,6 +147,20 @@ struct ServiceSidebarView: View {
         } catch {
             AppLogger.dataStore.error("Failed to save (\(context)): \(error.localizedDescription)")
         }
+    }
+
+    /// Re-applies BadgeManager state for a service after its mute/showBadge
+    /// changed, so the sidebar and dock totals update immediately instead of
+    /// waiting for the next poll tick.
+    private func syncBadge(for service: ServiceInstance) {
+        let id = service.id
+        let count = appState.badgeManager.rawCount(for: id)
+        appState.badgeManager.updateBadge(
+            for: id,
+            count: count,
+            isMuted: appState.isServiceEffectivelyMuted(id),
+            showBadge: service.showBadge
+        )
     }
 
     private func removeFromSpace(link: SpaceServiceLink) {

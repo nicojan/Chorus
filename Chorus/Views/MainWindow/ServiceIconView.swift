@@ -5,6 +5,7 @@ struct ServiceIconView: View {
     let isSelected: Bool
     var badgeCount: Int = 0
     var isHibernated: Bool = false
+    var isMuted: Bool = false
 
     @State private var isHovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -38,9 +39,19 @@ struct ServiceIconView: View {
                         .offset(x: -12, y: -4)
                         .accessibilityHidden(true)
                 }
+
+                if isMuted {
+                    Image(systemName: "bell.slash.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                        .padding(2)
+                        .background(Circle().fill(.background))
+                        .offset(x: 4, y: 18)
+                        .accessibilityHidden(true)
+                }
             }
             .frame(width: 40, height: 40)
-            .opacity(isHibernated ? 0.5 : 1.0)
+            .opacity(isHibernated ? 0.5 : (isMuted ? 0.75 : 1.0))
             .frame(maxWidth: .infinity)
         }
         .padding(.vertical, 3)
@@ -52,6 +63,7 @@ struct ServiceIconView: View {
             var label = instance.label
             if badgeCount > 0 { label += ", \(badgeCount) unread" }
             if isHibernated { label += ", hibernated" }
+            if isMuted { label += ", muted" }
             return label
         }())
         .accessibilityAddTraits([.isButton, isSelected ? .isSelected : []])
