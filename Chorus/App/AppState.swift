@@ -73,7 +73,7 @@ final class AppState {
                       let service = services.first(where: { $0.id == serviceID })
                 else { return false }
                 if service.isMuted { return true }
-                return service.spaceLinks.contains { $0.space.isMuted }
+                return service.spaceLinks.contains { $0.space.isMutedEffective }
             }
         }
         self.userScriptManager.isDoNotDisturbActive = { @Sendable in
@@ -109,7 +109,7 @@ final class AppState {
                   let service = services.first(where: { $0.id == serviceID })
             else { return false }
             if service.isMuted { return true }
-            return service.spaceLinks.contains { $0.space.isMuted }
+            return service.spaceLinks.contains { $0.space.isMutedEffective }
         }
     }
 

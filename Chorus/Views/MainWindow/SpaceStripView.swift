@@ -19,12 +19,13 @@ struct SpaceStripView: View {
 
             ForEach(spaces) { space in
                 let serviceIDs = space.serviceLinks.map(\.service.id)
-                let badgeCount = space.isMuted ? 0 : appState.badgeManager.aggregateCount(for: serviceIDs)
+                let muted = space.isMutedEffective
+                let badgeCount = muted ? 0 : appState.badgeManager.aggregateCount(for: serviceIDs)
                 SpaceButton(
                     space: space,
                     isSelected: selectedSpaceID == space.id,
                     badgeCount: badgeCount,
-                    isMuted: space.isMuted
+                    isMuted: muted
                 ) {
                     selectedSpaceID = space.id
                 }
@@ -51,7 +52,7 @@ struct SpaceStripView: View {
                 .accessibilityAction(named: "Move down") { moveSpaceDown(space) }
                 .contextMenu {
                     Toggle("Mute Notifications", isOn: Binding(
-                        get: { space.isMuted },
+                        get: { space.isMutedEffective },
                         set: { newValue in
                             space.isMuted = newValue
                             save("toggle space mute")
