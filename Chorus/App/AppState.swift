@@ -12,6 +12,7 @@ final class AppState {
     let badgeManager: BadgeManager
     let notificationManager: NotificationManager
     let hibernatedBadgePoller: HibernatedBadgePoller
+    let networkMonitor: NetworkMonitor
 
     var selectedSpaceID: UUID?
     var selectedServiceID: UUID?
@@ -87,6 +88,7 @@ final class AppState {
             dataStoreManager: dataStoreManager,
             userScriptManager: userScriptManager
         )
+        self.networkMonitor = NetworkMonitor()
 
         loadAppPreferences()
         setupNotificationNavigation()

@@ -25,6 +25,22 @@ struct ContentView: View {
                 .accessibilityLabel("Warning: \(error)")
             }
 
+            if !appState.networkMonitor.isOnline {
+                HStack(spacing: 6) {
+                    Image(systemName: "wifi.slash")
+                        .foregroundStyle(.white)
+                        .accessibilityHidden(true)
+                    Text("You're offline — services won't load new content until your connection returns.")
+                        .font(.caption)
+                        .foregroundStyle(.white)
+                }
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity)
+                .background(Color.red.opacity(0.85))
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Offline")
+            }
+
             HStack(spacing: 0) {
             SpaceStripView(
                 selectedSpaceID: $state.selectedSpaceID

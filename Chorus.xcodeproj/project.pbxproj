@@ -16,6 +16,7 @@
 		3291B385E6F0AED73FAE2B61 /* ServiceInstance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4666C49AA129F26D936B0715 /* ServiceInstance.swift */; };
 		365FD38EBDA7455F8E86BEEF /* ServiceIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E84C935C8A82FD6B6B969E6B /* ServiceIconView.swift */; };
 		F1F1F1F1F1F1F1F1F1F1F1F1 /* FindInPageBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1F2F2F2F2F2F2F2F2F2F2F2 /* FindInPageBar.swift */; };
+		F3F3F3F3F3F3F3F3F3F3F3F3 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3F4F4F4F4F4F4F4F4F4F4F4 /* NetworkMonitor.swift */; };
 		4129642FB0AD19AC83F01A30 /* UserAgentProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E431CF7CE145D536081A23 /* UserAgentProvider.swift */; };
 		A1B2C3D4E5F6000200000002 /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000001 /* AppLogger.swift */; };
 		A1B2C3D4E5F6000400000004 /* EmojiData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000300000003 /* EmojiData.swift */; };
@@ -106,6 +107,7 @@
 		E30F23AFD0B5D81AF103BF37 /* ServiceCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceCatalog.swift; sourceTree = "<group>"; };
 		E84C935C8A82FD6B6B969E6B /* ServiceIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceIconView.swift; sourceTree = "<group>"; };
 		F1F2F2F2F2F2F2F2F2F2F2F2 /* FindInPageBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindInPageBar.swift; sourceTree = "<group>"; };
+		F3F4F4F4F4F4F4F4F4F4F4F4 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
 		EA17C93CEDF437318D536482 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		ECCC4A3133903E40BFB42AA6 /* AddServiceSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddServiceSheet.swift; sourceTree = "<group>"; };
 		FBA2B8A19B41207F66E51CC3 /* ChorusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChorusTests.swift; sourceTree = "<group>"; };
@@ -156,6 +158,7 @@
 	
 				E30F23AFD0B5D81AF103BF37 /* ServiceCatalog.swift */,
 				CBBF69E002BB39BB6EFF9BDB /* UserScriptManager.swift */,
+				F3F4F4F4F4F4F4F4F4F4F4F4 /* NetworkMonitor.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -413,6 +416,7 @@
 				A1B2C3D4E5F6000800000008 /* HibernatedBadgePoller.swift in Sources */,
 				A1B2C3D4E5F6000A0000000A /* QuickSwitcherView.swift in Sources */,
 				F1F1F1F1F1F1F1F1F1F1F1F1 /* FindInPageBar.swift in Sources */,
+				F3F3F3F3F3F3F3F3F3F3F3F3 /* NetworkMonitor.swift in Sources */,
 				4129642FB0AD19AC83F01A30 /* UserAgentProvider.swift in Sources */,
 				75C395B384D9E21AF94FBC4F /* UserScriptManager.swift in Sources */,
 				8F6E2C62BD277E5577FBE480 /* WebContentView.swift in Sources */,
