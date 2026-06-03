@@ -278,5 +278,225 @@
         "badgeJS": null,
         "userAgent": null,
         "description": "AI-powered search engine"
+    },
+    {
+        "id": "fastmail",
+        "name": "Fastmail",
+        "url": "https://app.fastmail.com",
+        "icon": "fastmail-icon",
+        "category": "Email",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Independent email by Fastmail"
+    },
+    {
+        "id": "icloud-mail",
+        "name": "iCloud Mail",
+        "url": "https://www.icloud.com/mail",
+        "icon": "icloud-mail-icon",
+        "category": "Email",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Apple iCloud webmail"
+    },
+    {
+        "id": "zoom",
+        "name": "Zoom",
+        "url": "https://app.zoom.us/wc/home",
+        "icon": "zoom-icon",
+        "category": "Messaging",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Video meetings (web client)"
+    },
+    {
+        "id": "mattermost",
+        "name": "Mattermost",
+        "url": "https://community.mattermost.com",
+        "icon": "mattermost-icon",
+        "category": "Messaging",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Open-source team chat"
+    },
+    {
+        "id": "spotify",
+        "name": "Spotify",
+        "url": "https://open.spotify.com",
+        "icon": "spotify-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Music streaming"
+    },
+    {
+        "id": "youtube",
+        "name": "YouTube",
+        "url": "https://www.youtube.com",
+        "icon": "youtube-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Video sharing"
+    },
+    {
+        "id": "youtube-music",
+        "name": "YouTube Music",
+        "url": "https://music.youtube.com",
+        "icon": "youtube-music-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Music by YouTube"
+    },
+    {
+        "id": "twitch",
+        "name": "Twitch",
+        "url": "https://www.twitch.tv",
+        "icon": "twitch-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Live streaming"
+    },
+    {
+        "id": "google-photos",
+        "name": "Google Photos",
+        "url": "https://photos.google.com",
+        "icon": "google-photos-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Cloud photo library"
+    },
+    {
+        "id": "dropbox",
+        "name": "Dropbox",
+        "url": "https://www.dropbox.com/home",
+        "icon": "dropbox-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "File storage and sync"
+    },
+    {
+        "id": "onedrive",
+        "name": "OneDrive",
+        "url": "https://onedrive.live.com",
+        "icon": "onedrive-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Microsoft cloud storage"
+    },
+    {
+        "id": "airtable",
+        "name": "Airtable",
+        "url": "https://airtable.com/home",
+        "icon": "airtable-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Spreadsheet-database hybrid"
+    },
+    {
+        "id": "miro",
+        "name": "Miro",
+        "url": "https://miro.com/app/dashboard/",
+        "icon": "miro-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Collaborative whiteboard"
+    },
+    {
+        "id": "canva",
+        "name": "Canva",
+        "url": "https://www.canva.com",
+        "icon": "canva-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Design and templates"
+    },
+    {
+        "id": "jira",
+        "name": "Jira",
+        "url": "https://id.atlassian.com/login",
+        "icon": "jira-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Issue tracking by Atlassian"
+    },
+    {
+        "id": "confluence",
+        "name": "Confluence",
+        "url": "https://id.atlassian.com/login",
+        "icon": "confluence-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Team docs by Atlassian"
+    },
+    {
+        "id": "todoist",
+        "name": "Todoist",
+        "url": "https://todoist.com/app",
+        "icon": "todoist-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Task manager"
+    },
+    {
+        "id": "gitlab",
+        "name": "GitLab",
+        "url": "https://gitlab.com",
+        "icon": "gitlab-icon",
+        "category": "Developer",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "DevOps platform"
+    },
+    {
+        "id": "stackoverflow",
+        "name": "Stack Overflow",
+        "url": "https://stackoverflow.com",
+        "icon": "stackoverflow-icon",
+        "category": "Developer",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Q&A for developers"
+    },
+    {
+        "id": "hackernews",
+        "name": "Hacker News",
+        "url": "https://news.ycombinator.com",
+        "icon": "hackernews-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Tech and startup news"
+    },
+    {
+        "id": "substack",
+        "name": "Substack",
+        "url": "https://substack.com/inbox",
+        "icon": "substack-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Newsletters and reading"
+    },
+    {
+        "id": "mistral",
+        "name": "Le Chat",
+        "url": "https://chat.mistral.ai",
+        "icon": "mistral-icon",
+        "category": "AI",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "AI assistant by Mistral"
     }
 ]
