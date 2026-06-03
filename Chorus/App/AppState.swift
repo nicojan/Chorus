@@ -119,27 +119,45 @@ final class AppState {
     /// belongs to the same eTLD+1 we switch to it (preserving auth/space
     /// context) and navigate to the deep URL. Otherwise we hand off to the
     /// system default browser.
+    ///
+    /// Multi-account aware: when several services match the same host (e.g.
+    /// personal + work Notion), we prefer the match in the current space so
+    /// "click a Notion link from Work Slack" lands in Work Notion. Only
+    /// crosses spaces when the current space has no match.
     private func handleExternalLink(_ url: URL) {
         guard let host = url.host else {
             NSWorkspace.shared.open(url)
             return
         }
 
-        if let match = findServiceMatching(host: host) {
+        if let match = findServiceMatching(host: host, preferringSpace: selectedSpaceID) {
             switchToService(match, navigateTo: url)
         } else {
             NSWorkspace.shared.open(url)
         }
     }
 
-    private func findServiceMatching(host: String) -> ServiceInstance? {
+    private func findServiceMatching(host: String, preferringSpace spaceID: UUID?) -> ServiceInstance? {
         let context = modelContainer.mainContext
         let descriptor = FetchDescriptor<ServiceInstance>()
         guard let services = try? context.fetch(descriptor) else { return nil }
-        return services.first { service in
+
+        let matches = services.filter { service in
             guard let serviceHost = URL(string: service.url)?.host else { return false }
             return WebViewCoordinator.areSameDomain(host, serviceHost)
         }
+        if matches.isEmpty { return nil }
+        if matches.count == 1 { return matches.first }
+
+        // Multiple instances of the same site (e.g. personal + work Notion).
+        // Prefer one inside the current space; fall back to any match.
+        if let spaceID,
+           let inCurrentSpace = matches.first(where: { service in
+               service.spaceLinks.contains { $0.space.id == spaceID }
+           }) {
+            return inCurrentSpace
+        }
+        return matches.first
     }
 
     private func switchToService(_ service: ServiceInstance, navigateTo url: URL) {
