@@ -7,6 +7,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     private var popupWebView: WKWebView?
     private var popupWindow: NSWindow?
 
+    /// Fallback URL to load if the WebContent process crashes before any
+    /// navigation has committed (so `webView.reload()` has nothing to retry).
+    var fallbackURL: URL?
+
     deinit {
         cleanupPopup()
     }
@@ -52,6 +56,18 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             decisionHandler(.allow)
         } else {
             decisionHandler(.download)
+        }
+    }
+
+    // WebKit kills WebContent on memory pressure, JIT bugs, or page crashes.
+    // The webview is left blank with no recovery affordance — auto-reload
+    // so the user just sees a brief flicker instead of a broken view.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        AppLogger.webView.warning("WebContent process terminated — reloading")
+        if webView.url != nil {
+            webView.reload()
+        } else if let fallback = fallbackURL {
+            webView.load(URLRequest(url: fallback))
         }
     }
 

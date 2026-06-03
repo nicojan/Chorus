@@ -101,6 +101,7 @@ final class WebViewPool {
         webView.customUserAgent = instance.userAgent ?? UserAgentProvider.safariDefault
 
         let coordinator = WebViewCoordinator()
+        coordinator.fallbackURL = URL(string: instance.url)
         webView.navigationDelegate = coordinator
         webView.uiDelegate = coordinator
         coordinators[instance.id] = coordinator
@@ -142,6 +143,7 @@ final class WebViewPool {
         webView.customUserAgent = instance.userAgent ?? UserAgentProvider.safariDefault
 
         let coordinator = WebViewCoordinator()
+        coordinator.fallbackURL = URL(string: instance.url)
         webView.navigationDelegate = coordinator
         webView.uiDelegate = coordinator
         coordinators[instance.id] = coordinator
