@@ -71,6 +71,12 @@ struct ServiceSidebarView: View {
 
                             Divider()
 
+                            Button("Open in Safari") {
+                                openInDefaultBrowser(link.service)
+                            }
+
+                            Divider()
+
                             if appState.webViewPool.hasWebView(for: link.service.id) {
                                 Button("Hibernate") {
                                     appState.webViewPool.hibernate(link.service.id)
@@ -146,6 +152,17 @@ struct ServiceSidebarView: View {
             try modelContext.save()
         } catch {
             AppLogger.dataStore.error("Failed to save (\(context)): \(error.localizedDescription)")
+        }
+    }
+
+    /// Opens the service's current page in the system default browser,
+    /// preferring the live WKWebView's URL over the catalog/home URL so
+    /// the user lands where they actually were.
+    private func openInDefaultBrowser(_ service: ServiceInstance) {
+        let liveURL = appState.webViewPool.liveWebView(for: service.id)?.url
+        let target = liveURL ?? URL(string: service.url)
+        if let target {
+            NSWorkspace.shared.open(target)
         }
     }
 
