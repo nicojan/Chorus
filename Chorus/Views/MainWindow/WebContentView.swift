@@ -26,7 +26,7 @@ struct WebContentView: View {
                     homeURL: URL(string: service.url)
                 )
 
-                ZStack {
+                ZStack(alignment: .topTrailing) {
                     WebViewContainer(webView: webView)
 
                     // Show cached snapshot as instant visual feedback while page loads.
@@ -37,8 +37,20 @@ struct WebContentView: View {
                             .aspectRatio(contentMode: .fill)
                             .transition(.opacity)
                     }
+
+                    if appState.findInPageVisible {
+                        FindInPageBar(
+                            isVisible: Binding(
+                                get: { appState.findInPageVisible },
+                                set: { appState.findInPageVisible = $0 }
+                            ),
+                            webView: webView
+                        )
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
                 }
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: webViewState.isLoading)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: appState.findInPageVisible)
             } else if selectedService != nil {
                 ProgressView("Loading service…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -18,6 +18,8 @@ final class AppState {
     var showAddService = false
     var showQuickSwitcher = false
     var doNotDisturb = false
+    /// Drives the Find-in-Page overlay in WebContentView. Toggled by Cmd-F.
+    var findInPageVisible = false
 
     /// Non-nil when the persistent store failed and we fell back to in-memory storage.
     /// The UI should display a warning banner when this is set.

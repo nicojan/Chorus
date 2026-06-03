@@ -76,6 +76,13 @@ struct ChorusApp: App {
                     appState.resetActiveServiceZoom()
                 }
                 .keyboardShortcut("0", modifiers: .command)
+
+                Divider()
+
+                Button("Find...") {
+                    appState.findInPageVisible = true
+                }
+                .keyboardShortcut("f", modifiers: .command)
             }
         }
 
