@@ -113,6 +113,48 @@ final class AppState {
         }
     }
 
+    // MARK: - Active service actions (driven by keyboard shortcuts)
+
+    /// Reload the currently displayed service's web view. Triggered by Cmd-R.
+    func reloadActiveService() {
+        guard let id = webViewPool.activeServiceID,
+              let webView = webViewPool.liveWebView(for: id) else { return }
+        webView.reload()
+    }
+
+    /// Multiply the active service's page zoom by `factor`, clamped to 0.5x–3.0x.
+    /// The new zoom is persisted on the ServiceInstance so it survives
+    /// hibernation, relaunch, and switching back and forth.
+    func adjustActiveServiceZoom(by factor: Double) {
+        guard let id = webViewPool.activeServiceID,
+              let webView = webViewPool.liveWebView(for: id),
+              let service = currentServiceInstance(id: id) else { return }
+        let target = max(0.5, min(3.0, service.zoomLevelEffective * factor))
+        applyZoom(target, to: webView, service: service)
+    }
+
+    /// Reset the active service's zoom to 1.0. Triggered by Cmd-0.
+    func resetActiveServiceZoom() {
+        guard let id = webViewPool.activeServiceID,
+              let webView = webViewPool.liveWebView(for: id),
+              let service = currentServiceInstance(id: id) else { return }
+        applyZoom(1.0, to: webView, service: service)
+    }
+
+    private func applyZoom(_ value: Double, to webView: WKWebView, service: ServiceInstance) {
+        webView.pageZoom = CGFloat(value)
+        service.pageZoom = value
+        do { try modelContainer.mainContext.save() } catch {
+            AppLogger.dataStore.error("Failed to persist zoom: \(error.localizedDescription)")
+        }
+    }
+
+    private func currentServiceInstance(id: UUID) -> ServiceInstance? {
+        let context = modelContainer.mainContext
+        let descriptor = FetchDescriptor<ServiceInstance>()
+        return (try? context.fetch(descriptor))?.first { $0.id == id }
+    }
+
     /// Per-service "show badge" flag, queried live so the polling task picks
     /// up toggles without restart.
     nonisolated func isServiceShowingBadge(_ serviceID: UUID) -> Bool {

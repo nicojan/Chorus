@@ -40,12 +40,6 @@ struct KeyboardShortcutCommands: Commands {
             }
             .keyboardShortcut(KeyEquivalent.tab, modifiers: [.control, .shift])
 
-            Divider()
-
-            Button("Reload") {
-                // Handled via responder chain
-            }
-            .keyboardShortcut("r", modifiers: .command)
         }
     }
 

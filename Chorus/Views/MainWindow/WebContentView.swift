@@ -73,6 +73,9 @@ struct WebContentView: View {
         transitionSnapshot = appState.webViewPool.snapshot(for: service.id)
 
         let webView = appState.webViewPool.webView(for: service)
+        // Apply the persisted per-service zoom so it survives hibernation
+        // and relaunch. Setting pageZoom is a no-op when the value matches.
+        webView.pageZoom = CGFloat(service.zoomLevelEffective)
         currentWebView = webView
         webViewState.attach(to: webView)
         previousServiceID = service.id

@@ -53,6 +53,30 @@ struct ChorusApp: App {
                     allSpaces()
                 }
             )
+
+            CommandGroup(after: .toolbar) {
+                Button("Reload") {
+                    appState.reloadActiveService()
+                }
+                .keyboardShortcut("r", modifiers: .command)
+
+                Divider()
+
+                Button("Zoom In") {
+                    appState.adjustActiveServiceZoom(by: 1.1)
+                }
+                .keyboardShortcut("=", modifiers: .command)
+
+                Button("Zoom Out") {
+                    appState.adjustActiveServiceZoom(by: 1.0 / 1.1)
+                }
+                .keyboardShortcut("-", modifiers: .command)
+
+                Button("Actual Size") {
+                    appState.resetActiveServiceZoom()
+                }
+                .keyboardShortcut("0", modifiers: .command)
+            }
         }
 
         MenuBarExtra("Chorus", systemImage: "square.grid.2x2") {

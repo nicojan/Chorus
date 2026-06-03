@@ -15,12 +15,19 @@ final class ServiceInstance {
     var neverHibernate: Bool
     var userAgent: String?
     var dataStoreIdentifier: UUID
+    /// Per-service page zoom (e.g. 1.0 = 100%, 1.25 = 125%). Stored optional
+    /// so SwiftData lightweight migration succeeds on existing rows — read
+    /// sites should use `zoomLevelEffective` which substitutes 1.0 for nil.
+    var pageZoom: Double?
 
     @Relationship(deleteRule: .cascade, inverse: \SpaceServiceLink.service)
     var spaceLinks: [SpaceServiceLink]
 
     var createdAt: Date
     var lastAccessedAt: Date
+
+    /// Materialises the storage-optional zoom into a Double (nil → 1.0).
+    var zoomLevelEffective: Double { pageZoom ?? 1.0 }
 
     init(
         id: UUID = UUID(),
@@ -34,7 +41,8 @@ final class ServiceInstance {
         showBadge: Bool = true,
         neverHibernate: Bool = false,
         userAgent: String? = nil,
-        dataStoreIdentifier: UUID = UUID()
+        dataStoreIdentifier: UUID = UUID(),
+        pageZoom: Double? = nil
     ) {
         self.id = id
         self.label = label
@@ -48,6 +56,7 @@ final class ServiceInstance {
         self.neverHibernate = neverHibernate
         self.userAgent = userAgent
         self.dataStoreIdentifier = dataStoreIdentifier
+        self.pageZoom = pageZoom
         self.spaceLinks = []
         self.createdAt = Date()
         self.lastAccessedAt = Date()
