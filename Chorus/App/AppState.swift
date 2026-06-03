@@ -95,12 +95,67 @@ final class AppState {
         setupHibernationCallbacks()
         setupMenuBarNavigation()
         setupSystemSleepHandling()
+        setupExternalLinkRouting()
         seedDefaultDataIfNeeded()
         restoreWindowState()
         fetchMissingAndStaleFavicons()
         fetchCatalogIcons()
         preloadActiveSpaceServices()
         cleanUpOrphanedDataStores()
+    }
+
+    /// Wires the WebViewPool's external-link handler so that cross-domain
+    /// target=_blank navigations route through `handleExternalLink(_:)` —
+    /// which prefers switching to a matching Chorus service over opening
+    /// Safari, but falls back to NSWorkspace when no service matches.
+    private func setupExternalLinkRouting() {
+        webViewPool.externalLinkHandler = { [weak self] url in
+            self?.handleExternalLink(url)
+        }
+    }
+
+    /// Decides what to do with a link that the user clicked in one service
+    /// and which targets a different origin. If any other Chorus service
+    /// belongs to the same eTLD+1 we switch to it (preserving auth/space
+    /// context) and navigate to the deep URL. Otherwise we hand off to the
+    /// system default browser.
+    private func handleExternalLink(_ url: URL) {
+        guard let host = url.host else {
+            NSWorkspace.shared.open(url)
+            return
+        }
+
+        if let match = findServiceMatching(host: host) {
+            switchToService(match, navigateTo: url)
+        } else {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func findServiceMatching(host: String) -> ServiceInstance? {
+        let context = modelContainer.mainContext
+        let descriptor = FetchDescriptor<ServiceInstance>()
+        guard let services = try? context.fetch(descriptor) else { return nil }
+        return services.first { service in
+            guard let serviceHost = URL(string: service.url)?.host else { return false }
+            return WebViewCoordinator.areSameDomain(host, serviceHost)
+        }
+    }
+
+    private func switchToService(_ service: ServiceInstance, navigateTo url: URL) {
+        // Make sure we're in a space that contains this service so the
+        // sidebar selection becomes visible. If the service lives in
+        // multiple spaces, pick the first.
+        if let firstSpace = service.spaceLinks.first?.space.id {
+            selectedSpaceID = firstSpace
+        }
+        selectedServiceID = service.id
+
+        // Acquire (or wake) the web view and load the deep URL. webView(for:)
+        // marks the service active and handles soft-hibernation of whatever
+        // was previously displayed.
+        let webView = webViewPool.webView(for: service)
+        webView.load(URLRequest(url: url))
     }
 
     /// Hooks NSWorkspace sleep/wake notifications so polling tasks pause

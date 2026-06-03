@@ -6,12 +6,26 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
     private var popupWebView: WKWebView?
     private var popupWindow: NSWindow?
+    private var popupTitleObservation: NSKeyValueObservation?
 
     /// Fallback URL to load if the WebContent process crashes before any
     /// navigation has committed (so `webView.reload()` has nothing to retry).
     var fallbackURL: URL?
 
+    /// Routes external/cross-domain navigations through AppState so it can
+    /// match the URL against an existing Chorus service before falling back
+    /// to the system browser. When nil the coordinator falls back to
+    /// `NSWorkspace.open` directly.
+    var externalLinkHandler: ((URL) -> Void)?
+
+    /// URL schemes the OS handles natively. We forward to NSWorkspace rather
+    /// than letting WebKit fail with an unsupported-scheme error.
+    private static let nonWebSchemes: Set<String> = [
+        "mailto", "tel", "sms", "facetime", "facetime-audio", "imessage", "maps"
+    ]
+
     deinit {
+        popupTitleObservation?.invalidate()
         cleanupPopup()
     }
 
@@ -27,23 +41,46 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             return
         }
 
-        // Allow in-frame navigation — including cross-domain — so OAuth/SSO
-        // round-trips (e.g. "Sign in with Google" from Slack) can complete.
-        // Their cookies must land in the WKWebsiteDataStore, not Safari.
-        //
-        // We only divert popup-style links (target=_blank, no targetFrame)
-        // to the system browser when they're cross-domain — this matches
-        // user expectation for "Open in browser" actions while leaving
-        // cross-domain in-frame navigations untouched.
-        if navigationAction.targetFrame == nil,
-           let currentHost = webView.url?.host,
-           let targetHost = url.host,
-           !Self.areSameDomain(currentHost, targetHost) {
+        // 1. Non-web schemes (mailto:, tel:, sms:, facetime:, maps:, etc.)
+        //    Hand off to the system handler so Mail/Phone/Messages opens,
+        //    instead of letting WebKit fail with an unsupported-URL error.
+        if let scheme = url.scheme?.lowercased(),
+           Self.nonWebSchemes.contains(scheme) {
             NSWorkspace.shared.open(url)
             decisionHandler(.cancel)
             return
         }
 
+        // 2. Cmd-clicks unconditionally go to the system browser — matches
+        //    Safari's "open in new tab/window" convention. Detected via the
+        //    modifierFlags on the navigation action.
+        if navigationAction.navigationType == .linkActivated,
+           navigationAction.modifierFlags.contains(.command) {
+            NSWorkspace.shared.open(url)
+            decisionHandler(.cancel)
+            return
+        }
+
+        // 3. Cross-domain target=_blank links route through the external-link
+        //    handler so AppState can match the URL against another existing
+        //    Chorus service before falling back to NSWorkspace. Same-domain
+        //    target=_blank still goes through createWebViewWith (OAuth popups).
+        if navigationAction.targetFrame == nil,
+           let currentHost = webView.url?.host,
+           let targetHost = url.host,
+           !Self.areSameDomain(currentHost, targetHost) {
+            if let handler = externalLinkHandler {
+                handler(url)
+            } else {
+                NSWorkspace.shared.open(url)
+            }
+            decisionHandler(.cancel)
+            return
+        }
+
+        // 4. Everything else (same-domain navigation, cross-domain in-frame
+        //    OAuth round-trips, target=_blank same-domain popups handled by
+        //    createWebViewWith) loads in place.
         decisionHandler(.allow)
     }
 
@@ -135,19 +172,38 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         popup.navigationDelegate = self
         popup.uiDelegate = self
 
+        // Honor the page's requested popup size when reasonable; otherwise
+        // default to a comfortable 1100×800 (the previous 800×600 was too
+        // cramped for modern OAuth screens and standalone editors).
+        let requestedWidth = (windowFeatures.width?.doubleValue ?? 0)
+        let requestedHeight = (windowFeatures.height?.doubleValue ?? 0)
+        let width = max(640, min(1400, requestedWidth > 0 ? requestedWidth : 1100))
+        let height = max(480, min(1000, requestedHeight > 0 ? requestedHeight : 800))
+
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-            styleMask: [.titled, .closable, .resizable],
+            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
             defer: false
         )
         window.contentView = popup
-        window.title = "Sign In"
+        window.title = navigationAction.request.url?.host ?? "Chorus"
         window.center()
         window.makeKeyAndOrderFront(nil)
 
         self.popupWebView = popup
         self.popupWindow = window
+
+        // Mirror the page's <title> into the NSWindow title bar so the user
+        // sees what's actually loaded (e.g. "Google Drive — Sign in") rather
+        // than the stale initial host name.
+        popupTitleObservation?.invalidate()
+        popupTitleObservation = popup.observe(\.title, options: [.new]) { [weak window] webView, _ in
+            let newTitle = (webView.title?.isEmpty == false) ? webView.title! : (webView.url?.host ?? "Chorus")
+            Task { @MainActor in
+                window?.title = newTitle
+            }
+        }
 
         // Observe window close to clean up even when closed via OS button
         NotificationCenter.default.addObserver(
@@ -174,6 +230,8 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
                 object: window
             )
         }
+        popupTitleObservation?.invalidate()
+        popupTitleObservation = nil
         popupWebView?.navigationDelegate = nil
         popupWebView?.uiDelegate = nil
         popupWindow?.close()
@@ -228,13 +286,15 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
     // MARK: - Helpers
 
-    private static func areSameDomain(_ a: String, _ b: String) -> Bool {
+    /// Exposed so AppState can use the same eTLD+1 matching when deciding
+    /// whether an external URL belongs to a service already in Chorus.
+    static func areSameDomain(_ a: String, _ b: String) -> Bool {
         let normalizedA = effectiveDomain(a)
         let normalizedB = effectiveDomain(b)
         return normalizedA == normalizedB
     }
 
-    private static func effectiveDomain(_ host: String) -> String {
+    static func effectiveDomain(_ host: String) -> String {
         var h = host.lowercased()
         if h.hasPrefix("www.") {
             h = String(h.dropFirst(4))

@@ -48,6 +48,11 @@ final class WebViewPool {
     /// Called when a service's web view is permanently removed (deletion, not hibernation)
     var onServiceRemoved: ((UUID) -> Void)?
 
+    /// Wired up at AppState init and applied to every coordinator the pool
+    /// creates. Routes cross-domain target=_blank links + Cmd-clicks through
+    /// service-aware matching before falling back to the system browser.
+    var externalLinkHandler: ((URL) -> Void)?
+
     /// Called after a service has been preloaded (web view created and load
     /// dispatched, but not yet displayed). Allows callers to start background
     /// polling so the service can collect badge counts before the user clicks it.
@@ -109,6 +114,7 @@ final class WebViewPool {
 
         let coordinator = WebViewCoordinator()
         coordinator.fallbackURL = URL(string: instance.url)
+        coordinator.externalLinkHandler = externalLinkHandler
         webView.navigationDelegate = coordinator
         webView.uiDelegate = coordinator
         coordinators[instance.id] = coordinator
@@ -151,6 +157,7 @@ final class WebViewPool {
 
         let coordinator = WebViewCoordinator()
         coordinator.fallbackURL = URL(string: instance.url)
+        coordinator.externalLinkHandler = externalLinkHandler
         webView.navigationDelegate = coordinator
         webView.uiDelegate = coordinator
         coordinators[instance.id] = coordinator
