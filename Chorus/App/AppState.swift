@@ -94,12 +94,58 @@ final class AppState {
         setupNotificationNavigation()
         setupHibernationCallbacks()
         setupMenuBarNavigation()
+        setupSystemSleepHandling()
         seedDefaultDataIfNeeded()
         restoreWindowState()
         fetchMissingAndStaleFavicons()
         fetchCatalogIcons()
         preloadActiveSpaceServices()
         cleanUpOrphanedDataStores()
+    }
+
+    /// Hooks NSWorkspace sleep/wake notifications so polling tasks pause
+    /// while the Mac is asleep (otherwise their `Task.sleep` calls keep
+    /// firing on wake-up and stack up missed work). On wake we restart
+    /// polling for every live WKWebView — active mode for the currently
+    /// displayed service, background mode for the rest.
+    private func setupSystemSleepHandling() {
+        let center = NSWorkspace.shared.notificationCenter
+        center.addObserver(
+            forName: NSWorkspace.willSleepNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.notificationManager.stopAllPolling()
+                AppLogger.general.info("System sleep — paused polling")
+            }
+        }
+        center.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.restartPollingAfterWake()
+            }
+        }
+    }
+
+    private func restartPollingAfterWake() {
+        let activeID = webViewPool.activeServiceID
+        for id in webViewPool.liveServiceIDs {
+            guard let webView = webViewPool.liveWebView(for: id) else { continue }
+            let catalog = catalogEntry(for: id)
+            notificationManager.startPolling(
+                for: id,
+                webView: webView,
+                isMuted: { [weak self] in self?.isServiceEffectivelyMuted(id) ?? false },
+                showBadge: { [weak self] in self?.isServiceShowingBadge(id) ?? true },
+                catalogEntry: catalog,
+                mode: (id == activeID) ? .active : .background
+            )
+        }
+        AppLogger.general.info("System wake — restarted polling for \(self.webViewPool.liveServiceIDs.count) service(s)")
     }
 
     /// Effective mute state for a service: true if its own `isMuted` flag is

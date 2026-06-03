@@ -61,6 +61,13 @@ final class WebViewPool {
         webViews[instanceID]
     }
 
+    /// Snapshot of all service IDs whose WKWebViews are currently alive.
+    /// Used after system wake to restart polling for everything that survived
+    /// the sleep cycle.
+    var liveServiceIDs: [UUID] {
+        Array(webViews.keys)
+    }
+
     init(
         dataStoreManager: DataStoreManager,
         userScriptManager: UserScriptManager
