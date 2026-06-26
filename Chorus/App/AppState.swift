@@ -83,7 +83,10 @@ final class AppState {
             MainActor.assumeIsolated { badgeManager.doNotDisturb }
         }
         self.notificationManager = NotificationManager(badgeManager: badgeManager)
-        self.hibernatedBadgePoller = HibernatedBadgePoller(badgeManager: badgeManager)
+        self.hibernatedBadgePoller = HibernatedBadgePoller(
+            badgeManager: badgeManager,
+            dataStoreManager: dataStoreManager
+        )
         self.webViewPool = WebViewPool(
             dataStoreManager: dataStoreManager,
             userScriptManager: userScriptManager
@@ -465,6 +468,12 @@ final class AppState {
     func cleanUpOrphanedDataStores() {
         let orphans = Self.loadOrphanedIdentifiers()
         guard !orphans.isEmpty else { return }
+
+        // Drop cached handles so a live instance can't keep the on-disk store
+        // alive while we try to remove it.
+        for identifier in orphans {
+            dataStoreManager.evict(identifier: identifier)
+        }
 
         Task.detached(priority: .utility) {
             // Let SwiftUI finish dropping any WKWebView that referenced
