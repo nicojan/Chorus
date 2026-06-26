@@ -705,8 +705,28 @@ final class AppState {
 
     private func setupNotificationNavigation() {
         notificationManager.onServiceRequested = { [weak self] serviceID in
-            self?.selectedServiceID = serviceID
+            self?.navigateToServiceFromNotification(serviceID)
         }
+        // Drain any notification tap that arrived (e.g. launched the app)
+        // before the handler was wired.
+        if let pending = notificationManager.handlePendingNotification() {
+            navigateToServiceFromNotification(pending)
+        }
+    }
+
+    /// Selects the service a notification refers to, and switches to a space
+    /// that contains it so the selection is actually visible in the sidebar.
+    private func navigateToServiceFromNotification(_ serviceID: UUID) {
+        let context = modelContainer.mainContext
+        let descriptor = FetchDescriptor<ServiceInstance>(predicate: #Predicate { $0.id == serviceID })
+        guard let service = try? context.fetch(descriptor).first else { return }
+
+        // If the service isn't in the current space, move to one that has it.
+        let inCurrentSpace = service.spaceLinks.contains { $0.space.id == selectedSpaceID }
+        if !inCurrentSpace, let firstSpace = service.spaceLinks.first?.space.id {
+            selectedSpaceID = firstSpace
+        }
+        selectedServiceID = serviceID
     }
 
     private func restoreWindowState() {

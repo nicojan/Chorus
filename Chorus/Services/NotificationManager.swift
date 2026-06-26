@@ -135,6 +135,18 @@ final class NotificationManager {
         pollTasks.removeAll()
     }
 
+    /// Routes a notification tap to the navigation handler, or buffers it if
+    /// the handler isn't wired yet (a notification can launch the app before
+    /// AppState finishes setting `onServiceRequested`). Drained via
+    /// `handlePendingNotification()`.
+    func routeServiceRequest(_ serviceID: UUID) {
+        if let handler = onServiceRequested {
+            handler(serviceID)
+        } else {
+            pendingServiceID = serviceID
+        }
+    }
+
     func handlePendingNotification() -> UUID? {
         let id = pendingServiceID
         pendingServiceID = nil
@@ -213,7 +225,7 @@ final class NotificationManager {
         let delegate = NotificationCenterDelegate(
             onServiceRequested: { [weak self] serviceID in
                 Task { @MainActor in
-                    self?.onServiceRequested?(serviceID)
+                    self?.routeServiceRequest(serviceID)
                 }
             },
             isDoNotDisturb: {
