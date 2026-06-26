@@ -124,7 +124,7 @@ struct ServiceSidebarView: View {
                                 badgeCount: appState.badgeManager.badgeCount(for: link.service.id),
                                 isHibernated: selectedServiceID != link.service.id
                                     && appState.webViewPool.isHibernated(link.service.id),
-                                isMuted: appState.isServiceEffectivelyMuted(link.service.id)
+                                isMuted: link.service.isEffectivelyMuted
                             )
                         }
                         .buttonStyle(.plain)

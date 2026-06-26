@@ -29,6 +29,14 @@ final class ServiceInstance {
     /// Materialises the storage-optional zoom into a Double (nil → 1.0).
     var zoomLevelEffective: Double { pageZoom ?? 1.0 }
 
+    /// True if this service is muted directly, or via any space it belongs to
+    /// (muting a space cascades to its members). Use this when the model object
+    /// is already in hand — it avoids AppState's fetch-all-then-scan lookup.
+    var isEffectivelyMuted: Bool {
+        if isMuted { return true }
+        return spaceLinks.contains { $0.space.isMutedEffective }
+    }
+
     init(
         id: UUID = UUID(),
         label: String,

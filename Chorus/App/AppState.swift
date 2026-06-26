@@ -263,13 +263,18 @@ final class AppState {
     /// notification gating so that a muted space cascades to every member.
     nonisolated func isServiceEffectivelyMuted(_ serviceID: UUID) -> Bool {
         MainActor.assumeIsolated {
-            let context = modelContainer.mainContext
-            let descriptor = FetchDescriptor<ServiceInstance>()
-            guard let services = try? context.fetch(descriptor),
-                  let service = services.first(where: { $0.id == serviceID })
-            else { return false }
-            if service.isMuted { return true }
-            return service.spaceLinks.contains { $0.space.isMutedEffective }
+            fetchService(id: serviceID)?.isEffectivelyMuted ?? false
+        }
+    }
+
+    /// Single-service fetch by id (predicate + limit 1) instead of fetching the
+    /// whole table and scanning. Used by the mute/badge/catalog lookups that
+    /// run on every poll tick and every sidebar render.
+    private nonisolated func fetchService(id: UUID) -> ServiceInstance? {
+        MainActor.assumeIsolated {
+            var descriptor = FetchDescriptor<ServiceInstance>(predicate: #Predicate { $0.id == id })
+            descriptor.fetchLimit = 1
+            return try? modelContainer.mainContext.fetch(descriptor).first
         }
     }
 
@@ -350,19 +355,14 @@ final class AppState {
     }
 
     private func currentServiceInstance(id: UUID) -> ServiceInstance? {
-        let context = modelContainer.mainContext
-        let descriptor = FetchDescriptor<ServiceInstance>()
-        return (try? context.fetch(descriptor))?.first { $0.id == id }
+        fetchService(id: id)
     }
 
     /// Per-service "show badge" flag, queried live so the polling task picks
     /// up toggles without restart.
     nonisolated func isServiceShowingBadge(_ serviceID: UUID) -> Bool {
         MainActor.assumeIsolated {
-            let context = modelContainer.mainContext
-            let descriptor = FetchDescriptor<ServiceInstance>()
-            guard let services = try? context.fetch(descriptor) else { return true }
-            return services.first { $0.id == serviceID }?.showBadge ?? true
+            fetchService(id: serviceID)?.showBadge ?? true
         }
     }
 
@@ -726,11 +726,7 @@ final class AppState {
 
     private nonisolated func catalogEntry(for serviceID: UUID) -> ServiceCatalogEntry? {
         MainActor.assumeIsolated {
-            let context = modelContainer.mainContext
-            let descriptor = FetchDescriptor<ServiceInstance>()
-            guard let services = try? context.fetch(descriptor),
-                  let entryID = services.first(where: { $0.id == serviceID })?.catalogEntryID
-            else { return nil }
+            guard let entryID = fetchService(id: serviceID)?.catalogEntryID else { return nil }
             return ServiceCatalog.shared.entry(for: entryID)
         }
     }
