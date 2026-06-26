@@ -1,9 +1,10 @@
 # Xcode
 build/
 DerivedData/
-*.xcodeproj/xcuserdata/
-*.xcworkspace/xcuserdata/
-*.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+# xcuserdata can appear at any depth (e.g. *.xcodeproj/project.xcworkspace/xcuserdata).
+# A leading **/ is required so the pattern is not anchored to the repo root.
+**/xcuserdata/
+**/xcshareddata/IDEWorkspaceChecks.plist
 
 # Swift Package Manager
 .build/
