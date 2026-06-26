@@ -108,16 +108,60 @@ struct WebContentView: View {
         )
     }
 
+    /// Whether the currently selected space contains any services. Only
+    /// evaluated when nothing is selected (the empty-state branch), so the
+    /// per-render fetch is off the hot path.
+    private var selectedSpaceHasServices: Bool {
+        guard let spaceID = appState.selectedSpaceID else { return false }
+        return !appState.servicesForSpace(spaceID).isEmpty
+    }
+
+    @ViewBuilder
     private var emptyState: some View {
+        if appState.selectedSpaceID == nil {
+            emptyStateContent(
+                icon: "square.stack.3d.up",
+                message: "Create a space to get started",
+                actionTitle: nil
+            )
+        } else if selectedSpaceHasServices {
+            emptyStateContent(
+                icon: "rectangle.stack",
+                message: "Pick a service from the sidebar to get started",
+                actionTitle: nil
+            )
+        } else {
+            emptyStateContent(
+                icon: "plus.rectangle.on.rectangle",
+                message: "No services in this space yet",
+                actionTitle: "Add Service"
+            ) {
+                appState.showAddService = true
+            }
+        }
+    }
+
+    private func emptyStateContent(
+        icon: String,
+        message: String,
+        actionTitle: String?,
+        action: @escaping () -> Void = {}
+    ) -> some View {
         VStack(spacing: 16) {
-            Image(systemName: "rectangle.stack")
+            Image(systemName: icon)
                 .font(.system(size: 48, weight: .light))
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
 
-            Text("Pick a service from the sidebar to get started")
+            Text(message)
                 .font(.title3)
                 .foregroundStyle(.secondary)
+
+            if let actionTitle {
+                Button(actionTitle, action: action)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut("n", modifiers: .command)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .controlBackgroundColor))
