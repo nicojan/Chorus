@@ -13,6 +13,11 @@ final class HibernatedBadgePoller {
     private var pollTask: Task<Void, Never>?
     private var trackedServices: [UUID: TrackedService] = [:]
 
+    /// When true, no poll timer runs even if services are tracked. Set while
+    /// the network is unreachable or the Mac is asleep so we don't fire doomed
+    /// URLSession requests; tracking is retained so we can resume cleanly.
+    private var isPaused = false
+
     /// How often to poll each hibernated service (60 seconds)
     private let pollInterval: TimeInterval = 60
 
@@ -76,10 +81,26 @@ final class HibernatedBadgePoller {
         stopPolling()
     }
 
+    /// Suspend the poll timer without forgetting tracked services. Use when
+    /// the network goes offline or the Mac sleeps.
+    func pause() {
+        isPaused = true
+        stopPolling()
+    }
+
+    /// Resume polling after `pause()`, restarting the timer if any services
+    /// are still tracked.
+    func resume() {
+        isPaused = false
+        if !trackedServices.isEmpty {
+            ensurePolling()
+        }
+    }
+
     // MARK: - Private
 
     private func ensurePolling() {
-        guard pollTask == nil else { return }
+        guard !isPaused, pollTask == nil else { return }
         pollTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(self?.pollInterval ?? 60))

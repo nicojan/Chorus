@@ -95,6 +95,7 @@ final class AppState {
         setupHibernationCallbacks()
         setupMenuBarNavigation()
         setupSystemSleepHandling()
+        setupNetworkHandling()
         setupExternalLinkRouting()
         seedDefaultDataIfNeeded()
         reapOrphanedServices()
@@ -190,8 +191,7 @@ final class AppState {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.notificationManager.stopAllPolling()
-                AppLogger.general.info("System sleep — paused polling")
+                self?.suspendPolling(reason: "system sleep")
             }
         }
         center.addObserver(
@@ -200,9 +200,42 @@ final class AppState {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.restartPollingAfterWake()
+                self?.resumePolling(reason: "system wake")
             }
         }
+    }
+
+    /// Pauses or resumes polling when network connectivity toggles. While
+    /// offline every poll (active, background, and hibernated) would only fire
+    /// doomed requests, draining battery for nothing; on reconnect we restart
+    /// so badges refresh promptly.
+    private func setupNetworkHandling() {
+        networkMonitor.onChange = { [weak self] online in
+            Task { @MainActor in
+                guard let self else { return }
+                if online {
+                    self.resumePolling(reason: "network reachable")
+                } else {
+                    self.suspendPolling(reason: "network unreachable")
+                }
+            }
+        }
+    }
+
+    /// Suspends all polling subsystems. Used for both system sleep and loss of
+    /// network connectivity — in either case continued polling is wasted work.
+    private func suspendPolling(reason: String) {
+        notificationManager.stopAllPolling()
+        hibernatedBadgePoller.pause()
+        AppLogger.general.info("Paused polling — \(reason)")
+    }
+
+    /// Resumes polling: restarts active/background polling for every live web
+    /// view and re-arms the hibernated-service poller.
+    private func resumePolling(reason: String) {
+        AppLogger.general.info("Resuming polling — \(reason)")
+        restartPollingAfterWake()
+        hibernatedBadgePoller.resume()
     }
 
     private func restartPollingAfterWake() {
