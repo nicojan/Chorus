@@ -164,11 +164,10 @@ struct SpaceStripView: View {
     }
 
     private func deleteSpace(_ space: Space) {
-        if selectedSpaceID == space.id {
-            selectedSpaceID = spaces.first(where: { $0.id != space.id })?.id
-        }
-        modelContext.delete(space)
-        save("delete space")
+        // Routes through AppState so services that lived only in this space are
+        // reclaimed (web view torn down + data store scheduled for removal)
+        // instead of becoming invisible orphans. Handles selection fix-up too.
+        appState.deleteSpace(space.id)
     }
 }
 

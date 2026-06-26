@@ -7,6 +7,7 @@ struct SpaceEditorSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(AppState.self) private var appState
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
 
     @State private var name: String = ""
@@ -109,16 +110,9 @@ struct SpaceEditorSheet: View {
 
     private func deleteSpace() {
         guard let space = editingSpace else { return }
-        // Move selection away before deleting — mirrors SpaceStripView.deleteSpace
-        if selectedSpaceID == space.id {
-            selectedSpaceID = spaces.first(where: { $0.id != space.id })?.id
-        }
-        modelContext.delete(space)
-        do {
-            try modelContext.save()
-        } catch {
-            AppLogger.dataStore.error("Failed to delete space: \(error.localizedDescription)")
-        }
+        // Routes through AppState so services orphaned by the deletion are
+        // reclaimed and selection is moved off the deleted space.
+        appState.deleteSpace(space.id)
         dismiss()
     }
 }

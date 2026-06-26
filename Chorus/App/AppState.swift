@@ -97,6 +97,7 @@ final class AppState {
         setupSystemSleepHandling()
         setupExternalLinkRouting()
         seedDefaultDataIfNeeded()
+        reapOrphanedServices()
         restoreWindowState()
         fetchMissingAndStaleFavicons()
         fetchCatalogIcons()
@@ -320,6 +321,102 @@ final class AppState {
     /// initializeWithTake EXC_BAD_ACCESS during preload).
     private static let orphanedDataStoresKey = "chorus.orphanedDataStoreIdentifiers"
 
+    /// Pure helper: given each service's set of parent-space IDs, returns the
+    /// services that would be left with no space at all once `spaceID` is
+    /// removed (i.e. they belong *only* to the space being deleted). Factored
+    /// out so the orphan rule is unit-testable without SwiftData.
+    nonisolated static func servicesOrphaned(
+        byDeletingSpace spaceID: UUID,
+        memberships: [UUID: Set<UUID>]
+    ) -> Set<UUID> {
+        var orphaned: Set<UUID> = []
+        for (serviceID, spaces) in memberships
+        where spaces.contains(spaceID) && spaces.subtracting([spaceID]).isEmpty {
+            orphaned.insert(serviceID)
+        }
+        return orphaned
+    }
+
+    /// Deletes a space and reclaims any services that lived *only* in it.
+    /// A service linked to other spaces is preserved (the delete-confirmation
+    /// dialog promises this); a service orphaned by the deletion has its web
+    /// view torn down and its on-disk `WKWebsiteDataStore` scheduled for
+    /// removal, so deleting a space never leaves invisible orphan records or
+    /// leaks per-service storage. Selection is moved off the deleted space.
+    func deleteSpace(_ spaceID: UUID) {
+        let context = modelContainer.mainContext
+        let descriptor = FetchDescriptor<Space>(predicate: #Predicate { $0.id == spaceID })
+        guard let space = try? context.fetch(descriptor).first else { return }
+
+        let linkedServices = space.serviceLinks.map(\.service)
+        var memberships: [UUID: Set<UUID>] = [:]
+        for service in linkedServices {
+            memberships[service.id] = Set(service.spaceLinks.map { $0.space.id })
+        }
+        let orphanedIDs = Self.servicesOrphaned(byDeletingSpace: spaceID, memberships: memberships)
+
+        for service in linkedServices where orphanedIDs.contains(service.id) {
+            let dataStoreID = service.dataStoreIdentifier
+            webViewPool.removeWebView(for: service.id)
+            context.delete(service)
+            markDataStoreOrphaned(dataStoreID)
+        }
+
+        context.delete(space)
+
+        do {
+            try context.save()
+            AppLogger.dataStore.info("Deleted space \(spaceID); reclaimed \(orphanedIDs.count) orphaned service(s)")
+        } catch {
+            AppLogger.dataStore.error("Failed to delete space: \(error.localizedDescription)")
+        }
+
+        // Fix up selection: clear a selected service that was just reclaimed,
+        // and move off the deleted space to the first remaining one.
+        if let selected = selectedServiceID, orphanedIDs.contains(selected) {
+            selectedServiceID = nil
+        }
+        if selectedSpaceID == spaceID {
+            let remaining = (try? context.fetch(
+                FetchDescriptor<Space>(sortBy: [SortDescriptor(\.sortOrder)])
+            ))?.first
+            selectedSpaceID = remaining?.id
+            selectedServiceID = nil
+        }
+
+        cleanUpOrphanedDataStores()
+    }
+
+    /// Safety net for crash-mid-delete (or stores written by a build that
+    /// predates `deleteSpace`'s reclaim logic): deletes any `ServiceInstance`
+    /// that no longer belongs to any space and schedules its data store for
+    /// removal. Runs once at launch, before preloading.
+    private func reapOrphanedServices() {
+        let context = modelContainer.mainContext
+        let services: [ServiceInstance]
+        do {
+            services = try context.fetch(FetchDescriptor<ServiceInstance>())
+        } catch {
+            AppLogger.dataStore.error("Failed to fetch services for orphan reaping: \(error.localizedDescription)")
+            return
+        }
+
+        let orphans = services.filter { $0.spaceLinks.isEmpty }
+        guard !orphans.isEmpty else { return }
+
+        for service in orphans {
+            markDataStoreOrphaned(service.dataStoreIdentifier)
+            context.delete(service)
+        }
+        do {
+            try context.save()
+            AppLogger.dataStore.info("Reaped \(orphans.count) orphaned service(s) at launch")
+        } catch {
+            AppLogger.dataStore.error("Failed to reap orphaned services: \(error.localizedDescription)")
+        }
+        cleanUpOrphanedDataStores()
+    }
+
     /// Mark a per-service data store identifier as orphaned. Called from
     /// the delete paths; the actual `WKWebsiteDataStore.remove(...)` is
     /// deferred to `cleanUpOrphanedDataStores()` so the live WKWebView has
@@ -342,18 +439,23 @@ final class AppState {
             // WebKit traps when an in-use store is removed.
             try? await Task.sleep(for: .seconds(2))
 
-            var remaining = orphans
+            var removed: Set<UUID> = []
             for identifier in orphans {
                 do {
                     try await WKWebsiteDataStore.remove(forIdentifier: identifier)
-                    remaining.remove(identifier)
+                    removed.insert(identifier)
                     AppLogger.dataStore.info("Removed orphaned data store \(identifier)")
                 } catch {
                     AppLogger.dataStore.warning("Failed to remove orphaned data store \(identifier): \(error.localizedDescription)")
                 }
             }
             await MainActor.run {
-                Self.saveOrphanedIdentifiers(remaining)
+                // Read-modify-write rather than overwriting with a stale
+                // snapshot: another delete may have appended new orphans during
+                // the 2s sleep, and blindly saving `orphans − removed` would
+                // drop them, leaking those stores permanently.
+                let current = Self.loadOrphanedIdentifiers()
+                Self.saveOrphanedIdentifiers(current.subtracting(removed))
             }
         }
     }
