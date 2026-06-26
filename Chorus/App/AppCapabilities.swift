@@ -17,5 +17,5 @@ enum AppCapabilities {
     /// User-facing explanation shown where the passkey limitation is relevant
     /// (currently the Add Service sheet).
     static let passkeyUnavailableNotice =
-        "Passkey sign-in isn’t available yet — log in with your password and two-factor code instead."
+        "Passkey sign-in isn’t available yet. Log in with your password and two-factor code instead."
 }

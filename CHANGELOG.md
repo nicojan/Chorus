@@ -35,7 +35,7 @@ All notable changes to Chorus are documented here. Format loosely follows
 - **WebContent crash loop broken.** A page that crashed deterministically was
   reloaded forever; Chorus now backs off after 3 crashes in 30s and shows a
   recovery page. The connection-error page's "Try Again" reloaded `about:blank`
-  (it ran `location.reload()` against a `baseURL:nil` document) — it now
+  (it ran `location.reload()` against a `baseURL:nil` document); it now
   navigates to the actual failing URL, captured from the error.
 - **Notification taps are no longer dropped** when they arrive before the
   handler is wired (e.g. a notification launching the app). They're buffered and
@@ -52,7 +52,7 @@ All notable changes to Chorus are documented here. Format loosely follows
   and offers "Clear session (log out)" which wipes the service's cookies/storage
   without deleting it or its place in any space.
 - **Clearer empty states.** The content area now distinguishes "no spaces", "a
-  space with services but none selected", and "an empty space" — the last offers
+  space with services but none selected", and "an empty space"; the last offers
   an Add Service button.
 - **Reveal in Finder** on the store-error banner, so users can back up or remove
   a corrupt data file themselves (Chorus never deletes it for them).

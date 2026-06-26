@@ -57,7 +57,7 @@ final class AppState {
                 AppLogger.dataStore.fault("In-memory model container failed: \(error.localizedDescription)")
                 fatalError("Failed to initialize any model container: \(error.localizedDescription)")
             }
-            self.storeError = "Your saved data couldn't be loaded. Chorus is running with temporary storage — changes won't be saved. Your data file is at: \(config.url.path)"
+            self.storeError = "Your saved data couldn't be loaded. Chorus is running with temporary storage, so changes won't be saved. Your data file is at: \(config.url.path)"
             self.storeFileURL = config.url
         }
 

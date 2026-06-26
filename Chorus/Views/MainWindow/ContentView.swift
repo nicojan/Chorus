@@ -37,7 +37,7 @@ struct ContentView: View {
                     Image(systemName: "wifi.slash")
                         .foregroundStyle(.white)
                         .accessibilityHidden(true)
-                    Text("You're offline — services won't load new content until your connection returns.")
+                    Text("You're offline. Services won't load new content until your connection returns.")
                         .font(.caption)
                         .foregroundStyle(.white)
                 }

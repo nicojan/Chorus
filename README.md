@@ -1,7 +1,7 @@
 # Chorus
 
-A native macOS app that unifies your web services — Gmail, Slack, Discord,
-Notion, ChatGPT, and more — into one window, each with its own fully isolated
+A native macOS app that unifies your web services (Gmail, Slack, Discord,
+Notion, ChatGPT, and more) into one window, each with its own fully isolated
 session. A lightweight, WebKit-based alternative to Chromium apps like Rambox
 and Franz, built for Apple Silicon.
 
@@ -32,8 +32,8 @@ and Franz, built for Apple Silicon.
 
 - macOS 14 (Sonoma) or later
 - Xcode 15+ / Swift 5.9+
-- [XcodeGen](https://github.com/yonsm/XcodeGen) (`brew install xcodegen`) — the
-  Xcode project is generated from `project.yml`
+- [XcodeGen](https://github.com/yonsm/XcodeGen) (`brew install xcodegen`). The
+  Xcode project is generated from `project.yml`.
 
 ## Build & run
 
@@ -52,9 +52,9 @@ Or open `Chorus.xcodeproj` in Xcode and run the **Chorus** scheme.
 | Path | What |
 |------|------|
 | `Chorus/App/` | App entry point and `AppState` (central coordinator) |
-| `Chorus/Models/` | SwiftData models — `ServiceInstance`, `Space`, `SpaceServiceLink`, `AppPreferences` |
+| `Chorus/Models/` | SwiftData models: `ServiceInstance`, `Space`, `SpaceServiceLink`, `AppPreferences` |
 | `Chorus/Services/` | Badges, notifications, polling, data stores, catalog, networking |
-| `Chorus/Views/` | SwiftUI views — main window, sidebar, web view pool, settings, sheets |
+| `Chorus/Views/` | SwiftUI views: main window, sidebar, web view pool, settings, sheets |
 | `Chorus/Resources/` | Service catalog JSON and assets |
 | `ChorusTests/` | Unit tests (pure logic: badges, validation, parsing, reordering, …) |
 
@@ -65,4 +65,5 @@ Architecture details live in [chorus-architecture-v2.md](chorus-architecture-v2.
 - The app icon is a generated placeholder; replace the images in
   `Chorus/Resources/Assets.xcassets/AppIcon.appiconset/` with custom artwork.
 - Shipping to the Mac App Store additionally requires code signing, a
-  provisioning profile, and notarization — outside the scope of this repo.
+  provisioning profile, and notarization. Those are outside the scope of this
+  repo.

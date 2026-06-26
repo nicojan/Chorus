@@ -31,7 +31,7 @@ struct MenuBarView: View {
                                 Label(service.label, systemImage: "globe")
                             }
                         }
-                        .accessibilityLabel("\(service.label) — \(space.name)")
+                        .accessibilityLabel("\(service.label) in \(space.name)")
                         .help("Open \(service.label) in \(space.name)")
                     }
                 } header: {
