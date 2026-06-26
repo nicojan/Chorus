@@ -27,7 +27,7 @@ actor FaviconFetcher {
         }
 
         // Try parsing HTML for <link rel="icon"> tags
-        if let data = await fetchFromHTMLLinks(scheme: scheme, host: host, url: baseURL) {
+        if let data = await fetchFromHTMLLinks(url: baseURL) {
             return data
         }
 
@@ -42,12 +42,12 @@ actor FaviconFetcher {
         return nil
     }
 
-    private func fetchFromHTMLLinks(scheme: String, host: String, url: URL) async -> Data? {
+    private func fetchFromHTMLLinks(url: URL) async -> Data? {
         guard let htmlData = await fetchURL(url.absoluteString),
               let html = String(data: htmlData, encoding: .utf8)
         else { return nil }
 
-        let iconURLs = parseIconLinks(from: html, baseScheme: scheme, baseHost: host)
+        let iconURLs = Self.parseIconLinks(from: html, baseURL: url)
 
         // Sort by size descending — prefer largest icon
         let sorted = iconURLs.sorted { $0.size > $1.size }
@@ -62,45 +62,53 @@ actor FaviconFetcher {
         return nil
     }
 
-    private struct IconLink {
+    struct IconLink: Equatable {
         let url: String
         let size: Int
     }
 
-    private func parseIconLinks(from html: String, baseScheme: String, baseHost: String) -> [IconLink] {
+    nonisolated static func parseIconLinks(from html: String, baseURL: URL) -> [IconLink] {
         var results: [IconLink] = []
 
-        let linkPattern = /<link[^>]*rel\s*=\s*["'](?:apple-touch-icon|icon|shortcut icon)["'][^>]*>/
+        let linkPattern = /<link\b[^>]*>/.ignoresCase()
 
         for match in html.matches(of: linkPattern) {
             let tag = String(match.output)
+            guard let rel = attributeValue(in: tag, named: "rel")?.lowercased() else { continue }
+            let relTokens = Set(rel.split(whereSeparator: \.isWhitespace).map(String.init))
+            guard relTokens.contains("icon") || relTokens.contains("apple-touch-icon") else { continue }
 
-            // Extract href
-            let hrefPattern = /href\s*=\s*["']([^"']+)["']/
-            guard let hrefMatch = tag.firstMatch(of: hrefPattern) else { continue }
-            var href = String(hrefMatch.1)
-
-            // Resolve relative URLs
-            if href.hasPrefix("//") {
-                href = "\(baseScheme):\(href)"
-            } else if href.hasPrefix("/") {
-                href = "\(baseScheme)://\(baseHost)\(href)"
-            } else if !href.hasPrefix("http") {
-                href = "\(baseScheme)://\(baseHost)/\(href)"
-            }
+            guard let href = attributeValue(in: tag, named: "href"),
+                  let resolvedURL = URL(string: href, relativeTo: baseURL)?.absoluteURL
+            else { continue }
 
             // Extract size hint
-            var size = 0
-            let sizePattern = /sizes\s*=\s*["'](\d+)x\d+["']/
-            if let sizeMatch = tag.firstMatch(of: sizePattern),
-               let parsed = Int(sizeMatch.1) {
-                size = parsed
-            }
+            let size = attributeValue(in: tag, named: "sizes").map(Self.largestIconSize) ?? 0
 
-            results.append(IconLink(url: href, size: size))
+            results.append(IconLink(url: resolvedURL.absoluteString, size: size))
         }
 
         return results
+    }
+
+    nonisolated private static func attributeValue(in tag: String, named name: String) -> String? {
+        let pattern = #"(?i)\b"# + NSRegularExpression.escapedPattern(for: name) + #"\s*=\s*["']([^"']+)["']"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(tag.startIndex..<tag.endIndex, in: tag)
+        guard let match = regex.firstMatch(in: tag, range: range),
+              let valueRange = Range(match.range(at: 1), in: tag) else {
+            return nil
+        }
+        return String(tag[valueRange])
+    }
+
+    nonisolated private static func largestIconSize(from sizes: String) -> Int {
+        guard let regex = try? NSRegularExpression(pattern: #"(\d+)x\d+"#) else { return 0 }
+        let range = NSRange(sizes.startIndex..<sizes.endIndex, in: sizes)
+        return regex.matches(in: sizes, range: range).compactMap { match in
+            guard let valueRange = Range(match.range(at: 1), in: sizes) else { return nil }
+            return Int(sizes[valueRange])
+        }.max() ?? 0
     }
 
     private func fetchURL(_ urlString: String) async -> Data? {
