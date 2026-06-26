@@ -207,6 +207,18 @@ final class WebViewPool {
         teardownWebView(instanceID)
         suspendedURLs.removeValue(forKey: instanceID)
         hibernatedServiceIDs.remove(instanceID)
+        // Permanent removal (deletion, not hibernation): drop every trace of
+        // the service so stale IDs can't dangle. The active pointer must be
+        // cleared or keyboard shortcuts / eviction would target a ghost; the
+        // pin/never-hibernate/in-flight sets and the script message handler
+        // would otherwise grow unbounded across create/delete cycles.
+        if activeServiceID == instanceID {
+            activeServiceID = nil
+        }
+        pinnedIDs.remove(instanceID)
+        neverHibernateIDs.remove(instanceID)
+        evictionInFlight.remove(instanceID)
+        userScriptManager.removeHandler(for: instanceID)
         onServiceRemoved?(instanceID)
         snapshots.removeValue(forKey: instanceID)
     }
@@ -345,6 +357,15 @@ final class WebViewPool {
 
             // Re-check the web view still exists (may have been removed during await)
             guard webViews[id] != nil else { continue }
+
+            // The await above is a suspension point: the user may have switched
+            // to this service (making it active), or it may have been pinned /
+            // marked never-hibernate in the meantime. Re-validate the eviction
+            // guards so we never hibernate the service the user is now viewing.
+            guard id != activeServiceID,
+                  !pinnedIDs.contains(id),
+                  !neverHibernateIDs.contains(id)
+            else { continue }
 
             if hasCall {
                 AppLogger.webView.info("Skipping eviction of \(id) — active call detected")
