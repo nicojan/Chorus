@@ -289,6 +289,29 @@ final class AppState {
         }
     }
 
+    /// Re-applies mute/show-badge state immediately after settings changes.
+    /// Polling tasks read these values on their next tick, but the UI and dock
+    /// badge should update synchronously. Fully hibernated services also need
+    /// their lightweight poller state refreshed so stale polls do not re-add
+    /// badges after a mute/show-badge toggle.
+    func refreshBadgeState(for serviceID: UUID) {
+        guard let service = currentServiceInstance(id: serviceID) else { return }
+        let count = badgeManager.rawCount(for: serviceID)
+        let isMuted = isServiceEffectivelyMuted(serviceID)
+        let showBadge = service.showBadge
+        badgeManager.updateBadge(
+            for: serviceID,
+            count: count,
+            isMuted: isMuted,
+            showBadge: showBadge
+        )
+        hibernatedBadgePoller.updateState(
+            serviceID: serviceID,
+            isMuted: isMuted,
+            showBadge: showBadge
+        )
+    }
+
     /// Tombstone list of `WKWebsiteDataStore` identifiers for services the
     /// user deleted but whose on-disk data hasn't been removed yet. Tracked
     /// in UserDefaults rather than via `WKWebsiteDataStore.allDataStoreIdentifiers`

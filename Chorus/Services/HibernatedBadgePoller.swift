@@ -22,8 +22,8 @@ final class HibernatedBadgePoller {
 
     struct TrackedService {
         let url: String
-        let isMuted: Bool
-        let showBadge: Bool
+        var isMuted: Bool
+        var showBadge: Bool
         let dataStoreIdentifier: UUID
     }
 
@@ -50,6 +50,16 @@ final class HibernatedBadgePoller {
         )
         ensurePolling()
         AppLogger.badges.debug("Tracking hibernated service \(serviceID) for badge polling")
+    }
+
+    /// Refresh mutable notification/badge flags for an already-tracked service.
+    /// Muting and per-service badge toggles can change while a service is fully
+    /// hibernated, so the lightweight poller must not keep using stale values.
+    func updateState(serviceID: UUID, isMuted: Bool, showBadge: Bool) {
+        guard var tracked = trackedServices[serviceID] else { return }
+        tracked.isMuted = isMuted
+        tracked.showBadge = showBadge
+        trackedServices[serviceID] = tracked
     }
 
     /// Stop tracking a service (e.g., when it wakes from hibernation).
@@ -133,13 +143,8 @@ final class HibernatedBadgePoller {
             // Only update when we detect a positive count.
             // We can't reliably distinguish "0 unread" from "auth wall / redirect page"
             // so we never reset to 0 from the poller — the live web view handles that.
-            if count > 0 {
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    if tracked.showBadge {
-                        self.badgeManager.updateBadge(for: id, count: count, isMuted: tracked.isMuted)
-                    }
-                }
+            if count > 0, let current = trackedServices[id], current.showBadge {
+                badgeManager.updateBadge(for: id, count: count, isMuted: current.isMuted)
             }
         } catch {
             AppLogger.badges.debug("Failed to poll \(tracked.url): \(error.localizedDescription)")

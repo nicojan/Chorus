@@ -60,6 +60,7 @@ struct GeneralSettingsView: View {
                     get: { prefs.autoDismissCookieBanners },
                     set: { value in
                         ensurePrefs().autoDismissCookieBanners = value
+                        appState.userScriptManager.autoDismissCookieBanners = value
                         save("cookie banner preference")
                     }
                 ))
@@ -127,6 +128,7 @@ struct NotificationSettingsView: View {
                                 set: { enabled in
                                     service.isMuted = !enabled
                                     save("toggle mute for \(service.label)")
+                                    appState.refreshBadgeState(for: service.id)
                                 }
                             ))
                             .labelsHidden()
@@ -148,6 +150,7 @@ struct NotificationSettingsView: View {
                             set: { enabled in
                                 service.showBadge = enabled
                                 save("toggle badge for \(service.label)")
+                                appState.refreshBadgeState(for: service.id)
                             }
                         ))
                         .accessibilityLabel("Badge count for \(service.label)")

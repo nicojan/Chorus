@@ -61,14 +61,7 @@ struct SpaceStripView: View {
                             // chip badge zero out (or come back) immediately,
                             // without waiting for the next poll tick.
                             for link in space.serviceLinks {
-                                let id = link.service.id
-                                let count = appState.badgeManager.rawCount(for: id)
-                                appState.badgeManager.updateBadge(
-                                    for: id,
-                                    count: count,
-                                    isMuted: appState.isServiceEffectivelyMuted(id),
-                                    showBadge: link.service.showBadge
-                                )
+                                appState.refreshBadgeState(for: link.service.id)
                             }
                         }
                     ))
