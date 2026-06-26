@@ -32,14 +32,46 @@ All notable changes to Chorus are documented here. Format loosely follows
   active/pinned/never-hibernate state after that suspension point.
 - **`.gitignore` now excludes `xcuserdata` at any depth** (the previous pattern
   was anchored to the repo root, so nested workspace user-state stayed tracked).
+- **WebContent crash loop broken.** A page that crashed deterministically was
+  reloaded forever; Chorus now backs off after 3 crashes in 30s and shows a
+  recovery page. The connection-error page's "Try Again" reloaded `about:blank`
+  (it ran `location.reload()` against a `baseURL:nil` document) — it now
+  navigates to the actual failing URL, captured from the error.
+- **Notification taps are no longer dropped** when they arrive before the
+  handler is wired (e.g. a notification launching the app). They're buffered and
+  drained, and tapping one now switches to a space that contains the service so
+  the selection is visible.
+- **Hibernated-poller cookie matching follows RFC 6265** path rules (it no
+  longer matches request `/foobar` against cookie `/foo`).
 
 ### Added
 
+- **Edit a service.** A new Edit Service sheet (service context menu) renames a
+  service, changes its URL (the live web view follows), toggles "Keep loaded in
+  the background" (surfacing the previously-unreachable never-hibernate flag),
+  and offers "Clear session (log out)" which wipes the service's cookies/storage
+  without deleting it or its place in any space.
+- **Clearer empty states.** The content area now distinguishes "no spaces", "a
+  space with services but none selected", and "an empty space" — the last offers
+  an Add Service button.
+- **Reveal in Finder** on the store-error banner, so users can back up or remove
+  a corrupt data file themselves (Chorus never deletes it for them).
 - **Polling pauses while offline and resumes on reconnect.** `NetworkMonitor`
   connectivity changes now suspend all polling (active, background, hibernated)
   instead of firing doomed requests, and resume promptly when the network
   returns. The same suspend/resume path also covers system sleep/wake, which
   previously left the hibernated-service poller running through sleep.
+
+### Performance
+
+- **Per-identifier `WKWebsiteDataStore` caching.** The hibernated poller built a
+  fresh store every 60s per service and DataStoreManager rebuilt one per web
+  view; both now reuse a cached instance, avoiding churn and macOS-26 WebKit
+  fragility.
+- **No more whole-table fetches on hot paths.** The mute/show-badge/catalog
+  lookups (run per poll tick, and per sidebar row per render) fetched every
+  service and scanned by id; they now use a single predicate + `fetchLimit: 1`
+  lookup, and the sidebar computes mute state from the in-hand model object.
 
 ### Earlier polish (same review pass)
 
@@ -58,6 +90,7 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 - Added unit coverage for badge mute/un-mute count preservation, masked
   aggregation, and Do-Not-Disturb; orphaned-service detection; custom-service
-  validation; favicon parsing; and service reorder placement.
+  validation; favicon parsing; service reorder placement; WebContent crash
+  backoff; error-page retry-URL escaping; and RFC 6265 cookie matching.
 - Verified via `xcodebuild test -scheme Chorus -destination 'platform=macOS'`
-  (15 tests passing).
+  (21 tests passing), plus a launch smoke test (no startup crash, clean quit).
