@@ -12,6 +12,12 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// navigation has committed (so `webView.reload()` has nothing to retry).
     var fallbackURL: URL?
 
+    /// Timestamps of recent WebContent terminations, used to break a crash →
+    /// reload → crash loop. Accessed only from main-thread delegate callbacks.
+    private var crashTimestamps: [Date] = []
+    private static let maxCrashesInWindow = 3
+    private static let crashWindow: TimeInterval = 30
+
     /// Routes external/cross-domain navigations through AppState so it can
     /// match the URL against an existing Chorus service before falling back
     /// to the system browser. When nil the coordinator falls back to
@@ -97,9 +103,33 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     }
 
     // WebKit kills WebContent on memory pressure, JIT bugs, or page crashes.
-    // The webview is left blank with no recovery affordance — auto-reload
-    // so the user just sees a brief flicker instead of a broken view.
+    // The webview is left blank with no recovery affordance — auto-reload so
+    // the user just sees a brief flicker. But a page that crashes
+    // deterministically would reload-crash forever, so back off after a few
+    // crashes in a short window and show a recovery page instead.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        let now = Date()
+        crashTimestamps.append(now)
+        crashTimestamps = crashTimestamps.filter { now.timeIntervalSince($0) <= Self.crashWindow }
+
+        let retryURL = webView.url ?? fallbackURL
+
+        guard Self.shouldAutoReload(
+            crashTimestamps: crashTimestamps,
+            now: now,
+            maxCrashes: Self.maxCrashesInWindow,
+            window: Self.crashWindow
+        ) else {
+            AppLogger.webView.error("WebContent terminated repeatedly — showing recovery page")
+            let html = Self.errorPageHTML(
+                title: "This page keeps crashing",
+                message: "Chorus stopped reloading it automatically to avoid a loop. You can try again, or switch to another service.",
+                retryURLString: retryURL?.absoluteString
+            )
+            webView.loadHTMLString(html, baseURL: nil)
+            return
+        }
+
         AppLogger.webView.warning("WebContent process terminated — reloading")
         if webView.url != nil {
             webView.reload()
@@ -117,12 +147,78 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         // Ignore cancelled loads (e.g., user navigated away)
         guard nsError.code != NSURLErrorCancelled else { return }
 
-        let description = error.localizedDescription
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-            .replacingOccurrences(of: "\"", with: "&quot;")
+        // The URL that failed isn't `webView.url` (which still points at the
+        // last committed page); pull it from the error so "Try Again" retries
+        // the right page.
+        let failingURL = (nsError.userInfo[NSURLErrorFailingURLStringErrorKey] as? String)
+            ?? (nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL)?.absoluteString
+            ?? webView.url?.absoluteString
+            ?? fallbackURL?.absoluteString
 
-        let html = """
+        let html = Self.errorPageHTML(
+            title: "Unable to connect",
+            message: error.localizedDescription,
+            retryURLString: failingURL
+        )
+        webView.loadHTMLString(html, baseURL: nil)
+    }
+
+    // MARK: - Crash backoff / error page (pure, testable)
+
+    /// Whether to keep auto-reloading after a WebContent crash. Returns false
+    /// once `maxCrashes` terminations occur within `window` seconds, so a
+    /// deterministically-crashing page stops looping.
+    nonisolated static func shouldAutoReload(
+        crashTimestamps: [Date],
+        now: Date,
+        maxCrashes: Int = maxCrashesInWindow,
+        window: TimeInterval = crashWindow
+    ) -> Bool {
+        let recent = crashTimestamps.filter { now.timeIntervalSince($0) <= window }
+        return recent.count < maxCrashes
+    }
+
+    /// Builds the in-webview error/recovery page. When `retryURLString` is
+    /// non-nil a "Try Again" button navigates to that exact URL (JSON-encoded
+    /// so it can't break out of the JS string) — never `location.reload()`,
+    /// which would just reload this about:blank error document.
+    nonisolated static func errorPageHTML(
+        title: String,
+        message: String,
+        retryURLString: String?
+    ) -> String {
+        func escapeHTML(_ s: String) -> String {
+            s.replacingOccurrences(of: "&", with: "&amp;")
+                .replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;")
+                .replacingOccurrences(of: "\"", with: "&quot;")
+        }
+
+        let retryBlock: String
+        if let retryURLString {
+            // Escape for embedding inside a double-quoted JS string literal so
+            // a URL with quotes/newlines can't break out (or close the script).
+            let escaped = retryURLString
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "\n", with: "\\n")
+                .replacingOccurrences(of: "\r", with: "\\r")
+                .replacingOccurrences(of: "<", with: "\\x3C")
+                .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+                .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
+            retryBlock = """
+                <button id="chorus-retry">Try Again</button>
+                <script>
+                    var target = "\(escaped)";
+                    document.getElementById('chorus-retry')
+                        .addEventListener('click', function() { location.href = target; });
+                </script>
+            """
+        } else {
+            retryBlock = ""
+        }
+
+        return """
         <html>
         <head>
             <meta name="viewport" content="width=device-width">
@@ -147,13 +243,12 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         <body>
             <div class="container">
                 <div class="icon">⚠️</div>
-                <h2>Unable to connect</h2>
-                <p>\(description)</p>
-                <button onclick="location.reload()">Try Again</button>
+                <h2>\(escapeHTML(title))</h2>
+                <p>\(escapeHTML(message))</p>
+                \(retryBlock)
             </div>
         </body></html>
         """
-        webView.loadHTMLString(html, baseURL: nil)
     }
 
     // MARK: - UI Delegate (OAuth Pop-ups)

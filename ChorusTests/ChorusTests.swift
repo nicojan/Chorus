@@ -226,4 +226,48 @@ final class ChorusTests: XCTestCase {
             []
         )
     }
+
+    // MARK: - WebContent crash backoff
+
+    func testCrashBackoffStopsAfterRepeatedCrashes() {
+        let now = Date()
+        // First two crashes within the window still auto-reload.
+        XCTAssertTrue(WebViewCoordinator.shouldAutoReload(
+            crashTimestamps: [now], now: now, maxCrashes: 3, window: 30))
+        XCTAssertTrue(WebViewCoordinator.shouldAutoReload(
+            crashTimestamps: [now.addingTimeInterval(-5), now], now: now, maxCrashes: 3, window: 30))
+        // Third crash in the window stops the loop (show error page instead).
+        XCTAssertFalse(WebViewCoordinator.shouldAutoReload(
+            crashTimestamps: [now.addingTimeInterval(-10), now.addingTimeInterval(-5), now],
+            now: now, maxCrashes: 3, window: 30))
+    }
+
+    func testCrashBackoffIgnoresStaleCrashesOutsideWindow() {
+        let now = Date()
+        // Two crashes long ago + one now: the old ones fall outside the window,
+        // so we still auto-reload.
+        XCTAssertTrue(WebViewCoordinator.shouldAutoReload(
+            crashTimestamps: [now.addingTimeInterval(-300), now.addingTimeInterval(-120), now],
+            now: now, maxCrashes: 3, window: 30))
+    }
+
+    func testErrorPageEmbedsEscapedRetryURL() {
+        let html = WebViewCoordinator.errorPageHTML(
+            title: "Unable to connect",
+            message: "The network connection was lost.",
+            retryURLString: "https://example.com/a'b\"c"
+        )
+        XCTAssertTrue(html.contains("The network connection was lost."))
+        // Retry target is JSON-encoded so quotes can't break out of the JS string.
+        XCTAssertTrue(html.contains(#"https://example.com/a'b\"c"#),
+                      "retry URL should be JSON-escaped into the script")
+        XCTAssertFalse(html.contains("location.reload()"),
+                       "retry must navigate to the real URL, not reload about:blank")
+    }
+
+    func testErrorPageWithoutRetryURLHasNoButton() {
+        let html = WebViewCoordinator.errorPageHTML(
+            title: "Page unavailable", message: "Keeps crashing.", retryURLString: nil)
+        XCTAssertFalse(html.contains("<button"))
+    }
 }
