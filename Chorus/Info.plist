@@ -4,5 +4,22 @@
 <dict>
     <key>NSUserNotificationsUsageDescription</key>
     <string>Chorus forwards notifications from your web services to macOS.</string>
+
+    <!-- Required because the app declares camera/microphone entitlements.
+         Without these strings macOS kills the access attempt (TCC). Shown to
+         the user the first time an embedded service requests capture. -->
+    <key>NSCameraUsageDescription</key>
+    <string>Chorus needs camera access so your web services can use video calls and meetings.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Chorus needs microphone access so your web services can use voice and video calls.</string>
+
+    <!-- Sparkle auto-update (direct distribution). See DISTRIBUTION.md.
+         SUPublicEDKey is the same EdDSA key used for WatchMeType (verified to
+         match the private key in the login Keychain). SUFeedURL is served by
+         GitHub Pages from this repo's /docs folder (nicojan/Chorus, public). -->
+    <key>SUFeedURL</key>
+    <string>https://nicojan.github.io/Chorus/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>6/h2Pfjbo39vHie8JIt/kY7h0wQvmQxj9Ea0W3gnH0w=</string>
 </dict>
 </plist>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Export options for direct distribution (Developer ID Application).
+  Used by `xcodebuild -exportArchive`. See DISTRIBUTION.md.
+  teamID is the same Apple Developer Team used for WatchMeType.
+-->
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>developer-id</string>
+    <key>teamID</key>
+    <string>3CY4DX3K45</string>
+    <key>signingStyle</key>
+    <string>automatic</string>
+    <!-- Notarization is run separately via notarytool (more control). -->
+</dict>
+</plist>

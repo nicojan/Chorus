@@ -1,9 +1,29 @@
 import SwiftUI
 import SwiftData
+#if canImport(Sparkle)
+import Sparkle
+#endif
 
 @main
 struct ChorusApp: App {
-    @State private var appState = AppState()
+    @State private var appState: AppState
+
+    #if canImport(Sparkle)
+    /// Owns the Sparkle updater for the app's lifetime: drives the
+    /// "Check for Updates…" command and runs scheduled background checks.
+    private let updaterController: SPUStandardUpdaterController
+    #endif
+
+    init() {
+        _appState = State(initialValue: AppState())
+        #if canImport(Sparkle)
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
+        #endif
+    }
 
     var body: some Scene {
         Window("Chorus", id: "main") {
@@ -16,6 +36,12 @@ struct ChorusApp: App {
         }
         .defaultSize(width: 1100, height: 700)
         .commands {
+            #if canImport(Sparkle)
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesView(updater: updaterController.updater)
+            }
+            #endif
+
             CommandGroup(replacing: .newItem) {
                 Button("Add Service...") {
                     appState.showAddService = true
