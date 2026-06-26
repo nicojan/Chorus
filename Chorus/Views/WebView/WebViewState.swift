@@ -19,6 +19,12 @@ final class WebViewState {
     func attach(to webView: WKWebView) {
         self.webView = webView
         observations.removeAll()
+        canGoBack = webView.canGoBack
+        canGoForward = webView.canGoForward
+        isLoading = webView.isLoading
+        estimatedProgress = webView.estimatedProgress
+        currentURL = webView.url
+        title = webView.title
 
         // WKWebView fires KVO on the main thread in practice, but this is not
         // contractually guaranteed. Use DispatchQueue.main.async for safety —
@@ -65,5 +71,11 @@ final class WebViewState {
     func detach() {
         observations.removeAll()
         webView = nil
+        canGoBack = false
+        canGoForward = false
+        isLoading = false
+        estimatedProgress = 0
+        currentURL = nil
+        title = nil
     }
 }

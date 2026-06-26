@@ -58,13 +58,7 @@ struct WebToolbarView: View {
                     .disabled(webViewState.currentURL == homeURL)
                 }
 
-                if webViewState.isLoading {
-                    ProgressView(value: webViewState.estimatedProgress)
-                        .progressViewStyle(.linear)
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Spacer()
-                }
+                loadingProgressSlot
 
                 Text(webViewState.currentURL?.host ?? "")
                     .font(.caption)
@@ -96,6 +90,17 @@ struct WebToolbarView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Navigation toolbar")
+    }
+
+    private var loadingProgressSlot: some View {
+        ZStack {
+            ProgressView(value: webViewState.estimatedProgress)
+                .progressViewStyle(.linear)
+                .opacity(webViewState.isLoading ? 1 : 0)
+                .accessibilityHidden(!webViewState.isLoading)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 6)
     }
 
     private var searchBar: some View {
