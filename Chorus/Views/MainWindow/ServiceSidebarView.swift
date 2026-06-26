@@ -3,6 +3,43 @@ import SwiftData
 import UniformTypeIdentifiers
 import os
 
+enum ServiceReorderPlacement {
+    case before
+    case after
+}
+
+enum ServiceReorder {
+    static func reorderedIDs(
+        _ ids: [UUID],
+        moving droppedID: UUID,
+        relativeTo targetID: UUID,
+        placement: ServiceReorderPlacement
+    ) -> [UUID]? {
+        guard droppedID != targetID,
+              let fromIndex = ids.firstIndex(of: droppedID),
+              let targetIndex = ids.firstIndex(of: targetID) else {
+            return nil
+        }
+
+        var reordered = ids
+        let moved = reordered.remove(at: fromIndex)
+
+        var toIndex = targetIndex
+        if placement == .after {
+            toIndex += 1
+        }
+        if fromIndex < toIndex {
+            toIndex -= 1
+        }
+        guard fromIndex != toIndex else {
+            return nil
+        }
+
+        reordered.insert(moved, at: toIndex)
+        return reordered
+    }
+}
+
 struct ServiceSidebarView: View {
     let spaceID: UUID
     @Binding var selectedServiceID: UUID?
@@ -13,6 +50,7 @@ struct ServiceSidebarView: View {
     @State private var showingAddService = false
     @State private var confirmingDelete: SpaceServiceLink?
     @State private var draggingLinkID: UUID?
+    private static let serviceDropMidpoint: CGFloat = 23
 
     private var filteredLinks: [SpaceServiceLink] {
         allLinks
@@ -38,6 +76,7 @@ struct ServiceSidebarView: View {
                             )
                         }
                         .buttonStyle(.plain)
+                        .contentShape(Rectangle())
                         .opacity(draggingLinkID == link.id ? 0.4 : 1.0)
                         .draggable(link.id.uuidString) {
                             Text(link.service.label)
@@ -48,14 +87,21 @@ struct ServiceSidebarView: View {
                                 .onAppear { draggingLinkID = link.id }
                                 .onDisappear { draggingLinkID = nil }
                         }
-                        .dropDestination(for: String.self) { items, _ in
+                        .dropDestination(for: String.self) { items, location in
                             guard let droppedIDString = items.first,
                                   let droppedID = UUID(uuidString: droppedIDString),
                                   droppedID != link.id
                             else { return false }
-                            reorderService(droppedLinkID: droppedID, beforeLink: link)
+                            let placement: ServiceReorderPlacement = location.y < Self.serviceDropMidpoint
+                                ? .before
+                                : .after
+                            let didReorder = reorderService(
+                                droppedLinkID: droppedID,
+                                relativeTo: link,
+                                placement: placement
+                            )
                             draggingLinkID = nil
-                            return true
+                            return didReorder
                         }
                         .accessibilityAction(named: "Move up") { moveServiceUp(link) }
                         .accessibilityAction(named: "Move down") { moveServiceDown(link) }
@@ -170,14 +216,7 @@ struct ServiceSidebarView: View {
     /// changed, so the sidebar and dock totals update immediately instead of
     /// waiting for the next poll tick.
     private func syncBadge(for service: ServiceInstance) {
-        let id = service.id
-        let count = appState.badgeManager.rawCount(for: id)
-        appState.badgeManager.updateBadge(
-            for: id,
-            count: count,
-            isMuted: appState.isServiceEffectivelyMuted(id),
-            showBadge: service.showBadge
-        )
+        appState.refreshBadgeState(for: service.id)
     }
 
     private func removeFromSpace(link: SpaceServiceLink) {
@@ -253,25 +292,30 @@ struct ServiceSidebarView: View {
         save("move service down")
     }
 
-    private func reorderService(droppedLinkID: UUID, beforeLink target: SpaceServiceLink) {
+    @discardableResult
+    private func reorderService(
+        droppedLinkID: UUID,
+        relativeTo target: SpaceServiceLink,
+        placement: ServiceReorderPlacement
+    ) -> Bool {
         var links = filteredLinks
-        guard let fromIndex = links.firstIndex(where: { $0.id == droppedLinkID }),
-              let originalToIndex = links.firstIndex(where: { $0.id == target.id })
-        else { return }
-
-        let moved = links.remove(at: fromIndex)
-        // Removing fromIndex shifts every later element left by one — so
-        // when dragging downward (fromIndex < originalToIndex) we need to
-        // insert one slot earlier to land *before* the target. Without
-        // this, every downward drag drops the item one past where the
-        // user pointed.
-        let toIndex = fromIndex < originalToIndex ? originalToIndex - 1 : originalToIndex
-        links.insert(moved, at: toIndex)
+        let linksByID = Dictionary(uniqueKeysWithValues: links.map { ($0.id, $0) })
+        guard let reorderedIDs = ServiceReorder.reorderedIDs(
+            links.map(\.id),
+            moving: droppedLinkID,
+            relativeTo: target.id,
+            placement: placement
+        ) else {
+            return false
+        }
+        links = reorderedIDs.compactMap { linksByID[$0] }
+        guard links.count == reorderedIDs.count else { return false }
 
         for (index, link) in links.enumerated() {
             link.sortOrder = index
         }
         save("reorder services")
+        return true
     }
 
     private func deleteService(link: SpaceServiceLink) {

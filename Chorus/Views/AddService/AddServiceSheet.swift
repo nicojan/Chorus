@@ -17,6 +17,11 @@ struct AddServiceSheet: View {
         case custom = "Custom URL"
     }
 
+    enum CustomServiceInputValidation: Equatable {
+        case valid(label: String, url: String)
+        case invalid(String)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -94,7 +99,8 @@ struct AddServiceSheet: View {
             Button("Add Service") {
                 addCustomService()
             }
-            .disabled(customLabel.isEmpty || customURL.isEmpty)
+            .disabled(customLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || customURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .buttonStyle(.borderedProminent)
         }
         .padding(20)
@@ -102,22 +108,22 @@ struct AddServiceSheet: View {
     }
 
     private func addCustomService() {
-        let trimmed = customURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("https://") || trimmed.hasPrefix("http://") else {
-            urlError = "URL must start with https:// or http://"
+        switch Self.validatedCustomServiceInput(label: customLabel, url: customURL) {
+        case .invalid(let error):
+            urlError = error
             return
+        case .valid(let label, let url):
+            addCustomService(label: label, url: url)
         }
-        guard URL(string: trimmed) != nil else {
-            urlError = "That doesn't look like a valid URL"
-            return
-        }
+    }
 
+    private func addCustomService(label: String, url: String) {
         guard let space = fetchSpace(id: spaceID) else { return }
         let existingCount = space.serviceLinks.count
 
         let service = ServiceInstance(
-            label: customLabel.trimmingCharacters(in: .whitespacesAndNewlines),
-            url: trimmed
+            label: label,
+            url: url
         )
         modelContext.insert(service)
 
@@ -136,7 +142,7 @@ struct AddServiceSheet: View {
 
         // Fetch favicon in background — capture ID before the await
         let serviceID = service.id
-        let serviceURL = trimmed
+        let serviceURL = url
         Task {
             let data = await FaviconFetcher.shared.fetchFavicon(for: serviceURL)
             guard let data else { return }
@@ -152,6 +158,37 @@ struct AddServiceSheet: View {
         }
 
         dismiss()
+    }
+
+    static func validatedCustomServiceInput(
+        label rawLabel: String,
+        url rawURL: String
+    ) -> CustomServiceInputValidation {
+        let label = rawLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !label.isEmpty else {
+            return .invalid("Label can't be empty")
+        }
+
+        let trimmedURL = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let components = URLComponents(string: trimmedURL),
+              let scheme = components.scheme?.lowercased(),
+              ["http", "https"].contains(scheme)
+        else {
+            return .invalid("URL must start with https:// or http://")
+        }
+
+        guard let host = components.host, !host.isEmpty else {
+            return .invalid("URL must include a host")
+        }
+
+        var normalizedComponents = components
+        normalizedComponents.scheme = scheme
+
+        guard let url = normalizedComponents.url else {
+            return .invalid("That doesn't look like a valid URL")
+        }
+
+        return .valid(label: label, url: url.absoluteString)
     }
 
     private func fetchSpace(id: UUID) -> Space? {
