@@ -22,6 +22,7 @@ final class HibernatedBadgePoller {
     private let pollInterval: TimeInterval = 60
 
     private let badgeManager: BadgeManager
+    private let dataStoreManager: DataStoreManager
     private let session: URLSession
 
 
@@ -32,8 +33,9 @@ final class HibernatedBadgePoller {
         let dataStoreIdentifier: UUID
     }
 
-    init(badgeManager: BadgeManager) {
+    init(badgeManager: BadgeManager, dataStoreManager: DataStoreManager) {
         self.badgeManager = badgeManager
+        self.dataStoreManager = dataStoreManager
         // Ephemeral session — we attach per-service cookies manually on
         // each request so the title we read is the authenticated one.
         self.session = URLSession(configuration: .ephemeral)
@@ -130,7 +132,7 @@ final class HibernatedBadgePoller {
     private func pollService(id: UUID, tracked: TrackedService) async {
         guard let url = URL(string: tracked.url) else { return }
 
-        let dataStore = WKWebsiteDataStore(forIdentifier: tracked.dataStoreIdentifier)
+        let dataStore = dataStoreManager.dataStore(forIdentifier: tracked.dataStoreIdentifier)
         let allCookies = await Self.allCookies(from: dataStore.httpCookieStore)
         let matchingCookies = Self.cookies(allCookies, matching: url)
         let cookieHeaders = HTTPCookie.requestHeaderFields(with: matchingCookies)
@@ -194,11 +196,23 @@ final class HibernatedBadgePoller {
             let raw = cookie.domain.lowercased()
             let domain = raw.hasPrefix(".") ? String(raw.dropFirst()) : raw
             let domainMatches = host == domain || host.hasSuffix("." + domain)
-            let pathMatches = path.hasPrefix(cookie.path)
+            let pathMatches = Self.pathMatches(requestPath: path, cookiePath: cookie.path)
             let secureOK = !cookie.isSecure || isSecure
             let notExpired = (cookie.expiresDate ?? .distantFuture) > now
             return domainMatches && pathMatches && secureOK && notExpired
         }
+    }
+
+    /// RFC 6265 §5.1.4 path-match: the request path equals the cookie path, or
+    /// the cookie path is a prefix that ends at a path boundary. A plain
+    /// `hasPrefix` is wrong — it would match request `/foobar` against cookie
+    /// `/foo`.
+    nonisolated static func pathMatches(requestPath: String, cookiePath: String) -> Bool {
+        if requestPath == cookiePath { return true }
+        guard requestPath.hasPrefix(cookiePath) else { return false }
+        // Prefix matches; require the boundary to be a "/" (either the cookie
+        // path already ends in "/", or the next char of the request path is "/").
+        return cookiePath.hasSuffix("/") || requestPath.dropFirst(cookiePath.count).first == "/"
     }
 
     /// Extracts badge count from HTML by finding the <title> tag and parsing "(N)".

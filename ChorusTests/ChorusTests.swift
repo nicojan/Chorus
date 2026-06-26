@@ -270,4 +270,36 @@ final class ChorusTests: XCTestCase {
             title: "Page unavailable", message: "Keeps crashing.", retryURLString: nil)
         XCTAssertFalse(html.contains("<button"))
     }
+
+    // MARK: - Cookie matching (hibernated poller)
+
+    private func makeCookie(domain: String, path: String, name: String = "s", secure: Bool = false) -> HTTPCookie {
+        var props: [HTTPCookiePropertyKey: Any] = [
+            .domain: domain, .path: path, .name: name, .value: "v",
+        ]
+        if secure { props[.secure] = "TRUE" }
+        return HTTPCookie(properties: props)!
+    }
+
+    func testCookiePathMatchFollowsRFC6265() {
+        let cookie = makeCookie(domain: "example.com", path: "/foo")
+        // Exact, trailing-slash, and sub-path match.
+        XCTAssertEqual(HibernatedBadgePoller.cookies([cookie], matching: URL(string: "https://example.com/foo")!).count, 1)
+        XCTAssertEqual(HibernatedBadgePoller.cookies([cookie], matching: URL(string: "https://example.com/foo/bar")!).count, 1)
+        // A path that merely shares the prefix but isn't a sub-path must NOT match.
+        XCTAssertEqual(HibernatedBadgePoller.cookies([cookie], matching: URL(string: "https://example.com/foobar")!).count, 0)
+    }
+
+    func testCookieDomainAndSecureMatching() {
+        let dotCookie = makeCookie(domain: ".example.com", path: "/")
+        // Subdomain matches a dot-prefixed domain cookie.
+        XCTAssertEqual(HibernatedBadgePoller.cookies([dotCookie], matching: URL(string: "https://mail.example.com/")!).count, 1)
+        // Unrelated host doesn't.
+        XCTAssertEqual(HibernatedBadgePoller.cookies([dotCookie], matching: URL(string: "https://notexample.com/")!).count, 0)
+
+        // Secure cookies are withheld from http requests.
+        let secure = makeCookie(domain: "example.com", path: "/", secure: true)
+        XCTAssertEqual(HibernatedBadgePoller.cookies([secure], matching: URL(string: "http://example.com/")!).count, 0)
+        XCTAssertEqual(HibernatedBadgePoller.cookies([secure], matching: URL(string: "https://example.com/")!).count, 1)
+    }
 }
