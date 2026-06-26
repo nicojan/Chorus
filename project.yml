@@ -49,3 +49,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.nicojan.ChorusTests
         SWIFT_VERSION: "5.9"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
+        # Required so the test bundle can be code-signed; without an explicit
+        # Info.plist this generates one. (Some XcodeGen versions add it by
+        # default and some don't, so set it explicitly.)
+        GENERATE_INFOPLIST_FILE: true

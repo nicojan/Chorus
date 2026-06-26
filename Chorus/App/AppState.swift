@@ -282,6 +282,46 @@ final class AppState {
         webView.reload()
     }
 
+    /// Applies user edits to a service: persists label/URL/keep-loaded, syncs
+    /// the pool's never-hibernate set, and navigates the live web view to the
+    /// new URL when it changed. The caller has already mutated the model;
+    /// this performs the runtime side effects and saves.
+    func applyServiceEdits(serviceID: UUID, urlChanged: Bool) {
+        guard let service = currentServiceInstance(id: serviceID) else { return }
+        webViewPool.setNeverHibernate(service.neverHibernate, for: serviceID)
+        if urlChanged, let url = URL(string: service.url) {
+            webViewPool.navigate(serviceID, to: url)
+        }
+        do {
+            try modelContainer.mainContext.save()
+        } catch {
+            AppLogger.dataStore.error("Failed to save service edits: \(error.localizedDescription)")
+        }
+    }
+
+    /// Wipes all website data (cookies, local/session storage, caches) for a
+    /// service's data store — effectively logging the user out — then reloads
+    /// the live web view so the logged-out state is visible immediately. The
+    /// service itself, its links, and its place in every space are preserved.
+    func clearSession(for serviceID: UUID) {
+        guard let service = currentServiceInstance(id: serviceID) else { return }
+        let store = dataStoreManager.dataStore(forIdentifier: service.dataStoreIdentifier)
+        let homeURL = URL(string: service.url)
+        let pool = webViewPool
+        Task { @MainActor in
+            let types = WKWebsiteDataStore.allWebsiteDataTypes()
+            await store.removeData(ofTypes: types, modifiedSince: .distantPast)
+            if let webView = pool.liveWebView(for: serviceID) {
+                if let homeURL {
+                    webView.load(URLRequest(url: homeURL))
+                } else {
+                    webView.reload()
+                }
+            }
+            AppLogger.dataStore.info("Cleared session for service \(serviceID)")
+        }
+    }
+
     /// Multiply the active service's page zoom by `factor`, clamped to 0.5x–3.0x.
     /// The new zoom is persisted on the ServiceInstance so it survives
     /// hibernation, relaunch, and switching back and forth.

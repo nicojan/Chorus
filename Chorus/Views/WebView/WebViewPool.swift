@@ -270,6 +270,24 @@ final class WebViewPool {
         pinnedIDs.remove(id)
     }
 
+    /// Sync the never-hibernate flag for a service after the user toggles it
+    /// in the editor. The flag is otherwise only read when a web view is
+    /// created, so a live service wouldn't pick up the change until next load.
+    func setNeverHibernate(_ value: Bool, for id: UUID) {
+        if value {
+            neverHibernateIDs.insert(id)
+        } else {
+            neverHibernateIDs.remove(id)
+        }
+    }
+
+    /// Navigate a service's live web view to a URL. Used when the user edits a
+    /// service's URL so the open page follows the change. No-op if the service
+    /// has no live web view (it will load the new URL when next opened).
+    func navigate(_ id: UUID, to url: URL) {
+        webViews[id]?.load(URLRequest(url: url))
+    }
+
     // MARK: - Soft Hibernate (resource offloading without destroying the web view)
 
     /// Suspends media playback and captures a snapshot.

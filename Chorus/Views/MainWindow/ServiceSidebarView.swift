@@ -49,6 +49,7 @@ struct ServiceSidebarView: View {
 
     @State private var showingAddService = false
     @State private var confirmingDelete: SpaceServiceLink?
+    @State private var editingService: ServiceInstance?
     @State private var draggingLinkID: UUID?
     private static let serviceDropMidpoint: CGFloat = 23
 
@@ -56,6 +57,57 @@ struct ServiceSidebarView: View {
         allLinks
             .filter { $0.modelContext != nil && $0.service.modelContext != nil && $0.space.id == spaceID }
             .sorted { $0.sortOrder < $1.sortOrder }
+    }
+
+    @ViewBuilder
+    private func serviceContextMenu(for link: SpaceServiceLink) -> some View {
+        Button("Edit Service…") {
+            editingService = link.service
+        }
+
+        Toggle("Mute Notifications", isOn: Binding(
+            get: { link.service.isMuted },
+            set: { newValue in
+                link.service.isMuted = newValue
+                save("toggle service mute")
+                syncBadge(for: link.service)
+            }
+        ))
+
+        Divider()
+
+        Button("Open in Safari") {
+            openInDefaultBrowser(link.service)
+        }
+
+        Divider()
+
+        if appState.webViewPool.hasWebView(for: link.service.id) {
+            Button("Hibernate") {
+                appState.webViewPool.hibernate(link.service.id)
+                if selectedServiceID == link.service.id {
+                    selectedServiceID = nil
+                }
+            }
+        }
+
+        Divider()
+        Button("Change Icon...") {
+            pickCustomIcon(for: link.service)
+        }
+        if link.service.customIconData != nil {
+            Button("Reset Icon") {
+                resetIcon(for: link.service)
+            }
+        }
+        Divider()
+        Button("Remove from this space") {
+            removeFromSpace(link: link)
+        }
+        Divider()
+        Button("Delete service entirely", role: .destructive) {
+            confirmingDelete = link
+        }
     }
 
     var body: some View {
@@ -105,51 +157,7 @@ struct ServiceSidebarView: View {
                         }
                         .accessibilityAction(named: "Move up") { moveServiceUp(link) }
                         .accessibilityAction(named: "Move down") { moveServiceDown(link) }
-                        .contextMenu {
-                            Toggle("Mute Notifications", isOn: Binding(
-                                get: { link.service.isMuted },
-                                set: { newValue in
-                                    link.service.isMuted = newValue
-                                    save("toggle service mute")
-                                    syncBadge(for: link.service)
-                                }
-                            ))
-
-                            Divider()
-
-                            Button("Open in Safari") {
-                                openInDefaultBrowser(link.service)
-                            }
-
-                            Divider()
-
-                            if appState.webViewPool.hasWebView(for: link.service.id) {
-                                Button("Hibernate") {
-                                    appState.webViewPool.hibernate(link.service.id)
-                                    if selectedServiceID == link.service.id {
-                                        selectedServiceID = nil
-                                    }
-                                }
-                            }
-
-                            Divider()
-                            Button("Change Icon...") {
-                                pickCustomIcon(for: link.service)
-                            }
-                            if link.service.customIconData != nil {
-                                Button("Reset Icon") {
-                                    resetIcon(for: link.service)
-                                }
-                            }
-                            Divider()
-                            Button("Remove from this space") {
-                                removeFromSpace(link: link)
-                            }
-                            Divider()
-                            Button("Delete service entirely", role: .destructive) {
-                                confirmingDelete = link
-                            }
-                        }
+                        .contextMenu { serviceContextMenu(for: link) }
                     }
                 }
                 .padding(.vertical, 8)
@@ -173,6 +181,9 @@ struct ServiceSidebarView: View {
         .background(.background)
         .sheet(isPresented: $showingAddService) {
             AddServiceSheet(spaceID: spaceID)
+        }
+        .sheet(item: $editingService) { service in
+            EditServiceSheet(service: service)
         }
         .confirmationDialog(
             "Delete \(confirmingDelete?.service.label ?? "service")?",
