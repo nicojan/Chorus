@@ -47,6 +47,7 @@
 		CA61596A934F91544BD926E0 /* ServiceCatalog.json in Resources */ = {isa = PBXBuildFile; fileRef = 0F2F565F064A603E639DC26E /* ServiceCatalog.json */; };
 		CF6CC3C4CC580F7733D24212 /* SpaceServiceLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 312995FF05808961FD519D76 /* SpaceServiceLink.swift */; };
 		D341B327E1C20FA11DEC2C2B /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D533B667501DF0913FF62B9A /* AppState.swift */; };
+		DB9B6FD9265D63DCA11B6CFC /* AppCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E0D298EDEBDC1F1EB614912 /* AppCapabilities.swift */; };
 		DF712EA56B5AE10C7BF77176 /* WebViewCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438D78C9503E732B7792FA10 /* WebViewCoordinator.swift */; };
 		EA76A0A9EF76E4CD3DE9217C /* ServiceSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B84763F63532609A902F453A /* ServiceSidebarView.swift */; };
 		F709F5524B2146C260A0BCB0 /* BadgeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 706D85D3C09C182826CD4EBA /* BadgeManager.swift */; };
@@ -85,6 +86,7 @@
 		706D85D3C09C182826CD4EBA /* BadgeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeManager.swift; sourceTree = "<group>"; };
 		7458024AA17BF508D4807018 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		76865DDEE671C34CC88CF4D8 /* FindInPageBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindInPageBar.swift; sourceTree = "<group>"; };
+		7E0D298EDEBDC1F1EB614912 /* AppCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCapabilities.swift; sourceTree = "<group>"; };
 		8223D66D602364046AF98EDC /* Chorus.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Chorus.entitlements; sourceTree = "<group>"; };
 		88C307C75776869CE8A82618 /* AppPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreferences.swift; sourceTree = "<group>"; };
 		8F17BFF4DCC563429E130A13 /* CatalogGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogGridView.swift; sourceTree = "<group>"; };
@@ -283,6 +285,7 @@
 		F18B9D9ED0D379C40A435820 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				7E0D298EDEBDC1F1EB614912 /* AppCapabilities.swift */,
 				D533B667501DF0913FF62B9A /* AppState.swift */,
 				E143D686890F381C5B42761F /* ChorusApp.swift */,
 			);
@@ -385,6 +388,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0551F23E1A9E226486C1A0BB /* AddServiceSheet.swift in Sources */,
+				DB9B6FD9265D63DCA11B6CFC /* AppCapabilities.swift in Sources */,
 				53615BD3734128E5CEE21D0A /* AppLogger.swift in Sources */,
 				5E59730D46AE1AED21F82ECA /* AppPreferences.swift in Sources */,
 				71E467BDECC180049BF6708B /* AppPresenceManager.swift in Sources */,

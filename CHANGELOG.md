@@ -56,6 +56,11 @@ All notable changes to Chorus are documented here. Format loosely follows
   an Add Service button.
 - **Reveal in Finder** on the store-error banner, so users can back up or remove
   a corrupt data file themselves (Chorus never deletes it for them).
+- **Passkey-unavailable notice** in the Add Service sheet. WKWebView can't do
+  WebAuthn without the Apple-managed web-browser public-key-credential
+  entitlement, so a calm inline note steers users to password + 2FA. Gated by a
+  single `AppCapabilities.passkeysSupported` flag to flip once the entitlement
+  is granted.
 - **Polling pauses while offline and resumes on reconnect.** `NetworkMonitor`
   connectivity changes now suspend all polling (active, background, hibernated)
   instead of firing doomed requests, and resume promptly when the network
