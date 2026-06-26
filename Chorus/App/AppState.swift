@@ -26,6 +26,11 @@ final class AppState {
     /// The UI should display a warning banner when this is set.
     private(set) var storeError: String?
 
+    /// On-disk location of the persistent store that failed to open. Lets the
+    /// UI offer a "Reveal in Finder" action so the user can back up or remove
+    /// the file themselves — we never delete it for them.
+    private(set) var storeFileURL: URL?
+
     init() {
         let schema = Schema([
             ServiceInstance.self,
@@ -53,6 +58,7 @@ final class AppState {
                 fatalError("Failed to initialize any model container: \(error.localizedDescription)")
             }
             self.storeError = "Your saved data couldn't be loaded. Chorus is running with temporary storage — changes won't be saved. Your data file is at: \(config.url.path)"
+            self.storeFileURL = config.url
         }
 
         self.dataStoreManager = DataStoreManager()

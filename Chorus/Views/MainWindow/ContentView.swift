@@ -17,6 +17,13 @@ struct ContentView: View {
                         .font(.caption)
                         .foregroundStyle(.primary)
                         .lineLimit(2)
+                    Spacer()
+                    if let url = appState.storeFileURL {
+                        Button("Reveal in Finder") {
+                            NSWorkspace.shared.activateFileViewerSelecting([url])
+                        }
+                        .font(.caption)
+                    }
                 }
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
