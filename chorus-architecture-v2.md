@@ -1077,7 +1077,9 @@ Override `WKUIDelegate` to provide native macOS context menus where appropriate:
 1. **Isolation**: Log into Gmail A in Service 1, Gmail B in Service 2. Restart app. Verify both sessions persist independently. Verify no cookie leakage between them.
 2. **Multi-space alias**: Add Gmail to both 🏢 Work and 🏠 Personal spaces. Verify switching spaces shows the exact same web view (same scroll position, same state).
 3. **Data deletion**: Remove a service entirely. Verify `WKWebsiteDataStore.remove(forIdentifier:)` succeeds and the session is wiped.
-4. **Link integrity**: Remove a service from one space (but it exists in another). Verify the service and its session survive. Remove from the last space. Verify prompt to delete entirely.
+4. **Link integrity**: Remove a service from one space (but it exists in another). Verify the service and its session survive. Delete a space whose services live nowhere else; verify those services are reclaimed (record deleted, `WKWebsiteDataStore.remove(forIdentifier:)` scheduled) rather than orphaned, and that a service still linked to another space is untouched.
+10. **Offline polling**: Disable networking. Verify active/background/hibernated polling suspends (no repeated failed requests). Re-enable; verify polling resumes and badges refresh.
+11. **Mute round-trip**: Mute a service with a live unread count, then un-mute. Verify the badge reappears immediately (no poll-tick delay) and the dock total updates.
 5. **OAuth flow**: Add a new Gmail instance. Complete Google OAuth (pop-up flow). Verify login succeeds and persists across restart.
 6. **Notification muting**: Unmuted service triggers a macOS notification; muted service does not.
 7. **Cold launch notification**: Click a notification when app is not running. Verify app launches and navigates to the correct service.
