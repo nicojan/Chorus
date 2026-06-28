@@ -302,4 +302,32 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(HibernatedBadgePoller.cookies([secure], matching: URL(string: "http://example.com/")!).count, 0)
         XCTAssertEqual(HibernatedBadgePoller.cookies([secure], matching: URL(string: "https://example.com/")!).count, 1)
     }
+
+    // MARK: - OS-notification gate + per-service notify flag
+
+    func testOSNotificationGateFiresOnlyWhenEnabledUnmutedAndNotDND() {
+        // Fires only when not muted, notifyOS on, and DND off.
+        XCTAssertTrue(NotificationManager.shouldPostOSNotification(
+            isMuted: false, notifyOS: true, doNotDisturb: false))
+        // Each condition independently vetoes.
+        XCTAssertFalse(NotificationManager.shouldPostOSNotification(
+            isMuted: true, notifyOS: true, doNotDisturb: false), "mute vetoes")
+        XCTAssertFalse(NotificationManager.shouldPostOSNotification(
+            isMuted: false, notifyOS: false, doNotDisturb: false), "notifyOS off vetoes")
+        XCTAssertFalse(NotificationManager.shouldPostOSNotification(
+            isMuted: false, notifyOS: true, doNotDisturb: true), "DND vetoes")
+    }
+
+    func testNotifiesOSEffectiveDefaultsToEnabledForLegacyRows() {
+        let service = ServiceInstance(label: "X", url: "https://x.test")
+        // nil (new row, or a row created before the flag existed) → enabled,
+        // preserving the prior always-notify behavior.
+        XCTAssertNil(service.osNotificationsEnabled)
+        XCTAssertTrue(service.notifiesOSEffective)
+        // Explicit values are honored.
+        service.osNotificationsEnabled = false
+        XCTAssertFalse(service.notifiesOSEffective)
+        service.osNotificationsEnabled = true
+        XCTAssertTrue(service.notifiesOSEffective)
+    }
 }

@@ -135,6 +135,28 @@ final class NotificationManager {
         pollTasks.removeAll()
     }
 
+    /// Fires a single immediate poll (title + optional DOM badge) for a service
+    /// without starting or disturbing its recurring poll task. Used to populate
+    /// a badge the moment a page finishes loading — on startup or right after a
+    /// login redirect completes — instead of waiting for the next poll tick.
+    ///
+    /// Uses `resetToZero: false`: this opportunistic poll only ever *raises* a
+    /// badge, never clears one, so firing on an error page or login interstitial
+    /// can't wipe a correct count. The recurring poll handles authoritative
+    /// clearing.
+    func pollNow(
+        for instanceID: UUID,
+        webView: WKWebView,
+        isMuted: Bool,
+        showBadge: Bool,
+        catalogEntry: ServiceCatalogEntry?
+    ) async {
+        await pollTitle(webView: webView, instanceID: instanceID, isMuted: isMuted, showBadge: showBadge, resetToZero: false)
+        if let entry = catalogEntry, entry.badgeJS != nil {
+            await pollBadge(webView: webView, instanceID: instanceID, isMuted: isMuted, showBadge: showBadge, catalogEntry: entry, resetToZero: false)
+        }
+    }
+
     /// Routes a notification tap to the navigation handler, or buffers it if
     /// the handler isn't wired yet (a notification can launch the app before
     /// AppState finishes setting `onServiceRequested`). Drained via
@@ -155,11 +177,17 @@ final class NotificationManager {
 
     // MARK: - Polling
 
-    private func pollTitle(webView: WKWebView, instanceID: UUID, isMuted: Bool, showBadge: Bool) async {
+    /// `resetToZero: false` makes a count of 0 a no-op instead of clearing the
+    /// badge. The eager post-load poll (`pollNow`) uses this so a login/redirect
+    /// interstitial or in-app error page — none of which carry an "(N)" in the
+    /// title — can't wipe a correct unread badge. The recurring live poll keeps
+    /// the default (true): reading your inbox empty authoritatively clears it.
+    private func pollTitle(webView: WKWebView, instanceID: UUID, isMuted: Bool, showBadge: Bool, resetToZero: Bool = true) async {
         do {
             let result = try await webView.evaluateJavaScript("document.title")
             if let title = result as? String {
                 let count = Self.extractBadgeCount(from: title)
+                guard count > 0 || resetToZero else { return }
                 badgeManager.updateBadge(for: instanceID, count: count, isMuted: isMuted, showBadge: showBadge)
             }
         } catch {
@@ -167,7 +195,7 @@ final class NotificationManager {
         }
     }
 
-    private func pollBadge(webView: WKWebView, instanceID: UUID, isMuted: Bool, showBadge: Bool, catalogEntry: ServiceCatalogEntry) async {
+    private func pollBadge(webView: WKWebView, instanceID: UUID, isMuted: Bool, showBadge: Bool, catalogEntry: ServiceCatalogEntry, resetToZero: Bool = true) async {
         guard let badgeJS = catalogEntry.badgeJS else { return }
         do {
             let result = try await webView.evaluateJavaScript(badgeJS)
@@ -179,6 +207,7 @@ final class NotificationManager {
             } else {
                 return
             }
+            guard count > 0 || resetToZero else { return }
             badgeManager.updateBadge(for: instanceID, count: count, isMuted: isMuted, showBadge: showBadge)
         } catch {
             // Badge extraction failed — page may have changed
@@ -206,6 +235,19 @@ final class NotificationManager {
               !(1900...2099).contains(count)
         else { return 0 }
         return count
+    }
+
+    /// Whether a service's intercepted web notification should be forwarded to
+    /// macOS Notification Center. Pure, so the gating policy is unit-testable.
+    /// A notification fires only when the service is not muted, has OS
+    /// notifications enabled, and Do Not Disturb is off. `notifyOS` is the
+    /// per-service toggle; `isMuted` (the master override) and DND each veto.
+    nonisolated static func shouldPostOSNotification(
+        isMuted: Bool,
+        notifyOS: Bool,
+        doNotDisturb: Bool
+    ) -> Bool {
+        !isMuted && notifyOS && !doNotDisturb
     }
 
     // MARK: - Notifications

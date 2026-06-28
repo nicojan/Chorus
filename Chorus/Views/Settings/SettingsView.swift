@@ -139,26 +139,62 @@ struct NotificationSettingsView: View {
                 }
             }
 
-            Section("Badge Counts") {
-                if services.isEmpty {
-                    Text("No services added yet.")
+            perServiceToggleSection(
+                "macOS Notifications",
+                accessibilityNoun: "macOS notifications",
+                footnote: "When off, this service still shows a badge but won't post macOS notification banners. Muting a service (or its space) silences both.",
+                get: { $0.notifiesOSEffective },
+                set: { service, enabled in
+                    service.osNotificationsEnabled = enabled
+                    save("toggle macOS notifications for \(service.label)")
+                }
+            )
+
+            perServiceToggleSection(
+                "Badge Counts",
+                accessibilityNoun: "Badge count",
+                get: { $0.showBadge },
+                set: { service, enabled in
+                    service.showBadge = enabled
+                    save("toggle badge for \(service.label)")
+                    appState.refreshBadgeState(for: service.id)
+                }
+            )
+        }
+        .padding()
+    }
+
+    /// A Settings section with one on/off Toggle per service. Shared by the
+    /// per-service badge and macOS-notification lists (identical empty-state +
+    /// ForEach + Toggle scaffold), parameterized by how each row reads/writes
+    /// and an optional footnote.
+    @ViewBuilder
+    private func perServiceToggleSection(
+        _ title: LocalizedStringKey,
+        accessibilityNoun: String,
+        footnote: LocalizedStringKey? = nil,
+        get: @escaping (ServiceInstance) -> Bool,
+        set: @escaping (ServiceInstance, Bool) -> Void
+    ) -> some View {
+        Section(title) {
+            if services.isEmpty {
+                Text("No services added yet.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(services) { service in
+                    Toggle(service.label, isOn: Binding(
+                        get: { get(service) },
+                        set: { set(service, $0) }
+                    ))
+                    .accessibilityLabel("\(accessibilityNoun) for \(service.label)")
+                }
+                if let footnote {
+                    Text(footnote)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
-                } else {
-                    ForEach(services) { service in
-                        Toggle(service.label, isOn: Binding(
-                            get: { service.showBadge },
-                            set: { enabled in
-                                service.showBadge = enabled
-                                save("toggle badge for \(service.label)")
-                                appState.refreshBadgeState(for: service.id)
-                            }
-                        ))
-                        .accessibilityLabel("Badge count for \(service.label)")
-                    }
                 }
             }
         }
-        .padding()
     }
 
     private func save(_ context: String) {

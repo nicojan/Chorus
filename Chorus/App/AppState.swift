@@ -85,6 +85,21 @@ final class AppState {
                 return service.spaceLinks.contains { $0.space.isMutedEffective }
             }
         }
+        self.userScriptManager.isServiceNotifyingOS = { @Sendable serviceID in
+            // Per-service flag (not cascaded, unlike mute); nil → enabled. Runs
+            // on every intercepted web notification, so use an indexed single-row
+            // fetch rather than a full-table scan. Fails silent: a missing or
+            // deleted service does not post a banner.
+            MainActor.assumeIsolated {
+                let context = container.mainContext
+                var descriptor = FetchDescriptor<ServiceInstance>(
+                    predicate: #Predicate { $0.id == serviceID }
+                )
+                descriptor.fetchLimit = 1
+                guard let service = try? context.fetch(descriptor).first else { return false }
+                return service.notifiesOSEffective
+            }
+        }
         self.userScriptManager.isDoNotDisturbActive = { @Sendable in
             MainActor.assumeIsolated { badgeManager.doNotDisturb }
         }
@@ -112,6 +127,7 @@ final class AppState {
         fetchMissingAndStaleFavicons()
         fetchCatalogIcons()
         preloadActiveSpaceServices()
+        fetchInitialBadgesForBackgroundServices()
         cleanUpOrphanedDataStores()
     }
 
@@ -612,6 +628,58 @@ final class AppState {
         }
     }
 
+    /// One-shot launch badge fetch for services that won't get a live web view
+    /// (i.e. outside the active space, which is preloaded). Populates their
+    /// unread badges promptly so per-space aggregate badges are correct at
+    /// launch instead of staying blank until first opened. Skips muted services
+    /// and services with the badge hidden.
+    ///
+    /// Active-space services are excluded here: each preloaded web view starts a
+    /// recurring background poll (via `onServicePreloaded`) and also fires an
+    /// immediate `pollNow` when its page finishes loading (`onNavigationFinished`).
+    private func fetchInitialBadgesForBackgroundServices() {
+        let activeSpaceID = selectedSpaceID
+
+        let context = modelContainer.mainContext
+        let services: [ServiceInstance]
+        do {
+            services = try context.fetch(FetchDescriptor<ServiceInstance>())
+        } catch {
+            AppLogger.badges.error("Launch badge sweep fetch failed: \(error.localizedDescription)")
+            return
+        }
+
+        // Snapshot plain values from the already-fetched objects (no per-entry
+        // re-fetch) before the async loop, so we never touch a possibly-deleted
+        // @Model object across a suspension point. Membership/mute/show-badge
+        // are read directly from the in-hand objects.
+        struct SweepEntry { let id: UUID; let url: String; let dataStoreID: UUID }
+        let entries: [SweepEntry] = services.compactMap { service in
+            let inActiveSpace = activeSpaceID != nil
+                && service.spaceLinks.contains { $0.space.id == activeSpaceID }
+            guard !inActiveSpace, !service.isEffectivelyMuted, service.showBadge else { return nil }
+            return SweepEntry(id: service.id, url: service.url, dataStoreID: service.dataStoreIdentifier)
+        }
+        guard !entries.isEmpty else { return }
+
+        Task { @MainActor [weak self] in
+            for (index, entry) in entries.enumerated() {
+                guard let self else { return }
+                // Light stagger *between* polls so the sweep doesn't burst
+                // alongside preload, favicon, and catalog-icon fetches at launch.
+                // No trailing sleep after the final poll.
+                if index > 0 { try? await Task.sleep(for: .milliseconds(250)) }
+                await self.hibernatedBadgePoller.pollOnce(
+                    serviceID: entry.id,
+                    url: entry.url,
+                    isMuted: false,
+                    showBadge: true,
+                    dataStoreIdentifier: entry.dataStoreID
+                )
+            }
+        }
+    }
+
     /// Preloads services when the user switches to a different space.
     func preloadServicesForSpace(_ spaceID: UUID) {
         let services = servicesForSpace(spaceID)
@@ -654,6 +722,23 @@ final class AppState {
     }
 
     private func setupHibernationCallbacks() {
+        // When a service's page finishes loading (startup or login redirect),
+        // poll its badge immediately instead of waiting for the next tick.
+        webViewPool.onNavigationFinished = { [weak self] serviceID in
+            guard let self,
+                  let webView = self.webViewPool.liveWebView(for: serviceID) else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.notificationManager.pollNow(
+                    for: serviceID,
+                    webView: webView,
+                    isMuted: self.isServiceEffectivelyMuted(serviceID),
+                    showBadge: self.isServiceShowingBadge(serviceID),
+                    catalogEntry: self.catalogEntry(for: serviceID)
+                )
+            }
+        }
+
         webViewPool.onServiceHibernated = { [weak self] serviceID in
             guard let self else { return }
             self.notificationManager.stopPolling(for: serviceID)

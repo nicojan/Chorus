@@ -179,3 +179,42 @@ struct ChorusApp: App {
         }
     }
 }
+
+// MARK: - Sparkle auto-update ("Check for Updates…" menu command)
+//
+// Defined here (a file that is part of the Chorus target) rather than a
+// standalone file, so it compiles when Sparkle is resolved. Gated on
+// canImport(Sparkle) so the project still builds before the package is present.
+
+#if canImport(Sparkle)
+import Sparkle
+
+/// Publishes whether the updater can currently check for updates, so the menu
+/// item can enable/disable itself reactively.
+@MainActor
+final class CheckForUpdatesViewModel: ObservableObject {
+    @Published var canCheckForUpdates = false
+
+    init(updater: SPUUpdater) {
+        updater.publisher(for: \.canCheckForUpdates)
+            .assign(to: &$canCheckForUpdates)
+    }
+}
+
+/// The "Check for Updates…" menu command. The intermediate view exists so the
+/// disabled state binds correctly (a known SwiftUI menu quirk).
+struct CheckForUpdatesView: View {
+    @ObservedObject private var viewModel: CheckForUpdatesViewModel
+    private let updater: SPUUpdater
+
+    init(updater: SPUUpdater) {
+        self.updater = updater
+        self.viewModel = CheckForUpdatesViewModel(updater: updater)
+    }
+
+    var body: some View {
+        Button("Check for Updates…", action: updater.checkForUpdates)
+            .disabled(!viewModel.canCheckForUpdates)
+    }
+}
+#endif

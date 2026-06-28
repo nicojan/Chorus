@@ -16,8 +16,9 @@ and Franz, built for Apple Silicon.
 - **Spaces.** Group services into spaces (e.g. 🏠 Personal, 💼 Work). A service
   can live in more than one space; sessions stay isolated per instance.
 - **Badges & notifications.** Unread counts surface on the dock and per-space
-  chips via title/DOM polling and intercepted web `Notification`s. Per-service
-  and per-space mute, plus global Do Not Disturb.
+  chips via title/DOM polling and intercepted web `Notification`s, and appear
+  immediately on launch and after sign-in. Per-service control over badges and
+  macOS notifications, per-service and per-space mute, plus global Do Not Disturb.
 - **Memory-aware hibernation.** Least-recently-used services hibernate to
   reclaim memory and wake instantly where you left off; pin "Keep loaded"
   services that should never sleep.
