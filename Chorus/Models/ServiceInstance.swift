@@ -20,6 +20,13 @@ final class ServiceInstance {
     /// sites should use `zoomLevelEffective` which substitutes 1.0 for nil.
     var pageZoom: Double?
 
+    /// Whether this service forwards its web notifications to macOS Notification
+    /// Center. Stored optional so SwiftData lightweight migration succeeds on
+    /// existing rows — nil is treated as enabled (the prior default). Read sites
+    /// should use `notifiesOSEffective`. Independent of `showBadge` (badge) and
+    /// of `isMuted` (mute is the master override over both).
+    var osNotificationsEnabled: Bool?
+
     @Relationship(deleteRule: .cascade, inverse: \SpaceServiceLink.service)
     var spaceLinks: [SpaceServiceLink]
 
@@ -28,6 +35,10 @@ final class ServiceInstance {
 
     /// Materialises the storage-optional zoom into a Double (nil → 1.0).
     var zoomLevelEffective: Double { pageZoom ?? 1.0 }
+
+    /// Materialises the storage-optional OS-notification flag (nil → true), so
+    /// services created before this flag existed keep forwarding notifications.
+    var notifiesOSEffective: Bool { osNotificationsEnabled ?? true }
 
     /// True if this service is muted directly, or via any space it belongs to
     /// (muting a space cascades to its members). Use this when the model object
@@ -50,7 +61,8 @@ final class ServiceInstance {
         neverHibernate: Bool = false,
         userAgent: String? = nil,
         dataStoreIdentifier: UUID = UUID(),
-        pageZoom: Double? = nil
+        pageZoom: Double? = nil,
+        osNotificationsEnabled: Bool? = nil
     ) {
         self.id = id
         self.label = label
@@ -65,6 +77,7 @@ final class ServiceInstance {
         self.userAgent = userAgent
         self.dataStoreIdentifier = dataStoreIdentifier
         self.pageZoom = pageZoom
+        self.osNotificationsEnabled = osNotificationsEnabled
         self.spaceLinks = []
         self.createdAt = Date()
         self.lastAccessedAt = Date()

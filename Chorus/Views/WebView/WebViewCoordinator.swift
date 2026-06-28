@@ -24,6 +24,15 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// `NSWorkspace.open` directly.
     var externalLinkHandler: ((URL) -> Void)?
 
+    /// The service this coordinator drives, set by `WebViewPool` so navigation
+    /// callbacks can be attributed to a specific service.
+    var instanceID: UUID?
+
+    /// Called when a top-level navigation finishes (fresh load or login
+    /// redirect) so the app can fire an immediate badge poll instead of waiting
+    /// for the next poll tick. Never called for OAuth popup web views.
+    var onNavigationFinished: ((UUID) -> Void)?
+
     /// URL schemes the OS handles natively. We forward to NSWorkspace rather
     /// than letting WebKit fail with an unsupported-scheme error.
     private static let nonWebSchemes: Set<String> = [
@@ -100,6 +109,13 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         } else {
             decisionHandler(.download)
         }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // Only the service's main web view carries a badge — ignore OAuth
+        // popups (the coordinator is their navigation delegate too).
+        guard webView !== popupWebView, let instanceID else { return }
+        onNavigationFinished?(instanceID)
     }
 
     // WebKit kills WebContent on memory pressure, JIT bugs, or page crashes.

@@ -58,6 +58,11 @@ final class WebViewPool {
     /// polling so the service can collect badge counts before the user clicks it.
     var onServicePreloaded: ((UUID, WKWebView) -> Void)?
 
+    /// Called when a service's main web view finishes a top-level navigation
+    /// (fresh load or login redirect), so callers can fire an immediate badge
+    /// poll. Forwarded from each coordinator's `onNavigationFinished`.
+    var onNavigationFinished: ((UUID) -> Void)?
+
     /// Exposes the live `WKWebView` for a service, if one currently exists.
     /// Used by callers that need to attach background polling to a soft-
     /// hibernated or preloaded webview without going through `webView(for:)`,
@@ -112,9 +117,7 @@ final class WebViewPool {
         webView.allowsBackForwardNavigationGestures = true
         webView.customUserAgent = instance.userAgent ?? UserAgentProvider.safariDefault
 
-        let coordinator = WebViewCoordinator()
-        coordinator.fallbackURL = URL(string: instance.url)
-        coordinator.externalLinkHandler = externalLinkHandler
+        let coordinator = makeCoordinator(for: instance)
         webView.navigationDelegate = coordinator
         webView.uiDelegate = coordinator
         coordinators[instance.id] = coordinator
@@ -155,9 +158,7 @@ final class WebViewPool {
         webView.allowsBackForwardNavigationGestures = true
         webView.customUserAgent = instance.userAgent ?? UserAgentProvider.safariDefault
 
-        let coordinator = WebViewCoordinator()
-        coordinator.fallbackURL = URL(string: instance.url)
-        coordinator.externalLinkHandler = externalLinkHandler
+        let coordinator = makeCoordinator(for: instance)
         webView.navigationDelegate = coordinator
         webView.uiDelegate = coordinator
         coordinators[instance.id] = coordinator
@@ -328,6 +329,20 @@ final class WebViewPool {
         lastAccessTimes.removeValue(forKey: instanceID)
         coordinators.removeValue(forKey: instanceID)
         snapshots.removeValue(forKey: instanceID)
+    }
+
+    /// Builds a navigation/UI coordinator wired to this service. Shared by
+    /// `webView(for:)` and `preload(_:)` so the instance id, fallback URL,
+    /// external-link routing, and navigation-finished callback stay in sync.
+    private func makeCoordinator(for instance: ServiceInstance) -> WebViewCoordinator {
+        let coordinator = WebViewCoordinator()
+        coordinator.instanceID = instance.id
+        coordinator.fallbackURL = URL(string: instance.url)
+        coordinator.externalLinkHandler = externalLinkHandler
+        coordinator.onNavigationFinished = { [weak self] id in
+            self?.onNavigationFinished?(id)
+        }
+        return coordinator
     }
 
     private func makeConfiguration(for instance: ServiceInstance) -> WKWebViewConfiguration {

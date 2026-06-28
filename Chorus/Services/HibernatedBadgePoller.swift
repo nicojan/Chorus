@@ -56,7 +56,36 @@ final class HibernatedBadgePoller {
             dataStoreIdentifier: dataStoreIdentifier
         )
         ensurePolling()
+        // Fire one poll immediately rather than waiting a full interval, so a
+        // just-hibernated service's badge stays current. Guarded by !isPaused
+        // so we don't fire while offline or asleep.
+        if !isPaused, let tracked = trackedServices[serviceID] {
+            Task { [weak self] in await self?.pollService(id: serviceID, tracked: tracked) }
+        }
         AppLogger.badges.debug("Tracking hibernated service \(serviceID) for badge polling")
+    }
+
+    /// Performs a single badge fetch for a service WITHOUT adding it to the
+    /// recurring poll set. Used for the one-shot launch sweep so services that
+    /// won't have a live web view (e.g. outside the active space) still show a
+    /// startup badge, without entangling with the web-view lifecycle. Respects
+    /// the same "never reset to 0" rule as the recurring poll.
+    func pollOnce(
+        serviceID: UUID,
+        url: String,
+        isMuted: Bool,
+        showBadge: Bool,
+        dataStoreIdentifier: UUID
+    ) async {
+        // Skip muted services: their badge is masked anyway, so a fetch would
+        // just waste a cookie-bearing request to a server the user silenced.
+        guard !isPaused, showBadge, !isMuted else { return }
+        await pollService(id: serviceID, tracked: TrackedService(
+            url: url,
+            isMuted: isMuted,
+            showBadge: showBadge,
+            dataStoreIdentifier: dataStoreIdentifier
+        ), requireTracked: false)
     }
 
     /// Refresh mutable notification/badge flags for an already-tracked service.
@@ -129,7 +158,7 @@ final class HibernatedBadgePoller {
         }
     }
 
-    private func pollService(id: UUID, tracked: TrackedService) async {
+    private func pollService(id: UUID, tracked: TrackedService, requireTracked: Bool = true) async {
         guard let url = URL(string: tracked.url) else { return }
 
         let dataStore = dataStoreManager.dataStore(forIdentifier: tracked.dataStoreIdentifier)
@@ -166,7 +195,20 @@ final class HibernatedBadgePoller {
             // Only update when we detect a positive count.
             // We can't reliably distinguish "0 unread" from "auth wall / redirect page"
             // so we never reset to 0 from the poller — the live web view handles that.
-            if count > 0, let current = trackedServices[id], current.showBadge {
+            //
+            // For the recurring poll, the service may have woken (and been
+            // untracked) during the seconds-long URLSession await; dropping the
+            // result then avoids overwriting the live web view's fresh badge
+            // with a stale background count. The one-shot `pollOnce` caller
+            // passes `requireTracked: false` and uses its own snapshot.
+            let current: TrackedService
+            if requireTracked {
+                guard let live = trackedServices[id] else { return }
+                current = live
+            } else {
+                current = tracked
+            }
+            if count > 0, current.showBadge {
                 badgeManager.updateBadge(for: id, count: count, isMuted: current.isMuted)
             }
         } catch {

@@ -13,16 +13,23 @@ final class UserScriptManager {
     private var messageHandlers: [UUID: NotificationMessageHandler] = [:]
 
     var isServiceMuted: (@Sendable (UUID) -> Bool)?
+    /// Per-service "forward notifications to macOS" flag. Defaults to true when
+    /// unset, preserving behavior for services that predate the toggle.
+    var isServiceNotifyingOS: (@Sendable (UUID) -> Bool)?
     var isDoNotDisturbActive: (@Sendable () -> Bool)?
     var autoDismissCookieBanners: Bool = true
 
     func configureScripts(for instance: ServiceInstance, on controller: WKUserContentController) {
         let mutedCheck = isServiceMuted
+        let notifyOSCheck = isServiceNotifyingOS
         let dndCheck = isDoNotDisturbActive
         let handler = NotificationMessageHandler(
             serviceID: instance.id,
             isMutedCheck: { id in
                 mutedCheck?(id) ?? false
+            },
+            notifyOSCheck: { id in
+                notifyOSCheck?(id) ?? true
             },
             isDoNotDisturbCheck: {
                 dndCheck?() ?? false
@@ -152,15 +159,18 @@ final class UserScriptManager {
 final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unchecked Sendable {
     let serviceID: UUID
     let isMutedCheck: @Sendable (UUID) -> Bool
+    let notifyOSCheck: @Sendable (UUID) -> Bool
     let isDoNotDisturbCheck: @Sendable () -> Bool
 
     init(
         serviceID: UUID,
         isMutedCheck: @escaping @Sendable (UUID) -> Bool,
+        notifyOSCheck: @escaping @Sendable (UUID) -> Bool,
         isDoNotDisturbCheck: @escaping @Sendable () -> Bool
     ) {
         self.serviceID = serviceID
         self.isMutedCheck = isMutedCheck
+        self.notifyOSCheck = notifyOSCheck
         self.isDoNotDisturbCheck = isDoNotDisturbCheck
         super.init()
     }
@@ -182,8 +192,11 @@ final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unche
             return
         }
 
-        guard !isMutedCheck(serviceID) else { return }
-        guard !isDoNotDisturbCheck() else { return }
+        guard NotificationManager.shouldPostOSNotification(
+            isMuted: isMutedCheck(serviceID),
+            notifyOS: notifyOSCheck(serviceID),
+            doNotDisturb: isDoNotDisturbCheck()
+        ) else { return }
 
         let content = UNMutableNotificationContent()
         content.title = payload.title

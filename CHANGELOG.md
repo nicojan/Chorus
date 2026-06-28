@@ -46,6 +46,18 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ### Added
 
+- **Per-service macOS notification control.** A new "macOS Notifications" toggle
+  (Settings) lets each service forward its web notifications to macOS Notification
+  Center independently of its unread badge. Previously muting was the only way to
+  silence a service's banners, which also hid the badge. Mute now stays the master
+  override — it silences both and still cascades from spaces — while badge and
+  banner are separate standing choices. Stored as an optional flag (defaults to
+  enabled) for safe SwiftData lightweight migration.
+- **Badges populate immediately on startup and after login.** Unread counts now
+  appear the moment a service's page finishes loading (including the post-login
+  redirect) instead of waiting up to a poll interval, and a one-shot launch sweep
+  fetches counts for services outside the active space so per-space aggregate
+  badges are correct right away.
 - **Edit a service.** A new Edit Service sheet (service context menu) renames a
   service, changes its URL (the live web view follows), toggles "Keep loaded in
   the background" (surfacing the previously-unreachable never-hibernate flag),
