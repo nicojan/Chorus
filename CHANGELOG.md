@@ -5,8 +5,15 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-02
+
 ### Fixed
 
+- **Crash cleaning up orphaned data stores.** Launch-time (and post-delete)
+  removal of a deleted service's `WKWebsiteDataStore` ran on a background thread,
+  but WebKit's data-store registry is main-thread-only; removing a
+  still-registered store trapped inside WebKit and crashed the app. Cleanup now
+  runs on the main actor.
 - **Badge counts no longer lost when muting/un-muting a service.** `BadgeManager`
   stored `0` for muted or badge-disabled services, destroying the real unread
   count. Un-muting left the badge at `0` until the next poll tick (up to 30s, or
@@ -43,6 +50,10 @@ All notable changes to Chorus are documented here. Format loosely follows
   the selection is visible.
 - **Hibernated-poller cookie matching follows RFC 6265** path rules (it no
   longer matches request `/foobar` against cookie `/foo`).
+- **Badge counts now surface for services that gate their title on Page
+  Visibility** (WhatsApp, Messenger, Discord, …). Preloaded/off-screen web views
+  report as visible so their unread count still reaches the badge poller; focus
+  is left untouched, so focus-gated desktop notifications keep firing.
 
 ### Added
 
