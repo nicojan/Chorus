@@ -537,10 +537,15 @@ final class AppState {
             dataStoreManager.evict(identifier: identifier)
         }
 
-        Task.detached(priority: .utility) {
+        // Must stay on the main actor. WKWebsiteDataStore's internal
+        // `allDataStores` registry asserts main-thread access, so calling
+        // `remove(forIdentifier:)` from a background thread traps inside WebKit
+        // (EXC_BREAKPOINT). Both `Task.sleep` and the async `remove` suspend
+        // rather than block, so running here doesn't stall the UI.
+        Task { @MainActor in
             // Let SwiftUI finish dropping any WKWebView that referenced
             // a just-deleted service's data store before removing it —
-            // WebKit traps when an in-use store is removed.
+            // WebKit also traps when an in-use store is removed.
             try? await Task.sleep(for: .seconds(2))
 
             var removed: Set<UUID> = []
@@ -553,14 +558,13 @@ final class AppState {
                     AppLogger.dataStore.warning("Failed to remove orphaned data store \(identifier): \(error.localizedDescription)")
                 }
             }
-            await MainActor.run {
-                // Read-modify-write rather than overwriting with a stale
-                // snapshot: another delete may have appended new orphans during
-                // the 2s sleep, and blindly saving `orphans − removed` would
-                // drop them, leaking those stores permanently.
-                let current = Self.loadOrphanedIdentifiers()
-                Self.saveOrphanedIdentifiers(current.subtracting(removed))
-            }
+
+            // Read-modify-write rather than overwriting with a stale snapshot:
+            // another delete may have appended new orphans while we slept, and
+            // blindly saving `orphans − removed` would drop them, leaking those
+            // stores permanently.
+            let current = Self.loadOrphanedIdentifiers()
+            Self.saveOrphanedIdentifiers(current.subtracting(removed))
         }
     }
 
