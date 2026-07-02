@@ -24,3 +24,6 @@ Packages/
 
 # Exported app bundle from Distribute (release prep)
 /Chorus.app
+
+# generate_appcast working directory (release prep)
+/updates/
