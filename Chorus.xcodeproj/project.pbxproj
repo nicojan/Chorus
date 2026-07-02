@@ -362,9 +362,6 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
-					AF8B84099653D817E5B0394C = {
-						DevelopmentTeam = 3CY4DX3K45;
-					};
 				};
 			};
 			buildConfigurationList = 45068A3DD410FA22197DFEDF /* Build configuration list for PBXProject "Chorus" */;
@@ -642,7 +639,6 @@
 				CODE_SIGN_ENTITLEMENTS = Chorus/Chorus.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 3CY4DX3K45;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Chorus/Info.plist;
