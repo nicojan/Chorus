@@ -5,8 +5,10 @@ Notion, ChatGPT, and more) into one window, each with its own fully isolated
 session. A lightweight, WebKit-based alternative to Chromium apps like Rambox
 and Franz, built for Apple Silicon.
 
-> Status: pre-1.0 MVP. Core flows are solid and covered by tests; see
-> [CHANGELOG.md](CHANGELOG.md) for recent work.
+**[Download the latest release](https://github.com/nicojan/Chorus/releases/latest)** (macOS 14 or later). The build is signed, notarized, and updates itself via Sparkle.
+
+> Status: 1.0.0 is the first public release. See [CHANGELOG.md](CHANGELOG.md)
+> for what it includes.
 
 ## Features
 

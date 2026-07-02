@@ -43,7 +43,7 @@ All notable changes to Chorus are documented here. Format loosely follows
   reloaded forever; Chorus now backs off after 3 crashes in 30s and shows a
   recovery page. The connection-error page's "Try Again" reloaded `about:blank`
   (it ran `location.reload()` against a `baseURL:nil` document); it now
-  navigates to the actual failing URL, captured from the error.
+  loads the actual failing URL, captured from the error.
 - **Notification taps are no longer dropped** when they arrive before the
   handler is wired (e.g. a notification launching the app). They're buffered and
   drained, and tapping one now switches to a space that contains the service so
@@ -61,7 +61,7 @@ All notable changes to Chorus are documented here. Format loosely follows
   (Settings) lets each service forward its web notifications to macOS Notification
   Center independently of its unread badge. Previously muting was the only way to
   silence a service's banners, which also hid the badge. Mute now stays the master
-  override — it silences both and still cascades from spaces — while badge and
+  override (it silences both and still cascades from spaces), while badge and
   banner are separate standing choices. Stored as an optional flag (defaults to
   enabled) for safe SwiftData lightweight migration.
 - **Badges populate immediately on startup and after login.** Unread counts now
@@ -70,10 +70,10 @@ All notable changes to Chorus are documented here. Format loosely follows
   fetches counts for services outside the active space so per-space aggregate
   badges are correct right away.
 - **Edit a service.** A new Edit Service sheet (service context menu) renames a
-  service, changes its URL (the live web view follows), toggles "Keep loaded in
-  the background" (surfacing the previously-unreachable never-hibernate flag),
-  and offers "Clear session (log out)" which wipes the service's cookies/storage
-  without deleting it or its place in any space.
+  service or changes its URL, and the live web view follows along. It also
+  toggles "Keep loaded in the background" (surfacing the previously-unreachable
+  never-hibernate flag) and offers "Clear session (log out)", which wipes the
+  service's cookies and storage without deleting it or its place in any space.
 - **Clearer empty states.** The content area now distinguishes "no spaces", "a
   space with services but none selected", and "an empty space"; the last offers
   an Add Service button.
