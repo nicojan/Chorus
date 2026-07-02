@@ -46,6 +46,17 @@ final class UserScriptManager {
         )
         controller.addUserScript(userScript)
 
+        // Page Visibility override — makes preloaded/off-screen views report as
+        // "visible" so services that only write their unread count into the
+        // title while visible (WhatsApp, Messenger, Discord, …) still surface it
+        // for the badge. Focus is intentionally left untouched.
+        let visibilityScript = WKUserScript(
+            source: Self.makeVisibilityOverrideScript(),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        controller.addUserScript(visibilityScript)
+
         // WebRTC call detection — hooks RTCPeerConnection to track active calls
         let callDetectionScript = WKUserScript(
             source: Self.makeCallDetectionScript(),
@@ -71,6 +82,36 @@ final class UserScriptManager {
     /// JavaScript that can be evaluated to check if a WebRTC call is active.
     /// Returns `true` if any RTCPeerConnection is in a connected/active state.
     static let callDetectionQueryJS = "window.__chorusActiveCall === true"
+
+    /// Reports the page as visible even when its web view is preloaded/off-screen,
+    /// so services that gate their unread-count title updates on Page Visibility
+    /// (WhatsApp, Messenger, Discord, …) still surface the count for the badge.
+    ///
+    /// Deliberately does NOT fake `document.hasFocus()` — it stays false for a
+    /// background view — so apps that gate desktop notifications on *focus* keep
+    /// firing them, preserving Chorus's `window.Notification` forwarding.
+    private static func makeVisibilityOverrideScript() -> String {
+        return """
+        (function() {
+            try {
+                Object.defineProperty(document, 'visibilityState', {
+                    configurable: true,
+                    get: function() { return 'visible'; }
+                });
+                Object.defineProperty(document, 'hidden', {
+                    configurable: true,
+                    get: function() { return false; }
+                });
+                // Swallow real visibilitychange events so a page can't react to
+                // the view actually going off-screen and revert to "hidden"
+                // behavior; the overridden getters keep reporting visible.
+                document.addEventListener('visibilitychange', function(e) {
+                    e.stopImmediatePropagation();
+                }, true);
+            } catch (e) {}
+        })();
+        """
+    }
 
     /// Hooks RTCPeerConnection to detect active voice/video calls.
     /// Sets `window.__chorusActiveCall = true` when a connection is active,
