@@ -544,6 +544,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Chorus/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				INFOPLIST_KEY_NSUserNotificationsUsageDescription = "Chorus forwards notifications from your web services to macOS.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -551,6 +552,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0.0;
+				DEVELOPMENT_TEAM = 3CY4DX3K45;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nicojan.Chorus;
 				PRODUCT_NAME = Chorus;
 				SDKROOT = macosx;
@@ -636,6 +638,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Chorus/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				INFOPLIST_KEY_NSUserNotificationsUsageDescription = "Chorus forwards notifications from your web services to macOS.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -643,6 +646,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0.0;
+				DEVELOPMENT_TEAM = 3CY4DX3K45;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nicojan.Chorus;
 				PRODUCT_NAME = Chorus;
 				SDKROOT = macosx;
