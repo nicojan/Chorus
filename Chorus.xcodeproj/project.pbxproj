@@ -50,6 +50,7 @@
 		DB9B6FD9265D63DCA11B6CFC /* AppCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E0D298EDEBDC1F1EB614912 /* AppCapabilities.swift */; };
 		DF712EA56B5AE10C7BF77176 /* WebViewCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438D78C9503E732B7792FA10 /* WebViewCoordinator.swift */; };
 		EA76A0A9EF76E4CD3DE9217C /* ServiceSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B84763F63532609A902F453A /* ServiceSidebarView.swift */; };
+		F1E3E4A757954012789BD79D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = F63EF11A2754495AEB09C97E /* Sparkle */; };
 		F709F5524B2146C260A0BCB0 /* BadgeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 706D85D3C09C182826CD4EBA /* BadgeManager.swift */; };
 		FC24793EEE444C3F48F17559 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BEC6FCF1B60E1B9CD89A3A2 /* NotificationManager.swift */; };
 /* End PBXBuildFile section */
@@ -115,6 +116,17 @@
 		FBA2B8A19B41207F66E51CC3 /* ChorusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChorusTests.swift; sourceTree = "<group>"; };
 		FEC9767949C165F7DCD9A281 /* Space.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Space.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		BF90968F35D5E4EA1732829D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F1E3E4A757954012789BD79D /* Sparkle in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		1E8D1445F53AC2640039824D /* WebView */ = {
@@ -327,6 +339,7 @@
 			buildPhases = (
 				4F2F2A932F1B2186C8D50307 /* Sources */,
 				E94009386810F8E81AF8C17C /* Resources */,
+				BF90968F35D5E4EA1732829D /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -334,7 +347,7 @@
 			);
 			name = Chorus;
 			packageProductDependencies = (
-				D09B3D862FEEDE7D00878113 /* Sparkle */,
+				F63EF11A2754495AEB09C97E /* Sparkle */,
 			);
 			productName = Chorus;
 			productReference = 94326A5DEE01135F945E9DF3 /* Chorus.app */;
@@ -347,7 +360,12 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 2660;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					AF8B84099653D817E5B0394C = {
+						DevelopmentTeam = 3CY4DX3K45;
+					};
+				};
 			};
 			buildConfigurationList = 45068A3DD410FA22197DFEDF /* Build configuration list for PBXProject "Chorus" */;
 			developmentRegion = en;
@@ -359,7 +377,7 @@
 			mainGroup = E6B956F378DA41D1697BAD7C;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				D09B3D852FEEDE7D00878113 /* XCRemoteSwiftPackageReference "Sparkle" */,
+				76692F1A5ADEE9BDB4D2EDF7 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3E034E22799F25CC522A1262 /* Products */;
@@ -458,7 +476,6 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
-				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -477,7 +494,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -508,11 +524,9 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -526,7 +540,6 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
@@ -540,7 +553,7 @@
 				CODE_SIGN_ENTITLEMENTS = Chorus/Chorus.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 3CY4DX3K45;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Chorus/Info.plist;
@@ -552,7 +565,6 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0.0;
-				DEVELOPMENT_TEAM = 3CY4DX3K45;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nicojan.Chorus;
 				PRODUCT_NAME = Chorus;
 				SDKROOT = macosx;
@@ -564,7 +576,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -595,11 +606,9 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -620,7 +629,6 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -634,7 +642,7 @@
 				CODE_SIGN_ENTITLEMENTS = Chorus/Chorus.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 3CY4DX3K45;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Chorus/Info.plist;
@@ -646,7 +654,6 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0.0;
-				DEVELOPMENT_TEAM = 3CY4DX3K45;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nicojan.Chorus;
 				PRODUCT_NAME = Chorus;
 				SDKROOT = macosx;
@@ -659,7 +666,6 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
-				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -707,7 +713,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		D09B3D852FEEDE7D00878113 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+		76692F1A5ADEE9BDB4D2EDF7 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sparkle-project/Sparkle";
 			requirement = {
@@ -718,9 +724,9 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		D09B3D862FEEDE7D00878113 /* Sparkle */ = {
+		F63EF11A2754495AEB09C97E /* Sparkle */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = D09B3D852FEEDE7D00878113 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			package = 76692F1A5ADEE9BDB4D2EDF7 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */

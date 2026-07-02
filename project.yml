@@ -6,6 +6,11 @@ options:
   xcodeVersion: "15.0"
   createIntermediateGroups: true
 
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    majorVersion: 2.9.3
+
 targets:
   Chorus:
     type: application
@@ -18,6 +23,8 @@ targets:
       - path: Chorus/Resources/ServiceCatalog.json
       - path: Chorus/Resources/NotificationScripts
         optional: true
+    dependencies:
+      - package: Sparkle
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.nicojan.Chorus
@@ -34,6 +41,7 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: true
         INFOPLIST_KEY_NSUserNotificationsUsageDescription: "Chorus forwards notifications from your web services to macOS."
+        INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.social-networking"
     scheme:
       testTargets:
         - ChorusTests
