@@ -80,14 +80,26 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             return
         }
 
-        // 3. Cross-domain target=_blank links route through the external-link
-        //    handler so AppState can match the URL against another existing
-        //    Chorus service before falling back to NSWorkspace. Same-domain
-        //    target=_blank still goes through createWebViewWith (OAuth popups).
-        if navigationAction.targetFrame == nil,
+        // 3. A link the user clicked that leaves the current service is routed
+        //    through the external-link handler, which opens another matching
+        //    Chorus service if one owns that domain, otherwise the default
+        //    browser. This covers both new-window links (targetFrame == nil) and
+        //    plain in-frame link clicks.
+        //
+        //    Gated deliberately:
+        //    - only `.linkActivated` (a real user click), so OAuth/SSO redirects
+        //      and other programmatic navigations (navigationType `.other`) stay
+        //      in-app and can complete;
+        //    - only the main frame (or a new-window request), so an embedded
+        //      iframe navigating cross-origin isn't kicked out;
+        //    - "leaves the service" is `!belongsToService`, which keeps
+        //      *.slack.com workspaces in-app but treats Google products
+        //      (docs. vs mail.google.com) as separate.
+        if navigationAction.navigationType == .linkActivated,
+           navigationAction.targetFrame?.isMainFrame ?? true,
            let currentHost = webView.url?.host,
            let targetHost = url.host,
-           !Self.areSameDomain(currentHost, targetHost) {
+           !Self.belongsToService(targetHost, serviceHost: currentHost) {
             if let handler = externalLinkHandler {
                 handler(url)
             } else {
@@ -97,8 +109,8 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             return
         }
 
-        // 4. Everything else (same-domain navigation, cross-domain in-frame
-        //    OAuth round-trips, target=_blank same-domain popups handled by
+        // 4. Everything else (same-service navigation, cross-domain in-frame
+        //    OAuth round-trips, and programmatic new-window requests handled by
         //    createWebViewWith) loads in place.
         decisionHandler(.allow)
     }
@@ -279,6 +291,18 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         for navigationAction: WKNavigationAction,
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
+        // If the new-window request is for the same service — e.g. Slack opening
+        // a workspace via window.open / target=_blank — load it in the existing
+        // web view instead of spawning a separate NSWindow. Only genuinely
+        // cross-service popups (real OAuth sign-in windows to another domain)
+        // fall through and get their own window below.
+        if let targetHost = navigationAction.request.url?.host,
+           let openerHost = webView.url?.host,
+           Self.belongsToService(targetHost, serviceHost: openerHost) {
+            webView.load(navigationAction.request)
+            return nil
+        }
+
         // Clean up any existing popup before opening a new one
         cleanupPopup()
 
@@ -426,14 +450,9 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
     // MARK: - Helpers
 
-    /// Exposed so AppState can use the same eTLD+1 matching when deciding
-    /// whether an external URL belongs to a service already in Chorus.
-    static func areSameDomain(_ a: String, _ b: String) -> Bool {
-        let normalizedA = effectiveDomain(a)
-        let normalizedB = effectiveDomain(b)
-        return normalizedA == normalizedB
-    }
-
+    /// Reduces a host to its registrable domain (eTLD+1), e.g.
+    /// `app.slack.com` → `slack.com`, `foo.co.uk` → `foo.co.uk`. Exposed so
+    /// `belongsToService` and its callers share one definition of "same site".
     static func effectiveDomain(_ host: String) -> String {
         var h = host.lowercased()
         if h.hasPrefix("www.") {
@@ -469,5 +488,48 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
         // Standard: eTLD+1 is last 2 parts
         return lastTwo
+    }
+
+    /// Registrable domains that host many distinct products on different
+    /// subdomains — Gmail, Google Docs, and Drive all live under google.com.
+    /// For these, only the exact host counts as "the same service", so a Docs
+    /// link clicked in Gmail is routed out instead of hijacking the inbox.
+    /// Services that use per-tenant/workspace subdomains (e.g. *.slack.com,
+    /// *.atlassian.net) are deliberately NOT listed — there a subdomain change
+    /// is still the same app and should stay in-app.
+    static let sharedUmbrellaDomains: Set<String> = [
+        "google.com",
+        "microsoft.com",
+        "live.com",
+        "yahoo.com",
+        "apple.com",
+        "amazon.com",
+    ]
+
+    /// Whether `targetHost` belongs to the service whose current (or home) host
+    /// is `serviceHost`. Same registrable domain counts as the same service — so
+    /// Slack can switch workspaces across *.slack.com in-app — except for
+    /// shared-umbrella domains (see `sharedUmbrellaDomains`) where only the exact
+    /// host matches. Used to decide in-app vs. browser for links and new windows.
+    static func belongsToService(_ targetHost: String, serviceHost: String) -> Bool {
+        let target = normalizedHost(targetHost)
+        let service = normalizedHost(serviceHost)
+        guard !target.isEmpty, !service.isEmpty else { return false }
+
+        let targetDomain = effectiveDomain(target)
+        guard targetDomain == effectiveDomain(service) else { return false }
+
+        if sharedUmbrellaDomains.contains(targetDomain) {
+            return target == service
+        }
+        return true
+    }
+
+    /// Lowercases a host and drops a leading `www.` so host comparisons ignore
+    /// casing and the optional www prefix.
+    private static func normalizedHost(_ host: String) -> String {
+        var h = host.lowercased()
+        if h.hasPrefix("www.") { h = String(h.dropFirst(4)) }
+        return h
     }
 }

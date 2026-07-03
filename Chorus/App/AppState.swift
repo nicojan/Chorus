@@ -167,10 +167,11 @@ final class AppState {
     }
 
     /// Decides what to do with a link that the user clicked in one service
-    /// and which targets a different origin. If any other Chorus service
-    /// belongs to the same eTLD+1 we switch to it (preserving auth/space
-    /// context) and navigate to the deep URL. Otherwise we hand off to the
-    /// system default browser.
+    /// and which targets a different origin. If any other Chorus service owns
+    /// that domain (same registrable domain, or the exact host for
+    /// shared-umbrella domains like google.com) we switch to it (preserving
+    /// auth/space context) and navigate to the deep URL. Otherwise we hand off
+    /// to the system default browser.
     ///
     /// Multi-account aware: when several services match the same host (e.g.
     /// personal + work Notion), we prefer the match in the current space so
@@ -196,7 +197,7 @@ final class AppState {
 
         let matches = services.filter { service in
             guard let serviceHost = URL(string: service.url)?.host else { return false }
-            return WebViewCoordinator.areSameDomain(host, serviceHost)
+            return WebViewCoordinator.belongsToService(host, serviceHost: serviceHost)
         }
         if matches.isEmpty { return nil }
         if matches.count == 1 { return matches.first }

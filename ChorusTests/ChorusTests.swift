@@ -482,4 +482,34 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(ServiceInstance(label: "X", url: "https://x.test", darkMode: "auto").darkModePreference, .auto)
         XCTAssertEqual(ServiceInstance(label: "X", url: "https://x.test", darkMode: "garbage").darkModePreference, .off)
     }
+
+    // MARK: - Link routing (belongsToService)
+
+    func testBelongsToServiceKeepsSlackWorkspacesInApp() {
+        // Same registrable domain, subdomain differs — Slack switching
+        // workspaces must stay in-app rather than spawning a new window.
+        XCTAssertTrue(WebViewCoordinator.belongsToService("app.slack.com", serviceHost: "app.slack.com"))
+        XCTAssertTrue(WebViewCoordinator.belongsToService("myteam.slack.com", serviceHost: "app.slack.com"))
+        XCTAssertTrue(WebViewCoordinator.belongsToService("app.slack.com", serviceHost: "myteam.slack.com"))
+    }
+
+    func testBelongsToServiceSeparatesGoogleProducts() {
+        // Shared-umbrella domain: a Docs/Drive link must NOT be treated as part
+        // of the Gmail service (the reported "Google Docs opened in Gmail" bug).
+        XCTAssertFalse(WebViewCoordinator.belongsToService("docs.google.com", serviceHost: "mail.google.com"))
+        XCTAssertFalse(WebViewCoordinator.belongsToService("drive.google.com", serviceHost: "mail.google.com"))
+        // The exact same host is still the same service.
+        XCTAssertTrue(WebViewCoordinator.belongsToService("mail.google.com", serviceHost: "mail.google.com"))
+        XCTAssertTrue(WebViewCoordinator.belongsToService("docs.google.com", serviceHost: "docs.google.com"))
+    }
+
+    func testBelongsToServiceRejectsUnrelatedDomains() {
+        XCTAssertFalse(WebViewCoordinator.belongsToService("example.com", serviceHost: "slack.com"))
+        XCTAssertFalse(WebViewCoordinator.belongsToService("notion.so", serviceHost: "mail.google.com"))
+    }
+
+    func testBelongsToServiceIgnoresWWWAndCase() {
+        XCTAssertTrue(WebViewCoordinator.belongsToService("www.notion.so", serviceHost: "notion.so"))
+        XCTAssertTrue(WebViewCoordinator.belongsToService("APP.SLACK.COM", serviceHost: "app.slack.com"))
+    }
 }
