@@ -8,6 +8,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     private var popupWindow: NSWindow?
     private var popupTitleObservation: NSKeyValueObservation?
 
+    /// The service's main web view that opened the current popup. Kept so we can
+    /// reload it once the sign-in popup closes (see reloadOpenerAfterPopup).
+    private weak var openerWebView: WKWebView?
+
     /// Fallback URL to load if the WebContent process crashes before any
     /// navigation has committed (so `webView.reload()` has nothing to retry).
     var fallbackURL: URL?
@@ -278,6 +282,12 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         // Clean up any existing popup before opening a new one
         cleanupPopup()
 
+        // Remember the service's main web view so we can reload it after the
+        // popup closes. The popup shares this data store, so once sign-in
+        // finishes the session cookies are already here — the main view just
+        // needs to reload to leave its signed-out page.
+        openerWebView = webView
+
         // CRITICAL: Use the configuration passed in — it inherits the parent's data store
         let popup = WKWebView(frame: .zero, configuration: configuration)
         popup.navigationDelegate = self
@@ -335,7 +345,20 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     @objc private func popupWindowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow,
               window === popupWindow else { return }
+        reloadOpenerAfterPopup()
         cleanupPopup()
+    }
+
+    /// After a sign-in / OAuth popup closes, the shared data store already holds
+    /// the new session cookies, but the service's main web view is still on its
+    /// signed-out page. Reload it so the user lands on the authenticated app.
+    private func reloadOpenerAfterPopup() {
+        guard let opener = openerWebView else { return }
+        if opener.url != nil {
+            opener.reload()
+        } else if let fallback = fallbackURL {
+            opener.load(URLRequest(url: fallback))
+        }
     }
 
     private func cleanupPopup() {
@@ -357,6 +380,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
     func webViewDidClose(_ webView: WKWebView) {
         if webView === popupWebView {
+            reloadOpenerAfterPopup()
             cleanupPopup()
         }
     }
