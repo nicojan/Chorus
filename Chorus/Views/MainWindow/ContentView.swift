@@ -43,7 +43,7 @@ struct ContentView: View {
                 }
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity)
-                .background(Color.red.opacity(0.85))
+                .background(ServiceIconPalette.badgeRed)
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Offline")
             }
