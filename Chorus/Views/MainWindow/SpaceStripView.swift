@@ -10,7 +10,6 @@ struct SpaceStripView: View {
     @State private var showingAddSpace = false
     @State private var editingSpace: Space?
     @State private var confirmingDeleteSpace: Space?
-    @State private var draggingSpaceID: UUID?
 
     var body: some View {
         VStack(spacing: 2) {
@@ -29,15 +28,17 @@ struct SpaceStripView: View {
                 ) {
                     selectedSpaceID = space.id
                 }
-                .opacity(draggingSpaceID == space.id ? 0.4 : 1.0)
                 .draggable(space.id.uuidString) {
+                    // Custom drag preview. Source-dimming is intentionally left
+                    // to SwiftUI: manually tracking a "dragging" id to dim the
+                    // source can't be cleared reliably (a drop on itself or a
+                    // cancelled drag never fires the drop handler), which left
+                    // the icon stuck dim after letting go.
                     Text(space.emoji)
                         .font(.title3)
                         .padding(6)
                         .background(.ultraThickMaterial)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .onAppear { draggingSpaceID = space.id }
-                        .onDisappear { draggingSpaceID = nil }
                 }
                 .dropDestination(for: String.self) { items, _ in
                     guard let droppedIDString = items.first,
@@ -45,7 +46,6 @@ struct SpaceStripView: View {
                           droppedID != space.id
                     else { return false }
                     reorderSpace(droppedSpaceID: droppedID, beforeSpace: space)
-                    draggingSpaceID = nil
                     return true
                 }
                 .accessibilityAction(named: "Move up") { moveSpaceUp(space) }
