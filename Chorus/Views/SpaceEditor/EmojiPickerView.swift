@@ -25,6 +25,17 @@ struct EmojiPickerView: View {
             emojiGrid
             systemPickerButton
         }
+        // The system Character Viewer ("More Emoji…") inserts the chosen emoji
+        // into the first responder — which is the search field. Detect when the
+        // search text is actually emoji (rather than a keyword query) and apply
+        // it as the selection instead of leaving it stranded in the search box.
+        .onChange(of: searchText) { _, newValue in
+            if let emoji = Self.emojiToPromote(from: newValue) {
+                selectedEmoji = emoji
+                addToRecents(emoji)
+                searchText = ""
+            }
+        }
     }
 
     private var searchField: some View {
@@ -180,5 +191,52 @@ struct EmojiPickerView: View {
             recents = Array(recents.prefix(20))
         }
         recentEmojisData = (try? JSONEncoder().encode(recents)) ?? Data()
+    }
+
+    /// When text lands in the search field that is actually emoji — picked from
+    /// the system Character Viewer via "More Emoji…", or pasted/typed directly —
+    /// return the emoji to apply as the selection. Returns nil for ordinary
+    /// keyword searches so those still filter the grid.
+    ///
+    /// When several emoji are present, the last one (the most recent Character
+    /// Viewer pick) wins.
+    static func emojiToPromote(from searchText: String) -> String? {
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let chars = Array(trimmed)
+        guard chars.allSatisfy({ $0.isEmojiComposed }),
+              chars.contains(where: { $0.isTrueEmoji })
+        else { return nil }
+
+        return chars.last.map(String.init)
+    }
+}
+
+private extension Character {
+    /// Every Unicode scalar in this grapheme is part of an emoji sequence —
+    /// a base emoji, a skin-tone modifier, a ZWJ/variation selector, or the
+    /// combining keycap mark.
+    var isEmojiComposed: Bool {
+        unicodeScalars.allSatisfy { scalar in
+            scalar.properties.isEmoji
+                || scalar.properties.isEmojiModifier
+                || scalar.properties.isEmojiModifierBase
+                || scalar == "\u{200D}"   // zero-width joiner
+                || scalar == "\u{FE0F}"   // emoji variation selector
+                || scalar == "\u{FE0E}"   // text variation selector
+                || scalar == "\u{20E3}"   // combining enclosing keycap
+        }
+    }
+
+    /// At least one scalar is a genuine pictographic emoji. Excludes bare ASCII
+    /// digits, `#`, and `*`, which report `isEmoji == true` but are only emoji
+    /// as keycap sequences.
+    var isTrueEmoji: Bool {
+        unicodeScalars.contains { scalar in
+            scalar.properties.isEmojiPresentation
+                || scalar.value >= 0x1F000
+                || scalar == "\u{FE0F}"
+        }
     }
 }

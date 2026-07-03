@@ -330,4 +330,32 @@ final class ChorusTests: XCTestCase {
         service.osNotificationsEnabled = true
         XCTAssertTrue(service.notifiesOSEffective)
     }
+
+    // MARK: - EmojiPickerView.emojiToPromote
+
+    func testEmojiToPromotePromotesEmojiFromSearchField() {
+        // A single emoji picked from the system Character Viewer lands as the
+        // selection rather than a search query.
+        XCTAssertEqual(EmojiPickerView.emojiToPromote(from: "🎉"), "🎉")
+        // Skin-tone modifiers, ZWJ sequences, VS16, and flags stay intact.
+        XCTAssertEqual(EmojiPickerView.emojiToPromote(from: "👍🏽"), "👍🏽")
+        XCTAssertEqual(EmojiPickerView.emojiToPromote(from: "👩‍💻"), "👩‍💻")
+        XCTAssertEqual(EmojiPickerView.emojiToPromote(from: "❤️"), "❤️")
+        XCTAssertEqual(EmojiPickerView.emojiToPromote(from: "🇺🇸"), "🇺🇸")
+        // Surrounding whitespace is ignored.
+        XCTAssertEqual(EmojiPickerView.emojiToPromote(from: "  🚀 "), "🚀")
+        // When several emoji are present, the most recent pick wins.
+        XCTAssertEqual(EmojiPickerView.emojiToPromote(from: "😀😃"), "😃")
+    }
+
+    func testEmojiToPromoteLeavesKeywordSearchesAlone() {
+        // Ordinary text must keep filtering the grid, not get promoted.
+        XCTAssertNil(EmojiPickerView.emojiToPromote(from: "smile"))
+        XCTAssertNil(EmojiPickerView.emojiToPromote(from: ""))
+        XCTAssertNil(EmojiPickerView.emojiToPromote(from: "   "))
+        // Bare digits report isEmoji == true but aren't real emoji.
+        XCTAssertNil(EmojiPickerView.emojiToPromote(from: "123"))
+        // Mixed text + emoji is treated as a search.
+        XCTAssertNil(EmojiPickerView.emojiToPromote(from: "cat 🐱"))
+    }
 }
