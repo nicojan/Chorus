@@ -5,6 +5,23 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+
+- Chorus now checks for updates automatically on a daily schedule, without
+  asking on first launch.
+
+## [1.0.1] - 2026-07-02
+
+### Fixed
+
+- Closing a service's sign-in window (for example, Gmail opening its login in a
+  separate window) no longer crashes the app.
+- A space icon no longer stays dimmed after you drag it and let go, including
+  when you drop it back onto itself.
+- An emoji chosen from "More Emoji…" now becomes the space's emoji instead of
+  landing in the search field.
+- "Check for Updates…" now appears in the Chorus app menu.
+
 ## [1.0.0] - 2026-07-02
 
 ### Fixed
