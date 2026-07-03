@@ -5,6 +5,33 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Per-service custom CSS, with a preset library and a built-in LinkedIn recipe
+  that trims the page to just its messaging pane.
+- Per-service dark mode for services that lack their own. Set it to Off, On, or
+  Auto, which follows the system appearance.
+- App lock with Touch ID and a password fallback. Choose in Settings whether it
+  locks on launch and when the Mac sleeps, or lock on demand from the menu.
+- Scheduled Do Not Disturb, so badges and banners go quiet during the hours you
+  set.
+- A Chorus-wide default zoom in Settings, still overridable per service with the
+  zoom shortcuts.
+- A mobile-view toggle that loads a service as if on a phone.
+- An About tab showing the version, a link to the source, and a way to check for
+  updates.
+
+### Changed
+
+- Rebuilt the Settings window. Notifications now gives each service a single row
+  with its mute, macOS-notification, and badge controls together, in place of
+  three separate lists.
+
+### Fixed
+
+- Menu-bar-only mode no longer traps you. The menu-bar dropdown now includes a
+  Settings item, so you can always get back to change the setting.
+
 ## [1.0.2] - 2026-07-02
 
 ### Fixed
