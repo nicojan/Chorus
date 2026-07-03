@@ -21,5 +21,12 @@
     <string>https://nicojan.github.io/Chorus/appcast.xml</string>
     <key>SUPublicEDKey</key>
     <string>6/h2Pfjbo39vHie8JIt/kY7h0wQvmQxj9Ea0W3gnH0w=</string>
+    <!-- Check for updates on a schedule without asking on first launch, so
+         users get crash and security fixes. Interval is in seconds (86400 =
+         once a day). -->
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
 </dict>
 </plist>
