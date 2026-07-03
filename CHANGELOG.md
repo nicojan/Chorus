@@ -5,6 +5,8 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-07-02
+
 ### Fixed
 
 - A service that opens sign-in in a separate window (for example, Gmail) now
