@@ -358,4 +358,128 @@ final class ChorusTests: XCTestCase {
         // Mixed text + emoji is treated as a search.
         XCTAssertNil(EmojiPickerView.emojiToPromote(from: "cat 🐱"))
     }
+
+    // MARK: - About: version string
+
+    func testAppVersionStringFormatsShortAndBuild() {
+        XCTAssertEqual(
+            AppVersion.string(from: ["CFBundleShortVersionString": "1.0.2", "CFBundleVersion": "3"]),
+            "Version 1.0.2 (3)"
+        )
+    }
+
+    func testAppVersionStringFallsBackWhenKeysMissing() {
+        XCTAssertEqual(AppVersion.string(from: nil), "Version — (—)")
+        XCTAssertEqual(
+            AppVersion.string(from: ["CFBundleShortVersionString": "2.0"]),
+            "Version 2.0 (—)"
+        )
+    }
+
+    // MARK: - Custom CSS injection + resolution
+
+    func testCSSInjectionScriptEscapesCSSAndTagsStyle() {
+        let css = ".x { content: \"a\"; }\n.y { color: red; }"
+        let script = UserScriptManager.makeCSSInjectionScript(css: css)
+        // The <style> gets a stable id so re-injection is idempotent.
+        XCTAssertTrue(script.contains("chorus-custom-css"))
+        // CSS is embedded as a JSON string literal, so the inner quotes are
+        // escaped rather than able to break out of the script.
+        XCTAssertTrue(script.contains("\\\"a\\\""), "quotes should be JSON-escaped")
+        // The raw newline is encoded, so the second rule can't sit on its own
+        // line inside the JS source.
+        XCTAssertFalse(script.contains("\n.y { color: red; }"), "raw newline must be encoded")
+    }
+
+    func testEffectiveCSSPrefersInstanceThenDefaultThenNothing() {
+        // No instance CSS → the baked-in default for a known service.
+        XCTAssertEqual(
+            ServiceCSSDefaults.effectiveCSS(instanceCSS: nil, catalogID: "linkedin"),
+            CSSPresets.linkedInMessaging
+        )
+        // An instance override wins over the default.
+        XCTAssertEqual(
+            ServiceCSSDefaults.effectiveCSS(instanceCSS: "body{}", catalogID: "linkedin"),
+            "body{}"
+        )
+        // A blank override injects nothing — an explicit "no CSS".
+        XCTAssertNil(ServiceCSSDefaults.effectiveCSS(instanceCSS: "   ", catalogID: "linkedin"))
+        // A service with neither an override nor a default gets nothing.
+        XCTAssertNil(ServiceCSSDefaults.effectiveCSS(instanceCSS: nil, catalogID: "slack"))
+        XCTAssertNil(ServiceCSSDefaults.effectiveCSS(instanceCSS: nil, catalogID: nil))
+    }
+
+    func testLinkedInShipsBakedInMessagingCSS() {
+        let css = ServiceCSSDefaults.css(forCatalogID: "linkedin")
+        XCTAssertNotNil(css)
+        XCTAssertTrue(css?.contains("#global-nav") == true)
+        XCTAssertTrue(css?.contains(".scaffold-layout__aside") == true)
+    }
+
+    func testServiceInstanceCustomCSSDefaultsNil() {
+        let service = ServiceInstance(label: "X", url: "https://x.test", catalogEntryID: "linkedin")
+        // A fresh instance carries no override, so it tracks the baked-in default.
+        XCTAssertNil(service.customCSS)
+    }
+
+    // MARK: - Zoom resolution
+
+    @MainActor
+    func testEffectiveZoomPrefersPerServiceThenGlobalDefault() {
+        // An explicit per-service zoom wins over the global default.
+        XCTAssertEqual(AppState.effectiveZoom(pageZoom: 1.25, defaultZoom: 0.9), 1.25)
+        // With no per-service zoom, the global default applies.
+        XCTAssertEqual(AppState.effectiveZoom(pageZoom: nil, defaultZoom: 0.9), 0.9)
+        XCTAssertEqual(AppState.effectiveZoom(pageZoom: nil, defaultZoom: 1.0), 1.0)
+    }
+
+    func testAppPreferencesDefaultZoomEffectiveFallsBackToOne() {
+        XCTAssertEqual(AppPreferences().defaultZoomEffective, 1.0)
+        XCTAssertEqual(AppPreferences(defaultZoom: 0.8).defaultZoomEffective, 0.8)
+    }
+
+    // MARK: - Scheduled DND (quiet hours)
+
+    @MainActor
+    func testQuietHoursSameDayWindow() {
+        // 09:00–17:00.
+        let start = 9 * 60, end = 17 * 60
+        XCTAssertTrue(AppState.isWithinQuietHours(nowMinutes: 10 * 60, start: start, end: end))
+        XCTAssertFalse(AppState.isWithinQuietHours(nowMinutes: 8 * 60, start: start, end: end))
+        XCTAssertTrue(AppState.isWithinQuietHours(nowMinutes: end - 1, start: start, end: end))
+        XCTAssertFalse(AppState.isWithinQuietHours(nowMinutes: end, start: start, end: end), "end is exclusive")
+        XCTAssertTrue(AppState.isWithinQuietHours(nowMinutes: start, start: start, end: end), "start is inclusive")
+    }
+
+    @MainActor
+    func testQuietHoursWrapsMidnight() {
+        // 22:00–07:00.
+        let start = 22 * 60, end = 7 * 60
+        XCTAssertTrue(AppState.isWithinQuietHours(nowMinutes: 23 * 60, start: start, end: end))
+        XCTAssertTrue(AppState.isWithinQuietHours(nowMinutes: 5 * 60, start: start, end: end))
+        XCTAssertFalse(AppState.isWithinQuietHours(nowMinutes: end, start: start, end: end), "end is exclusive")
+        XCTAssertTrue(AppState.isWithinQuietHours(nowMinutes: end - 1, start: start, end: end))
+        XCTAssertFalse(AppState.isWithinQuietHours(nowMinutes: 20 * 60, start: start, end: end))
+    }
+
+    @MainActor
+    func testQuietHoursZeroLengthWindowIsNeverActive() {
+        XCTAssertFalse(AppState.isWithinQuietHours(nowMinutes: 12 * 60, start: 9 * 60, end: 9 * 60))
+    }
+
+    // MARK: - Dark mode
+
+    func testDarkModeShouldApplyByPreference() {
+        XCTAssertFalse(DarkMode.shouldApply(preference: .off, systemIsDark: true))
+        XCTAssertTrue(DarkMode.shouldApply(preference: .on, systemIsDark: false))
+        XCTAssertTrue(DarkMode.shouldApply(preference: .auto, systemIsDark: true))
+        XCTAssertFalse(DarkMode.shouldApply(preference: .auto, systemIsDark: false))
+    }
+
+    func testDarkModePreferenceParsesFromStoredString() {
+        XCTAssertEqual(ServiceInstance(label: "X", url: "https://x.test").darkModePreference, .off)
+        XCTAssertEqual(ServiceInstance(label: "X", url: "https://x.test", darkMode: "on").darkModePreference, .on)
+        XCTAssertEqual(ServiceInstance(label: "X", url: "https://x.test", darkMode: "auto").darkModePreference, .auto)
+        XCTAssertEqual(ServiceInstance(label: "X", url: "https://x.test", darkMode: "garbage").darkModePreference, .off)
+    }
 }

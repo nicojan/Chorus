@@ -57,10 +57,15 @@ struct ChorusApp: App {
 
                 Button(appState.doNotDisturb ? "Turn Off Do Not Disturb" : "Do Not Disturb") {
                     appState.doNotDisturb.toggle()
-                    appState.badgeManager.doNotDisturb = appState.doNotDisturb
-                    appState.badgeManager.updateDockBadge()
+                    appState.refreshEffectiveDoNotDisturb()
                 }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
+
+                Button("Lock Now") {
+                    appState.lock()
+                }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
+                .disabled(!appState.appLockEnabled)
             }
 
             KeyboardShortcutCommands(
@@ -118,9 +123,15 @@ struct ChorusApp: App {
         }
 
         Settings {
+            #if canImport(Sparkle)
+            SettingsView(updater: updaterController.updater)
+                .environment(appState)
+                .modelContainer(appState.modelContainer)
+            #else
             SettingsView()
                 .environment(appState)
                 .modelContainer(appState.modelContainer)
+            #endif
         }
     }
 

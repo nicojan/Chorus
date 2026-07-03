@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import WebKit
+import LocalAuthentication
 
 @MainActor
 @Observable
@@ -21,6 +22,30 @@ final class AppState {
     var doNotDisturb = false
     /// Drives the Find-in-Page overlay in WebContentView. Toggled by Cmd-F.
     var findInPageVisible = false
+
+    /// Bumped when a service's web view is rebuilt for an edit that only takes
+    /// effect at creation time (custom CSS). WebContentView observes this and
+    /// re-fetches the active service's web view so the change shows at once.
+    var webViewRebuildToken = 0
+
+    /// Chorus-wide default page zoom, applied to services without an explicit
+    /// per-service zoom. Loaded from AppPreferences at launch.
+    var defaultZoom: Double = 1.0
+
+    /// Scheduled "quiet hours" Do Not Disturb, loaded from AppPreferences.
+    /// `doNotDisturb` above stays the manual toggle; the effective DND that
+    /// gates badges and notifications is `doNotDisturb || scheduledDNDActive`.
+    var scheduledDNDEnabled = false
+    var dndStartMinutes = 22 * 60
+    var dndEndMinutes = 7 * 60
+    private var quietHoursTask: Task<Void, Never>?
+
+    /// App lock (Touch ID / password), loaded from AppPreferences. `isLocked`
+    /// drives an opaque cover over the window content in ContentView.
+    var appLockEnabled = false
+    var lockOnLaunch = true
+    var lockOnSleep = true
+    var isLocked = false
 
     /// Non-nil when the persistent store failed and we fell back to in-memory storage.
     /// The UI should display a warning banner when this is set.
@@ -313,12 +338,30 @@ final class AppState {
     /// the pool's never-hibernate set, and navigates the live web view to the
     /// new URL when it changed. The caller has already mutated the model;
     /// this performs the runtime side effects and saves.
-    func applyServiceEdits(serviceID: UUID, urlChanged: Bool) {
+    func applyServiceEdits(
+        serviceID: UUID,
+        urlChanged: Bool,
+        cssChanged: Bool = false,
+        userAgentChanged: Bool = false
+    ) {
         guard let service = currentServiceInstance(id: serviceID) else { return }
         webViewPool.setNeverHibernate(service.neverHibernate, for: serviceID)
-        if urlChanged, let url = URL(string: service.url) {
-            webViewPool.navigate(serviceID, to: url)
+
+        if cssChanged {
+            // Custom CSS is injected when the web view is built, so rebuild it.
+            // The rebuild also picks up any user-agent change and the new URL,
+            // so those are handled here rather than separately.
+            webViewPool.recreateWebView(for: serviceID, preserveURL: !urlChanged)
+            webViewRebuildToken &+= 1
+        } else {
+            if userAgentChanged {
+                webViewPool.setUserAgent(service.userAgent, for: serviceID)
+            }
+            if urlChanged, let url = URL(string: service.url) {
+                webViewPool.navigate(serviceID, to: url)
+            }
         }
+
         do {
             try modelContainer.mainContext.save()
         } catch {
@@ -356,8 +399,145 @@ final class AppState {
         guard let id = webViewPool.activeServiceID,
               let webView = webViewPool.liveWebView(for: id),
               let service = currentServiceInstance(id: id) else { return }
-        let target = max(0.5, min(3.0, service.zoomLevelEffective * factor))
+        let target = max(0.5, min(3.0, Self.effectiveZoom(pageZoom: service.pageZoom, defaultZoom: defaultZoom) * factor))
         applyZoom(target, to: webView, service: service)
+    }
+
+    /// The zoom a service should render at: its own explicit zoom if set,
+    /// otherwise the Chorus-wide default. Pure so it can be unit-tested.
+    static func effectiveZoom(pageZoom: Double?, defaultZoom: Double) -> Double {
+        pageZoom ?? defaultZoom
+    }
+
+    /// The effective zoom for a specific service, using the current global default.
+    func effectiveZoom(for service: ServiceInstance) -> Double {
+        Self.effectiveZoom(pageZoom: service.pageZoom, defaultZoom: defaultZoom)
+    }
+
+    /// Applies a new Chorus-wide default zoom in memory and to every open
+    /// service that has no explicit per-service zoom. Persistence is handled by
+    /// the Settings view (mirrors the badge/presence preferences). Clamped to
+    /// the same 0.5x–3.0x range as manual zoom.
+    func applyDefaultZoom(_ zoom: Double) {
+        let clamped = max(0.5, min(3.0, zoom))
+        defaultZoom = clamped
+        let services = (try? modelContainer.mainContext.fetch(FetchDescriptor<ServiceInstance>())) ?? []
+        for service in services where service.pageZoom == nil {
+            webViewPool.liveWebView(for: service.id)?.pageZoom = CGFloat(clamped)
+        }
+    }
+
+    // MARK: - Scheduled Do Not Disturb (quiet hours)
+
+    /// True when `nowMinutes` (minutes since midnight) falls inside the
+    /// quiet-hours window, handling the midnight wrap-around (e.g. 22:00→07:00).
+    /// A zero-length window (start == end) is treated as no window. Pure, for
+    /// unit testing.
+    static func isWithinQuietHours(nowMinutes: Int, start: Int, end: Int) -> Bool {
+        guard start != end else { return false }
+        if start < end { return nowMinutes >= start && nowMinutes < end }
+        return nowMinutes >= start || nowMinutes < end
+    }
+
+    /// Whether the schedule currently puts Chorus into Do Not Disturb.
+    var scheduledDNDActive: Bool {
+        guard scheduledDNDEnabled else { return false }
+        let c = Calendar.current.dateComponents([.hour, .minute], from: Date())
+        let mins = (c.hour ?? 0) * 60 + (c.minute ?? 0)
+        return Self.isWithinQuietHours(nowMinutes: mins, start: dndStartMinutes, end: dndEndMinutes)
+    }
+
+    /// Pushes the effective DND (manual toggle OR active schedule) into the
+    /// badge manager, which the notification gate also reads. Call whenever the
+    /// manual toggle or the schedule changes, and on the minute timer.
+    func refreshEffectiveDoNotDisturb() {
+        badgeManager.doNotDisturb = doNotDisturb || scheduledDNDActive
+        badgeManager.updateDockBadge()
+    }
+
+    /// Re-evaluates the quiet-hours schedule every minute so effective DND flips
+    /// at the window boundaries without the user touching anything.
+    private func startQuietHoursTimer() {
+        quietHoursTask?.cancel()
+        quietHoursTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                self?.refreshEffectiveDoNotDisturb()
+            }
+        }
+    }
+
+    // MARK: - App lock
+
+    /// Shows the lock screen. No-op unless the lock is enabled, so a stray
+    /// "Lock Now" can't trap a user who never set it up.
+    func lock() {
+        guard appLockEnabled else { return }
+        isLocked = true
+    }
+
+    /// Prompts for Touch ID (with the login password as fallback) and unlocks on
+    /// success. If the device can't evaluate the policy at all (no password set),
+    /// unlock rather than trap the user out of their app.
+    func authenticate() {
+        let context = LAContext()
+        context.localizedFallbackTitle = "Enter Password"
+        var policyError: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &policyError) else {
+            AppLogger.general.error("App lock: cannot evaluate policy (\(policyError?.localizedDescription ?? "unknown")); unlocking to avoid lockout")
+            isLocked = false
+            return
+        }
+        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Unlock Chorus") { [weak self] success, error in
+            Task { @MainActor in
+                guard let self else { return }
+                if success {
+                    self.isLocked = false
+                } else {
+                    AppLogger.general.info("App lock: authentication did not succeed (\(error?.localizedDescription ?? "cancelled"))")
+                }
+            }
+        }
+    }
+
+    /// Locks when the Mac sleeps or the screen locks, if the user opted in.
+    private func setupLockObservers() {
+        let lockOnSleepIfNeeded: @Sendable (Notification) -> Void = { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.appLockEnabled, self.lockOnSleep else { return }
+                self.lock()
+            }
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main, using: lockOnSleepIfNeeded)
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.apple.screenIsLocked"), object: nil, queue: .main, using: lockOnSleepIfNeeded)
+    }
+
+    // MARK: - Dark mode
+
+    /// Rebuilds any live service set to "auto" dark mode when the system
+    /// appearance flips, so its injected CSS matches (dark CSS is decided at
+    /// web-view build time). Wired to the system light/dark change notification.
+    private func setupAppearanceObserver() {
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.rebuildAutoDarkModeServices() }
+        }
+    }
+
+    func rebuildAutoDarkModeServices() {
+        let services = (try? modelContainer.mainContext.fetch(FetchDescriptor<ServiceInstance>())) ?? []
+        var rebuiltAny = false
+        for service in services where service.darkModePreference == .auto {
+            if webViewPool.hasWebView(for: service.id) {
+                webViewPool.recreateWebView(for: service.id)
+                rebuiltAny = true
+            }
+        }
+        if rebuiltAny { webViewRebuildToken &+= 1 }
     }
 
     /// Reset the active service's zoom to 1.0. Triggered by Cmd-0.
@@ -716,12 +896,30 @@ final class AppState {
         // there can race with NSApplication bootstrap. Defer the
         // AppKit-facing mutations to the next runloop tick.
         userScriptManager.autoDismissCookieBanners = prefs?.autoDismissCookieBanners ?? true
+        defaultZoom = prefs?.defaultZoomEffective ?? 1.0
+        scheduledDNDEnabled = prefs?.scheduledDNDEnabled ?? false
+        dndStartMinutes = prefs?.dndStartMinutes ?? (22 * 60)
+        dndEndMinutes = prefs?.dndEndMinutes ?? (7 * 60)
+
+        appLockEnabled = prefs?.appLockEnabled ?? false
+        lockOnLaunch = prefs?.lockOnLaunch ?? true
+        lockOnSleep = prefs?.lockOnSleep ?? true
+        // Start locked at launch when opted in; ContentView's lock overlay
+        // prompts for Touch ID on appear.
+        if appLockEnabled && lockOnLaunch {
+            isLocked = true
+        }
 
         let resolvedShowBadge = prefs?.showBadgeCountInDock ?? true
         let resolvedPresenceMode = prefs?.appPresenceMode ?? .dock
         Task { @MainActor in
             self.badgeManager.showBadgeCountInDock = resolvedShowBadge
             AppPresenceManager().apply(mode: resolvedPresenceMode)
+            // Apply any active quiet-hours schedule now, then keep it current.
+            self.refreshEffectiveDoNotDisturb()
+            self.startQuietHoursTimer()
+            self.setupLockObservers()
+            self.setupAppearanceObserver()
         }
     }
 

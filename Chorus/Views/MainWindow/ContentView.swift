@@ -103,9 +103,44 @@ struct ContentView: View {
                 .environment(appState)
                 .modelContainer(appState.modelContainer)
         }
+        .overlay {
+            if appState.isLocked {
+                LockView()
+                    .environment(appState)
+                    .transition(.opacity)
+            }
+        }
     }
 
     private func selectFirstService(in spaceID: UUID) {
         appState.selectedServiceID = appState.servicesForSpace(spaceID).first?.id
+    }
+}
+
+/// Opaque cover shown while the app is locked, hiding all content until the user
+/// authenticates. Prompts for Touch ID on appear; the button retries.
+struct LockView: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 48, weight: .light))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text("Chorus is locked")
+                .font(.title2)
+                .bold()
+            Button("Unlock") {
+                appState.authenticate()
+            }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            appState.authenticate()
+        }
     }
 }

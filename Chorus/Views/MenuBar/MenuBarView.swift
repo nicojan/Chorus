@@ -8,6 +8,7 @@ extension Notification.Name {
 struct MenuBarView: View {
     @Query private var services: [ServiceInstance]
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -49,6 +50,15 @@ struct MenuBarView: View {
                     window.makeKeyAndOrderFront(nil)
                 }
             }
+
+            // Settings must be reachable here: in "Menu bar only" mode the app
+            // runs as an accessory with no menu bar, so this is the only way
+            // back to Settings (e.g. to leave menu-bar-only mode).
+            Button("Settings…") {
+                NSApp.activate(ignoringOtherApps: true)
+                openSettings()
+            }
+            .keyboardShortcut(",", modifiers: .command)
 
             Button("Quit Chorus") {
                 NSApp.terminate(nil)

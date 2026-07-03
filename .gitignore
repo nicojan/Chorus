@@ -27,3 +27,6 @@ Packages/
 
 # generate_appcast working directory (release prep)
 /updates/
+
+# Playwright MCP scratch output
+.playwright-mcp/

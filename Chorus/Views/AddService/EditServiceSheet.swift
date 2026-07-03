@@ -14,8 +14,15 @@ struct EditServiceSheet: View {
     @State private var label: String = ""
     @State private var url: String = ""
     @State private var keepLoaded: Bool = false
+    @State private var mobileView: Bool = false
+    @State private var darkMode: DarkModePreference = .off
+    @State private var customCSS: String = ""
     @State private var errorMessage: String?
     @State private var confirmingClearSession = false
+
+    private var defaultCSS: String {
+        ServiceCSSDefaults.css(forCatalogID: service.catalogEntryID) ?? ""
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -53,12 +60,26 @@ struct EditServiceSheet: View {
                 Toggle("Keep loaded in the background", isOn: $keepLoaded)
                     .help("Never hibernate this service, so its notifications and calls keep working even when you're viewing something else. Uses more memory.")
 
+                Toggle("Mobile view", isOn: $mobileView)
+                    .help("Loads this service as if on an iPhone, so it serves its mobile web layout. Applied on save.")
+
+                Picker("Dark mode", selection: $darkMode) {
+                    Text("Off").tag(DarkModePreference.off)
+                    Text("On").tag(DarkModePreference.on)
+                    Text("Auto (follow system)").tag(DarkModePreference.auto)
+                }
+                .help("Forces a dark appearance by inverting the page — for services with no dark theme of their own. Auto follows your Mac's light/dark setting.")
+
                 if let errorMessage {
                     Text(errorMessage)
                         .font(.caption)
                         .foregroundStyle(.red)
                         .accessibilityLabel("Error: \(errorMessage)")
                 }
+
+                Divider()
+
+                customCSSSection
 
                 Divider()
 
@@ -90,6 +111,11 @@ struct EditServiceSheet: View {
             label = service.label
             url = service.url
             keepLoaded = service.neverHibernate
+            mobileView = service.userAgent == UserAgentProvider.mobileSafari
+            darkMode = service.darkModePreference
+            // Prefill with the instance's own CSS, or the baked-in default so
+            // the user can see and tweak what's already applied.
+            customCSS = service.customCSS ?? defaultCSS
         }
         .confirmationDialog(
             "Log out of \(service.label)?",
@@ -105,16 +131,81 @@ struct EditServiceSheet: View {
         }
     }
 
+    @ViewBuilder
+    private var customCSSSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Custom CSS")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            TextEditor(text: $customCSS)
+                .font(.system(.caption, design: .monospaced))
+                .frame(height: 120)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color(nsColor: .separatorColor))
+                )
+                .accessibilityLabel("Custom CSS")
+
+            HStack {
+                Menu("Apply preset") {
+                    ForEach(CSSPresets.all) { preset in
+                        Button(preset.name) { customCSS = preset.css }
+                    }
+                }
+                .fixedSize()
+
+                Spacer()
+
+                Button("Reset to default") {
+                    customCSS = defaultCSS
+                }
+                .disabled(customCSS == defaultCSS)
+            }
+
+            Text("Injected into the page. Leave blank to use the built-in default.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private func saveEdits() {
         switch AddServiceSheet.validatedCustomServiceInput(label: label, url: url) {
         case .invalid(let message):
             errorMessage = message
         case .valid(let validLabel, let validURL):
             let urlChanged = service.url != validURL
+
+            // Collapse "blank" or "same as the default" to nil so the service
+            // keeps tracking the built-in default instead of pinning a copy.
+            let trimmed = customCSS.trimmingCharacters(in: .whitespacesAndNewlines)
+            let newCSS: String?
+            if trimmed.isEmpty || trimmed == defaultCSS.trimmingCharacters(in: .whitespacesAndNewlines) {
+                newCSS = nil
+            } else {
+                newCSS = customCSS
+            }
+            // Dark mode is injected as part of the page CSS at web-view build
+            // time, so a change to it needs the same rebuild as a CSS change.
+            let darkChanged = service.darkModePreference != darkMode
+            let cssChanged = (service.customCSS ?? "") != (newCSS ?? "") || darkChanged
+
+            let newUserAgent: String? = mobileView ? UserAgentProvider.mobileSafari : nil
+            let userAgentChanged = (service.userAgent ?? "") != (newUserAgent ?? "")
+
             service.label = validLabel
             service.url = validURL
             service.neverHibernate = keepLoaded
-            appState.applyServiceEdits(serviceID: service.id, urlChanged: urlChanged)
+            service.customCSS = newCSS
+            service.darkMode = darkMode == .off ? nil : darkMode.rawValue
+            service.userAgent = newUserAgent
+
+            appState.applyServiceEdits(
+                serviceID: service.id,
+                urlChanged: urlChanged,
+                cssChanged: cssChanged,
+                userAgentChanged: userAgentChanged
+            )
             dismiss()
         }
     }

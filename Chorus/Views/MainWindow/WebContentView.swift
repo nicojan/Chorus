@@ -64,6 +64,11 @@ struct WebContentView: View {
         .onChange(of: selectedServiceID) {
             loadWebViewForSelectedService()
         }
+        .onChange(of: appState.webViewRebuildToken) {
+            // A service's web view was rebuilt (e.g. custom CSS edit). Re-fetch
+            // so the active service picks up the freshly created view.
+            loadWebViewForSelectedService()
+        }
     }
 
     private func loadWebViewForSelectedService() {
@@ -85,9 +90,10 @@ struct WebContentView: View {
         transitionSnapshot = appState.webViewPool.snapshot(for: service.id)
 
         let webView = appState.webViewPool.webView(for: service)
-        // Apply the persisted per-service zoom so it survives hibernation
-        // and relaunch. Setting pageZoom is a no-op when the value matches.
-        webView.pageZoom = CGFloat(service.zoomLevelEffective)
+        // Apply the effective zoom (per-service if set, else the Chorus-wide
+        // default) so it survives hibernation and relaunch. Setting pageZoom is
+        // a no-op when the value matches.
+        webView.pageZoom = CGFloat(appState.effectiveZoom(for: service))
         currentWebView = webView
         webViewState.attach(to: webView)
         previousServiceID = service.id

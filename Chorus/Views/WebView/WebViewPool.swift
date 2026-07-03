@@ -289,6 +289,31 @@ final class WebViewPool {
         webViews[id]?.load(URLRequest(url: url))
     }
 
+    /// Update a live web view's user agent (e.g. the Mobile view toggle) and
+    /// reload so the site re-renders for the new agent. No-op without a live
+    /// view — the new agent applies when the view is next created.
+    func setUserAgent(_ userAgent: String?, for id: UUID) {
+        guard let webView = webViews[id] else { return }
+        webView.customUserAgent = userAgent ?? UserAgentProvider.safariDefault
+        webView.reload()
+    }
+
+    /// Rebuilds a service's web view so configuration-time settings — the
+    /// injected user scripts, including custom CSS — pick up an edit. The view
+    /// is torn down here and recreated on next access; the active pointer and
+    /// never-hibernate state are left intact (this is a refresh, not a removal).
+    /// With `preserveURL` false the open URL is dropped so the rebuild loads the
+    /// service's (possibly just-edited) home URL instead.
+    func recreateWebView(for instanceID: UUID, preserveURL: Bool = true) {
+        guard let webView = webViews[instanceID] else { return }
+        if preserveURL {
+            suspendedURLs[instanceID] = webView.url?.absoluteString ?? ""
+        } else {
+            suspendedURLs.removeValue(forKey: instanceID)
+        }
+        teardownWebView(instanceID)
+    }
+
     // MARK: - Soft Hibernate (resource offloading without destroying the web view)
 
     /// Suspends media playback and captures a snapshot.
@@ -345,6 +370,12 @@ final class WebViewPool {
         return coordinator
     }
 
+    /// Whether the system is currently in dark appearance — decides whether a
+    /// service set to "auto" dark mode should invert.
+    static var systemIsDark: Bool {
+        NSApplication.shared.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    }
+
     private func makeConfiguration(for instance: ServiceInstance) -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = dataStoreManager.dataStore(for: instance)
@@ -356,7 +387,20 @@ final class WebViewPool {
         config.preferences.isElementFullscreenEnabled = true
 
         let controller = WKUserContentController()
-        userScriptManager.configureScripts(for: instance, on: controller)
+        let baseCSS = ServiceCSSDefaults.effectiveCSS(
+            instanceCSS: instance.customCSS,
+            catalogID: instance.catalogEntryID
+        )
+        let darkCSS = DarkMode.shouldApply(
+            preference: instance.darkModePreference,
+            systemIsDark: Self.systemIsDark
+        ) ? DarkMode.css : nil
+        let combinedCSS = [baseCSS, darkCSS].compactMap { $0 }.joined(separator: "\n\n")
+        userScriptManager.configureScripts(
+            for: instance,
+            customCSS: combinedCSS.isEmpty ? nil : combinedCSS,
+            on: controller
+        )
         config.userContentController = controller
 
         return config

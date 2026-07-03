@@ -31,6 +31,36 @@ and Franz, built for Apple Silicon.
 - **Resilient.** Pauses polling when offline or asleep, recovers from WebContent
   crashes with backoff, and never deletes your data without consent.
 
+## How Chorus compares
+
+Chorus, Rambox, and Franz all put your web apps in one window. They differ in how
+they are built and what they cost. Rambox and Franz are Electron apps that bundle
+Chromium and run on Windows and Linux as well as macOS, and both charge for the
+full feature set. Franz's free tier stops at three services and one workspace.
+Chorus is a native macOS app. It uses the system's own WebKit instead of shipping
+a browser inside itself, so it stays lighter on memory, and every feature is free
+with the source open under the MIT license.
+
+| Feature | Chorus | Rambox | Franz |
+|---------|--------|--------|-------|
+| Price | Free, every feature | Freemium | Freemium; free tier caps at 3 services |
+| Open source | Yes (MIT) | No | No |
+| Engine | Native WebKit | Electron | Electron |
+| Platforms | macOS 14+ | Windows, macOS, Linux | Windows, macOS, Linux |
+| Preset services | ~50, plus any URL | 700+ | 70+ |
+| Isolated session per service | Yes | Yes | Yes |
+| Spaces / workspaces | Unlimited | Yes | Free tier: 1 |
+| Custom CSS per service | Yes, with presets | Yes | No |
+| Dark mode for any service | Yes | Yes | No |
+| Quiet-hours Do Not Disturb | Yes | Yes | No |
+| App lock | Touch ID | Password | No |
+| Cross-device sync | No | Yes | Yes |
+
+Chorus makes two trades for staying native and free. It runs only on macOS, and
+it ships with about fifty preset services where Rambox lists several hundred,
+though you can add any site by its URL. It also keeps your data on your Mac rather
+than syncing across devices.
+
 ## Requirements
 
 - macOS 14 (Sonoma) or later
