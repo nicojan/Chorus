@@ -26,6 +26,7 @@ struct ServiceTabView: View {
 
                 Text(instance.label)
                     .font(.subheadline)
+                    .fontWeight(isSelected ? .semibold : .regular)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .foregroundStyle(isSelected ? .primary : .secondary)
@@ -71,7 +72,10 @@ struct ServiceTabView: View {
     @ViewBuilder
     private var background: some View {
         if isSelected {
-            Color(nsColor: .controlBackgroundColor)
+            // A clearly-lifted chip (Chrome-style active tab). primary.opacity
+            // reads in both modes: a light lift on the dark bar, a darker chip
+            // on the light bar — the underline alone wasn't enough contrast.
+            Color.primary.opacity(0.14)
         } else if isHovering {
             Color.primary.opacity(0.06)
         } else {
