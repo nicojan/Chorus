@@ -436,9 +436,11 @@ struct AboutSettingsView: View {
                     Text("Built with")
                     Image(systemName: "heart.fill")
                         .foregroundStyle(.pink)
+                        .accessibilityHidden(true)
                     Text("by")
                     Link("Nico Jan", destination: authorURL)
                 }
+                .accessibilityElement(children: .combine)
             }
         }
         .formStyle(.grouped)
@@ -451,6 +453,7 @@ struct AboutSettingsView: View {
             Image(nsImage: icon)
                 .resizable()
                 .frame(width: 64, height: 64)
+                .accessibilityHidden(true)
         }
         #endif
     }

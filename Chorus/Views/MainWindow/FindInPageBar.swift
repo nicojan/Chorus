@@ -44,6 +44,7 @@ struct FindInPageBar: View {
             }
             .buttonStyle(.borderless)
             .help("Previous (Shift+Return)")
+            .accessibilityLabel("Previous match")
             .keyboardShortcut(.return, modifiers: .shift)
 
             Button {
@@ -53,6 +54,7 @@ struct FindInPageBar: View {
             }
             .buttonStyle(.borderless)
             .help("Next (Return)")
+            .accessibilityLabel("Next match")
 
             Button {
                 dismiss()
@@ -61,6 +63,7 @@ struct FindInPageBar: View {
             }
             .buttonStyle(.borderless)
             .help("Close (Esc)")
+            .accessibilityLabel("Close find bar")
             .keyboardShortcut(.escape, modifiers: [])
         }
         .padding(.horizontal, 10)

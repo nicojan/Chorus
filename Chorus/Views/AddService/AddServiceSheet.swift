@@ -33,6 +33,7 @@ struct AddServiceSheet: View {
                 }
             }
             .pickerStyle(.segmented)
+            .accessibilityLabel("Add service by")
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
 
@@ -94,9 +95,13 @@ struct AddServiceSheet: View {
                 TextField("Search services...", text: $searchText)
                     .textFieldStyle(.plain)
             }
-            .padding(8)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
+            )
             .padding(.horizontal, 20)
             .padding(.bottom, 12)
 

@@ -36,6 +36,7 @@ struct WebContentView: View {
                             .resizable()
                             .aspectRatio(contentMode: .fill)
                             .transition(.opacity)
+                            .accessibilityHidden(true)
                     }
 
                     if appState.findInPageVisible {

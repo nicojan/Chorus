@@ -227,8 +227,19 @@ private struct SpaceButton: View {
             isHovering = hovering
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(isMuted ? "\(space.name), muted" : space.name)
+        .accessibilityLabel(accessibilityLabelText)
         .accessibilityAddTraits([.isButton, isSelected ? .isSelected : []])
+    }
+
+    /// Folds the space name, aggregate unread count, and mute state into one
+    /// spoken label so VoiceOver announces everything the badge conveys visually.
+    private var accessibilityLabelText: String {
+        var parts = [space.name]
+        if badgeCount > 0 {
+            parts.append(badgeCount == 1 ? "1 unread" : "\(badgeCount) unread")
+        }
+        if isMuted { parts.append("muted") }
+        return parts.joined(separator: ", ")
     }
 
     private var backgroundColor: Color {
