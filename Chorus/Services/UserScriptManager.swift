@@ -331,7 +331,8 @@ enum CSSPresets {
     #messaging .scaffold-layout__content,
     #messaging .scaffold-layout__list-detail,
     #messaging .scaffold-layout__list-detail-container,
-    #messaging .scaffold-layout__list-detail-inner { height: 100% !important; }
+    #messaging .scaffold-layout__list-detail-inner,
+    #messaging .scaffold-layout__detail { height: 100% !important; }
     .scaffold-layout__inner { margin-left: 0 !important; margin-right: 0 !important; max-width: none !important; width: 100% !important; }
     /* Single column, and kill the grid column-gap: when the right rail is hidden
        its grid track collapses to 0 but the gap stays, leaving a gray strip on
@@ -379,12 +380,15 @@ enum ServiceCSSDefaults {
 
 /// Forces dark mode on services that lack their own. Uses a whole-page inversion
 /// filter — the only universal way to darken a site with no dark theme — and
-/// re-inverts images/video so photos keep their real colors. Imperfect by
-/// nature; a service that needs a polished theme can use its own custom CSS.
+/// re-inverts photographic content (img/video/picture/canvas/backgrounds) so it
+/// keeps its real colors. `svg` is deliberately NOT re-inverted: most SVGs are
+/// monochrome UI icons, and re-inverting them flips them back to dark-on-dark
+/// (invisible). Letting them take the single page inversion keeps them legible.
+/// Imperfect by nature; a service that needs a polished theme can use custom CSS.
 enum DarkMode {
     static let css = """
     html { filter: invert(1) hue-rotate(180deg) !important; background: #1a1a1a !important; }
-    img, video, picture, canvas, svg, iframe,
+    img, video, picture, canvas, iframe,
     [style*="background-image"], [style*="background:url"], [style*="background: url"] {
         filter: invert(1) hue-rotate(180deg) !important;
     }
