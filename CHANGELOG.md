@@ -5,6 +5,8 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-02
+
 ### Added
 
 - Per-service custom CSS, with a preset library and a built-in LinkedIn recipe
