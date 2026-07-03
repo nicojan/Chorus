@@ -5,6 +5,11 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A service that opens sign-in in a separate window (for example, Gmail) now
+  reloads and shows the signed-in page after that window closes.
+
 ### Changed
 
 - Chorus now checks for updates automatically on a daily schedule, without
