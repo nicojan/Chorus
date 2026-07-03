@@ -7,8 +7,8 @@ and Franz, built for Apple Silicon.
 
 **[Download the latest release](https://github.com/nicojan/Chorus/releases/latest)** (macOS 14 or later). The build is signed, notarized, and updates itself via Sparkle.
 
-> Status: 1.0.0 is the first public release. See [CHANGELOG.md](CHANGELOG.md)
-> for what it includes.
+> Status: 1.0.1 is the current release. See [CHANGELOG.md](CHANGELOG.md) for
+> what changed.
 
 ## Features
 
@@ -70,3 +70,12 @@ Architecture details live in [chorus-architecture-v2.md](chorus-architecture-v2.
 - Shipping to the Mac App Store additionally requires code signing, a
   provisioning profile, and notarization. Those are outside the scope of this
   repo.
+
+## Contributing
+
+Bug reports and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md)
+to get set up.
+
+## License
+
+Chorus is available under the MIT License. See [LICENSE](LICENSE).
