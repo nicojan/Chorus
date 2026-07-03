@@ -3,6 +3,14 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.0.1</title>
+            <pubDate>Thu, 02 Jul 2026 17:59:57 -0700</pubDate>
+            <sparkle:version>2</sparkle:version>
+            <sparkle:shortVersionString>1.0.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.0.1/Chorus-1.0.1.dmg" length="3102950" type="application/octet-stream" sparkle:edSignature="NW2vI64p+cwSUug699HeENyynK1ZOJgO+CMK/j0C6ZRwV771O5F6PvskS/XwQdpdvdcGI3YnY04PAG2s97qUCw=="/>
+        </item>
+        <item>
             <title>1.0.0</title>
             <pubDate>Thu, 02 Jul 2026 15:22:29 -0700</pubDate>
             <sparkle:version>1</sparkle:version>
