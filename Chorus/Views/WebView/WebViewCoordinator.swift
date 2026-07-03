@@ -297,6 +297,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             backing: .buffered,
             defer: false
         )
+        // We hold this window in a strong property (`popupWindow`) and release
+        // it ourselves in cleanupPopup. Left at its `true` default, AppKit would
+        // also release the window when it closes — an over-release that crashes
+        // the app when an OAuth/sign-in popup (e.g. Gmail) window is closed.
+        window.isReleasedWhenClosed = false
         window.contentView = popup
         window.title = navigationAction.request.url?.host ?? "Chorus"
         window.center()
