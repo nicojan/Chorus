@@ -59,6 +59,14 @@ struct ServiceIconSquare: View {
             Image(nsImage: nsImage)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
+        } else if let brand = brandAssetName {
+            // Bundled brand mark. Monochrome logos are template assets and tint
+            // to .primary so they stay visible in dark mode; colored logos are
+            // "original" assets and ignore the tint.
+            Image(brand)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .foregroundStyle(.primary)
         } else if let data = instance.fetchedIconData, let nsImage = NSImage(data: data) {
             Image(nsImage: nsImage)
                 .resizable()
@@ -70,6 +78,15 @@ struct ServiceIconSquare: View {
                 .frame(width: size, height: size)
                 .background(ServiceIconPalette.color(for: instance.label))
         }
+    }
+
+    /// The bundled brand asset for this service (`brand-<catalogEntryID>`), or
+    /// nil when there's no catalog match or no bundled icon — falling through to
+    /// the fetched favicon and then the letter tile.
+    private var brandAssetName: String? {
+        guard let id = instance.catalogEntryID else { return nil }
+        let name = "brand-\(id)"
+        return NSImage(named: name) != nil ? name : nil
     }
 }
 
