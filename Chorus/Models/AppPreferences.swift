@@ -7,6 +7,24 @@ enum AppPresenceMode: String, Codable {
     case both
 }
 
+/// Where the spaces and services rails sit relative to the web content.
+enum RailLayout: String, Codable, CaseIterable {
+    /// Both rails vertical on the left (the default).
+    case sidebar
+    /// Spaces row on top, services as folder tabs below.
+    case topBars
+    /// Spaces rail on the left, services as folder tabs across the top.
+    case hybrid
+
+    var displayName: String {
+        switch self {
+        case .sidebar: return "Sidebar"
+        case .topBars: return "Top bars"
+        case .hybrid: return "Spaces left, tabs on top"
+        }
+    }
+}
+
 @Model
 final class AppPreferences {
     @Attribute(.unique) var id: UUID
@@ -37,6 +55,11 @@ final class AppPreferences {
     var lockOnLaunch: Bool?
     var lockOnSleep: Bool?
 
+    /// Rail layout. Optional so SwiftData lightweight migration succeeds on
+    /// existing rows; nil or an unknown value resolves to `.sidebar`. Read via
+    /// `railLayout`.
+    var railLayoutRaw: String?
+
     init(
         id: UUID = UUID(),
         appPresenceMode: AppPresenceMode = .dock,
@@ -52,7 +75,8 @@ final class AppPreferences {
         dndEndMinutes: Int? = nil,
         appLockEnabled: Bool? = nil,
         lockOnLaunch: Bool? = nil,
-        lockOnSleep: Bool? = nil
+        lockOnSleep: Bool? = nil,
+        railLayoutRaw: String? = nil
     ) {
         self.id = id
         self.appPresenceMode = appPresenceMode
@@ -69,8 +93,15 @@ final class AppPreferences {
         self.appLockEnabled = appLockEnabled
         self.lockOnLaunch = lockOnLaunch
         self.lockOnSleep = lockOnSleep
+        self.railLayoutRaw = railLayoutRaw
     }
 
     /// Materialises the storage-optional default zoom (nil → 1.0).
     var defaultZoomEffective: Double { defaultZoom ?? 1.0 }
+
+    /// Resolves the stored rail layout, defaulting unknown/legacy values to
+    /// `.sidebar`.
+    var railLayout: RailLayout {
+        railLayoutRaw.flatMap(RailLayout.init(rawValue:)) ?? .sidebar
+    }
 }

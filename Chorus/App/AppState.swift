@@ -32,6 +32,10 @@ final class AppState {
     /// per-service zoom. Loaded from AppPreferences at launch.
     var defaultZoom: Double = 1.0
 
+    /// Where the spaces/services rails sit. Loaded from AppPreferences at
+    /// launch; the Settings picker writes both this and the persisted value.
+    var railLayout: RailLayout = .sidebar
+
     /// Scheduled "quiet hours" Do Not Disturb, loaded from AppPreferences.
     /// `doNotDisturb` above stays the manual toggle; the effective DND that
     /// gates badges and notifications is `doNotDisturb || scheduledDNDActive`.
@@ -898,6 +902,7 @@ final class AppState {
         // AppKit-facing mutations to the next runloop tick.
         userScriptManager.autoDismissCookieBanners = prefs?.autoDismissCookieBanners ?? true
         defaultZoom = prefs?.defaultZoomEffective ?? 1.0
+        railLayout = prefs?.railLayout ?? .sidebar
         scheduledDNDEnabled = prefs?.scheduledDNDEnabled ?? false
         dndStartMinutes = prefs?.dndStartMinutes ?? (22 * 60)
         dndEndMinutes = prefs?.dndEndMinutes ?? (7 * 60)

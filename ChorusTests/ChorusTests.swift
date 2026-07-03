@@ -512,4 +512,14 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(WebViewCoordinator.belongsToService("www.notion.so", serviceHost: "notion.so"))
         XCTAssertTrue(WebViewCoordinator.belongsToService("APP.SLACK.COM", serviceHost: "app.slack.com"))
     }
+
+    // MARK: - Rail layout preference
+
+    func testRailLayoutParsesFromStoredValueWithSidebarFallback() {
+        XCTAssertEqual(AppPreferences(railLayoutRaw: nil).railLayout, .sidebar)
+        XCTAssertEqual(AppPreferences(railLayoutRaw: "sidebar").railLayout, .sidebar)
+        XCTAssertEqual(AppPreferences(railLayoutRaw: "topBars").railLayout, .topBars)
+        XCTAssertEqual(AppPreferences(railLayoutRaw: "hybrid").railLayout, .hybrid)
+        XCTAssertEqual(AppPreferences(railLayoutRaw: "garbage").railLayout, .sidebar)
+    }
 }

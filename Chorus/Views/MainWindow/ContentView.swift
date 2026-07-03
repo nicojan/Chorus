@@ -48,34 +48,11 @@ struct ContentView: View {
                 .accessibilityLabel("Offline")
             }
 
-            HStack(spacing: 0) {
-            SpaceStripView(
-                selectedSpaceID: $state.selectedSpaceID
+            mainLayout(
+                spaceSelection: $state.selectedSpaceID,
+                serviceSelection: $state.selectedServiceID
             )
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Spaces")
-
-            Divider()
-
-            if let spaceID = appState.selectedSpaceID {
-                ServiceSidebarView(
-                    spaceID: spaceID,
-                    selectedServiceID: $state.selectedServiceID
-                )
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel("Services")
-
-                Divider()
-            }
-
-            WebContentView(
-                selectedServiceID: appState.selectedServiceID
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Web content")
-        }
-        .frame(minWidth: 800, minHeight: 500)
+            .frame(minWidth: 800, minHeight: 500)
         }
         .onChange(of: appState.selectedSpaceID) { _, newSpaceID in
             if let spaceID = newSpaceID {
@@ -110,6 +87,70 @@ struct ContentView: View {
                     .transition(.opacity)
             }
         }
+    }
+
+    /// Arranges the two rails and the web content per the chosen layout. Sidebar
+    /// keeps both rails vertical on the left; top bars stacks them horizontally
+    /// above the content; hybrid keeps spaces on the left with service tabs on
+    /// top of the content.
+    @ViewBuilder
+    private func mainLayout(
+        spaceSelection: Binding<UUID?>,
+        serviceSelection: Binding<UUID?>
+    ) -> some View {
+        switch appState.railLayout {
+        case .sidebar:
+            HStack(spacing: 0) {
+                spacesRail(axis: .vertical, selection: spaceSelection)
+                Divider()
+                if let spaceID = appState.selectedSpaceID {
+                    servicesRail(axis: .vertical, spaceID: spaceID, selection: serviceSelection)
+                    Divider()
+                }
+                webContent
+            }
+        case .topBars:
+            VStack(spacing: 0) {
+                spacesRail(axis: .horizontal, selection: spaceSelection)
+                Divider()
+                if let spaceID = appState.selectedSpaceID {
+                    servicesRail(axis: .horizontal, spaceID: spaceID, selection: serviceSelection)
+                    Divider()
+                }
+                webContent
+            }
+        case .hybrid:
+            HStack(spacing: 0) {
+                spacesRail(axis: .vertical, selection: spaceSelection)
+                Divider()
+                VStack(spacing: 0) {
+                    if let spaceID = appState.selectedSpaceID {
+                        servicesRail(axis: .horizontal, spaceID: spaceID, selection: serviceSelection)
+                        Divider()
+                    }
+                    webContent
+                }
+            }
+        }
+    }
+
+    private func spacesRail(axis: Axis, selection: Binding<UUID?>) -> some View {
+        SpaceStripView(selectedSpaceID: selection, axis: axis)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Spaces")
+    }
+
+    private func servicesRail(axis: Axis, spaceID: UUID, selection: Binding<UUID?>) -> some View {
+        ServiceSidebarView(spaceID: spaceID, selectedServiceID: selection, axis: axis)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Services")
+    }
+
+    private var webContent: some View {
+        WebContentView(selectedServiceID: appState.selectedServiceID)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Web content")
     }
 
     private func selectFirstService(in spaceID: UUID) {

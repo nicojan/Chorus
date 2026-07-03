@@ -91,26 +91,46 @@ Rails take an axis so we don't fork the views:
 ## Folder-tab component (`ServiceTabView`)
 
 - Content: brand/favicon icon + service name (`.lineLimit(1)`,
-  `.truncationMode(.tail)`) + unread badge.
+  `.truncationMode(.tail)`) + unread badge. Tab width clamped
+  (min ~120, max ~220) so labels stay readable without any one tab dominating.
 - Selected tab: background continuous with the web content (same fill), rounded
   top corners, no divider line beneath it; unselected tabs recessed
   (`Color.primary.opacity` hover/idle, matching the current rail tints).
 - Overflow: horizontal `ScrollView(.horizontal)`; the "+" add button is pinned
-  after the tab strip, not inside the scroll region.
+  after the tab strip, not inside the scroll region. **The strip is wrapped in a
+  `ScrollViewReader` and scrolls the selected tab into view on selection change**
+  (so ⌘1–9 / quick-switcher selection of an off-screen service reveals it),
+  gated on `accessibilityReduceMotion` for the animation.
+- Icon comes from one shared resolver (see "Icon source") so sub-project B's
+  brand icons appear in tabs with no further tab changes.
 - Reuses `ServiceReorder` for drag placement; reuses `serviceContextMenu`.
 - Accessibility: `.accessibilityLabel` folds in name + unread + hibernated +
   muted (same string builder as `ServiceIconView`); `.accessibilityAddTraits`
   adds `.isButton` and `.isSelected`.
 
-## Sidebar light refresh (also covers the rails' share of C)
+## Icon source (shared)
 
-- Replace fixed `.font(.system(size:))` in the rail cells with scalable sizing
-  (`@ScaledMetric` for cell/badge dimensions, semantic or scaled font for the
-  letter-tile initial) so the rails respond to the system text size.
-- Contrast-safe selection and badge colors: keep the accent selection pill but
-  verify the badge (white-on-red) and letter-tile (white-on-hashed-palette)
-  combinations meet ~4.5:1; darken the tile palette / badge red as needed. Exact
-  values decided during implementation against measured contrast.
+Both `ServiceIconView` (vertical) and `ServiceTabView` (horizontal) resolve their
+image through the same helper — custom icon → (later, brand asset) → fetched
+favicon → letter tile. Centralizing it now means sub-project B swaps in bundled
+brand icons in one place and both the rail and the tabs pick them up.
+
+## Sidebar light refresh (contrast-first; the rails' share of C)
+
+macOS exposes little runtime Dynamic Type, and the rails are geometry-tight
+(52pt), so aggressive `@ScaledMetric` scaling is risk without much payoff and can
+clip the rail. The rails' real accessibility win is **contrast**:
+
+- Letter-tile fallback: replace the hashed `[.blue, .purple, …]` palette (several
+  fail 4.5:1 on white) with a contrast-checked set — Tailwind-700-class shades,
+  each ≥4.5:1 against white:
+  `#1D4ED8, #6D28D9, #15803D, #C2410C, #BE185D, #0F766E, #4338CA, #B91C1C`.
+- Badge: `#DC2626` (~4.6:1 with white) instead of pure system red (~3.9:1).
+- Keep the accent selection pill; selection is also carried by the `.isSelected`
+  trait, so it isn't color-only.
+- Fonts: leave the rail geometry fixed; only the horizontal tab **labels** use a
+  semantic/scalable font (they have room to grow). No forced scaling of the
+  52pt icon cells. Broader Dynamic Type is sub-project C.
 
 ## Accessibility
 
@@ -136,11 +156,13 @@ Rails take an axis so we don't fork the views:
 - `Chorus/Views/MainWindow/SpaceStripView.swift` — `axis` parameter.
 - `Chorus/Views/MainWindow/ServiceSidebarView.swift` — render vertical icons vs
   horizontal tabs; `axis`.
-- `Chorus/Views/MainWindow/ServiceTabView.swift` — new folder-tab cell (added to
-  the existing target via the asset/compile path; it is a `.swift` file so it
-  must be included in `project.yml` sources + `.pbxproj`, per the file-inclusion
-  gotcha — or, to avoid that, live inside `ServiceSidebarView.swift`).
-- `Chorus/Views/MainWindow/ServiceIconView.swift` — scalable sizing + contrast.
+- `Chorus/Views/MainWindow/ServiceTabView.swift` — new folder-tab cell. It's a
+  `.swift` file, so confirm how `project.yml` lists sources: if the `Chorus`
+  group is a directory glob, `xcodegen generate` picks it up (then keep
+  `.pbxproj` in sync per CLAUDE.md); if files are listed individually, add it
+  there too. Verify a clean build includes it before relying on it.
+- `Chorus/Views/MainWindow/ServiceIconView.swift` — shared icon resolver +
+  contrast-safe tile palette / badge.
 - `Chorus/Views/Settings/SettingsView.swift` — layout picker in General.
 - `ChorusTests/ChorusTests.swift` — `RailLayout` parsing test.
 

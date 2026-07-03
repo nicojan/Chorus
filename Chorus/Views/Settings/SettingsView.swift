@@ -88,6 +88,19 @@ struct GeneralSettingsView: View {
                         save("badge count in dock")
                     }
                 ))
+
+                Picker("Layout", selection: Binding(
+                    get: { prefs.railLayout },
+                    set: { layout in
+                        ensurePrefs().railLayoutRaw = layout.rawValue
+                        appState.railLayout = layout
+                        save("rail layout")
+                    }
+                )) {
+                    ForEach(RailLayout.allCases, id: \.self) { layout in
+                        Text(layout.displayName).tag(layout)
+                    }
+                }
             }
 
             Section("Web Content") {
