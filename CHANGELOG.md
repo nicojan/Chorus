@@ -5,6 +5,49 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-03
+
+### Added
+
+- Layout options for the rails. Settings > General lets you keep the spaces and
+  services rails on the left, stack them on top, or use a hybrid with spaces on
+  the left and service tabs across the top.
+- Bundled brand icons for catalog services, so each service shows its real logo
+  instead of a scraped favicon.
+- An appearance setting: Follow System, Always Light, or Always Dark for the
+  whole app.
+
+### Changed
+
+- Links that leave a service now open in your default browser. A link to another
+  service you already keep in Chorus opens there instead, and same-service
+  navigation stays in the app.
+- Opening a Slack workspace now loads in the app instead of a separate window.
+- Per-service dark mode is now a single "Force dark mode" checkbox, for services
+  that have no dark theme of their own. Services with their own dark theme follow
+  your appearance setting, with nothing injected.
+- The navigation buttons (back, forward, reload, home) moved to the top-right of
+  the window, and the address bar is gone.
+
+### Fixed
+
+- A Google Docs link opened from Gmail no longer loads inside Gmail. It opens in
+  your browser.
+- LinkedIn's icons stay visible in forced dark mode, and the empty strip at the
+  bottom-right of its messaging view is gone.
+- Gmail no longer gets stuck with its top bar scrolled out of reach after you
+  switch to it.
+- Workspace chips again show the combined unread count of the services inside
+  them.
+- Accessibility gaps: missing VoiceOver labels on the find bar and other
+  icon-only controls, low-contrast badges and the offline banner, and
+  quick-switcher text that ignored the system text size.
+
+### Removed
+
+- The custom-CSS preset menu. The Custom CSS field and the built-in LinkedIn
+  layout stay.
+
 ## [1.1.0] - 2026-07-02
 
 ### Added
