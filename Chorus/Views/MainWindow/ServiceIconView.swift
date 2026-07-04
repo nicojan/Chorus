@@ -26,6 +26,15 @@ enum ServiceIconPalette {
         tileColors[stableHash(label) % tileColors.count]
     }
 
+    /// The "page" surface shared by the active folder tab and the nav toolbar
+    /// beneath it, so they read as one element set clearly off the unselected
+    /// tabs and the title-bar-shade strip: near-white in light mode, a deep gray
+    /// in dark. Uses fixed values so the delta from the window chrome is reliable
+    /// (the semantic content colors can sit too close to it in dark mode).
+    static func pageSurface(dark: Bool) -> Color {
+        dark ? Color(white: 0.12) : .white
+    }
+
     static func initial(for label: String) -> String {
         String(label.prefix(1)).uppercased()
     }

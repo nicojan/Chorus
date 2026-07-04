@@ -15,6 +15,7 @@ struct ServiceTabView: View {
     let action: () -> Void
 
     @State private var isHovering = false
+    @Environment(\.colorScheme) private var colorScheme
 
     private let minWidth: CGFloat = 120
     private let maxWidth: CGFloat = 220
@@ -73,15 +74,14 @@ struct ServiceTabView: View {
         .accessibilityAddTraits([.isButton, isSelected ? .isSelected : []])
     }
 
-    /// The bar matches the title-bar shade, so the selected tab takes the
-    /// content surface (controlBackgroundColor) to stand off it and read as part
-    /// of the page: lighter than the bar in light mode, darker in dark mode.
-    /// Inactive tabs are transparent so they blend into the top chrome; hover is
-    /// a faint wash.
+    /// The selected tab takes the shared page surface (matching the nav toolbar
+    /// below) so the two read as one element clearly set off the title-bar-shade
+    /// strip and the unselected tabs. Inactive tabs are transparent so they blend
+    /// into the top chrome; hover is a faint wash.
     @ViewBuilder
     private var background: some View {
         if isSelected {
-            Color(nsColor: .controlBackgroundColor)
+            ServiceIconPalette.pageSurface(dark: colorScheme == .dark)
         } else if isHovering {
             Color.primary.opacity(0.06)
         } else {

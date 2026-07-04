@@ -4,6 +4,8 @@ struct WebToolbarView: View {
     let webViewState: WebViewState
     var homeURL: URL?
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         HStack(spacing: 12) {
             Button {
@@ -65,8 +67,8 @@ struct WebToolbarView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         // Same surface as the selected folder tab above it, so the tab and this
-        // toolbar read as one connected element sitting on the content.
-        .background(Color(nsColor: .controlBackgroundColor))
+        // toolbar read as one connected element set off the unselected tabs.
+        .background(ServiceIconPalette.pageSurface(dark: colorScheme == .dark))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Navigation toolbar")
     }
