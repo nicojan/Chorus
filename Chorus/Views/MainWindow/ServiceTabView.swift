@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// A service rendered as a bordered tab (icon + name + badge), used by the
-/// top-bar and hybrid layouts. Every tab carries a hairline border so tabs read
-/// as distinct elements; the selected tab gets an accent border and a lifted
-/// surface. Icon resolution and the fallback palette are shared with the
-/// vertical rail via `ServiceIconSquare`.
+/// A service rendered as a folder tab (icon + name + badge) for the top-bar and
+/// hybrid layouts. The selected tab sits on a raised surface with a rounded top
+/// and an accent "spine", and its bottom is flush with the bar so it reads as
+/// part of the content below; unselected tabs stay recessed in the bar. Icon
+/// resolution and the fallback palette are shared with the vertical rail via
+/// `ServiceIconSquare`.
 struct ServiceTabView: View {
     let instance: ServiceInstance
     let isSelected: Bool
@@ -17,8 +18,8 @@ struct ServiceTabView: View {
 
     private let minWidth: CGFloat = 120
     private let maxWidth: CGFloat = 220
-    private let cornerRadius: CGFloat = 7
-    static let height: CGFloat = 30
+    private let cornerRadius: CGFloat = 8
+    static let height: CGFloat = 32
 
     var body: some View {
         Button(action: action) {
@@ -48,11 +49,16 @@ struct ServiceTabView: View {
             .frame(height: Self.height)
             .opacity(isHibernated ? 0.6 : (isMuted ? 0.8 : 1.0))
             .background(background)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .strokeBorder(borderStyle, lineWidth: isSelected ? 1.5 : 1)
-            )
+            .overlay(alignment: .top) {
+                // Accent spine along the selected tab's top edge — the folder-tab
+                // cue. Drawn before the clip so it follows the rounded corners.
+                if isSelected {
+                    Rectangle()
+                        .fill(.tint)
+                        .frame(height: 2.5)
+                }
+            }
+            .clipShape(.rect(topLeadingRadius: cornerRadius, topTrailingRadius: cornerRadius))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -67,24 +73,17 @@ struct ServiceTabView: View {
         .accessibilityAddTraits([.isButton, isSelected ? .isSelected : []])
     }
 
-    /// Selected tab sits on a lifted surface (near-white in light, a lighter
-    /// gray in dark) so it stands off the bar; hover is a faint wash.
+    /// Selected tab uses the base window background — lighter than the recessed
+    /// bar in light mode, darker in dark mode — so it always stands off the bar
+    /// and matches the content it connects to. Hover is a faint wash.
     @ViewBuilder
     private var background: some View {
         if isSelected {
-            Color(nsColor: .controlBackgroundColor)
+            Color(nsColor: .windowBackgroundColor)
         } else if isHovering {
             Color.primary.opacity(0.06)
         } else {
             Color.clear
         }
-    }
-
-    /// Accent border on the selected tab, a hairline separator on the rest, so
-    /// every tab is delineated and the active one clearly reads.
-    private var borderStyle: AnyShapeStyle {
-        isSelected
-            ? AnyShapeStyle(.tint)
-            : AnyShapeStyle(Color(nsColor: .separatorColor))
     }
 }

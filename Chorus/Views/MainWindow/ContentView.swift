@@ -115,7 +115,6 @@ struct ContentView: View {
                 Divider()
                 if let spaceID = appState.selectedSpaceID {
                     servicesRail(axis: .horizontal, spaceID: spaceID, selection: serviceSelection)
-                    Divider()
                 }
                 webContent
             }
@@ -126,7 +125,6 @@ struct ContentView: View {
                 VStack(spacing: 0) {
                     if let spaceID = appState.selectedSpaceID {
                         servicesRail(axis: .horizontal, spaceID: spaceID, selection: serviceSelection)
-                        Divider()
                     }
                     webContent
                 }

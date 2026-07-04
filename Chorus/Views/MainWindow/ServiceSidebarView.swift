@@ -143,17 +143,19 @@ struct ServiceSidebarView: View {
     }
 
     private var horizontalBody: some View {
-        HStack(spacing: 0) {
+        // Tabs are bottom-aligned so the selected tab's bottom edge is flush with
+        // the bar bottom and reads as connected to the content below.
+        HStack(alignment: .bottom, spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 6) {
+                    LazyHStack(alignment: .bottom, spacing: 4) {
                         ForEach(filteredLinks) { link in
                             serviceRow(for: link)
                                 .id(link.service.id)
                         }
                     }
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
+                    .padding(.top, 6)
                 }
                 // Keep the active service visible when it's selected off-screen
                 // (⌘1–9, quick switcher, or a routed link).
@@ -169,16 +171,15 @@ struct ServiceSidebarView: View {
                 }
             }
 
-            Divider().frame(height: 28)
-
             addServiceButton
-                .padding(.trailing, 4)
+                .padding(.horizontal, 6)
+                .padding(.bottom, 4)
         }
-        .frame(height: ServiceTabView.height + 12)
+        .frame(height: ServiceTabView.height + 6)
         .background {
-            // Recess the bar a step off the tabs so they read as seated on it:
-            // slightly darker than the window in light mode, slightly lighter in
-            // dark. The active tab's surface then clearly stands off the strip.
+            // Recess the bar a step off the tabs so the raised selected tab
+            // stands off the strip: darker than the window in light mode, lighter
+            // in dark.
             Color(nsColor: .windowBackgroundColor)
             Color.primary.opacity(0.08)
         }

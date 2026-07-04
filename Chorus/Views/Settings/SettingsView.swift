@@ -66,7 +66,7 @@ struct GeneralSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Appearance") {
+            Section("Dock & Menu Bar") {
                 Picker("Show Chorus in", selection: Binding(
                     get: { prefs.appPresenceMode },
                     set: { mode in
@@ -88,19 +88,6 @@ struct GeneralSettingsView: View {
                         save("badge count in dock")
                     }
                 ))
-
-                Picker("Layout", selection: Binding(
-                    get: { prefs.railLayout },
-                    set: { layout in
-                        ensurePrefs().railLayoutRaw = layout.rawValue
-                        appState.railLayout = layout
-                        save("rail layout")
-                    }
-                )) {
-                    ForEach(RailLayout.allCases, id: \.self) { layout in
-                        Text(layout.displayName).tag(layout)
-                    }
-                }
             }
 
             Section("Appearance") {
@@ -114,6 +101,19 @@ struct GeneralSettingsView: View {
                 )) {
                     ForEach(AppearanceMode.allCases, id: \.self) { mode in
                         Text(mode.displayName).tag(mode)
+                    }
+                }
+
+                Picker("Layout", selection: Binding(
+                    get: { prefs.railLayout },
+                    set: { layout in
+                        ensurePrefs().railLayoutRaw = layout.rawValue
+                        appState.railLayout = layout
+                        save("rail layout")
+                    }
+                )) {
+                    ForEach(RailLayout.allCases, id: \.self) { layout in
+                        Text(layout.displayName).tag(layout)
                     }
                 }
             }
