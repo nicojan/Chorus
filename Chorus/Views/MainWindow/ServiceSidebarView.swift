@@ -154,7 +154,7 @@ struct ServiceSidebarView: View {
                         addServiceButton
                     }
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 2)
                 }
                 // Keep the active service visible when it's selected off-screen
                 // (⌘1–9, quick switcher, or a routed link).
@@ -176,7 +176,7 @@ struct ServiceSidebarView: View {
             WebNavButtons(webViewState: appState.webViewState, homeURL: activeHomeURL)
                 .padding(.trailing, 10)
         }
-        .frame(height: ServiceTabView.height + 12)
+        .frame(height: ServiceTabView.height + 4)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 

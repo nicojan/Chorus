@@ -53,6 +53,9 @@ struct ContentView: View {
                 serviceSelection: $state.selectedServiceID
             )
             .frame(minWidth: 800, minHeight: 500)
+            // Fill behind everything with the window shade so the traffic-light
+            // insets don't reveal the title-bar vibrancy (the top-left tint).
+            .background(Color(nsColor: .windowBackgroundColor))
         }
         .onChange(of: appState.selectedSpaceID) { _, newSpaceID in
             if let spaceID = newSpaceID {
