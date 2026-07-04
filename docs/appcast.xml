@@ -3,6 +3,41 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.2.0</title>
+            <pubDate>Fri, 03 Jul 2026 23:22:08 -0700</pubDate>
+            <sparkle:version>5</sparkle:version>
+            <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>New</h3>
+<ul>
+<li><b>Rail layouts.</b> In Settings &gt; General, keep the spaces and services rails on the left, stack them on top, or use a hybrid with spaces on the left and service tabs across the top.</li>
+<li><b>Bundled brand icons.</b> Each catalog service shows its real logo instead of a scraped favicon.</li>
+<li><b>Appearance setting.</b> Follow System, Always Light, or Always Dark for the whole app.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Links that leave a service open in your default browser. A link to another service you keep in Chorus opens there instead, and same-service navigation stays in the app.</li>
+<li>Opening a Slack workspace now loads in the app instead of a separate window.</li>
+<li>Per-service dark mode is a single &quot;Force dark mode&quot; checkbox, for services with no dark theme of their own.</li>
+<li>The back, forward, reload, and home buttons moved to the top-right of the window, and the address bar is gone.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>A Google Docs link opened from Gmail opens in your browser instead of loading inside Gmail.</li>
+<li>LinkedIn&#39;s icons stay visible in forced dark mode, and the empty strip at the bottom-right of its messaging view is gone.</li>
+<li>Gmail no longer gets stuck with its top bar scrolled out of reach after you switch to it.</li>
+<li>Workspace chips again show the combined unread count of the services inside them.</li>
+<li>Accessibility: VoiceOver labels on icon-only controls, higher-contrast badges and offline banner, and quick-switcher text that follows the system text size.</li>
+</ul>
+<h3>Removed</h3>
+<ul>
+<li>The custom-CSS preset menu. The Custom CSS field and the built-in LinkedIn layout stay.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.2.0/Chorus-1.2.0.dmg" length="7209846" type="application/octet-stream" sparkle:edSignature="Ssz4bnpiAOtrC7ZlRWxEk95PwLD6DBbNCGk7r6R94qKxdoxSqUnS1TzIjJiWwfl1IkfHyzyydxm9WKSU3/S4AQ=="/>
+        </item>
+        <item>
             <title>1.1.0</title>
             <pubDate>Thu, 02 Jul 2026 23:08:24 -0700</pubDate>
             <sparkle:version>4</sparkle:version>
