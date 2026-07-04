@@ -276,11 +276,11 @@ private struct SpaceButton: View {
         if isSelected {
             if axis == .vertical {
                 RoundedRectangle(cornerRadius: 1.5)
-                    .fill(Color.accentColor)
+                    .fill(.tint)
                     .frame(width: 3, height: 20)
             } else {
                 RoundedRectangle(cornerRadius: 1)
-                    .fill(Color.accentColor)
+                    .fill(.tint)
                     .frame(height: 2)
                     .padding(.horizontal, 8)
             }
@@ -298,12 +298,12 @@ private struct SpaceButton: View {
         return parts.joined(separator: ", ")
     }
 
-    private var backgroundColor: Color {
+    private var backgroundColor: AnyShapeStyle {
         if isSelected {
-            return Color.accentColor.opacity(0.15)
+            return AnyShapeStyle(.tint.opacity(0.15))
         } else if isHovering {
-            return Color.primary.opacity(0.06)
+            return AnyShapeStyle(Color.primary.opacity(0.06))
         }
-        return .clear
+        return AnyShapeStyle(Color.clear)
     }
 }

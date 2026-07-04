@@ -212,7 +212,7 @@ private struct QuickSwitcherRow: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(isHighlighted ? Color.accentColor.opacity(0.12) : .clear)
+                .fill(isHighlighted ? AnyShapeStyle(.tint.opacity(0.12)) : AnyShapeStyle(Color.clear))
                 .padding(.horizontal, 4)
         )
         .contentShape(Rectangle())
@@ -231,7 +231,7 @@ private struct QuickSwitcherRow: View {
                 .frame(width: 28, height: 28)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.accentColor)
+                        .fill(.tint)
                 )
         }
     }

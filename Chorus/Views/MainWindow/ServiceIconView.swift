@@ -104,7 +104,8 @@ struct ServiceIconView: View {
         HStack(spacing: 0) {
             // Selection indicator — matches the space strip's accent pill
             RoundedRectangle(cornerRadius: 1.5)
-                .fill(isSelected ? Color.accentColor : .clear)
+                .fill(.tint)
+                .opacity(isSelected ? 1 : 0)
                 .frame(width: 3, height: 28)
 
             ZStack(alignment: .topTrailing) {
@@ -156,13 +157,13 @@ struct ServiceIconView: View {
         .accessibilityAddTraits([.isButton, isSelected ? .isSelected : []])
     }
 
-    private var backgroundColor: Color {
+    private var backgroundColor: AnyShapeStyle {
         if isSelected {
-            return Color.accentColor.opacity(0.12)
+            return AnyShapeStyle(.tint.opacity(0.12))
         } else if isHovering {
-            return Color.primary.opacity(0.06)
+            return AnyShapeStyle(Color.primary.opacity(0.06))
         }
-        return .clear
+        return AnyShapeStyle(Color.clear)
     }
 }
 

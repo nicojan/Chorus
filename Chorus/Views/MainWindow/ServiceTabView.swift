@@ -51,7 +51,7 @@ struct ServiceTabView: View {
             .overlay(alignment: .bottom) {
                 if isSelected {
                     Rectangle()
-                        .fill(Color.accentColor)
+                        .fill(.tint)
                         .frame(height: 2)
                 }
             }
