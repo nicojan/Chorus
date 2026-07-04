@@ -56,6 +56,10 @@ struct ContentView: View {
             // Fill behind everything with the window shade so the traffic-light
             // insets don't reveal the title-bar vibrancy (the top-left tint).
             .background(Color(nsColor: .windowBackgroundColor))
+            // Extend up into the (hidden) title-bar area so the tab bar sits at
+            // the very top of the window; the traffic-light insets keep the
+            // top-left clear.
+            .ignoresSafeArea(.container, edges: .top)
         }
         .onChange(of: appState.selectedSpaceID) { _, newSpaceID in
             if let spaceID = newSpaceID {
