@@ -176,13 +176,9 @@ struct ServiceSidebarView: View {
                 .padding(.bottom, 4)
         }
         .frame(height: ServiceTabView.height + 6)
-        .background {
-            // Recess the bar a step off the tabs so the raised selected tab
-            // stands off the strip: darker than the window in light mode, lighter
-            // in dark.
-            Color(nsColor: .windowBackgroundColor)
-            Color.primary.opacity(0.08)
-        }
+        // Match the window/title-bar shade so the tab strip reads as one
+        // continuous top chrome; only the selected tab takes a distinct surface.
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     @ViewBuilder

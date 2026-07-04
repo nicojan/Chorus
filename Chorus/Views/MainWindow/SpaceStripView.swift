@@ -85,10 +85,7 @@ struct SpaceStripView: View {
                 .padding(.trailing, 8)
         }
         .frame(height: 48)
-        .background {
-            Color(nsColor: .windowBackgroundColor)
-            Color.primary.opacity(0.08)
-        }
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     @ViewBuilder
