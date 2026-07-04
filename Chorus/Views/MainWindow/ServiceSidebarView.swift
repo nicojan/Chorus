@@ -143,19 +143,18 @@ struct ServiceSidebarView: View {
     }
 
     private var horizontalBody: some View {
-        // Tabs are bottom-aligned so the selected tab's bottom edge is flush with
-        // the bar bottom and reads as connected to the content below.
-        HStack(alignment: .bottom, spacing: 0) {
+        HStack(spacing: 8) {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(alignment: .bottom, spacing: 4) {
+                    LazyHStack(spacing: 4) {
                         ForEach(filteredLinks) { link in
                             serviceRow(for: link)
                                 .id(link.service.id)
                         }
+                        addServiceButton
                     }
                     .padding(.horizontal, 8)
-                    .padding(.top, 6)
+                    .padding(.vertical, 6)
                 }
                 // Keep the active service visible when it's selected off-screen
                 // (⌘1–9, quick switcher, or a routed link).
@@ -170,15 +169,23 @@ struct ServiceSidebarView: View {
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            addServiceButton
-                .padding(.horizontal, 6)
-                .padding(.bottom, 4)
+            // Nav buttons live at the far right of the tab bar (top-right corner
+            // of the window), acting on the active service.
+            WebNavButtons(webViewState: appState.webViewState, homeURL: activeHomeURL)
+                .padding(.trailing, 10)
         }
-        .frame(height: ServiceTabView.height + 6)
-        // Match the window/title-bar shade so the tab strip reads as one
-        // continuous top chrome; only the selected tab takes a distinct surface.
+        .frame(height: ServiceTabView.height + 12)
         .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    /// Home URL of the currently selected service, for the nav home button.
+    private var activeHomeURL: URL? {
+        guard let id = selectedServiceID,
+              let service = filteredLinks.first(where: { $0.service.id == id })?.service
+        else { return nil }
+        return URL(string: service.url)
     }
 
     @ViewBuilder

@@ -7,11 +7,13 @@ struct WebContentView: View {
 
     @Environment(AppState.self) private var appState
     @Query private var services: [ServiceInstance]
-    @State private var webViewState = WebViewState()
     @State private var currentWebView: WKWebView?
     @State private var transitionSnapshot: NSImage?
     @State private var previousServiceID: UUID?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Shared nav state so the top tab bar can host the nav buttons.
+    private var webViewState: WebViewState { appState.webViewState }
 
     private var selectedService: ServiceInstance? {
         guard let id = selectedServiceID else { return nil }
@@ -21,10 +23,16 @@ struct WebContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             if let service = selectedService, let webView = currentWebView {
-                WebToolbarView(
-                    webViewState: webViewState,
-                    homeURL: URL(string: service.url)
-                )
+                // Horizontal layouts host the nav buttons in the top tab bar; the
+                // sidebar layout shows them in a slim row above the content.
+                if appState.railLayout == .sidebar {
+                    WebNavButtons(webViewState: webViewState, homeURL: URL(string: service.url))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(nsColor: .windowBackgroundColor))
+                    Divider()
+                }
 
                 ZStack(alignment: .topTrailing) {
                     WebViewContainer(webView: webView)

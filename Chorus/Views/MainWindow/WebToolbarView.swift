@@ -1,34 +1,20 @@
 import SwiftUI
 
-struct WebToolbarView: View {
+/// Compact web navigation controls — back, forward, reload/stop, home — for the
+/// active service. No URL and no background of its own: it's hosted at the right
+/// of the top tab bar (horizontal layouts) and above the content (sidebar).
+struct WebNavButtons: View {
     let webViewState: WebViewState
     var homeURL: URL?
 
-    @Environment(\.colorScheme) private var colorScheme
-
     var body: some View {
         HStack(spacing: 12) {
-            Button {
+            navButton("chevron.left", label: "Back", enabled: webViewState.canGoBack) {
                 webViewState.webView?.goBack()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 12, weight: .medium))
             }
-            .disabled(!webViewState.canGoBack)
-            .buttonStyle(.plain)
-            .help("Back")
-            .accessibilityLabel("Back")
-
-            Button {
+            navButton("chevron.right", label: "Forward", enabled: webViewState.canGoForward) {
                 webViewState.webView?.goForward()
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .medium))
             }
-            .disabled(!webViewState.canGoForward)
-            .buttonStyle(.plain)
-            .help("Forward")
-            .accessibilityLabel("Forward")
 
             Button {
                 if webViewState.isLoading {
@@ -41,48 +27,33 @@ struct WebToolbarView: View {
                     .font(.system(size: 12, weight: .medium))
             }
             .buttonStyle(.plain)
+            .disabled(webViewState.webView == nil)
             .help(webViewState.isLoading ? "Stop" : "Reload")
             .accessibilityLabel(webViewState.isLoading ? "Stop loading" : "Reload page")
 
             if let homeURL {
-                Button {
+                navButton("house", label: "Home", enabled: webViewState.webView != nil) {
                     webViewState.webView?.load(URLRequest(url: homeURL))
-                } label: {
-                    Image(systemName: "house")
-                        .font(.system(size: 12, weight: .medium))
                 }
-                .buttonStyle(.plain)
-                .help("Home")
-                .accessibilityLabel("Go to home page")
             }
-
-            loadingProgressSlot
-
-            Text(webViewState.currentURL?.host ?? "")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .accessibilityLabel(webViewState.currentURL.map { "Current page: \($0.host ?? "")" } ?? "")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        // Same surface as the selected folder tab above it, so the tab and this
-        // toolbar read as one raised element. The shadow casts downward (y:1)
-        // onto the content, so nothing falls between the toolbar and the tab.
-        .background(ServiceIconPalette.pageSurface(dark: colorScheme == .dark))
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.45 : 0.14), radius: 2.5, y: 1)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Navigation toolbar")
+        .accessibilityLabel("Navigation")
     }
 
-    private var loadingProgressSlot: some View {
-        ZStack {
-            ProgressView(value: webViewState.estimatedProgress)
-                .progressViewStyle(.linear)
-                .opacity(webViewState.isLoading ? 1 : 0)
-                .accessibilityHidden(!webViewState.isLoading)
+    private func navButton(
+        _ icon: String,
+        label: String,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .medium))
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: 6)
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .help(label)
+        .accessibilityLabel(label)
     }
 }

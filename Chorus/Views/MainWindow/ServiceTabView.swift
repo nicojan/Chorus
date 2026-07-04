@@ -1,11 +1,9 @@
 import SwiftUI
 
-/// A service rendered as a folder tab (icon + name + badge) for the top-bar and
-/// hybrid layouts. The selected tab sits on a raised surface with a rounded top
-/// and an accent "spine", and its bottom is flush with the bar so it reads as
-/// part of the content below; unselected tabs stay recessed in the bar. Icon
-/// resolution and the fallback palette are shared with the vertical rail via
-/// `ServiceIconSquare`.
+/// A service rendered as a tab (icon + name + badge) for the top-bar and hybrid
+/// layouts. The active service is marked with an accent border and a faint accent
+/// wash; unselected tabs are plain and blend into the strip. Icon resolution and
+/// the fallback palette are shared with the vertical rail via `ServiceIconSquare`.
 struct ServiceTabView: View {
     let instance: ServiceInstance
     let isSelected: Bool
@@ -15,12 +13,11 @@ struct ServiceTabView: View {
     let action: () -> Void
 
     @State private var isHovering = false
-    @Environment(\.colorScheme) private var colorScheme
 
     private let minWidth: CGFloat = 120
     private let maxWidth: CGFloat = 220
-    private let cornerRadius: CGFloat = 8
-    static let height: CGFloat = 32
+    private let cornerRadius: CGFloat = 7
+    static let height: CGFloat = 30
 
     var body: some View {
         Button(action: action) {
@@ -49,24 +46,14 @@ struct ServiceTabView: View {
             .frame(minWidth: minWidth, maxWidth: maxWidth)
             .frame(height: Self.height)
             .opacity(isHibernated ? 0.6 : (isMuted ? 0.8 : 1.0))
-            .background(background)
-            .overlay(alignment: .top) {
-                // Accent spine along the selected tab's top edge — the folder-tab
-                // cue. Drawn before the clip so it follows the rounded corners.
-                if isSelected {
-                    Rectangle()
-                        .fill(.tint)
-                        .frame(height: 2.5)
-                }
-            }
-            .clipShape(.rect(topLeadingRadius: cornerRadius, topTrailingRadius: cornerRadius))
-            // Lift the selected tab above the strip. The shadow casts upward
-            // (y:-1) so nothing falls between the tab and the toolbar it connects
-            // to below.
-            .shadow(
-                color: isSelected ? Color.black.opacity(colorScheme == .dark ? 0.45 : 0.14) : .clear,
-                radius: 2.5,
-                y: -1
+            .background(fillStyle)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .strokeBorder(
+                        isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.clear),
+                        lineWidth: 1.5
+                    )
             )
             .contentShape(Rectangle())
         }
@@ -82,18 +69,12 @@ struct ServiceTabView: View {
         .accessibilityAddTraits([.isButton, isSelected ? .isSelected : []])
     }
 
-    /// The selected tab takes the shared page surface (matching the nav toolbar
-    /// below) so the two read as one element clearly set off the title-bar-shade
-    /// strip and the unselected tabs. Inactive tabs are transparent so they blend
-    /// into the top chrome; hover is a faint wash.
-    @ViewBuilder
-    private var background: some View {
+    private var fillStyle: AnyShapeStyle {
         if isSelected {
-            ServiceIconPalette.pageSurface(dark: colorScheme == .dark)
+            return AnyShapeStyle(.tint.opacity(0.10))
         } else if isHovering {
-            Color.primary.opacity(0.06)
-        } else {
-            Color.clear
+            return AnyShapeStyle(Color.primary.opacity(0.06))
         }
+        return AnyShapeStyle(Color.clear)
     }
 }

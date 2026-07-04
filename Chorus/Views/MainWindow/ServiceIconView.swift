@@ -26,15 +26,6 @@ enum ServiceIconPalette {
         tileColors[stableHash(label) % tileColors.count]
     }
 
-    /// The raised "page" surface shared by the active folder tab and the nav
-    /// toolbar beneath it, so they read as one element lifted above the
-    /// unselected tabs and the title-bar-shade strip. Lighter than the window
-    /// chrome in both modes (elevation reads as lighter, especially in dark);
-    /// paired with a soft shadow at the call sites.
-    static func pageSurface(dark: Bool) -> Color {
-        dark ? Color(white: 0.27) : .white
-    }
-
     static func initial(for label: String) -> String {
         String(label.prefix(1)).uppercased()
     }

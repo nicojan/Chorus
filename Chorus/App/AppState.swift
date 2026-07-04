@@ -11,6 +11,10 @@ final class AppState {
     let dataStoreManager: DataStoreManager
     let userScriptManager: UserScriptManager
     let badgeManager: BadgeManager
+
+    /// Navigation state (back/forward/loading) for the active service's web view,
+    /// shared so the top tab bar can host the nav buttons.
+    let webViewState = WebViewState()
     let notificationManager: NotificationManager
     let hibernatedBadgePoller: HibernatedBadgePoller
     let networkMonitor: NetworkMonitor
