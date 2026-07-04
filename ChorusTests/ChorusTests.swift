@@ -522,4 +522,13 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(AppPreferences(railLayoutRaw: "hybrid").railLayout, .hybrid)
         XCTAssertEqual(AppPreferences(railLayoutRaw: "garbage").railLayout, .sidebar)
     }
+
+    func testAppearanceModeParsesFromStoredValueWithSystemFallback() {
+        XCTAssertEqual(AppPreferences(appearanceModeRaw: nil).appearanceMode, .system)
+        XCTAssertEqual(AppPreferences(appearanceModeRaw: "system").appearanceMode, .system)
+        XCTAssertEqual(AppPreferences(appearanceModeRaw: "light").appearanceMode, .light)
+        XCTAssertEqual(AppPreferences(appearanceModeRaw: "dark").appearanceMode, .dark)
+        XCTAssertEqual(AppPreferences(appearanceModeRaw: "garbage").appearanceMode, .system)
+    }
+
 }

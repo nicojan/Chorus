@@ -36,6 +36,18 @@ final class AppState {
     /// launch; the Settings picker writes both this and the persisted value.
     var railLayout: RailLayout = .sidebar
 
+    /// App-level appearance override, loaded from AppPreferences.
+    var appearanceMode: AppearanceMode = .system
+
+    /// The color scheme to force on the app, or nil to follow the system.
+    var appearanceColorScheme: ColorScheme? {
+        switch appearanceMode {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+
     /// Scheduled "quiet hours" Do Not Disturb, loaded from AppPreferences.
     /// `doNotDisturb` above stays the manual toggle; the effective DND that
     /// gates badges and notifications is `doNotDisturb || scheduledDNDActive`.
@@ -545,6 +557,7 @@ final class AppState {
         if rebuiltAny { webViewRebuildToken &+= 1 }
     }
 
+
     /// Reset the active service's zoom to 1.0. Triggered by Cmd-0.
     func resetActiveServiceZoom() {
         guard let id = webViewPool.activeServiceID,
@@ -903,6 +916,7 @@ final class AppState {
         userScriptManager.autoDismissCookieBanners = prefs?.autoDismissCookieBanners ?? true
         defaultZoom = prefs?.defaultZoomEffective ?? 1.0
         railLayout = prefs?.railLayout ?? .sidebar
+        appearanceMode = prefs?.appearanceMode ?? .system
         scheduledDNDEnabled = prefs?.scheduledDNDEnabled ?? false
         dndStartMinutes = prefs?.dndStartMinutes ?? (22 * 60)
         dndEndMinutes = prefs?.dndEndMinutes ?? (7 * 60)

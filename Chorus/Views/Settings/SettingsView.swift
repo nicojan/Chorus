@@ -103,6 +103,21 @@ struct GeneralSettingsView: View {
                 }
             }
 
+            Section("Appearance") {
+                Picker("Appearance", selection: Binding(
+                    get: { prefs.appearanceMode },
+                    set: { mode in
+                        ensurePrefs().appearanceModeRaw = mode.rawValue
+                        appState.appearanceMode = mode
+                        save("appearance mode")
+                    }
+                )) {
+                    ForEach(AppearanceMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+            }
+
             Section("Web Content") {
                 Toggle("Automatically dismiss cookie banners", isOn: Binding(
                     get: { prefs.autoDismissCookieBanners },

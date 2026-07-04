@@ -25,6 +25,21 @@ enum RailLayout: String, Codable, CaseIterable {
     }
 }
 
+/// App-level light/dark appearance override.
+enum AppearanceMode: String, Codable, CaseIterable {
+    case system
+    case light
+    case dark
+
+    var displayName: String {
+        switch self {
+        case .system: return "Follow System"
+        case .light: return "Always Light"
+        case .dark: return "Always Dark"
+        }
+    }
+}
+
 @Model
 final class AppPreferences {
     @Attribute(.unique) var id: UUID
@@ -60,6 +75,10 @@ final class AppPreferences {
     /// `railLayout`.
     var railLayoutRaw: String?
 
+    /// App-level appearance override. Optional for lightweight migration; nil or
+    /// unknown resolves to `.system`. Read via `appearanceMode`.
+    var appearanceModeRaw: String?
+
     init(
         id: UUID = UUID(),
         appPresenceMode: AppPresenceMode = .dock,
@@ -76,7 +95,8 @@ final class AppPreferences {
         appLockEnabled: Bool? = nil,
         lockOnLaunch: Bool? = nil,
         lockOnSleep: Bool? = nil,
-        railLayoutRaw: String? = nil
+        railLayoutRaw: String? = nil,
+        appearanceModeRaw: String? = nil
     ) {
         self.id = id
         self.appPresenceMode = appPresenceMode
@@ -94,6 +114,7 @@ final class AppPreferences {
         self.lockOnLaunch = lockOnLaunch
         self.lockOnSleep = lockOnSleep
         self.railLayoutRaw = railLayoutRaw
+        self.appearanceModeRaw = appearanceModeRaw
     }
 
     /// Materialises the storage-optional default zoom (nil → 1.0).
@@ -103,5 +124,10 @@ final class AppPreferences {
     /// `.sidebar`.
     var railLayout: RailLayout {
         railLayoutRaw.flatMap(RailLayout.init(rawValue:)) ?? .sidebar
+    }
+
+    /// Resolves the stored appearance override, defaulting to `.system`.
+    var appearanceMode: AppearanceMode {
+        appearanceModeRaw.flatMap(AppearanceMode.init(rawValue:)) ?? .system
     }
 }
