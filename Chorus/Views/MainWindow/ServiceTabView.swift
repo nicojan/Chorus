@@ -60,6 +60,14 @@ struct ServiceTabView: View {
                 }
             }
             .clipShape(.rect(topLeadingRadius: cornerRadius, topTrailingRadius: cornerRadius))
+            // Lift the selected tab above the strip. The shadow casts upward
+            // (y:-1) so nothing falls between the tab and the toolbar it connects
+            // to below.
+            .shadow(
+                color: isSelected ? Color.black.opacity(colorScheme == .dark ? 0.45 : 0.14) : .clear,
+                radius: 2.5,
+                y: -1
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

@@ -67,8 +67,10 @@ struct WebToolbarView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         // Same surface as the selected folder tab above it, so the tab and this
-        // toolbar read as one connected element set off the unselected tabs.
+        // toolbar read as one raised element. The shadow casts downward (y:1)
+        // onto the content, so nothing falls between the toolbar and the tab.
         .background(ServiceIconPalette.pageSurface(dark: colorScheme == .dark))
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.45 : 0.14), radius: 2.5, y: 1)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Navigation toolbar")
     }
