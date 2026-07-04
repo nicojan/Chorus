@@ -11,6 +11,10 @@ final class AppState {
     let dataStoreManager: DataStoreManager
     let userScriptManager: UserScriptManager
     let badgeManager: BadgeManager
+
+    /// Navigation state (back/forward/loading) for the active service's web view,
+    /// shared so the top tab bar can host the nav buttons.
+    let webViewState = WebViewState()
     let notificationManager: NotificationManager
     let hibernatedBadgePoller: HibernatedBadgePoller
     let networkMonitor: NetworkMonitor
@@ -31,6 +35,22 @@ final class AppState {
     /// Chorus-wide default page zoom, applied to services without an explicit
     /// per-service zoom. Loaded from AppPreferences at launch.
     var defaultZoom: Double = 1.0
+
+    /// Where the spaces/services rails sit. Loaded from AppPreferences at
+    /// launch; the Settings picker writes both this and the persisted value.
+    var railLayout: RailLayout = .sidebar
+
+    /// App-level appearance override, loaded from AppPreferences.
+    var appearanceMode: AppearanceMode = .system
+
+    /// The color scheme to force on the app, or nil to follow the system.
+    var appearanceColorScheme: ColorScheme? {
+        switch appearanceMode {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
 
     /// Scheduled "quiet hours" Do Not Disturb, loaded from AppPreferences.
     /// `doNotDisturb` above stays the manual toggle; the effective DND that
@@ -167,10 +187,11 @@ final class AppState {
     }
 
     /// Decides what to do with a link that the user clicked in one service
-    /// and which targets a different origin. If any other Chorus service
-    /// belongs to the same eTLD+1 we switch to it (preserving auth/space
-    /// context) and navigate to the deep URL. Otherwise we hand off to the
-    /// system default browser.
+    /// and which targets a different origin. If any other Chorus service owns
+    /// that domain (same registrable domain, or the exact host for
+    /// shared-umbrella domains like google.com) we switch to it (preserving
+    /// auth/space context) and navigate to the deep URL. Otherwise we hand off
+    /// to the system default browser.
     ///
     /// Multi-account aware: when several services match the same host (e.g.
     /// personal + work Notion), we prefer the match in the current space so
@@ -196,7 +217,7 @@ final class AppState {
 
         let matches = services.filter { service in
             guard let serviceHost = URL(string: service.url)?.host else { return false }
-            return WebViewCoordinator.areSameDomain(host, serviceHost)
+            return WebViewCoordinator.belongsToService(host, serviceHost: serviceHost)
         }
         if matches.isEmpty { return nil }
         if matches.count == 1 { return matches.first }
@@ -514,31 +535,7 @@ final class AppState {
             forName: Notification.Name("com.apple.screenIsLocked"), object: nil, queue: .main, using: lockOnSleepIfNeeded)
     }
 
-    // MARK: - Dark mode
 
-    /// Rebuilds any live service set to "auto" dark mode when the system
-    /// appearance flips, so its injected CSS matches (dark CSS is decided at
-    /// web-view build time). Wired to the system light/dark change notification.
-    private func setupAppearanceObserver() {
-        DistributedNotificationCenter.default().addObserver(
-            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
-            object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.rebuildAutoDarkModeServices() }
-        }
-    }
-
-    func rebuildAutoDarkModeServices() {
-        let services = (try? modelContainer.mainContext.fetch(FetchDescriptor<ServiceInstance>())) ?? []
-        var rebuiltAny = false
-        for service in services where service.darkModePreference == .auto {
-            if webViewPool.hasWebView(for: service.id) {
-                webViewPool.recreateWebView(for: service.id)
-                rebuiltAny = true
-            }
-        }
-        if rebuiltAny { webViewRebuildToken &+= 1 }
-    }
 
     /// Reset the active service's zoom to 1.0. Triggered by Cmd-0.
     func resetActiveServiceZoom() {
@@ -897,6 +894,8 @@ final class AppState {
         // AppKit-facing mutations to the next runloop tick.
         userScriptManager.autoDismissCookieBanners = prefs?.autoDismissCookieBanners ?? true
         defaultZoom = prefs?.defaultZoomEffective ?? 1.0
+        railLayout = prefs?.railLayout ?? .sidebar
+        appearanceMode = prefs?.appearanceMode ?? .system
         scheduledDNDEnabled = prefs?.scheduledDNDEnabled ?? false
         dndStartMinutes = prefs?.dndStartMinutes ?? (22 * 60)
         dndEndMinutes = prefs?.dndEndMinutes ?? (7 * 60)
@@ -919,7 +918,6 @@ final class AppState {
             self.refreshEffectiveDoNotDisturb()
             self.startQuietHoursTimer()
             self.setupLockObservers()
-            self.setupAppearanceObserver()
         }
     }
 

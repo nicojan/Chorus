@@ -64,12 +64,12 @@ struct QuickSwitcherView: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-                .font(.system(size: 16))
+                .font(.title3)
                 .accessibilityHidden(true)
 
             TextField("Jump to service...", text: $searchText)
                 .textFieldStyle(.plain)
-                .font(.system(size: 16))
+                .font(.title3)
                 .onSubmit {
                     selectCurrent()
                 }
@@ -181,14 +181,14 @@ private struct QuickSwitcherRow: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(result.label)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.body.weight(.medium))
                     .foregroundStyle(.primary)
 
                 HStack(spacing: 4) {
                     Text(result.spaceEmoji)
-                        .font(.system(size: 10))
+                        .font(.caption2)
                     Text(result.spaceName)
-                        .font(.system(size: 11))
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -197,7 +197,7 @@ private struct QuickSwitcherRow: View {
 
             if isHighlighted {
                 Image(systemName: "return")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.caption2.weight(.medium))
                     .foregroundStyle(.tertiary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -212,7 +212,7 @@ private struct QuickSwitcherRow: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(isHighlighted ? Color.accentColor.opacity(0.12) : .clear)
+                .fill(isHighlighted ? AnyShapeStyle(.tint.opacity(0.12)) : AnyShapeStyle(Color.clear))
                 .padding(.horizontal, 4)
         )
         .contentShape(Rectangle())
@@ -226,12 +226,12 @@ private struct QuickSwitcherRow: View {
                 .aspectRatio(contentMode: .fit)
         } else {
             Text(String(result.label.prefix(1)).uppercased())
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .font(.system(.callout, design: .rounded).weight(.semibold))
                 .foregroundStyle(.white)
                 .frame(width: 28, height: 28)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.accentColor)
+                        .fill(.tint)
                 )
         }
     }

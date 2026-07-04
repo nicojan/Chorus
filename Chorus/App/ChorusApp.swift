@@ -30,11 +30,13 @@ struct ChorusApp: App {
             ContentView()
                 .environment(appState)
                 .modelContainer(appState.modelContainer)
+                .preferredColorScheme(appState.appearanceColorScheme)
                 .onDisappear {
                     saveWindowState()
                 }
         }
         .defaultSize(width: 1100, height: 700)
+        .windowStyle(.hiddenTitleBar)
         .commands {
             #if canImport(Sparkle)
             CommandGroup(after: .appInfo) {
@@ -127,10 +129,12 @@ struct ChorusApp: App {
             SettingsView(updater: updaterController.updater)
                 .environment(appState)
                 .modelContainer(appState.modelContainer)
+                .preferredColorScheme(appState.appearanceColorScheme)
             #else
             SettingsView()
                 .environment(appState)
                 .modelContainer(appState.modelContainer)
+                .preferredColorScheme(appState.appearanceColorScheme)
             #endif
         }
     }

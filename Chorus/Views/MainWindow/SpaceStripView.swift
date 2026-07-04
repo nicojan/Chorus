@@ -4,6 +4,11 @@ import SwiftData
 struct SpaceStripView: View {
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
     @Binding var selectedSpaceID: UUID?
+    var axis: Axis = .vertical
+    /// Inset applied to the content (top for a vertical rail, leading for a
+    /// horizontal bar) to clear the window traffic lights — kept inside so the
+    /// rail's background and dividers still run full-length.
+    var contentInset: CGFloat = 0
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
 
@@ -12,116 +17,155 @@ struct SpaceStripView: View {
     @State private var confirmingDeleteSpace: Space?
 
     var body: some View {
+        content
+            .sheet(isPresented: $showingAddSpace) {
+                SpaceEditorSheet(editingSpace: nil, selectedSpaceID: $selectedSpaceID)
+            }
+            .sheet(item: $editingSpace) { space in
+                SpaceEditorSheet(editingSpace: space, selectedSpaceID: $selectedSpaceID)
+            }
+            .confirmationDialog(
+                "Delete \(confirmingDeleteSpace?.name ?? "space")?",
+                isPresented: Binding(
+                    get: { confirmingDeleteSpace != nil },
+                    set: { if !$0 { confirmingDeleteSpace = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    if let space = confirmingDeleteSpace {
+                        deleteSpace(space)
+                    }
+                    confirmingDeleteSpace = nil
+                }
+            } message: {
+                Text("Services in this space won't be deleted, but the space will be removed.")
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if axis == .vertical {
+            verticalBody
+        } else {
+            horizontalBody
+        }
+    }
+
+    private var verticalBody: some View {
         VStack(spacing: 2) {
-            Spacer()
-                .frame(height: 6)
+            Spacer().frame(height: 6 + contentInset)
 
             ForEach(spaces) { space in
-                let serviceIDs = space.serviceLinks.map(\.service.id)
-                let muted = space.isMutedEffective
-                let badgeCount = muted ? 0 : appState.badgeManager.aggregateCount(for: serviceIDs)
-                SpaceButton(
-                    space: space,
-                    isSelected: selectedSpaceID == space.id,
-                    badgeCount: badgeCount,
-                    isMuted: muted
-                ) {
-                    selectedSpaceID = space.id
-                }
-                .draggable(space.id.uuidString) {
-                    // Custom drag preview. Source-dimming is intentionally left
-                    // to SwiftUI: manually tracking a "dragging" id to dim the
-                    // source can't be cleared reliably (a drop on itself or a
-                    // cancelled drag never fires the drop handler), which left
-                    // the icon stuck dim after letting go.
-                    Text(space.emoji)
-                        .font(.title3)
-                        .padding(6)
-                        .background(.ultraThickMaterial)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-                .dropDestination(for: String.self) { items, _ in
-                    guard let droppedIDString = items.first,
-                          let droppedID = UUID(uuidString: droppedIDString),
-                          droppedID != space.id
-                    else { return false }
-                    reorderSpace(droppedSpaceID: droppedID, beforeSpace: space)
-                    return true
-                }
-                .accessibilityAction(named: "Move up") { moveSpaceUp(space) }
-                .accessibilityAction(named: "Move down") { moveSpaceDown(space) }
-                .contextMenu {
-                    Toggle("Mute Notifications", isOn: Binding(
-                        get: { space.isMutedEffective },
-                        set: { newValue in
-                            space.isMuted = newValue
-                            save("toggle space mute")
-                            // Refresh BadgeManager for every member service so
-                            // the per-service sidebar badge and the aggregate
-                            // chip badge zero out (or come back) immediately,
-                            // without waiting for the next poll tick.
-                            for link in space.serviceLinks {
-                                appState.refreshBadgeState(for: link.service.id)
-                            }
-                        }
-                    ))
-
-                    Divider()
-                    Button("Edit Space...") {
-                        editingSpace = space
-                    }
-                    Divider()
-                    Button("Delete Space", role: .destructive) {
-                        confirmingDeleteSpace = space
-                    }
-                }
+                spaceCell(space)
             }
 
             Spacer()
 
-            Divider()
-                .padding(.horizontal, 8)
+            Divider().padding(.horizontal, 8)
 
-            Button {
-                showingAddSpace = true
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 12, weight: .medium))
-                    .frame(width: 32, height: 28)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("Add space")
-            .accessibilityLabel("Add space")
+            addSpaceButton
 
-            Spacer()
-                .frame(height: 6)
+            Spacer().frame(height: 6)
         }
         .frame(width: 52)
         .background(Color(nsColor: .windowBackgroundColor))
-        .sheet(isPresented: $showingAddSpace) {
-            SpaceEditorSheet(editingSpace: nil, selectedSpaceID: $selectedSpaceID)
-        }
-        .sheet(item: $editingSpace) { space in
-            SpaceEditorSheet(editingSpace: space, selectedSpaceID: $selectedSpaceID)
-        }
-        .confirmationDialog(
-            "Delete \(confirmingDeleteSpace?.name ?? "space")?",
-            isPresented: Binding(
-                get: { confirmingDeleteSpace != nil },
-                set: { if !$0 { confirmingDeleteSpace = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                if let space = confirmingDeleteSpace {
-                    deleteSpace(space)
+    }
+
+    private var horizontalBody: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(spaces) { space in
+                    spaceCell(space)
                 }
-                confirmingDeleteSpace = nil
+                addSpaceButton
             }
-        } message: {
-            Text("Services in this space won't be deleted, but the space will be removed.")
+            .padding(.leading, 8 + contentInset)
+            .padding(.trailing, 8)
+            .padding(.vertical, 2)
         }
+        .frame(height: ServiceTabView.height + 4)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    @ViewBuilder
+    private func spaceCell(_ space: Space) -> some View {
+        // Resolve members via the same reliable link fetch the service rail uses,
+        // not Space.serviceLinks — the inverse relationship can be stale, which
+        // left the aggregate summing an empty list (no badge) even while the
+        // per-service tab badges showed.
+        let serviceIDs = appState.servicesForSpace(space.id).map(\.id)
+        let muted = space.isMutedEffective
+        let badgeCount = muted ? 0 : appState.badgeManager.aggregateCount(for: serviceIDs)
+        SpaceButton(
+            space: space,
+            isSelected: selectedSpaceID == space.id,
+            badgeCount: badgeCount,
+            isMuted: muted,
+            axis: axis
+        ) {
+            selectedSpaceID = space.id
+        }
+        .draggable(space.id.uuidString) {
+            // Custom drag preview. Source-dimming is intentionally left to
+            // SwiftUI: manually tracking a "dragging" id to dim the source can't
+            // be cleared reliably (a drop on itself or a cancelled drag never
+            // fires the drop handler), which left the icon stuck dim.
+            Text(space.emoji)
+                .font(.title3)
+                .padding(6)
+                .background(.ultraThickMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .dropDestination(for: String.self) { items, _ in
+            guard let droppedIDString = items.first,
+                  let droppedID = UUID(uuidString: droppedIDString),
+                  droppedID != space.id
+            else { return false }
+            reorderSpace(droppedSpaceID: droppedID, beforeSpace: space)
+            return true
+        }
+        .accessibilityAction(named: "Move up") { moveSpaceUp(space) }
+        .accessibilityAction(named: "Move down") { moveSpaceDown(space) }
+        .contextMenu {
+            Toggle("Mute Notifications", isOn: Binding(
+                get: { space.isMutedEffective },
+                set: { newValue in
+                    space.isMuted = newValue
+                    save("toggle space mute")
+                    // Refresh BadgeManager for every member service so the
+                    // per-service badge and the aggregate chip badge zero out
+                    // (or come back) immediately, without waiting for a poll.
+                    for link in space.serviceLinks {
+                        appState.refreshBadgeState(for: link.service.id)
+                    }
+                }
+            ))
+
+            Divider()
+            Button("Edit Space...") {
+                editingSpace = space
+            }
+            Divider()
+            Button("Delete Space", role: .destructive) {
+                confirmingDeleteSpace = space
+            }
+        }
+    }
+
+    private var addSpaceButton: some View {
+        Button {
+            showingAddSpace = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: axis == .vertical ? 32 : 28, height: 28)
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Add space")
+        .accessibilityLabel("Add space")
     }
 
     private func save(_ context: String) {
@@ -176,49 +220,17 @@ private struct SpaceButton: View {
     let isSelected: Bool
     var badgeCount: Int = 0
     var isMuted: Bool = false
+    var axis: Axis = .vertical
     let action: () -> Void
 
     @State private var isHovering = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
-            ZStack(alignment: .topTrailing) {
-                HStack(spacing: 0) {
-                    // Selection indicator — a 3pt accent-colored pill on the leading edge
-                    // following the macOS sidebar selection pattern
-                    RoundedRectangle(cornerRadius: 1.5)
-                        .fill(isSelected ? Color.accentColor : .clear)
-                        .frame(width: 3, height: 20)
-                        .padding(.leading, 2)
-
-                    Text(space.emoji)
-                        .font(.title2)
-                        .opacity(isMuted ? 0.5 : 1.0)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 40)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(backgroundColor)
-                        )
-                        .padding(.horizontal, 4)
-                }
-                .frame(width: 52)
-
-                if badgeCount > 0 {
-                    BadgeCountView(count: badgeCount)
-                        .offset(x: 4, y: -4)
-                }
-
-                if isMuted {
-                    Image(systemName: "bell.slash.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                        .padding(2)
-                        .background(Circle().fill(.background))
-                        .offset(x: -2, y: 28)
-                        .accessibilityHidden(true)
-                }
+            if axis == .vertical {
+                verticalCell
+            } else {
+                horizontalTab
             }
         }
         .buttonStyle(.plain)
@@ -227,16 +239,108 @@ private struct SpaceButton: View {
             isHovering = hovering
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(isMuted ? "\(space.name), muted" : space.name)
+        .accessibilityLabel(accessibilityLabelText)
         .accessibilityAddTraits([.isButton, isSelected ? .isSelected : []])
     }
 
-    private var backgroundColor: Color {
-        if isSelected {
-            return Color.accentColor.opacity(0.15)
-        } else if isHovering {
-            return Color.primary.opacity(0.06)
+    /// Vertical rail: an emoji tile with a leading accent pill when selected.
+    private var verticalCell: some View {
+        ZStack(alignment: .topTrailing) {
+            Text(space.emoji)
+                .font(.title2)
+                .opacity(isMuted ? 0.5 : 1.0)
+                .frame(width: 40, height: 40)
+                .background(RoundedRectangle(cornerRadius: 9).fill(fillStyle))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9)
+                        .strokeBorder(
+                            isSelected ? AnyShapeStyle(.tint.opacity(0.55)) : AnyShapeStyle(Color.clear),
+                            lineWidth: 1
+                        )
+                )
+                .overlay(alignment: .leading) {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 1.5)
+                            .fill(.tint)
+                            .frame(width: 3, height: 20)
+                    }
+                }
+                .frame(width: 44, height: 44)
+
+            if badgeCount > 0 {
+                BadgeCountView(count: badgeCount).offset(x: 2, y: -2)
+            }
+            if isMuted {
+                muteGlyph
+            }
         }
-        return .clear
+        .frame(width: 44, height: 44)
+    }
+
+    /// Horizontal top bar: an emoji + name tab, matching the service tabs, with an
+    /// accent border when selected.
+    private var horizontalTab: some View {
+        HStack(spacing: 8) {
+            Text(space.emoji).font(.system(size: 15))
+
+            Text(space.name)
+                .font(.subheadline)
+                .fontWeight(isSelected ? .semibold : .regular)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .foregroundStyle(isSelected ? .primary : .secondary)
+
+            if badgeCount > 0 {
+                BadgeCountView(count: badgeCount)
+            } else if isMuted {
+                Image(systemName: "bell.slash.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: ServiceTabView.height)
+        .opacity(isMuted ? 0.7 : 1.0)
+        .background(fillStyle)
+        .clipShape(RoundedRectangle(cornerRadius: 7))
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .strokeBorder(
+                    isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.clear),
+                    lineWidth: 1.5
+                )
+        )
+        .contentShape(Rectangle())
+    }
+
+    private var muteGlyph: some View {
+        Image(systemName: "bell.slash.fill")
+            .font(.system(size: 9))
+            .foregroundStyle(.secondary)
+            .padding(2)
+            .background(Circle().fill(.background))
+            .offset(x: 2, y: 4)
+            .accessibilityHidden(true)
+    }
+
+    /// Folds the space name, aggregate unread count, and mute state into one
+    /// spoken label so VoiceOver announces everything the badge conveys visually.
+    private var accessibilityLabelText: String {
+        var parts = [space.name]
+        if badgeCount > 0 {
+            parts.append(badgeCount == 1 ? "1 unread" : "\(badgeCount) unread")
+        }
+        if isMuted { parts.append("muted") }
+        return parts.joined(separator: ", ")
+    }
+
+    private var fillStyle: AnyShapeStyle {
+        if isSelected {
+            return AnyShapeStyle(.tint.opacity(0.12))
+        } else if isHovering {
+            return AnyShapeStyle(Color.primary.opacity(0.06))
+        }
+        return AnyShapeStyle(Color.clear)
     }
 }

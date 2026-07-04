@@ -7,11 +7,13 @@ struct WebContentView: View {
 
     @Environment(AppState.self) private var appState
     @Query private var services: [ServiceInstance]
-    @State private var webViewState = WebViewState()
     @State private var currentWebView: WKWebView?
     @State private var transitionSnapshot: NSImage?
     @State private var previousServiceID: UUID?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Shared nav state so the top tab bar can host the nav buttons.
+    private var webViewState: WebViewState { appState.webViewState }
 
     private var selectedService: ServiceInstance? {
         guard let id = selectedServiceID else { return nil }
@@ -21,10 +23,16 @@ struct WebContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             if let service = selectedService, let webView = currentWebView {
-                WebToolbarView(
-                    webViewState: webViewState,
-                    homeURL: URL(string: service.url)
-                )
+                // Horizontal layouts host the nav buttons in the top tab bar; the
+                // sidebar layout shows them in a slim row above the content.
+                if appState.railLayout == .sidebar {
+                    WebNavButtons(webViewState: webViewState, homeURL: URL(string: service.url))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(nsColor: .windowBackgroundColor))
+                    Divider()
+                }
 
                 ZStack(alignment: .topTrailing) {
                     WebViewContainer(webView: webView)
@@ -36,6 +44,7 @@ struct WebContentView: View {
                             .resizable()
                             .aspectRatio(contentMode: .fill)
                             .transition(.opacity)
+                            .accessibilityHidden(true)
                     }
 
                     if appState.findInPageVisible {
@@ -97,6 +106,16 @@ struct WebContentView: View {
         currentWebView = webView
         webViewState.attach(to: webView)
         previousServiceID = service.id
+
+        // Once the view is shown its frame settles a render tick later. Some SPAs
+        // (Gmail) cache a viewport-height layout and, if it was measured against a
+        // stale/transitional frame, leave their fixed header stranded above the
+        // visible area with no way to scroll to it. Fire a synthetic resize so the
+        // page re-measures against the real frame; it's a no-op for other sites.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            webView.evaluateJavaScript("window.dispatchEvent(new Event('resize'))", completionHandler: nil)
+        }
 
         // Start active-mode badge/title polling for the displayed service.
         // Pass closures (rather than the captured bool) so the next poll tick

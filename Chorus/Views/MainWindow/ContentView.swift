@@ -43,39 +43,23 @@ struct ContentView: View {
                 }
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity)
-                .background(Color.red.opacity(0.85))
+                .background(ServiceIconPalette.badgeRed)
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Offline")
             }
 
-            HStack(spacing: 0) {
-            SpaceStripView(
-                selectedSpaceID: $state.selectedSpaceID
+            mainLayout(
+                spaceSelection: $state.selectedSpaceID,
+                serviceSelection: $state.selectedServiceID
             )
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Spaces")
-
-            Divider()
-
-            if let spaceID = appState.selectedSpaceID {
-                ServiceSidebarView(
-                    spaceID: spaceID,
-                    selectedServiceID: $state.selectedServiceID
-                )
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel("Services")
-
-                Divider()
-            }
-
-            WebContentView(
-                selectedServiceID: appState.selectedServiceID
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Web content")
-        }
-        .frame(minWidth: 800, minHeight: 500)
+            .frame(minWidth: 800, minHeight: 500)
+            // Fill behind everything with the window shade so the traffic-light
+            // insets don't reveal the title-bar vibrancy (the top-left tint).
+            .background(Color(nsColor: .windowBackgroundColor))
+            // Extend up into the (hidden) title-bar area so the tab bar sits at
+            // the very top of the window; the traffic-light insets keep the
+            // top-left clear.
+            .ignoresSafeArea(.container, edges: .top)
         }
         .onChange(of: appState.selectedSpaceID) { _, newSpaceID in
             if let spaceID = newSpaceID {
@@ -110,6 +94,74 @@ struct ContentView: View {
                     .transition(.opacity)
             }
         }
+    }
+
+    /// Arranges the two rails and the web content per the chosen layout. Sidebar
+    /// keeps both rails vertical on the left; top bars stacks them horizontally
+    /// above the content; hybrid keeps spaces on the left with service tabs on
+    /// top of the content.
+    @ViewBuilder
+    private func mainLayout(
+        spaceSelection: Binding<UUID?>,
+        serviceSelection: Binding<UUID?>
+    ) -> some View {
+        // The title bar is hidden, so content runs to the top edge. Reserve the
+        // top-left for the traffic lights: push the leftmost top elements clear.
+        let lightsHeight: CGFloat = 28
+        let lightsWidth: CGFloat = 72
+        let railWidth: CGFloat = 52
+
+        switch appState.railLayout {
+        case .sidebar:
+            HStack(spacing: 0) {
+                spacesRail(axis: .vertical, selection: spaceSelection, contentInset: lightsHeight)
+                Divider()
+                if let spaceID = appState.selectedSpaceID {
+                    servicesRail(axis: .vertical, spaceID: spaceID, selection: serviceSelection, contentInset: lightsHeight)
+                    Divider()
+                }
+                webContent
+            }
+        case .topBars:
+            VStack(spacing: 0) {
+                spacesRail(axis: .horizontal, selection: spaceSelection, contentInset: lightsWidth)
+                Divider()
+                if let spaceID = appState.selectedSpaceID {
+                    servicesRail(axis: .horizontal, spaceID: spaceID, selection: serviceSelection)
+                }
+                webContent
+            }
+        case .hybrid:
+            HStack(spacing: 0) {
+                spacesRail(axis: .vertical, selection: spaceSelection, contentInset: lightsHeight)
+                Divider()
+                VStack(spacing: 0) {
+                    if let spaceID = appState.selectedSpaceID {
+                        servicesRail(axis: .horizontal, spaceID: spaceID, selection: serviceSelection, contentInset: lightsWidth - railWidth)
+                    }
+                    webContent
+                }
+            }
+        }
+    }
+
+    private func spacesRail(axis: Axis, selection: Binding<UUID?>, contentInset: CGFloat = 0) -> some View {
+        SpaceStripView(selectedSpaceID: selection, axis: axis, contentInset: contentInset)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Spaces")
+    }
+
+    private func servicesRail(axis: Axis, spaceID: UUID, selection: Binding<UUID?>, contentInset: CGFloat = 0) -> some View {
+        ServiceSidebarView(spaceID: spaceID, selectedServiceID: selection, axis: axis, contentInset: contentInset)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Services")
+    }
+
+    private var webContent: some View {
+        WebContentView(selectedServiceID: appState.selectedServiceID)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Web content")
     }
 
     private func selectFirstService(in spaceID: UUID) {

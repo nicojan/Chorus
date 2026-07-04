@@ -47,11 +47,19 @@ struct ServiceSidebarView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
 
+    var axis: Axis = .vertical
+    /// Inset applied to the content (top for the vertical rail, leading for the
+    /// horizontal tab bar) to clear the window traffic lights, kept inside so the
+    /// background and dividers still run full-length.
+    var contentInset: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var showingAddService = false
     @State private var confirmingDelete: SpaceServiceLink?
     @State private var editingService: ServiceInstance?
     @State private var draggingLinkID: UUID?
     private static let serviceDropMidpoint: CGFloat = 23
+    private static let serviceDropMidpointHorizontal: CGFloat = 60
 
     private var filteredLinks: [SpaceServiceLink] {
         allLinks
@@ -110,75 +118,179 @@ struct ServiceSidebarView: View {
         }
     }
 
-    var body: some View {
+    @ViewBuilder
+    private var content: some View {
+        if axis == .vertical {
+            verticalBody
+        } else {
+            horizontalBody
+        }
+    }
+
+    private var verticalBody: some View {
         VStack(spacing: 0) {
             ScrollView {
                 LazyVStack(spacing: 2) {
                     ForEach(filteredLinks) { link in
-                        Button {
-                            selectedServiceID = link.service.id
-                        } label: {
-                            ServiceIconView(
-                                instance: link.service,
-                                isSelected: selectedServiceID == link.service.id,
-                                badgeCount: appState.badgeManager.badgeCount(for: link.service.id),
-                                isHibernated: selectedServiceID != link.service.id
-                                    && appState.webViewPool.isHibernated(link.service.id),
-                                isMuted: link.service.isEffectivelyMuted
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .contentShape(Rectangle())
-                        .opacity(draggingLinkID == link.id ? 0.4 : 1.0)
-                        .draggable(link.id.uuidString) {
-                            Text(link.service.label)
-                                .font(.caption)
-                                .padding(6)
-                                .background(.ultraThickMaterial)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .onAppear { draggingLinkID = link.id }
-                                .onDisappear { draggingLinkID = nil }
-                        }
-                        .dropDestination(for: String.self) { items, location in
-                            guard let droppedIDString = items.first,
-                                  let droppedID = UUID(uuidString: droppedIDString),
-                                  droppedID != link.id
-                            else { return false }
-                            let placement: ServiceReorderPlacement = location.y < Self.serviceDropMidpoint
-                                ? .before
-                                : .after
-                            let didReorder = reorderService(
-                                droppedLinkID: droppedID,
-                                relativeTo: link,
-                                placement: placement
-                            )
-                            draggingLinkID = nil
-                            return didReorder
-                        }
-                        .accessibilityAction(named: "Move up") { moveServiceUp(link) }
-                        .accessibilityAction(named: "Move down") { moveServiceDown(link) }
-                        .contextMenu { serviceContextMenu(for: link) }
+                        serviceRow(for: link)
                     }
                 }
-                .padding(.vertical, 8)
+                .padding(.top, 8 + contentInset)
+                .padding(.bottom, 8)
             }
 
             Divider()
 
-            Button {
-                showingAddService = true
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 12, weight: .medium))
-                    .frame(width: 44, height: 32)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("Add service")
-            .accessibilityLabel("Add service")
+            addServiceButton
         }
         .frame(width: 52)
         .background(.background)
+    }
+
+    private var horizontalBody: some View {
+        HStack(spacing: 8) {
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 4) {
+                        ForEach(filteredLinks) { link in
+                            serviceRow(for: link)
+                                .id(link.service.id)
+                        }
+                        addServiceButton
+                    }
+                    .padding(.leading, 8 + contentInset)
+                    .padding(.trailing, 8)
+                    .padding(.vertical, 2)
+                }
+                // Keep the active service visible when it's selected off-screen
+                // (⌘1–9, quick switcher, or a routed link).
+                .onChange(of: selectedServiceID) { _, newID in
+                    guard let newID else { return }
+                    if reduceMotion {
+                        proxy.scrollTo(newID, anchor: .center)
+                    } else {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(newID, anchor: .center)
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Nav buttons live at the far right of the tab bar (top-right corner
+            // of the window), acting on the active service.
+            WebNavButtons(webViewState: appState.webViewState, homeURL: activeHomeURL)
+                .padding(.trailing, 10)
+        }
+        .frame(height: ServiceTabView.height + 4)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    /// Home URL of the currently selected service, for the nav home button.
+    private var activeHomeURL: URL? {
+        guard let id = selectedServiceID,
+              let service = filteredLinks.first(where: { $0.service.id == id })?.service
+        else { return nil }
+        return URL(string: service.url)
+    }
+
+    @ViewBuilder
+    private func serviceRow(for link: SpaceServiceLink) -> some View {
+        let isSel = selectedServiceID == link.service.id
+        let badge = appState.badgeManager.badgeCount(for: link.service.id)
+        let hibernated = !isSel && appState.webViewPool.isHibernated(link.service.id)
+        let muted = link.service.isEffectivelyMuted
+
+        cell(for: link, isSelected: isSel, badge: badge, hibernated: hibernated, muted: muted)
+            .opacity(draggingLinkID == link.id ? 0.4 : 1.0)
+            .draggable(link.id.uuidString) {
+                Text(link.service.label)
+                    .font(.caption)
+                    .padding(6)
+                    .background(.ultraThickMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .onAppear { draggingLinkID = link.id }
+                    .onDisappear { draggingLinkID = nil }
+            }
+            .dropDestination(for: String.self) { items, location in
+                guard let droppedIDString = items.first,
+                      let droppedID = UUID(uuidString: droppedIDString),
+                      droppedID != link.id
+                else { return false }
+                let placement: ServiceReorderPlacement = {
+                    if axis == .vertical {
+                        return location.y < Self.serviceDropMidpoint ? .before : .after
+                    }
+                    return location.x < Self.serviceDropMidpointHorizontal ? .before : .after
+                }()
+                let didReorder = reorderService(
+                    droppedLinkID: droppedID,
+                    relativeTo: link,
+                    placement: placement
+                )
+                draggingLinkID = nil
+                return didReorder
+            }
+            .accessibilityAction(named: "Move up") { moveServiceUp(link) }
+            .accessibilityAction(named: "Move down") { moveServiceDown(link) }
+            .contextMenu { serviceContextMenu(for: link) }
+    }
+
+    @ViewBuilder
+    private func cell(
+        for link: SpaceServiceLink,
+        isSelected: Bool,
+        badge: Int,
+        hibernated: Bool,
+        muted: Bool
+    ) -> some View {
+        if axis == .vertical {
+            Button {
+                selectedServiceID = link.service.id
+            } label: {
+                ServiceIconView(
+                    instance: link.service,
+                    isSelected: isSelected,
+                    badgeCount: badge,
+                    isHibernated: hibernated,
+                    isMuted: muted
+                )
+            }
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+        } else {
+            ServiceTabView(
+                instance: link.service,
+                isSelected: isSelected,
+                badgeCount: badge,
+                isHibernated: hibernated,
+                isMuted: muted
+            ) {
+                selectedServiceID = link.service.id
+            }
+        }
+    }
+
+    private var addServiceButton: some View {
+        Button {
+            showingAddService = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 12, weight: .medium))
+                .frame(
+                    width: axis == .vertical ? 44 : 36,
+                    height: axis == .vertical ? 32 : ServiceTabView.height
+                )
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Add service")
+        .accessibilityLabel("Add service")
+    }
+
+    var body: some View {
+        content
         .sheet(isPresented: $showingAddService) {
             AddServiceSheet(spaceID: spaceID)
         }

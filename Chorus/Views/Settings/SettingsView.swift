@@ -66,7 +66,7 @@ struct GeneralSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Appearance") {
+            Section("Dock & Menu Bar") {
                 Picker("Show Chorus in", selection: Binding(
                     get: { prefs.appPresenceMode },
                     set: { mode in
@@ -88,6 +88,34 @@ struct GeneralSettingsView: View {
                         save("badge count in dock")
                     }
                 ))
+            }
+
+            Section("Appearance") {
+                Picker("Appearance", selection: Binding(
+                    get: { prefs.appearanceMode },
+                    set: { mode in
+                        ensurePrefs().appearanceModeRaw = mode.rawValue
+                        appState.appearanceMode = mode
+                        save("appearance mode")
+                    }
+                )) {
+                    ForEach(AppearanceMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+
+                Picker("Layout", selection: Binding(
+                    get: { prefs.railLayout },
+                    set: { layout in
+                        ensurePrefs().railLayoutRaw = layout.rawValue
+                        appState.railLayout = layout
+                        save("rail layout")
+                    }
+                )) {
+                    ForEach(RailLayout.allCases, id: \.self) { layout in
+                        Text(layout.displayName).tag(layout)
+                    }
+                }
             }
 
             Section("Web Content") {
@@ -436,9 +464,11 @@ struct AboutSettingsView: View {
                     Text("Built with")
                     Image(systemName: "heart.fill")
                         .foregroundStyle(.pink)
+                        .accessibilityHidden(true)
                     Text("by")
                     Link("Nico Jan", destination: authorURL)
                 }
+                .accessibilityElement(children: .combine)
             }
         }
         .formStyle(.grouped)
@@ -451,6 +481,7 @@ struct AboutSettingsView: View {
             Image(nsImage: icon)
                 .resizable()
                 .frame(width: 64, height: 64)
+                .accessibilityHidden(true)
         }
         #endif
     }

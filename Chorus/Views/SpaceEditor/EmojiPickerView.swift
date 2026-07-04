@@ -80,7 +80,7 @@ struct EmojiPickerView: View {
                 .foregroundStyle(selectedCategoryID == id ? .primary : .secondary)
                 .background(
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(selectedCategoryID == id ? Color.accentColor.opacity(0.15) : .clear)
+                        .fill(selectedCategoryID == id ? AnyShapeStyle(.tint.opacity(0.15)) : AnyShapeStyle(Color.clear))
                 )
         }
         .buttonStyle(.plain)
@@ -155,8 +155,8 @@ struct EmojiPickerView: View {
                         .background(
                             RoundedRectangle(cornerRadius: 6)
                                 .fill(selectedEmoji == item.emoji
-                                    ? Color.accentColor.opacity(0.2)
-                                    : Color.clear)
+                                    ? AnyShapeStyle(.tint.opacity(0.2))
+                                    : AnyShapeStyle(Color.clear))
                         )
                 }
                 .buttonStyle(.plain)

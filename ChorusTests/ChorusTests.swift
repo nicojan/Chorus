@@ -395,7 +395,7 @@ final class ChorusTests: XCTestCase {
         // No instance CSS → the baked-in default for a known service.
         XCTAssertEqual(
             ServiceCSSDefaults.effectiveCSS(instanceCSS: nil, catalogID: "linkedin"),
-            CSSPresets.linkedInMessaging
+            ServiceCSSDefaults.linkedInMessaging
         )
         // An instance override wins over the default.
         XCTAssertEqual(
@@ -469,17 +469,58 @@ final class ChorusTests: XCTestCase {
 
     // MARK: - Dark mode
 
-    func testDarkModeShouldApplyByPreference() {
-        XCTAssertFalse(DarkMode.shouldApply(preference: .off, systemIsDark: true))
-        XCTAssertTrue(DarkMode.shouldApply(preference: .on, systemIsDark: false))
-        XCTAssertTrue(DarkMode.shouldApply(preference: .auto, systemIsDark: true))
-        XCTAssertFalse(DarkMode.shouldApply(preference: .auto, systemIsDark: false))
+    func testForceDarkModeDefaultsOff() {
+        XCTAssertFalse(ServiceInstance(label: "X", url: "https://x.test").isForceDarkModeEnabled)
+        XCTAssertTrue(ServiceInstance(label: "X", url: "https://x.test", forceDarkMode: true).isForceDarkModeEnabled)
+        XCTAssertFalse(ServiceInstance(label: "X", url: "https://x.test", forceDarkMode: false).isForceDarkModeEnabled)
     }
 
-    func testDarkModePreferenceParsesFromStoredString() {
-        XCTAssertEqual(ServiceInstance(label: "X", url: "https://x.test").darkModePreference, .off)
-        XCTAssertEqual(ServiceInstance(label: "X", url: "https://x.test", darkMode: "on").darkModePreference, .on)
-        XCTAssertEqual(ServiceInstance(label: "X", url: "https://x.test", darkMode: "auto").darkModePreference, .auto)
-        XCTAssertEqual(ServiceInstance(label: "X", url: "https://x.test", darkMode: "garbage").darkModePreference, .off)
+    // MARK: - Link routing (belongsToService)
+
+    func testBelongsToServiceKeepsSlackWorkspacesInApp() {
+        // Same registrable domain, subdomain differs — Slack switching
+        // workspaces must stay in-app rather than spawning a new window.
+        XCTAssertTrue(WebViewCoordinator.belongsToService("app.slack.com", serviceHost: "app.slack.com"))
+        XCTAssertTrue(WebViewCoordinator.belongsToService("myteam.slack.com", serviceHost: "app.slack.com"))
+        XCTAssertTrue(WebViewCoordinator.belongsToService("app.slack.com", serviceHost: "myteam.slack.com"))
     }
+
+    func testBelongsToServiceSeparatesGoogleProducts() {
+        // Shared-umbrella domain: a Docs/Drive link must NOT be treated as part
+        // of the Gmail service (the reported "Google Docs opened in Gmail" bug).
+        XCTAssertFalse(WebViewCoordinator.belongsToService("docs.google.com", serviceHost: "mail.google.com"))
+        XCTAssertFalse(WebViewCoordinator.belongsToService("drive.google.com", serviceHost: "mail.google.com"))
+        // The exact same host is still the same service.
+        XCTAssertTrue(WebViewCoordinator.belongsToService("mail.google.com", serviceHost: "mail.google.com"))
+        XCTAssertTrue(WebViewCoordinator.belongsToService("docs.google.com", serviceHost: "docs.google.com"))
+    }
+
+    func testBelongsToServiceRejectsUnrelatedDomains() {
+        XCTAssertFalse(WebViewCoordinator.belongsToService("example.com", serviceHost: "slack.com"))
+        XCTAssertFalse(WebViewCoordinator.belongsToService("notion.so", serviceHost: "mail.google.com"))
+    }
+
+    func testBelongsToServiceIgnoresWWWAndCase() {
+        XCTAssertTrue(WebViewCoordinator.belongsToService("www.notion.so", serviceHost: "notion.so"))
+        XCTAssertTrue(WebViewCoordinator.belongsToService("APP.SLACK.COM", serviceHost: "app.slack.com"))
+    }
+
+    // MARK: - Rail layout preference
+
+    func testRailLayoutParsesFromStoredValueWithSidebarFallback() {
+        XCTAssertEqual(AppPreferences(railLayoutRaw: nil).railLayout, .sidebar)
+        XCTAssertEqual(AppPreferences(railLayoutRaw: "sidebar").railLayout, .sidebar)
+        XCTAssertEqual(AppPreferences(railLayoutRaw: "topBars").railLayout, .topBars)
+        XCTAssertEqual(AppPreferences(railLayoutRaw: "hybrid").railLayout, .hybrid)
+        XCTAssertEqual(AppPreferences(railLayoutRaw: "garbage").railLayout, .sidebar)
+    }
+
+    func testAppearanceModeParsesFromStoredValueWithSystemFallback() {
+        XCTAssertEqual(AppPreferences(appearanceModeRaw: nil).appearanceMode, .system)
+        XCTAssertEqual(AppPreferences(appearanceModeRaw: "system").appearanceMode, .system)
+        XCTAssertEqual(AppPreferences(appearanceModeRaw: "light").appearanceMode, .light)
+        XCTAssertEqual(AppPreferences(appearanceModeRaw: "dark").appearanceMode, .dark)
+        XCTAssertEqual(AppPreferences(appearanceModeRaw: "garbage").appearanceMode, .system)
+    }
+
 }

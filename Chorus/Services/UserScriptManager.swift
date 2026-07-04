@@ -301,16 +301,29 @@ final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unche
 
 // MARK: - Custom CSS presets and per-service defaults
 
-/// A named block of CSS a user can apply to a service from the Edit Service
-/// sheet.
-struct CSSPreset: Identifiable, Hashable {
-    let id: String
-    let name: String
-    let css: String
-}
+/// Baked-in default CSS for known catalog services, plus the rule that decides
+/// what actually gets injected for a service. Kept as pure functions so the
+/// resolution logic is unit-testable without a running web view.
+enum ServiceCSSDefaults {
+    /// The default CSS shipped for a catalog service, or nil when it has none.
+    static func css(forCatalogID id: String?) -> String? {
+        switch id {
+        case "linkedin": return linkedInMessaging
+        default: return nil
+        }
+    }
 
-/// The library of ready-made CSS snippets offered in the Edit Service sheet.
-enum CSSPresets {
+    /// The CSS to inject for a service: the instance's own CSS when set,
+    /// otherwise the baked-in default. A blank result injects nothing — an
+    /// explicit "no CSS" override.
+    static func effectiveCSS(instanceCSS: String?, catalogID: String?) -> String? {
+        let raw = instanceCSS ?? css(forCatalogID: catalogID)
+        guard let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return raw
+    }
+
     /// Trims LinkedIn down to just its messaging pane, filling the window like a
     /// dedicated chat app: hides the global nav and right rail, and expands the
     /// conversation list + thread to full width and height. Selectors are
@@ -331,7 +344,8 @@ enum CSSPresets {
     #messaging .scaffold-layout__content,
     #messaging .scaffold-layout__list-detail,
     #messaging .scaffold-layout__list-detail-container,
-    #messaging .scaffold-layout__list-detail-inner { height: 100% !important; }
+    #messaging .scaffold-layout__list-detail-inner,
+    #messaging .scaffold-layout__detail { height: 100% !important; }
     .scaffold-layout__inner { margin-left: 0 !important; margin-right: 0 !important; max-width: none !important; width: 100% !important; }
     /* Single column, and kill the grid column-gap: when the right rail is hidden
        its grid track collapses to 0 but the gap stays, leaving a gray strip on
@@ -341,62 +355,21 @@ enum CSSPresets {
     .scaffold-layout__content, .scaffold-layout__list-detail, .scaffold-layout__list-detail-container, .scaffold-layout__list-detail-inner { max-width: none !important; width: 100% !important; }
     .msg-overlay-list-bubble, .msg-overlay { display: none !important; }
     """
-
-    /// Hides WebKit scrollbars — generic and safe on any site.
-    static let hideScrollbars = """
-    ::-webkit-scrollbar { width: 0 !important; height: 0 !important; }
-    """
-
-    static let all: [CSSPreset] = [
-        CSSPreset(id: "linkedin-messaging", name: "LinkedIn: messaging only", css: linkedInMessaging),
-        CSSPreset(id: "hide-scrollbars", name: "Hide scrollbars", css: hideScrollbars),
-    ]
-}
-
-/// Baked-in default CSS for known catalog services, plus the rule that decides
-/// what actually gets injected for a service. Kept as pure functions so the
-/// resolution logic is unit-testable without a running web view.
-enum ServiceCSSDefaults {
-    /// The default CSS shipped for a catalog service, or nil when it has none.
-    static func css(forCatalogID id: String?) -> String? {
-        switch id {
-        case "linkedin": return CSSPresets.linkedInMessaging
-        default: return nil
-        }
-    }
-
-    /// The CSS to inject for a service: the instance's own CSS when set,
-    /// otherwise the baked-in default. A blank result injects nothing — an
-    /// explicit "no CSS" override.
-    static func effectiveCSS(instanceCSS: String?, catalogID: String?) -> String? {
-        let raw = instanceCSS ?? css(forCatalogID: catalogID)
-        guard let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return nil
-        }
-        return raw
-    }
 }
 
 /// Forces dark mode on services that lack their own. Uses a whole-page inversion
 /// filter — the only universal way to darken a site with no dark theme — and
-/// re-inverts images/video so photos keep their real colors. Imperfect by
-/// nature; a service that needs a polished theme can use its own custom CSS.
+/// re-inverts photographic content (img/video/picture/canvas/backgrounds) so it
+/// keeps its real colors. `svg` is deliberately NOT re-inverted: most SVGs are
+/// monochrome UI icons, and re-inverting them flips them back to dark-on-dark
+/// (invisible). Letting them take the single page inversion keeps them legible.
+/// Imperfect by nature; a service that needs a polished theme can use custom CSS.
 enum DarkMode {
     static let css = """
     html { filter: invert(1) hue-rotate(180deg) !important; background: #1a1a1a !important; }
-    img, video, picture, canvas, svg, iframe,
+    img, video, picture, canvas, iframe,
     [style*="background-image"], [style*="background:url"], [style*="background: url"] {
         filter: invert(1) hue-rotate(180deg) !important;
     }
     """
-
-    /// Whether dark mode should be applied for a preference given the current
-    /// system appearance. Pure, for unit testing.
-    static func shouldApply(preference: DarkModePreference, systemIsDark: Bool) -> Bool {
-        switch preference {
-        case .off: return false
-        case .on: return true
-        case .auto: return systemIsDark
-        }
-    }
 }
