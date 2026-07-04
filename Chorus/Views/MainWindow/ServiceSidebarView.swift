@@ -146,14 +146,14 @@ struct ServiceSidebarView: View {
         HStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 4) {
+                    LazyHStack(spacing: 6) {
                         ForEach(filteredLinks) { link in
                             serviceRow(for: link)
                                 .id(link.service.id)
                         }
                     }
                     .padding(.horizontal, 8)
-                    .padding(.top, 4)
+                    .padding(.vertical, 6)
                 }
                 // Keep the active service visible when it's selected off-screen
                 // (⌘1–9, quick switcher, or a routed link).
@@ -174,7 +174,7 @@ struct ServiceSidebarView: View {
             addServiceButton
                 .padding(.trailing, 4)
         }
-        .frame(height: ServiceTabView.height + 4)
+        .frame(height: ServiceTabView.height + 12)
         .background(.background)
     }
 

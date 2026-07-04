@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// A service rendered as a horizontal folder tab (icon + name + badge), used by
-/// the top-bar and hybrid layouts. The selected tab sits on a neutral surface
-/// with an accent underline so selection reads by position and shape, not color
-/// alone. Icon resolution and the fallback palette are shared with the vertical
-/// rail via `ServiceIconSquare`.
+/// A service rendered as a bordered tab (icon + name + badge), used by the
+/// top-bar and hybrid layouts. Every tab carries a hairline border so tabs read
+/// as distinct elements; the selected tab gets an accent border and a lifted
+/// surface. Icon resolution and the fallback palette are shared with the
+/// vertical rail via `ServiceIconSquare`.
 struct ServiceTabView: View {
     let instance: ServiceInstance
     let isSelected: Bool
@@ -17,7 +17,8 @@ struct ServiceTabView: View {
 
     private let minWidth: CGFloat = 120
     private let maxWidth: CGFloat = 220
-    static let height: CGFloat = 36
+    private let cornerRadius: CGFloat = 7
+    static let height: CGFloat = 30
 
     var body: some View {
         Button(action: action) {
@@ -47,14 +48,11 @@ struct ServiceTabView: View {
             .frame(height: Self.height)
             .opacity(isHibernated ? 0.6 : (isMuted ? 0.8 : 1.0))
             .background(background)
-            .clipShape(.rect(topLeadingRadius: 8, topTrailingRadius: 8))
-            .overlay(alignment: .bottom) {
-                if isSelected {
-                    Rectangle()
-                        .fill(.tint)
-                        .frame(height: 2)
-                }
-            }
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .strokeBorder(borderStyle, lineWidth: isSelected ? 1.5 : 1)
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -69,17 +67,24 @@ struct ServiceTabView: View {
         .accessibilityAddTraits([.isButton, isSelected ? .isSelected : []])
     }
 
+    /// Selected tab sits on a lifted surface (near-white in light, a lighter
+    /// gray in dark) so it stands off the bar; hover is a faint wash.
     @ViewBuilder
     private var background: some View {
         if isSelected {
-            // A clearly-lifted chip (Chrome-style active tab). primary.opacity
-            // reads in both modes: a light lift on the dark bar, a darker chip
-            // on the light bar — the underline alone wasn't enough contrast.
-            Color.primary.opacity(0.14)
+            Color(nsColor: .controlBackgroundColor)
         } else if isHovering {
             Color.primary.opacity(0.06)
         } else {
             Color.clear
         }
+    }
+
+    /// Accent border on the selected tab, a hairline separator on the rest, so
+    /// every tab is delineated and the active one clearly reads.
+    private var borderStyle: AnyShapeStyle {
+        isSelected
+            ? AnyShapeStyle(.tint)
+            : AnyShapeStyle(Color(nsColor: .separatorColor))
     }
 }

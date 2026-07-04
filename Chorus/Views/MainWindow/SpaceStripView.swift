@@ -259,8 +259,15 @@ private struct SpaceButton: View {
             .opacity(isMuted ? 0.5 : 1.0)
             .frame(width: 40, height: 40)
             .background(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 9)
                     .fill(backgroundColor)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 9)
+                    .strokeBorder(
+                        isSelected ? AnyShapeStyle(.tint.opacity(0.55)) : AnyShapeStyle(Color.clear),
+                        lineWidth: 1
+                    )
             )
             .overlay(alignment: axis == .vertical ? .leading : .bottom) {
                 selectionIndicator
