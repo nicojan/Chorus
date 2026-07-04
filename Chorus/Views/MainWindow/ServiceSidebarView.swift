@@ -175,7 +175,13 @@ struct ServiceSidebarView: View {
                 .padding(.trailing, 4)
         }
         .frame(height: ServiceTabView.height + 12)
-        .background(.background)
+        .background {
+            // Recess the bar a step off the tabs so they read as seated on it:
+            // slightly darker than the window in light mode, slightly lighter in
+            // dark. The active tab's surface then clearly stands off the strip.
+            Color(nsColor: .windowBackgroundColor)
+            Color.primary.opacity(0.08)
+        }
     }
 
     @ViewBuilder

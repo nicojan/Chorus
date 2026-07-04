@@ -85,12 +85,19 @@ struct SpaceStripView: View {
                 .padding(.trailing, 8)
         }
         .frame(height: 48)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background {
+            Color(nsColor: .windowBackgroundColor)
+            Color.primary.opacity(0.08)
+        }
     }
 
     @ViewBuilder
     private func spaceCell(_ space: Space) -> some View {
-        let serviceIDs = space.serviceLinks.map(\.service.id)
+        // Resolve members via the same reliable link fetch the service rail uses,
+        // not Space.serviceLinks — the inverse relationship can be stale, which
+        // left the aggregate summing an empty list (no badge) even while the
+        // per-service tab badges showed.
+        let serviceIDs = appState.servicesForSpace(space.id).map(\.id)
         let muted = space.isMutedEffective
         let badgeCount = muted ? 0 : appState.badgeManager.aggregateCount(for: serviceIDs)
         SpaceButton(
@@ -228,7 +235,7 @@ private struct SpaceButton: View {
 
                 if badgeCount > 0 {
                     BadgeCountView(count: badgeCount)
-                        .offset(x: 4, y: -4)
+                        .offset(x: 2, y: -2)
                 }
 
                 if isMuted {
