@@ -1,11 +1,6 @@
 import Foundation
 import SwiftData
 
-/// Per-service dark-mode choice: never, always, or follow the system appearance.
-enum DarkModePreference: String, CaseIterable {
-    case off, on, auto
-}
-
 @Model
 final class ServiceInstance {
     @Attribute(.unique) var id: UUID
@@ -39,10 +34,12 @@ final class ServiceInstance {
     /// A non-nil value overrides the default; a blank value disables both.
     var customCSS: String?
 
-    /// Per-service dark mode: "off", "on", or "auto" (follow the system).
-    /// Optional for SwiftData lightweight migration; nil is treated as "off".
-    /// Read via `darkModePreference`.
-    var darkMode: String?
+    /// Force a dark appearance on a service that has no dark theme of its own,
+    /// by inverting the page. Services that DO have a dark theme should leave
+    /// this off and simply follow the system appearance. Optional for SwiftData
+    /// lightweight migration; nil is treated as off. Read via
+    /// `isForceDarkModeEnabled`.
+    var forceDarkMode: Bool?
 
     @Relationship(deleteRule: .cascade, inverse: \SpaceServiceLink.service)
     var spaceLinks: [SpaceServiceLink]
@@ -53,10 +50,8 @@ final class ServiceInstance {
     /// Materialises the storage-optional zoom into a Double (nil → 1.0).
     var zoomLevelEffective: Double { pageZoom ?? 1.0 }
 
-    /// Materialises the storage-optional dark-mode string (nil → .off).
-    var darkModePreference: DarkModePreference {
-        DarkModePreference(rawValue: darkMode ?? "off") ?? .off
-    }
+    /// Materialises the storage-optional force-dark flag (nil → false).
+    var isForceDarkModeEnabled: Bool { forceDarkMode ?? false }
 
     /// Materialises the storage-optional OS-notification flag (nil → true), so
     /// services created before this flag existed keep forwarding notifications.
@@ -86,7 +81,7 @@ final class ServiceInstance {
         pageZoom: Double? = nil,
         osNotificationsEnabled: Bool? = nil,
         customCSS: String? = nil,
-        darkMode: String? = nil
+        forceDarkMode: Bool? = nil
     ) {
         self.id = id
         self.label = label
@@ -103,7 +98,7 @@ final class ServiceInstance {
         self.pageZoom = pageZoom
         self.osNotificationsEnabled = osNotificationsEnabled
         self.customCSS = customCSS
-        self.darkMode = darkMode
+        self.forceDarkMode = forceDarkMode
         self.spaceLinks = []
         self.createdAt = Date()
         self.lastAccessedAt = Date()

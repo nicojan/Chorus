@@ -395,7 +395,7 @@ final class ChorusTests: XCTestCase {
         // No instance CSS → the baked-in default for a known service.
         XCTAssertEqual(
             ServiceCSSDefaults.effectiveCSS(instanceCSS: nil, catalogID: "linkedin"),
-            CSSPresets.linkedInMessaging
+            ServiceCSSDefaults.linkedInMessaging
         )
         // An instance override wins over the default.
         XCTAssertEqual(
@@ -469,18 +469,10 @@ final class ChorusTests: XCTestCase {
 
     // MARK: - Dark mode
 
-    func testDarkModeShouldApplyByPreference() {
-        XCTAssertFalse(DarkMode.shouldApply(preference: .off, systemIsDark: true))
-        XCTAssertTrue(DarkMode.shouldApply(preference: .on, systemIsDark: false))
-        XCTAssertTrue(DarkMode.shouldApply(preference: .auto, systemIsDark: true))
-        XCTAssertFalse(DarkMode.shouldApply(preference: .auto, systemIsDark: false))
-    }
-
-    func testDarkModePreferenceParsesFromStoredString() {
-        XCTAssertEqual(ServiceInstance(label: "X", url: "https://x.test").darkModePreference, .off)
-        XCTAssertEqual(ServiceInstance(label: "X", url: "https://x.test", darkMode: "on").darkModePreference, .on)
-        XCTAssertEqual(ServiceInstance(label: "X", url: "https://x.test", darkMode: "auto").darkModePreference, .auto)
-        XCTAssertEqual(ServiceInstance(label: "X", url: "https://x.test", darkMode: "garbage").darkModePreference, .off)
+    func testForceDarkModeDefaultsOff() {
+        XCTAssertFalse(ServiceInstance(label: "X", url: "https://x.test").isForceDarkModeEnabled)
+        XCTAssertTrue(ServiceInstance(label: "X", url: "https://x.test", forceDarkMode: true).isForceDarkModeEnabled)
+        XCTAssertFalse(ServiceInstance(label: "X", url: "https://x.test", forceDarkMode: false).isForceDarkModeEnabled)
     }
 
     // MARK: - Link routing (belongsToService)

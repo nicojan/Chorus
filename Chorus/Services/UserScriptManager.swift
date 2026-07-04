@@ -301,16 +301,29 @@ final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unche
 
 // MARK: - Custom CSS presets and per-service defaults
 
-/// A named block of CSS a user can apply to a service from the Edit Service
-/// sheet.
-struct CSSPreset: Identifiable, Hashable {
-    let id: String
-    let name: String
-    let css: String
-}
+/// Baked-in default CSS for known catalog services, plus the rule that decides
+/// what actually gets injected for a service. Kept as pure functions so the
+/// resolution logic is unit-testable without a running web view.
+enum ServiceCSSDefaults {
+    /// The default CSS shipped for a catalog service, or nil when it has none.
+    static func css(forCatalogID id: String?) -> String? {
+        switch id {
+        case "linkedin": return linkedInMessaging
+        default: return nil
+        }
+    }
 
-/// The library of ready-made CSS snippets offered in the Edit Service sheet.
-enum CSSPresets {
+    /// The CSS to inject for a service: the instance's own CSS when set,
+    /// otherwise the baked-in default. A blank result injects nothing — an
+    /// explicit "no CSS" override.
+    static func effectiveCSS(instanceCSS: String?, catalogID: String?) -> String? {
+        let raw = instanceCSS ?? css(forCatalogID: catalogID)
+        guard let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return raw
+    }
+
     /// Trims LinkedIn down to just its messaging pane, filling the window like a
     /// dedicated chat app: hides the global nav and right rail, and expands the
     /// conversation list + thread to full width and height. Selectors are
@@ -342,40 +355,6 @@ enum CSSPresets {
     .scaffold-layout__content, .scaffold-layout__list-detail, .scaffold-layout__list-detail-container, .scaffold-layout__list-detail-inner { max-width: none !important; width: 100% !important; }
     .msg-overlay-list-bubble, .msg-overlay { display: none !important; }
     """
-
-    /// Hides WebKit scrollbars — generic and safe on any site.
-    static let hideScrollbars = """
-    ::-webkit-scrollbar { width: 0 !important; height: 0 !important; }
-    """
-
-    static let all: [CSSPreset] = [
-        CSSPreset(id: "linkedin-messaging", name: "LinkedIn: messaging only", css: linkedInMessaging),
-        CSSPreset(id: "hide-scrollbars", name: "Hide scrollbars", css: hideScrollbars),
-    ]
-}
-
-/// Baked-in default CSS for known catalog services, plus the rule that decides
-/// what actually gets injected for a service. Kept as pure functions so the
-/// resolution logic is unit-testable without a running web view.
-enum ServiceCSSDefaults {
-    /// The default CSS shipped for a catalog service, or nil when it has none.
-    static func css(forCatalogID id: String?) -> String? {
-        switch id {
-        case "linkedin": return CSSPresets.linkedInMessaging
-        default: return nil
-        }
-    }
-
-    /// The CSS to inject for a service: the instance's own CSS when set,
-    /// otherwise the baked-in default. A blank result injects nothing — an
-    /// explicit "no CSS" override.
-    static func effectiveCSS(instanceCSS: String?, catalogID: String?) -> String? {
-        let raw = instanceCSS ?? css(forCatalogID: catalogID)
-        guard let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return nil
-        }
-        return raw
-    }
 }
 
 /// Forces dark mode on services that lack their own. Uses a whole-page inversion
@@ -393,14 +372,4 @@ enum DarkMode {
         filter: invert(1) hue-rotate(180deg) !important;
     }
     """
-
-    /// Whether dark mode should be applied for a preference given the current
-    /// system appearance. Pure, for unit testing.
-    static func shouldApply(preference: DarkModePreference, systemIsDark: Bool) -> Bool {
-        switch preference {
-        case .off: return false
-        case .on: return true
-        case .auto: return systemIsDark
-        }
-    }
 }

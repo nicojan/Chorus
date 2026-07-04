@@ -370,12 +370,6 @@ final class WebViewPool {
         return coordinator
     }
 
-    /// Whether the system is currently in dark appearance — decides whether a
-    /// service set to "auto" dark mode should invert.
-    static var systemIsDark: Bool {
-        NSApplication.shared.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-    }
-
     private func makeConfiguration(for instance: ServiceInstance) -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = dataStoreManager.dataStore(for: instance)
@@ -391,10 +385,7 @@ final class WebViewPool {
             instanceCSS: instance.customCSS,
             catalogID: instance.catalogEntryID
         )
-        let darkCSS = DarkMode.shouldApply(
-            preference: instance.darkModePreference,
-            systemIsDark: Self.systemIsDark
-        ) ? DarkMode.css : nil
+        let darkCSS = instance.isForceDarkModeEnabled ? DarkMode.css : nil
         let combinedCSS = [baseCSS, darkCSS].compactMap { $0 }.joined(separator: "\n\n")
         userScriptManager.configureScripts(
             for: instance,

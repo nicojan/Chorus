@@ -15,7 +15,7 @@ struct EditServiceSheet: View {
     @State private var url: String = ""
     @State private var keepLoaded: Bool = false
     @State private var mobileView: Bool = false
-    @State private var darkMode: DarkModePreference = .off
+    @State private var forceDark: Bool = false
     @State private var customCSS: String = ""
     @State private var errorMessage: String?
     @State private var confirmingClearSession = false
@@ -63,12 +63,8 @@ struct EditServiceSheet: View {
                 Toggle("Mobile view", isOn: $mobileView)
                     .help("Loads this service as if on an iPhone, so it serves its mobile web layout. Applied on save.")
 
-                Picker("Dark mode", selection: $darkMode) {
-                    Text("Off").tag(DarkModePreference.off)
-                    Text("On").tag(DarkModePreference.on)
-                    Text("Auto (follow system)").tag(DarkModePreference.auto)
-                }
-                .help("Forces a dark appearance by inverting the page — for services with no dark theme of their own. Auto follows your Mac's light/dark setting.")
+                Toggle("Force dark mode", isOn: $forceDark)
+                    .help("Inverts the page to force a dark appearance — for services with no dark theme of their own. Leave it off for services that already follow your Mac's light/dark setting.")
 
                 if let errorMessage {
                     Text(errorMessage)
@@ -112,7 +108,7 @@ struct EditServiceSheet: View {
             url = service.url
             keepLoaded = service.neverHibernate
             mobileView = service.userAgent == UserAgentProvider.mobileSafari
-            darkMode = service.darkModePreference
+            forceDark = service.isForceDarkModeEnabled
             // Prefill with the instance's own CSS, or the baked-in default so
             // the user can see and tweak what's already applied.
             customCSS = service.customCSS ?? defaultCSS
@@ -148,13 +144,6 @@ struct EditServiceSheet: View {
                 .accessibilityLabel("Custom CSS")
 
             HStack {
-                Menu("Apply preset") {
-                    ForEach(CSSPresets.all) { preset in
-                        Button(preset.name) { customCSS = preset.css }
-                    }
-                }
-                .fixedSize()
-
                 Spacer()
 
                 Button("Reset to default") {
@@ -185,9 +174,9 @@ struct EditServiceSheet: View {
             } else {
                 newCSS = customCSS
             }
-            // Dark mode is injected as part of the page CSS at web-view build
+            // Force-dark is injected as part of the page CSS at web-view build
             // time, so a change to it needs the same rebuild as a CSS change.
-            let darkChanged = service.darkModePreference != darkMode
+            let darkChanged = service.isForceDarkModeEnabled != forceDark
             let cssChanged = (service.customCSS ?? "") != (newCSS ?? "") || darkChanged
 
             let newUserAgent: String? = mobileView ? UserAgentProvider.mobileSafari : nil
@@ -197,7 +186,7 @@ struct EditServiceSheet: View {
             service.url = validURL
             service.neverHibernate = keepLoaded
             service.customCSS = newCSS
-            service.darkMode = darkMode == .off ? nil : darkMode.rawValue
+            service.forceDarkMode = forceDark ? true : nil
             service.userAgent = newUserAgent
 
             appState.applyServiceEdits(

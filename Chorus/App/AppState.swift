@@ -531,31 +531,6 @@ final class AppState {
             forName: Notification.Name("com.apple.screenIsLocked"), object: nil, queue: .main, using: lockOnSleepIfNeeded)
     }
 
-    // MARK: - Dark mode
-
-    /// Rebuilds any live service set to "auto" dark mode when the system
-    /// appearance flips, so its injected CSS matches (dark CSS is decided at
-    /// web-view build time). Wired to the system light/dark change notification.
-    private func setupAppearanceObserver() {
-        DistributedNotificationCenter.default().addObserver(
-            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
-            object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.rebuildAutoDarkModeServices() }
-        }
-    }
-
-    func rebuildAutoDarkModeServices() {
-        let services = (try? modelContainer.mainContext.fetch(FetchDescriptor<ServiceInstance>())) ?? []
-        var rebuiltAny = false
-        for service in services where service.darkModePreference == .auto {
-            if webViewPool.hasWebView(for: service.id) {
-                webViewPool.recreateWebView(for: service.id)
-                rebuiltAny = true
-            }
-        }
-        if rebuiltAny { webViewRebuildToken &+= 1 }
-    }
 
 
     /// Reset the active service's zoom to 1.0. Triggered by Cmd-0.
@@ -939,7 +914,6 @@ final class AppState {
             self.refreshEffectiveDoNotDisturb()
             self.startQuietHoursTimer()
             self.setupLockObservers()
-            self.setupAppearanceObserver()
         }
     }
 
