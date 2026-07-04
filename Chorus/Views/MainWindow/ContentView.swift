@@ -98,13 +98,21 @@ struct ContentView: View {
         spaceSelection: Binding<UUID?>,
         serviceSelection: Binding<UUID?>
     ) -> some View {
+        // The title bar is hidden, so content runs to the top edge. Reserve the
+        // top-left for the traffic lights: push the leftmost top elements clear.
+        let lightsHeight: CGFloat = 28
+        let lightsWidth: CGFloat = 72
+        let railWidth: CGFloat = 52
+
         switch appState.railLayout {
         case .sidebar:
             HStack(spacing: 0) {
                 spacesRail(axis: .vertical, selection: spaceSelection)
+                    .padding(.top, lightsHeight)
                 Divider()
                 if let spaceID = appState.selectedSpaceID {
                     servicesRail(axis: .vertical, spaceID: spaceID, selection: serviceSelection)
+                        .padding(.top, lightsHeight)
                     Divider()
                 }
                 webContent
@@ -112,6 +120,7 @@ struct ContentView: View {
         case .topBars:
             VStack(spacing: 0) {
                 spacesRail(axis: .horizontal, selection: spaceSelection)
+                    .padding(.leading, lightsWidth)
                 Divider()
                 if let spaceID = appState.selectedSpaceID {
                     servicesRail(axis: .horizontal, spaceID: spaceID, selection: serviceSelection)
@@ -121,10 +130,12 @@ struct ContentView: View {
         case .hybrid:
             HStack(spacing: 0) {
                 spacesRail(axis: .vertical, selection: spaceSelection)
+                    .padding(.top, lightsHeight)
                 Divider()
                 VStack(spacing: 0) {
                     if let spaceID = appState.selectedSpaceID {
                         servicesRail(axis: .horizontal, spaceID: spaceID, selection: serviceSelection)
+                            .padding(.leading, lightsWidth - railWidth)
                     }
                     webContent
                 }

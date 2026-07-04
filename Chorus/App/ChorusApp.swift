@@ -36,6 +36,7 @@ struct ChorusApp: App {
                 }
         }
         .defaultSize(width: 1100, height: 700)
+        .windowStyle(.hiddenTitleBar)
         .commands {
             #if canImport(Sparkle)
             CommandGroup(after: .appInfo) {
