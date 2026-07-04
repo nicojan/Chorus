@@ -64,7 +64,9 @@ struct WebToolbarView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(.bar)
+        // Same surface as the selected folder tab above it, so the tab and this
+        // toolbar read as one connected element sitting on the content.
+        .background(Color(nsColor: .controlBackgroundColor))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Navigation toolbar")
     }
