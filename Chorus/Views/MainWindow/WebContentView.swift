@@ -107,6 +107,16 @@ struct WebContentView: View {
         webViewState.attach(to: webView)
         previousServiceID = service.id
 
+        // Once the view is shown its frame settles a render tick later. Some SPAs
+        // (Gmail) cache a viewport-height layout and, if it was measured against a
+        // stale/transitional frame, leave their fixed header stranded above the
+        // visible area with no way to scroll to it. Fire a synthetic resize so the
+        // page re-measures against the real frame; it's a no-op for other sites.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            webView.evaluateJavaScript("window.dispatchEvent(new Event('resize'))", completionHandler: nil)
+        }
+
         // Start active-mode badge/title polling for the displayed service.
         // Pass closures (rather than the captured bool) so the next poll tick
         // sees fresh values after the user toggles mute or per-service badge.
