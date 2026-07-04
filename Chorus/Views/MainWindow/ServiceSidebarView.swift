@@ -48,6 +48,10 @@ struct ServiceSidebarView: View {
     @Environment(AppState.self) private var appState
 
     var axis: Axis = .vertical
+    /// Inset applied to the content (top for the vertical rail, leading for the
+    /// horizontal tab bar) to clear the window traffic lights, kept inside so the
+    /// background and dividers still run full-length.
+    var contentInset: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var showingAddService = false
@@ -131,7 +135,8 @@ struct ServiceSidebarView: View {
                         serviceRow(for: link)
                     }
                 }
-                .padding(.vertical, 8)
+                .padding(.top, 8 + contentInset)
+                .padding(.bottom, 8)
             }
 
             Divider()
@@ -153,7 +158,8 @@ struct ServiceSidebarView: View {
                         }
                         addServiceButton
                     }
-                    .padding(.horizontal, 8)
+                    .padding(.leading, 8 + contentInset)
+                    .padding(.trailing, 8)
                     .padding(.vertical, 2)
                 }
                 // Keep the active service visible when it's selected off-screen

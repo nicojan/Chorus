@@ -114,20 +114,17 @@ struct ContentView: View {
         switch appState.railLayout {
         case .sidebar:
             HStack(spacing: 0) {
-                spacesRail(axis: .vertical, selection: spaceSelection)
-                    .padding(.top, lightsHeight)
+                spacesRail(axis: .vertical, selection: spaceSelection, contentInset: lightsHeight)
                 Divider()
                 if let spaceID = appState.selectedSpaceID {
-                    servicesRail(axis: .vertical, spaceID: spaceID, selection: serviceSelection)
-                        .padding(.top, lightsHeight)
+                    servicesRail(axis: .vertical, spaceID: spaceID, selection: serviceSelection, contentInset: lightsHeight)
                     Divider()
                 }
                 webContent
             }
         case .topBars:
             VStack(spacing: 0) {
-                spacesRail(axis: .horizontal, selection: spaceSelection)
-                    .padding(.leading, lightsWidth)
+                spacesRail(axis: .horizontal, selection: spaceSelection, contentInset: lightsWidth)
                 Divider()
                 if let spaceID = appState.selectedSpaceID {
                     servicesRail(axis: .horizontal, spaceID: spaceID, selection: serviceSelection)
@@ -136,13 +133,11 @@ struct ContentView: View {
             }
         case .hybrid:
             HStack(spacing: 0) {
-                spacesRail(axis: .vertical, selection: spaceSelection)
-                    .padding(.top, lightsHeight)
+                spacesRail(axis: .vertical, selection: spaceSelection, contentInset: lightsHeight)
                 Divider()
                 VStack(spacing: 0) {
                     if let spaceID = appState.selectedSpaceID {
-                        servicesRail(axis: .horizontal, spaceID: spaceID, selection: serviceSelection)
-                            .padding(.leading, lightsWidth - railWidth)
+                        servicesRail(axis: .horizontal, spaceID: spaceID, selection: serviceSelection, contentInset: lightsWidth - railWidth)
                     }
                     webContent
                 }
@@ -150,14 +145,14 @@ struct ContentView: View {
         }
     }
 
-    private func spacesRail(axis: Axis, selection: Binding<UUID?>) -> some View {
-        SpaceStripView(selectedSpaceID: selection, axis: axis)
+    private func spacesRail(axis: Axis, selection: Binding<UUID?>, contentInset: CGFloat = 0) -> some View {
+        SpaceStripView(selectedSpaceID: selection, axis: axis, contentInset: contentInset)
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Spaces")
     }
 
-    private func servicesRail(axis: Axis, spaceID: UUID, selection: Binding<UUID?>) -> some View {
-        ServiceSidebarView(spaceID: spaceID, selectedServiceID: selection, axis: axis)
+    private func servicesRail(axis: Axis, spaceID: UUID, selection: Binding<UUID?>, contentInset: CGFloat = 0) -> some View {
+        ServiceSidebarView(spaceID: spaceID, selectedServiceID: selection, axis: axis, contentInset: contentInset)
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Services")
     }

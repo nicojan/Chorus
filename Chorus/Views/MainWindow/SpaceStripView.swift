@@ -5,6 +5,10 @@ struct SpaceStripView: View {
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
     @Binding var selectedSpaceID: UUID?
     var axis: Axis = .vertical
+    /// Inset applied to the content (top for a vertical rail, leading for a
+    /// horizontal bar) to clear the window traffic lights — kept inside so the
+    /// rail's background and dividers still run full-length.
+    var contentInset: CGFloat = 0
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
 
@@ -50,7 +54,7 @@ struct SpaceStripView: View {
 
     private var verticalBody: some View {
         VStack(spacing: 2) {
-            Spacer().frame(height: 6)
+            Spacer().frame(height: 6 + contentInset)
 
             ForEach(spaces) { space in
                 spaceCell(space)
@@ -69,22 +73,18 @@ struct SpaceStripView: View {
     }
 
     private var horizontalBody: some View {
-        HStack(spacing: 6) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    ForEach(spaces) { space in
-                        spaceCell(space)
-                    }
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(spaces) { space in
+                    spaceCell(space)
                 }
-                .padding(.horizontal, 8)
+                addSpaceButton
             }
-
-            Divider().frame(height: 28)
-
-            addSpaceButton
-                .padding(.trailing, 8)
+            .padding(.leading, 8 + contentInset)
+            .padding(.trailing, 8)
+            .padding(.vertical, 2)
         }
-        .frame(height: 48)
+        .frame(height: ServiceTabView.height + 4)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
@@ -227,25 +227,11 @@ private struct SpaceButton: View {
 
     var body: some View {
         Button(action: action) {
-            ZStack(alignment: .topTrailing) {
-                emojiTile
-
-                if badgeCount > 0 {
-                    BadgeCountView(count: badgeCount)
-                        .offset(x: 2, y: -2)
-                }
-
-                if isMuted {
-                    Image(systemName: "bell.slash.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                        .padding(2)
-                        .background(Circle().fill(.background))
-                        .offset(x: 2, y: 4)
-                        .accessibilityHidden(true)
-                }
+            if axis == .vertical {
+                verticalCell
+            } else {
+                horizontalTab
             }
-            .frame(width: 44, height: 44)
         }
         .buttonStyle(.plain)
         .help(isMuted ? "\(space.name) (muted)" : space.name)
@@ -257,45 +243,85 @@ private struct SpaceButton: View {
         .accessibilityAddTraits([.isButton, isSelected ? .isSelected : []])
     }
 
-    private var emojiTile: some View {
-        Text(space.emoji)
-            .font(.title2)
-            .opacity(isMuted ? 0.5 : 1.0)
-            .frame(width: 40, height: 40)
-            .background(
-                RoundedRectangle(cornerRadius: 9)
-                    .fill(backgroundColor)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 9)
-                    .strokeBorder(
-                        isSelected ? AnyShapeStyle(.tint.opacity(0.55)) : AnyShapeStyle(Color.clear),
-                        lineWidth: 1
-                    )
-            )
-            .overlay(alignment: axis == .vertical ? .leading : .bottom) {
-                selectionIndicator
-            }
-            .frame(width: 44, height: 44)
-    }
+    /// Vertical rail: an emoji tile with a leading accent pill when selected.
+    private var verticalCell: some View {
+        ZStack(alignment: .topTrailing) {
+            Text(space.emoji)
+                .font(.title2)
+                .opacity(isMuted ? 0.5 : 1.0)
+                .frame(width: 40, height: 40)
+                .background(RoundedRectangle(cornerRadius: 9).fill(fillStyle))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9)
+                        .strokeBorder(
+                            isSelected ? AnyShapeStyle(.tint.opacity(0.55)) : AnyShapeStyle(Color.clear),
+                            lineWidth: 1
+                        )
+                )
+                .overlay(alignment: .leading) {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 1.5)
+                            .fill(.tint)
+                            .frame(width: 3, height: 20)
+                    }
+                }
+                .frame(width: 44, height: 44)
 
-    /// The accent selection cue: a leading pill in the vertical rail, a bottom
-    /// underline in the horizontal top bar. Selection is also carried by the
-    /// `.isSelected` trait, so it isn't conveyed by color alone.
-    @ViewBuilder
-    private var selectionIndicator: some View {
-        if isSelected {
-            if axis == .vertical {
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(.tint)
-                    .frame(width: 3, height: 20)
-            } else {
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(.tint)
-                    .frame(height: 2)
-                    .padding(.horizontal, 8)
+            if badgeCount > 0 {
+                BadgeCountView(count: badgeCount).offset(x: 2, y: -2)
+            }
+            if isMuted {
+                muteGlyph
             }
         }
+        .frame(width: 44, height: 44)
+    }
+
+    /// Horizontal top bar: an emoji + name tab, matching the service tabs, with an
+    /// accent border when selected.
+    private var horizontalTab: some View {
+        HStack(spacing: 8) {
+            Text(space.emoji).font(.system(size: 15))
+
+            Text(space.name)
+                .font(.subheadline)
+                .fontWeight(isSelected ? .semibold : .regular)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .foregroundStyle(isSelected ? .primary : .secondary)
+
+            if badgeCount > 0 {
+                BadgeCountView(count: badgeCount)
+            } else if isMuted {
+                Image(systemName: "bell.slash.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: ServiceTabView.height)
+        .opacity(isMuted ? 0.7 : 1.0)
+        .background(fillStyle)
+        .clipShape(RoundedRectangle(cornerRadius: 7))
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .strokeBorder(
+                    isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.clear),
+                    lineWidth: 1.5
+                )
+        )
+        .contentShape(Rectangle())
+    }
+
+    private var muteGlyph: some View {
+        Image(systemName: "bell.slash.fill")
+            .font(.system(size: 9))
+            .foregroundStyle(.secondary)
+            .padding(2)
+            .background(Circle().fill(.background))
+            .offset(x: 2, y: 4)
+            .accessibilityHidden(true)
     }
 
     /// Folds the space name, aggregate unread count, and mute state into one
@@ -309,9 +335,9 @@ private struct SpaceButton: View {
         return parts.joined(separator: ", ")
     }
 
-    private var backgroundColor: AnyShapeStyle {
+    private var fillStyle: AnyShapeStyle {
         if isSelected {
-            return AnyShapeStyle(.tint.opacity(0.15))
+            return AnyShapeStyle(.tint.opacity(0.12))
         } else if isHovering {
             return AnyShapeStyle(Color.primary.opacity(0.06))
         }
