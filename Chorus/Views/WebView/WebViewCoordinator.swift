@@ -94,12 +94,17 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         //      iframe navigating cross-origin isn't kicked out;
         //    - "leaves the service" is `!belongsToService`, which keeps
         //      *.slack.com workspaces in-app but treats Google products
-        //      (docs. vs mail.google.com) as separate.
+        //      (docs. vs mail.google.com) as separate;
+        //    - identity gateways (accounts.google.com, login.microsoftonline.com,
+        //      …) are exempt via `isAuthHost`, so clicking "Sign in" on a
+        //      signed-out page (Gmail → accounts.google.com) loads in place and
+        //      the login can finish instead of being kicked to the browser.
         if navigationAction.navigationType == .linkActivated,
            navigationAction.targetFrame?.isMainFrame ?? true,
            let currentHost = webView.url?.host,
            let targetHost = url.host,
-           !Self.belongsToService(targetHost, serviceHost: currentHost) {
+           !Self.belongsToService(targetHost, serviceHost: currentHost),
+           !Self.isAuthHost(targetHost) {
             if let handler = externalLinkHandler {
                 handler(url)
             } else {
@@ -523,6 +528,31 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             return target == service
         }
         return true
+    }
+
+    /// Sign-in / identity gateways. These host the authentication step for a
+    /// service (and for third-party "Sign in with…" flows), so they are never a
+    /// separate product to route out — a click to one during sign-in must stay
+    /// in-app to complete. They sit on shared-umbrella domains (accounts vs.
+    /// mail.google.com), so `belongsToService`'s exact-host rule would otherwise
+    /// treat them as leaving the service and open the browser mid-login.
+    static let authHosts: Set<String> = [
+        "accounts.google.com",
+        "accounts.youtube.com",
+        "login.microsoftonline.com",
+        "login.microsoft.com",
+        "login.windows.net",
+        "login.live.com",
+        "login.yahoo.com",
+        "appleid.apple.com",
+        "idmsa.apple.com",
+    ]
+
+    /// Whether `host` is a known authentication gateway (an exact match or a
+    /// subdomain of one). Callers keep such hosts in-app so sign-in completes.
+    static func isAuthHost(_ host: String) -> Bool {
+        let h = normalizedHost(host)
+        return authHosts.contains(h) || authHosts.contains { h.hasSuffix("." + $0) }
     }
 
     /// Lowercases a host and drops a leading `www.` so host comparisons ignore

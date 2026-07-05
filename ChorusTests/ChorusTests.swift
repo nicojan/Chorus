@@ -505,6 +505,28 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(WebViewCoordinator.belongsToService("APP.SLACK.COM", serviceHost: "app.slack.com"))
     }
 
+    func testAuthHostsAreRecognized() {
+        // Identity gateways stay in-app so sign-in completes (the reported
+        // "Gmail login kicked to the default browser" bug).
+        XCTAssertTrue(WebViewCoordinator.isAuthHost("accounts.google.com"))
+        XCTAssertTrue(WebViewCoordinator.isAuthHost("login.microsoftonline.com"))
+        XCTAssertTrue(WebViewCoordinator.isAuthHost("appleid.apple.com"))
+        // Case- and www-insensitive, and subdomains of a gateway still match.
+        XCTAssertTrue(WebViewCoordinator.isAuthHost("ACCOUNTS.GOOGLE.COM"))
+        XCTAssertTrue(WebViewCoordinator.isAuthHost("eu.login.microsoftonline.com"))
+        // Ordinary product hosts are not auth gateways.
+        XCTAssertFalse(WebViewCoordinator.isAuthHost("mail.google.com"))
+        XCTAssertFalse(WebViewCoordinator.isAuthHost("docs.google.com"))
+        XCTAssertFalse(WebViewCoordinator.isAuthHost("example.com"))
+    }
+
+    func testAuthHostExemptionLeavesUmbrellaSeparationIntact() {
+        // The exemption is layered on top of belongsToService, not baked into
+        // it: Google products stay separate for ordinary link routing.
+        XCTAssertFalse(WebViewCoordinator.belongsToService("accounts.google.com", serviceHost: "mail.google.com"))
+        XCTAssertFalse(WebViewCoordinator.belongsToService("docs.google.com", serviceHost: "mail.google.com"))
+    }
+
     // MARK: - Rail layout preference
 
     func testRailLayoutParsesFromStoredValueWithSidebarFallback() {
