@@ -3,6 +3,36 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.2.1</title>
+            <pubDate>Sun, 05 Jul 2026 15:32:50 -0700</pubDate>
+            <sparkle:version>6</sparkle:version>
+            <sparkle:shortVersionString>1.2.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Fixed</h3>
+<ul>
+<li>Dragging a service or space in a top or hybrid rail now reorders it instead of moving the window.</li>
+<li>Dragging a space to reorder it drops it exactly where you release it.</li>
+<li>The spaces rail scrolls, so every space and the add button stay reachable when you have more than fit the window.</li>
+<li>You can no longer delete your last space. With no spaces left, the window went blank and there was nowhere to add a service.</li>
+<li>After a service you had open is removed, the app opens on a valid service instead of a blank pane.</li>
+<li>Sign-in works when a service sends you to its login page. Google, Microsoft, Apple, and Yahoo sign-in pages stay in the app instead of opening your browser.</li>
+<li>A sign-in window no longer gets replaced by an error page, or reloaded to the wrong address, when a network request fails briefly.</li>
+<li>Web notifications come only from the service that owns the page. Embedded third-party frames can no longer post them in its name.</li>
+<li>A service that reports a bad unread count can no longer hide the badges of your other services.</li>
+<li>A service running a call inside an embedded frame is no longer suspended mid-call.</li>
+<li>The quick switcher updates its list when you rename a service while it is open.</li>
+<li>Muting a space clears every member service's badge right away.</li>
+<li>Fixed a rare launch crash that could happen after a previous session was interrupted while deleting.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Chorus stops retrying a service's icon on every launch when it can't be found, and keeps working if one catalog entry is malformed.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.2.1/Chorus-1.2.1.dmg" length="7241523" type="application/octet-stream" sparkle:edSignature="vUsWeOdXYuDiR83EEE3X09Q0nzt7a9jOig80r0bYlIMmbjVP5riYQn6wKfYdS25QnNFPVrc6tTJd2bGkPo+6Cg=="/>
+        </item>
+        <item>
             <title>1.2.0</title>
             <pubDate>Fri, 03 Jul 2026 23:22:08 -0700</pubDate>
             <sparkle:version>5</sparkle:version>
