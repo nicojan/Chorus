@@ -143,8 +143,11 @@ struct SpaceStripView: View {
                     // Refresh BadgeManager for every member service so the
                     // per-service badge and the aggregate chip badge zero out
                     // (or come back) immediately, without waiting for a poll.
-                    for link in space.serviceLinks {
-                        appState.refreshBadgeState(for: link.service.id)
+                    // Use the reliable link fetch, not space.serviceLinks — that
+                    // inverse relationship can be stale (see the badge-count code
+                    // above), which would skip members and leave their badges.
+                    for serviceID in appState.servicesForSpace(space.id).map(\.id) {
+                        appState.refreshBadgeState(for: serviceID)
                     }
                 }
             ))

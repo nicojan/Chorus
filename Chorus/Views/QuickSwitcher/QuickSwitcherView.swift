@@ -25,12 +25,23 @@ struct QuickSwitcherView: View {
             selectedIndex = 0
             recomputeResults()
         }
-        .onChange(of: allLinks.count) {
+        // Key off a content signature, not just the count: a rename (or a moved
+        // service) changes the label/membership without changing how many links
+        // exist, and the results would otherwise show stale text while open.
+        .onChange(of: linksSignature) {
             recomputeResults()
         }
         .onAppear {
             recomputeResults()
         }
+    }
+
+    /// A stable string signature of the links' displayed content, so onChange
+    /// fires on renames and space moves — not only on insert/delete.
+    private var linksSignature: [String] {
+        allLinks
+            .filter { $0.modelContext != nil && $0.service.modelContext != nil && $0.space.modelContext != nil }
+            .map { "\($0.service.id)|\($0.service.label)|\($0.space.id)|\($0.space.name)" }
     }
 
     private func recomputeResults() {
