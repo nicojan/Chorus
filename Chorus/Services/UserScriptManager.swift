@@ -279,8 +279,22 @@ final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unche
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
-        guard message.name == "chorusNotification",
-              let jsonString = message.body as? String,
+        guard message.name == "chorusNotification" else { return }
+
+        // Only accept notifications from the service's own origin — the main
+        // frame, or a same-origin subframe. The interception script runs in all
+        // frames (some services fire notifications from a subframe), so without
+        // this gate a cross-origin ad/tracker iframe could post a native
+        // notification with attacker-controlled title/body attributed to the
+        // trusted service (spoofing / phishing).
+        let frame = message.frameInfo
+        if !frame.isMainFrame {
+            let frameHost = frame.securityOrigin.host
+            let mainHost = message.webView?.url?.host ?? ""
+            guard !frameHost.isEmpty, frameHost == mainHost else { return }
+        }
+
+        guard let jsonString = message.body as? String,
               let data = jsonString.data(using: .utf8)
         else { return }
 

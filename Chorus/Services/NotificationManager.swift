@@ -263,7 +263,10 @@ final class NotificationManager {
     }
 
     private func configureNotificationDelegate() {
-        let badgeManager = self.badgeManager
+        // Read DND from the thread-safe snapshot, not MainActor.assumeIsolated:
+        // willPresent/didReceive aren't contractually delivered on the main
+        // thread, and an off-main assumeIsolated would hard-crash.
+        let dndSnapshot = badgeManager.doNotDisturbSnapshot
         let delegate = NotificationCenterDelegate(
             onServiceRequested: { [weak self] serviceID in
                 Task { @MainActor in
@@ -271,7 +274,7 @@ final class NotificationManager {
                 }
             },
             isDoNotDisturb: {
-                MainActor.assumeIsolated { badgeManager.doNotDisturb }
+                dndSnapshot.value
             }
         )
         UNUserNotificationCenter.current().delegate = delegate

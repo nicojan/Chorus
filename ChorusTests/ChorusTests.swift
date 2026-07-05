@@ -182,6 +182,36 @@ final class ChorusTests: XCTestCase {
     }
 
     @MainActor
+    func testUpdateBadgeClampsOutOfRangeCounts() {
+        let manager = BadgeManager()
+        let negative = UUID()
+        let huge = UUID()
+        let ok = UUID()
+
+        // A misbehaving DOM badge (catalog badgeJS) could yield a negative or a
+        // garbage-large value; a stored negative would subtract from the sum and
+        // hide the dock badge for every other service.
+        manager.updateBadge(for: negative, count: -5, isMuted: false, showBadge: true)
+        manager.updateBadge(for: huge, count: 100_000, isMuted: false, showBadge: true)
+        manager.updateBadge(for: ok, count: 3, isMuted: false, showBadge: true)
+
+        XCTAssertEqual(manager.rawCount(for: negative), 0, "negative clamps to 0")
+        XCTAssertEqual(manager.rawCount(for: huge), 999, "huge clamps to 999")
+        // The total is the clamped sum, never dragged below the other services.
+        XCTAssertEqual(manager.totalCount, 0 + 999 + 3)
+    }
+
+    @MainActor
+    func testDoNotDisturbSnapshotMirrorsValue() {
+        let manager = BadgeManager()
+        XCTAssertFalse(manager.doNotDisturbSnapshot.value)
+        manager.doNotDisturb = true
+        XCTAssertTrue(manager.doNotDisturbSnapshot.value, "snapshot follows the property for off-main reads")
+        manager.doNotDisturb = false
+        XCTAssertFalse(manager.doNotDisturbSnapshot.value)
+    }
+
+    @MainActor
     func testRemoveBadgeClearsMaskState() {
         let manager = BadgeManager()
         let id = UUID()

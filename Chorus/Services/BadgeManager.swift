@@ -15,7 +15,17 @@ final class BadgeManager {
     /// show-badge toggle off. Their real count still lives in `counts`.
     private var maskedIDs: Set<UUID> = []
 
-    var doNotDisturb: Bool = false
+    var doNotDisturb: Bool = false {
+        // Mirror into a thread-safe snapshot so the UNUserNotificationCenter
+        // delegate can read Do Not Disturb from its callback without asserting
+        // main-actor isolation (that callback isn't contractually main-thread;
+        // an off-main read via MainActor.assumeIsolated would hard-crash).
+        didSet { doNotDisturbSnapshot.value = doNotDisturb }
+    }
+
+    /// Off-main-safe mirror of `doNotDisturb`. See the property's didSet.
+    nonisolated let doNotDisturbSnapshot = AtomicBool(false)
+
     var showBadgeCountInDock: Bool = true {
         didSet { updateDockBadge() }
     }
@@ -44,11 +54,16 @@ final class BadgeManager {
     }
 
     func updateBadge(for instanceID: UUID, count: Int, isMuted: Bool, showBadge: Bool = true) {
-        // Always store the true count; muting / show-badge only toggles the
-        // display mask. Storing the real value (rather than 0) keeps adaptive
-        // polling's delta detection correct for muted services and makes
-        // un-muting instantaneous.
-        counts[instanceID] = count
+        // Clamp to a sane badge range. The DOM-badge path (catalog badgeJS) is
+        // otherwise unbounded, so a page whose expression yields a negative or
+        // garbage-large value would corrupt totalCount/aggregateCount — one
+        // negative can zero out or hide the dock badge for every other service.
+        let clamped = max(0, min(count, 999))
+        // Always store the (clamped) true count; muting / show-badge only
+        // toggles the display mask. Storing the real value (rather than 0) keeps
+        // adaptive polling's delta detection correct for muted services and
+        // makes un-muting instantaneous.
+        counts[instanceID] = clamped
         if isMuted || !showBadge {
             maskedIDs.insert(instanceID)
         } else {
@@ -76,5 +91,20 @@ final class BadgeManager {
             let total = totalCount
             dockTile.badgeLabel = total > 0 ? "\(total)" : nil
         }
+    }
+}
+
+/// A minimal thread-safe boolean, so a value owned by a `@MainActor` type can
+/// be read safely from a non-isolated context (e.g. a system delegate callback
+/// that isn't guaranteed to run on the main thread).
+final class AtomicBool: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value: Bool
+
+    init(_ value: Bool) { self._value = value }
+
+    var value: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return _value }
+        set { lock.lock(); _value = newValue; lock.unlock() }
     }
 }
