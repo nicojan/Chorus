@@ -216,8 +216,10 @@ final class HibernatedBadgePoller {
         }
     }
 
-    /// Bridges WKHTTPCookieStore's completion-handler API to async.
-    nonisolated private static func allCookies(from store: WKHTTPCookieStore) async -> [HTTPCookie] {
+    /// Bridges WKHTTPCookieStore's completion-handler API to async. Main-actor
+    /// isolated because getAllCookies (and its completion) is @MainActor; the
+    /// await suspends rather than blocking, so this doesn't stall the main actor.
+    @MainActor private static func allCookies(from store: WKHTTPCookieStore) async -> [HTTPCookie] {
         await withCheckedContinuation { (cont: CheckedContinuation<[HTTPCookie], Never>) in
             store.getAllCookies { cookies in
                 cont.resume(returning: cookies)

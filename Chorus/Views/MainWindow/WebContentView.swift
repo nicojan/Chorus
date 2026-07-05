@@ -114,7 +114,7 @@ struct WebContentView: View {
         // page re-measures against the real frame; it's a no-op for other sites.
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(250))
-            webView.evaluateJavaScript("window.dispatchEvent(new Event('resize'))", completionHandler: nil)
+            _ = try? await webView.evaluateJavaScript("window.dispatchEvent(new Event('resize'))")
         }
 
         // Start active-mode badge/title polling for the displayed service.

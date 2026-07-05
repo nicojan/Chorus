@@ -19,8 +19,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// Timestamps of recent WebContent terminations, used to break a crash →
     /// reload → crash loop. Accessed only from main-thread delegate callbacks.
     private var crashTimestamps: [Date] = []
-    private static let maxCrashesInWindow = 3
-    private static let crashWindow: TimeInterval = 30
+    // nonisolated so the nonisolated `shouldAutoReload` can use them as default
+    // argument values — they're immutable Sendable constants.
+    private nonisolated static let maxCrashesInWindow = 3
+    private nonisolated static let crashWindow: TimeInterval = 30
 
     /// Routes external/cross-domain navigations through AppState so it can
     /// match the URL against an existing Chorus service before falling back
