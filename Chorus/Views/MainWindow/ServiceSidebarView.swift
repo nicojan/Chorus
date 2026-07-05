@@ -87,7 +87,6 @@ struct ServiceSidebarView: View {
     @State private var showingAddService = false
     @State private var confirmingDelete: SpaceServiceLink?
     @State private var editingService: ServiceInstance?
-    @State private var draggingLinkID: UUID?
     private static let serviceDropMidpoint: CGFloat = 23
     private static let serviceDropMidpointHorizontal: CGFloat = 60
 
@@ -232,16 +231,17 @@ struct ServiceSidebarView: View {
         let muted = link.service.isEffectivelyMuted
 
         cell(for: link, isSelected: isSel, badge: badge, hibernated: hibernated, muted: muted)
-            .opacity(draggingLinkID == link.id ? 0.4 : 1.0)
             .blocksWindowDrag()
             .draggable(link.id.uuidString) {
+                // Custom drag preview. Source-dimming is left to SwiftUI (as in
+                // SpaceStripView): manually tracking a "dragging" id can't be
+                // cleared reliably — a drop on itself or a cancelled drag never
+                // fires the drop handler — which left the row stuck at 0.4 opacity.
                 Text(link.service.label)
                     .font(.caption)
                     .padding(6)
                     .background(.ultraThickMaterial)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .onAppear { draggingLinkID = link.id }
-                    .onDisappear { draggingLinkID = nil }
             }
             .dropDestination(for: String.self) { items, location in
                 guard let droppedIDString = items.first,
@@ -254,13 +254,11 @@ struct ServiceSidebarView: View {
                     }
                     return location.x < Self.serviceDropMidpointHorizontal ? .before : .after
                 }()
-                let didReorder = reorderService(
+                return reorderService(
                     droppedLinkID: droppedID,
                     relativeTo: link,
                     placement: placement
                 )
-                draggingLinkID = nil
-                return didReorder
             }
             .accessibilityAction(named: "Move up") { moveServiceUp(link) }
             .accessibilityAction(named: "Move down") { moveServiceDown(link) }

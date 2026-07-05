@@ -56,11 +56,15 @@ struct SpaceStripView: View {
         VStack(spacing: 2) {
             Spacer().frame(height: 6 + contentInset)
 
-            ForEach(spaces) { space in
-                spaceCell(space)
+            // Scroll the cells so more spaces than fit the window height stay
+            // reachable; the divider and add button below stay pinned.
+            ScrollView {
+                LazyVStack(spacing: 2) {
+                    ForEach(spaces) { space in
+                        spaceCell(space)
+                    }
+                }
             }
-
-            Spacer()
 
             Divider().padding(.horizontal, 8)
 
@@ -123,8 +127,10 @@ struct SpaceStripView: View {
                   let droppedID = UUID(uuidString: droppedIDString),
                   droppedID != space.id
             else { return false }
-            reorderSpace(droppedSpaceID: droppedID, beforeSpace: space)
-            return true
+            // Returns false when the dropped id isn't a space in this rail (e.g. a
+            // service tab dragged onto a space), so the drop isn't reported as a
+            // success that did nothing.
+            return reorderSpace(droppedSpaceID: droppedID, beforeSpace: space)
         }
         .accessibilityAction(named: "Move up") { moveSpaceUp(space) }
         .accessibilityAction(named: "Move down") { moveSpaceDown(space) }
@@ -193,19 +199,28 @@ struct SpaceStripView: View {
         save("move space down")
     }
 
-    private func reorderSpace(droppedSpaceID: UUID, beforeSpace target: Space) {
-        var orderedSpaces = spaces
-        guard let fromIndex = orderedSpaces.firstIndex(where: { $0.id == droppedSpaceID }),
-              let toIndex = orderedSpaces.firstIndex(where: { $0.id == target.id })
-        else { return }
+    @discardableResult
+    private func reorderSpace(droppedSpaceID: UUID, beforeSpace target: Space) -> Bool {
+        let orderedSpaces = spaces
+        let spacesByID = Dictionary(uniqueKeysWithValues: orderedSpaces.map { ($0.id, $0) })
+        // Reuse the service rail's tested reorder math. The old inline version
+        // inserted at a pre-removal index, so a forward drag landed one slot past
+        // the target; ServiceReorder decrements the index when moving forward.
+        // Spaces always drop *before* the target.
+        guard let reorderedIDs = ServiceReorder.reorderedIDs(
+            orderedSpaces.map(\.id),
+            moving: droppedSpaceID,
+            relativeTo: target.id,
+            placement: .before
+        ) else {
+            return false
+        }
 
-        let moved = orderedSpaces.remove(at: fromIndex)
-        orderedSpaces.insert(moved, at: toIndex)
-
-        for (index, space) in orderedSpaces.enumerated() {
-            space.sortOrder = index
+        for (index, id) in reorderedIDs.enumerated() {
+            spacesByID[id]?.sortOrder = index
         }
         save("reorder spaces")
+        return true
     }
 
     private func deleteSpace(_ space: Space) {
