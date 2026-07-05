@@ -623,6 +623,16 @@ final class AppState {
         let descriptor = FetchDescriptor<Space>(predicate: #Predicate { $0.id == spaceID })
         guard let space = try? context.fetch(descriptor).first else { return }
 
+        // Never delete the last space. With zero spaces the content area is
+        // blank and ⌘N would present an Add-Service sheet with no space to add
+        // to. The UI hides the delete action when only one space remains; this
+        // is the safety net.
+        let spaceCount = (try? context.fetchCount(FetchDescriptor<Space>())) ?? 0
+        guard spaceCount > 1 else {
+            AppLogger.dataStore.warning("Refusing to delete the last remaining space")
+            return
+        }
+
         let linkedServices = space.serviceLinks.map(\.service)
         var memberships: [UUID: Set<UUID>] = [:]
         for service in linkedServices {
@@ -770,7 +780,17 @@ final class AppState {
         let descriptor = FetchDescriptor<SpaceServiceLink>()
         do {
             return try context.fetch(descriptor)
-                .filter { $0.modelContext != nil && $0.service.modelContext != nil && $0.space.id == spaceID }
+                // Guard both relationships: a link that outlived its deleted
+                // service *or* its deleted space (crash mid-delete) would trap
+                // when we materialize the non-optional relationship to read its
+                // id. Reading `.modelContext` is safe (nil once deleted); read it
+                // before `.space.id`.
+                .filter {
+                    $0.modelContext != nil
+                        && $0.service.modelContext != nil
+                        && $0.space.modelContext != nil
+                        && $0.space.id == spaceID
+                }
                 .sorted { $0.sortOrder < $1.sortOrder }
                 .map(\.service)
         } catch {
@@ -1067,14 +1087,32 @@ final class AppState {
 
     private func restoreWindowState() {
         let context = modelContainer.mainContext
-        let descriptor = FetchDescriptor<AppPreferences>()
         do {
-            guard let prefs = try context.fetch(descriptor).first else { return }
-            if let savedSpaceID = prefs.selectedSpaceID {
+            let prefs = try context.fetch(FetchDescriptor<AppPreferences>()).first
+
+            // Apply a saved space only if it still exists. A nil/invalid saved
+            // value leaves the seeded selection in place.
+            let existingSpaceIDs = Set(try context.fetch(FetchDescriptor<Space>()).map(\.id))
+            if let savedSpaceID = prefs?.selectedSpaceID, existingSpaceIDs.contains(savedSpaceID) {
                 selectedSpaceID = savedSpaceID
             }
-            if let savedServiceID = prefs.selectedServiceID {
+
+            // Validate the service selection against the current space. A space
+            // or service selected last session may have been deleted (or reaped
+            // at launch); ContentView's onChange fix-up doesn't run for the
+            // initial value, so a dangling id would strand the app on a blank
+            // pane until the user clicked. Fall back to the space's first service.
+            guard let spaceID = selectedSpaceID else {
+                selectedServiceID = nil
+                return
+            }
+            let servicesInSpace = servicesForSpace(spaceID)
+            if let savedServiceID = prefs?.selectedServiceID,
+               servicesInSpace.contains(where: { $0.id == savedServiceID }) {
                 selectedServiceID = savedServiceID
+            } else if selectedServiceID == nil
+                        || !servicesInSpace.contains(where: { $0.id == selectedServiceID }) {
+                selectedServiceID = servicesInSpace.first?.id
             }
         } catch {
             AppLogger.dataStore.error("Failed to restore window state: \(error.localizedDescription)")

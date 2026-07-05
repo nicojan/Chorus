@@ -153,9 +153,13 @@ struct SpaceStripView: View {
             Button("Edit Space...") {
                 editingSpace = space
             }
-            Divider()
-            Button("Delete Space", role: .destructive) {
-                confirmingDeleteSpace = space
+            // No delete when this is the only space: the app has no valid state
+            // with zero spaces (AppState.deleteSpace also refuses).
+            if spaces.count > 1 {
+                Divider()
+                Button("Delete Space", role: .destructive) {
+                    confirmingDeleteSpace = space
+                }
             }
         }
     }
