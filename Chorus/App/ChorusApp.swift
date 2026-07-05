@@ -169,26 +169,13 @@ struct ChorusApp: App {
 
     @MainActor
     private func saveWindowState() {
-        let context = appState.modelContainer.mainContext
-        let descriptor = FetchDescriptor<AppPreferences>()
-
-        let prefs: AppPreferences
-        do {
-            prefs = try context.fetch(descriptor).first ?? AppPreferences()
-        } catch {
-            AppLogger.dataStore.error("Failed to fetch preferences for window state: \(error.localizedDescription)")
-            return
-        }
-
-        if prefs.modelContext == nil {
-            context.insert(prefs)
-        }
-
+        // Single shared accessor so we never mint a second preferences row.
+        let prefs = appState.ensurePreferences()
         prefs.selectedSpaceID = appState.selectedSpaceID
         prefs.selectedServiceID = appState.selectedServiceID
 
         do {
-            try context.save()
+            try appState.modelContainer.mainContext.save()
         } catch {
             AppLogger.dataStore.error("Failed to save window state: \(error.localizedDescription)")
         }

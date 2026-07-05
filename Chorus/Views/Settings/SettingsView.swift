@@ -168,10 +168,11 @@ struct GeneralSettingsView: View {
     }
 
     private func ensurePrefs() -> AppPreferences {
-        if let existing = preferences.first { return existing }
-        let newPrefs = AppPreferences()
-        modelContext.insert(newPrefs)
-        return newPrefs
+        // Route creation through the single accessor so two first-time setters
+        // (rapid toggles, or toggles across two Settings tabs) can't each insert
+        // a duplicate row — a fresh fetch there sees pending inserts, unlike this
+        // view's @Query, which refreshes a tick later.
+        appState.ensurePreferences()
     }
 }
 
@@ -351,10 +352,11 @@ struct NotificationSettingsView: View {
     }
 
     private func ensurePrefs() -> AppPreferences {
-        if let existing = preferences.first { return existing }
-        let newPrefs = AppPreferences()
-        modelContext.insert(newPrefs)
-        return newPrefs
+        // Route creation through the single accessor so two first-time setters
+        // (rapid toggles, or toggles across two Settings tabs) can't each insert
+        // a duplicate row — a fresh fetch there sees pending inserts, unlike this
+        // view's @Query, which refreshes a tick later.
+        appState.ensurePreferences()
     }
 
     private func save(_ context: String) {
@@ -411,10 +413,11 @@ struct PrivacySettingsView: View {
     }
 
     private func ensurePrefs() -> AppPreferences {
-        if let existing = preferences.first { return existing }
-        let newPrefs = AppPreferences()
-        modelContext.insert(newPrefs)
-        return newPrefs
+        // Route creation through the single accessor so two first-time setters
+        // (rapid toggles, or toggles across two Settings tabs) can't each insert
+        // a duplicate row — a fresh fetch there sees pending inserts, unlike this
+        // view's @Query, which refreshes a tick later.
+        appState.ensurePreferences()
     }
 
     private func save(_ context: String) {

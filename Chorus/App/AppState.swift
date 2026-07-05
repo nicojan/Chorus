@@ -122,10 +122,13 @@ final class AppState {
             // muted (mute-the-space cascades to its members).
             MainActor.assumeIsolated {
                 let context = container.mainContext
-                let descriptor = FetchDescriptor<ServiceInstance>()
-                guard let services = try? context.fetch(descriptor),
-                      let service = services.first(where: { $0.id == serviceID })
-                else { return false }
+                // Indexed single-row fetch, not a full-table scan — this runs on
+                // every intercepted web notification (matches isServiceNotifyingOS).
+                var descriptor = FetchDescriptor<ServiceInstance>(
+                    predicate: #Predicate { $0.id == serviceID }
+                )
+                descriptor.fetchLimit = 1
+                guard let service = try? context.fetch(descriptor).first else { return false }
                 if service.isMuted { return true }
                 return service.spaceLinks.contains { $0.space.isMutedEffective }
             }
@@ -387,6 +390,9 @@ final class AppState {
             try modelContainer.mainContext.save()
         } catch {
             AppLogger.dataStore.error("Failed to save service edits: \(error.localizedDescription)")
+            // Discard the failed mutation so it can't silently ride along on the
+            // next unrelated successful save.
+            modelContainer.mainContext.rollback()
         }
     }
 
@@ -550,6 +556,7 @@ final class AppState {
         service.pageZoom = value
         do { try modelContainer.mainContext.save() } catch {
             AppLogger.dataStore.error("Failed to persist zoom: \(error.localizedDescription)")
+            modelContainer.mainContext.rollback()
         }
     }
 
@@ -896,6 +903,23 @@ final class AppState {
         }
     }
 
+    /// The single AppPreferences row, created (and inserted) once if missing.
+    /// All preference *writes* must go through this: unlike a per-view @Query
+    /// existence check, a fresh fetch here sees pending inserts, so two
+    /// first-time setters in the same tick reuse one row instead of each
+    /// inserting a duplicate (which then makes `.first` read nondeterministically
+    /// and settings appear to reset). Reads may still use @Query.
+    @discardableResult
+    func ensurePreferences() -> AppPreferences {
+        let context = modelContainer.mainContext
+        if let existing = try? context.fetch(FetchDescriptor<AppPreferences>()).first {
+            return existing
+        }
+        let prefs = AppPreferences()
+        context.insert(prefs)
+        return prefs
+    }
+
     private func loadAppPreferences() {
         let context = modelContainer.mainContext
         let descriptor = FetchDescriptor<AppPreferences>()
@@ -1136,9 +1160,10 @@ final class AppState {
         let staleThreshold = Date().addingTimeInterval(-7 * 24 * 60 * 60) // 7 days
 
         let needsFetch = services.filter { service in
-            // No custom icon AND (no cached favicon OR favicon is stale)
             guard service.customIconData == nil else { return false }
-            if service.fetchedIconData == nil { return true }
+            // Back off on the timestamp for both "never fetched" and "stale":
+            // a service whose favicon keeps failing gets stamped on failure
+            // (below), so it retries at most weekly instead of every launch.
             guard let fetchedAt = service.faviconFetchedAt else { return true }
             return fetchedAt < staleThreshold
         }
@@ -1159,10 +1184,11 @@ final class AppState {
 
                 if let data {
                     service.fetchedIconData = data
-                    service.faviconFetchedAt = Date()
-                } else if entry.hadIcon {
-                    service.faviconFetchedAt = Date()
                 }
+                // Stamp on every attempt, success or failure, so a service whose
+                // favicon can't be fetched backs off instead of retrying every
+                // launch (a nil icon with a recent timestamp is "recently tried").
+                service.faviconFetchedAt = Date()
             }
             do {
                 try context.save()
@@ -1176,7 +1202,9 @@ final class AppState {
     private func seedDefaultDataIfNeeded() {
         let context = modelContainer.mainContext
 
-        let descriptor = FetchDescriptor<Space>()
+        // Sorted so the fallback selection is the top space (sortOrder 0), not a
+        // nondeterministic one — matches deleteSpace's remaining-space pick.
+        let descriptor = FetchDescriptor<Space>(sortBy: [SortDescriptor(\.sortOrder)])
         let existingSpaces: [Space]
         do {
             existingSpaces = try context.fetch(descriptor)
