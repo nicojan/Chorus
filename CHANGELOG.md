@@ -5,6 +5,39 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-07-05
+
+### Fixed
+
+- Dragging a service or space in a top or hybrid rail now reorders it instead of
+  moving the window.
+- Dragging a space to reorder it drops it exactly where you release it.
+- The spaces rail scrolls, so every space and the add button stay reachable when
+  you have more than fit the window.
+- You can no longer delete your last space. With no spaces left, the window went
+  blank and there was nowhere to add a service.
+- After a service you had open is removed, the app opens on a valid service
+  instead of a blank pane.
+- Sign-in works when a service sends you to its login page. Google, Microsoft,
+  Apple, and Yahoo sign-in pages stay in the app instead of opening your browser.
+- A sign-in window no longer gets replaced by an error page, or reloaded to the
+  wrong address, when a network request fails briefly.
+- Web notifications come only from the service that owns the page. Embedded
+  third-party frames can no longer post them in its name.
+- A service that reports a bad unread count can no longer hide the badges of your
+  other services.
+- A service running a call inside an embedded frame is no longer suspended
+  mid-call.
+- The quick switcher updates its list when you rename a service while it is open.
+- Muting a space clears every member service's badge right away.
+- Fixed a rare launch crash that could happen after a previous session was
+  interrupted while deleting.
+
+### Changed
+
+- Chorus stops retrying a service's icon on every launch when it can't be found,
+  and keeps working if one catalog entry is malformed.
+
 ## [1.2.0] - 2026-07-03
 
 ### Added
