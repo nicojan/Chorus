@@ -145,6 +145,15 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     // deterministically would reload-crash forever, so back off after a few
     // crashes in a short window and show a recovery page instead.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        // The OAuth/sign-in popup shares this coordinator as its delegate.
+        // Don't apply the service's crash recovery (fallbackURL + backoff) to
+        // it — that would reload the popup on the service's home URL, not the
+        // popup's own page. Reload its own page if it has one.
+        if webView === popupWebView {
+            if webView.url != nil { webView.reload() }
+            return
+        }
+
         let now = Date()
         crashTimestamps.append(now)
         crashTimestamps = crashTimestamps.filter { now.timeIntervalSince($0) <= Self.crashWindow }
@@ -180,6 +189,13 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         didFailProvisionalNavigation navigation: WKNavigation!,
         withError error: Error
     ) {
+        // Don't overwrite the popup with our generic error page: a transient
+        // provisional failure mid sign-in (an intermediate redirect WebKit
+        // can't render, a captive-portal blip) would break the OAuth flow.
+        // Let the popup's own site handle it. (didFinish already skips the
+        // popup; this keeps the failure path symmetric.)
+        if webView === popupWebView { return }
+
         let nsError = error as NSError
         // Ignore cancelled loads (e.g., user navigated away)
         guard nsError.code != NSURLErrorCancelled else { return }

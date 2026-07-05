@@ -164,11 +164,29 @@ final class UserScriptManager {
 
             var OrigRTC = window.RTCPeerConnection;
             var activePeers = new Set();
+            var frameId = Math.random().toString(36).substr(2, 9);
 
             window.__chorusActiveCall = false;
 
+            // Aggregate call state onto the top frame, keyed by frame, so a call
+            // running inside a same-origin iframe is still seen by the pool's
+            // main-frame check (evaluateJavaScript runs in the main frame only).
+            // Cross-origin frames can't reach window.top (property access
+            // throws), so they fall back to their own flag — an inherent limit.
             function updateCallState() {
-                window.__chorusActiveCall = activePeers.size > 0;
+                var active = activePeers.size > 0;
+                try {
+                    var top = window.top || window;
+                    if (!top.__chorusCallFrames) top.__chorusCallFrames = {};
+                    if (active) {
+                        top.__chorusCallFrames[frameId] = true;
+                    } else {
+                        delete top.__chorusCallFrames[frameId];
+                    }
+                    top.__chorusActiveCall = Object.keys(top.__chorusCallFrames).length > 0;
+                } catch (e) {
+                    window.__chorusActiveCall = active;
+                }
             }
 
             window.RTCPeerConnection = function() {

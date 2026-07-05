@@ -246,11 +246,30 @@ final class WebViewPool {
     /// Check if a service currently has an active WebRTC call.
     func hasActiveCall(for instanceID: UUID) async -> Bool {
         guard let webView = webViews[instanceID] else { return false }
-        do {
-            let result = try await webView.evaluateJavaScript(UserScriptManager.callDetectionQueryJS)
-            return (result as? Bool) == true
-        } catch {
-            return false
+        let queryJS = UserScriptManager.callDetectionQueryJS
+        // Bound the JS check. A wedged WebContent process can leave
+        // evaluateJavaScript's continuation pending forever; without a timeout
+        // the id would stay in `evictionInFlight` and be excluded from every
+        // future eviction pass, so the pool would grow past maxLoaded unbounded.
+        // Treat "no answer within the window" as "no call" so eviction proceeds
+        // (a process that can't answer a one-property read in 2s is wedged and
+        // should be reclaimed anyway).
+        return await withTaskGroup(of: Bool.self) { group in
+            group.addTask { @MainActor in
+                do {
+                    let result = try await webView.evaluateJavaScript(queryJS)
+                    return (result as? Bool) == true
+                } catch {
+                    return false
+                }
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                return false
+            }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
         }
     }
 
