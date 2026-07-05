@@ -8,6 +8,36 @@ enum ServiceReorderPlacement {
     case after
 }
 
+/// Bridges an AppKit view that opts out of window dragging.
+///
+/// With `.windowStyle(.hiddenTitleBar)` the window keeps a transparent,
+/// full-size-content title bar, so the top strip stays a window-drag region.
+/// A rail item sitting in that strip (top-bar and hybrid layouts) gets its
+/// click-drag grabbed by the window move before SwiftUI's `.draggable` reorder
+/// can start — the window slides instead of the item.
+///
+/// Placing this behind a draggable item makes the view under the cursor report
+/// `mouseDownCanMoveWindow == false`, so AppKit forwards the drag to SwiftUI.
+/// It sits behind only the items, so dragging the empty rail background still
+/// moves the window.
+private struct WindowDragBlocker: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { BlockingView() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private final class BlockingView: NSView {
+        override var mouseDownCanMoveWindow: Bool { false }
+    }
+}
+
+extension View {
+    /// Stops a click-drag on this view from moving the window, so a `.draggable`
+    /// reorder works even when the item sits in the title-bar strip. See
+    /// `WindowDragBlocker`.
+    func blocksWindowDrag() -> some View {
+        background(WindowDragBlocker())
+    }
+}
+
 enum ServiceReorder {
     static func reorderedIDs(
         _ ids: [UUID],
@@ -203,6 +233,7 @@ struct ServiceSidebarView: View {
 
         cell(for: link, isSelected: isSel, badge: badge, hibernated: hibernated, muted: muted)
             .opacity(draggingLinkID == link.id ? 0.4 : 1.0)
+            .blocksWindowDrag()
             .draggable(link.id.uuidString) {
                 Text(link.service.label)
                     .font(.caption)

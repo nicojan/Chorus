@@ -106,6 +106,7 @@ struct SpaceStripView: View {
         ) {
             selectedSpaceID = space.id
         }
+        .blocksWindowDrag()
         .draggable(space.id.uuidString) {
             // Custom drag preview. Source-dimming is intentionally left to
             // SwiftUI: manually tracking a "dragging" id to dim the source can't
