@@ -376,7 +376,7 @@ struct ServiceSidebarView: View {
     ) -> some View {
         if axis == .vertical {
             Button {
-                selectedServiceID = link.service.id
+                selectService(link)
             } label: {
                 ServiceIconView(
                     instance: link.service,
@@ -397,9 +397,18 @@ struct ServiceSidebarView: View {
                 isMuted: muted,
                 iconOnly: true
             ) {
-                selectedServiceID = link.service.id
+                selectService(link)
             }
         }
+    }
+
+    /// Selects a service and co-locates keyboard focus on its cell, so a click
+    /// (or ⌘-digit) leaves the arrow keys with an anchor to move from — a plain
+    /// Button click doesn't reliably promote the enclosing `.focusable()` to
+    /// focused on its own.
+    private func selectService(_ link: SpaceServiceLink) {
+        selectedServiceID = link.service.id
+        focusedServiceID = link.service.id
     }
 
     private var addServiceButton: some View {

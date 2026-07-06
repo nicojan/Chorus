@@ -128,7 +128,11 @@ struct SpaceStripView: View {
             isMuted: muted,
             axis: axis
         ) {
+            // Co-locate keyboard focus with selection so a click leaves the
+            // arrow keys an anchor to move from (a plain Button click doesn't
+            // reliably focus the enclosing `.focusable()` on its own).
             selectedSpaceID = space.id
+            focusedSpaceID = space.id
         }
         .draggable(space.id.uuidString) {
             // Custom drag preview. Source-dimming is intentionally left to
