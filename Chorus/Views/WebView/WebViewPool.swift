@@ -247,35 +247,37 @@ final class WebViewPool {
     func hasActiveCall(for instanceID: UUID) async -> Bool {
         guard webViews[instanceID] != nil else { return false }
         // Bound the JS check. A wedged WebContent process can leave
-        // evaluateJavaScript's continuation pending forever; without a timeout
-        // the id would stay in `evictionInFlight` and be excluded from every
-        // future eviction pass, so the pool would grow past maxLoaded unbounded.
+        // evaluateJavaScript's continuation pending forever; without a real
+        // timeout the id would stay in `evictionInFlight` and be excluded from
+        // every future eviction pass, so the pool would grow past maxLoaded.
         // Treat "no answer within the window" as "no call" so eviction proceeds
         // (a process that can't answer a one-property read in 2s is wedged and
         // should be reclaimed anyway).
         //
-        // The child tasks are nonisolated closures that capture only Sendable
-        // values (a weak self + the id) and hop to the main actor via
-        // `probeCallDetection`. An explicit `@MainActor` closure here instead
-        // trips the region-isolation checker ("pattern … does not understand
-        // how to check") under the Swift 6 language mode.
-        return await withTaskGroup(of: Bool.self) { group in
-            group.addTask { [weak self] in
-                await self?.probeCallDetection(instanceID) ?? false
+        // A structured `withTaskGroup` can't deliver this: it implicitly awaits
+        // every child before returning, and evaluateJavaScript isn't
+        // cancellation-aware, so `cancelAll()` wouldn't unstick the wedged probe
+        // and the group would hang. So race two unstructured main-actor tasks —
+        // the probe and a 2s timer — and resume the continuation with whichever
+        // answers first, abandoning (not awaiting) the loser. A leaked wedged
+        // probe just lingers until the OS reaps the process.
+        return await withCheckedContinuation { continuation in
+            let gate = CallProbeGate()
+            Task { @MainActor in
+                let hasCall = await self.probeCallDetection(instanceID)
+                if gate.claim() { continuation.resume(returning: hasCall) }
             }
-            group.addTask {
+            Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
-                return false
+                if gate.claim() { continuation.resume(returning: false) }
             }
-            let first = await group.next() ?? false
-            group.cancelAll()
-            return first
         }
     }
 
     /// Runs the call-detection JS for a service on the main actor, returning
-    /// false if the service has no live web view or the query fails. Split out
-    /// so `hasActiveCall`'s timeout race captures only Sendable values.
+    /// false if the service has no live web view or the query fails. Re-fetches
+    /// the web view by id (rather than capturing it) so `hasActiveCall`'s race
+    /// tasks carry only Sendable values.
     private func probeCallDetection(_ instanceID: UUID) async -> Bool {
         guard let webView = webViews[instanceID] else { return false }
         let result = try? await webView.evaluateJavaScript(UserScriptManager.callDetectionQueryJS)
@@ -471,5 +473,18 @@ final class WebViewPool {
             hibernate(id)
             evicted += 1
         }
+    }
+}
+
+/// One-shot guard that lets exactly one of `hasActiveCall`'s two racing tasks
+/// resume the continuation. Both racers are `@MainActor`, so the plain flag is
+/// only ever touched on the main actor and needs no lock.
+@MainActor
+private final class CallProbeGate {
+    private var used = false
+    func claim() -> Bool {
+        if used { return false }
+        used = true
+        return true
     }
 }
