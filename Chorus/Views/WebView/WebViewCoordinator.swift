@@ -63,12 +63,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
     func webView(
         _ webView: WKWebView,
-        decidePolicyFor navigationAction: WKNavigationAction,
-        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
-    ) {
+        decidePolicyFor navigationAction: WKNavigationAction
+    ) async -> WKNavigationActionPolicy {
         guard let url = navigationAction.request.url else {
-            decisionHandler(.cancel)
-            return
+            return .cancel
         }
 
         // 1. Non-web schemes (mailto:, tel:, sms:, facetime:, maps:, etc.)
@@ -77,8 +75,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         if let scheme = url.scheme?.lowercased(),
            Self.nonWebSchemes.contains(scheme) {
             NSWorkspace.shared.open(url)
-            decisionHandler(.cancel)
-            return
+            return .cancel
         }
 
         // 2. Cmd-clicks unconditionally go to the system browser — matches
@@ -87,8 +84,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         if navigationAction.navigationType == .linkActivated,
            navigationAction.modifierFlags.contains(.command) {
             NSWorkspace.shared.open(url)
-            decisionHandler(.cancel)
-            return
+            return .cancel
         }
 
         // 3. A link the user clicked that leaves the current service is routed
@@ -121,26 +117,20 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             } else {
                 NSWorkspace.shared.open(url)
             }
-            decisionHandler(.cancel)
-            return
+            return .cancel
         }
 
         // 4. Everything else (same-service navigation, cross-domain in-frame
         //    OAuth round-trips, and programmatic new-window requests handled by
         //    createWebViewWith) loads in place.
-        decisionHandler(.allow)
+        return .allow
     }
 
     func webView(
         _ webView: WKWebView,
-        decidePolicyFor navigationResponse: WKNavigationResponse,
-        decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
-    ) {
-        if navigationResponse.canShowMIMEType {
-            decisionHandler(.allow)
-        } else {
-            decisionHandler(.download)
-        }
+        decidePolicyFor navigationResponse: WKNavigationResponse
+    ) async -> WKNavigationResponsePolicy {
+        navigationResponse.canShowMIMEType ? .allow : .download
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

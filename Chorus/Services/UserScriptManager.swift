@@ -9,6 +9,7 @@ struct NotificationPayload: Codable {
     let serviceID: String
 }
 
+@MainActor
 final class UserScriptManager {
     private var messageHandlers: [UUID: NotificationMessageHandler] = [:]
 
@@ -95,7 +96,7 @@ final class UserScriptManager {
     /// The CSS is JSON-encoded into a JS string literal so quotes, newlines, and
     /// backslashes can't break out of the script. The style node carries a stable
     /// id and is reused if already present, so re-injection can never stack.
-    static func makeCSSInjectionScript(css: String) -> String {
+    nonisolated static func makeCSSInjectionScript(css: String) -> String {
         let literal: String
         if let data = try? JSONEncoder().encode(css),
            let json = String(data: data, encoding: .utf8) {
@@ -122,7 +123,7 @@ final class UserScriptManager {
 
     /// JavaScript that can be evaluated to check if a WebRTC call is active.
     /// Returns `true` if any RTCPeerConnection is in a connected/active state.
-    static let callDetectionQueryJS = "window.__chorusActiveCall === true"
+    nonisolated static let callDetectionQueryJS = "window.__chorusActiveCall === true"
 
     /// Reports the page as visible even when its web view is preloaded/off-screen,
     /// so services that gate their unread-count title updates on Page Visibility

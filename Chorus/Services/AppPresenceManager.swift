@@ -2,6 +2,7 @@ import AppKit
 import ServiceManagement
 import os
 
+@MainActor
 final class AppPresenceManager {
     private static let logger = Logger(subsystem: "com.nicojan.Chorus", category: "AppPresence")
 

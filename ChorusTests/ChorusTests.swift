@@ -1,6 +1,7 @@
 import XCTest
 @testable import Chorus
 
+@MainActor
 final class ChorusTests: XCTestCase {
     func testServiceInstanceCreation() {
         let service = ServiceInstance(
