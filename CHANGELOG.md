@@ -3,16 +3,27 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [1.3.0] - 2026-07-05
+
+### Added
+
+- Keyboard navigation for the spaces and services rails. With a rail focused,
+  the arrow keys move the selection, and Option with an arrow reorders the
+  focused item.
 
 ### Changed
 
+- In the top-bar and hybrid layouts, a service tab shows its icon alone, with
+  its name on hover, and you can drag the open part of the strip to move the
+  window.
 - The cookie-banner setting now spells out what it does: it accepts consent
   pop-ups for you, tracking cookies included. Turn it off to answer each site
   yourself.
 
 ### Fixed
 
+- A service's unread badge no longer goes stale after you follow a link that
+  switches to it.
 - The preview shown while a service loads fills the pane instead of cropping or
   stretching it, and it clears once the page finishes loading.
 
