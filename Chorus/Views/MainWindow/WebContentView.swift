@@ -38,11 +38,15 @@ struct WebContentView: View {
                     WebViewContainer(webView: webView)
 
                     // Show cached snapshot as instant visual feedback while page loads.
-                    // Fades out once the web view finishes loading.
+                    // Fades out once the web view finishes loading. It fills the
+                    // web view's frame (rather than aspect-fill, which cropped or
+                    // stretched it); since the snapshot was taken at this frame it
+                    // lines up without distortion.
                     if let snapshot = transitionSnapshot, webViewState.isLoading {
                         Image(nsImage: snapshot)
                             .resizable()
-                            .aspectRatio(contentMode: .fill)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .clipped()
                             .transition(.opacity)
                             .accessibilityHidden(true)
                     }
@@ -77,6 +81,16 @@ struct WebContentView: View {
             // A service's web view was rebuilt (e.g. custom CSS edit). Re-fetch
             // so the active service picks up the freshly created view.
             loadWebViewForSelectedService()
+        }
+        .onChange(of: webViewState.isLoading) { _, loading in
+            // Drop the snapshot once the page finishes so it can't linger over a
+            // loaded page and to free the bitmap. Delayed past the fade, and
+            // re-checked in case another load started in the meantime.
+            guard !loading else { return }
+            let delay = reduceMotion ? 0 : 0.25
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                if !webViewState.isLoading { transitionSnapshot = nil }
+            }
         }
     }
 

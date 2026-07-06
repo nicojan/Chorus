@@ -5,6 +5,17 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+
+- The cookie-banner setting now spells out what it does: it accepts consent
+  pop-ups for you, tracking cookies included. Turn it off to answer each site
+  yourself.
+
+### Fixed
+
+- The preview shown while a service loads fills the pane instead of cropping or
+  stretching it, and it clears once the page finishes loading.
+
 ## [1.2.1] - 2026-07-05
 
 ### Fixed

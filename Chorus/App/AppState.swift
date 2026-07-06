@@ -333,19 +333,26 @@ final class AppState {
     /// set, or any space it belongs to has `isMuted` set. Used by polling and
     /// notification gating so that a muted space cascades to every member.
     nonisolated func isServiceEffectivelyMuted(_ serviceID: UUID) -> Bool {
-        MainActor.assumeIsolated {
-            fetchService(id: serviceID)?.isEffectivelyMuted ?? false
-        }
+        withService(id: serviceID) { $0.isEffectivelyMuted } ?? false
     }
 
     /// Single-service fetch by id (predicate + limit 1) instead of fetching the
-    /// whole table and scanning. Used by the mute/badge/catalog lookups that
-    /// run on every poll tick and every sidebar render.
-    private nonisolated func fetchService(id: UUID) -> ServiceInstance? {
+    /// whole table and scanning. Main-actor only, since it hands back a SwiftData
+    /// model; nonisolated callers use `withService` to extract Sendable values.
+    private func fetchService(id: UUID) -> ServiceInstance? {
+        var descriptor = FetchDescriptor<ServiceInstance>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try? modelContainer.mainContext.fetch(descriptor).first
+    }
+
+    /// Runs `body` against the service with `id` on the main actor and returns
+    /// only the Sendable value it produces, so the SwiftData model never crosses
+    /// the actor boundary. Used by the nonisolated mute/badge/catalog lookups on
+    /// the poll and render paths. Returns nil when the service is gone.
+    private nonisolated func withService<T: Sendable>(id: UUID, _ body: @MainActor (ServiceInstance) -> T) -> T? {
         MainActor.assumeIsolated {
-            var descriptor = FetchDescriptor<ServiceInstance>(predicate: #Predicate { $0.id == id })
-            descriptor.fetchLimit = 1
-            return try? modelContainer.mainContext.fetch(descriptor).first
+            guard let service = fetchService(id: id) else { return nil }
+            return body(service)
         }
     }
 
@@ -567,9 +574,7 @@ final class AppState {
     /// Per-service "show badge" flag, queried live so the polling task picks
     /// up toggles without restart.
     nonisolated func isServiceShowingBadge(_ serviceID: UUID) -> Bool {
-        MainActor.assumeIsolated {
-            fetchService(id: serviceID)?.showBadge ?? true
-        }
+        withService(id: serviceID) { $0.showBadge } ?? true
     }
 
     /// Re-applies mute/show-badge state immediately after settings changes.
@@ -1060,10 +1065,10 @@ final class AppState {
     }
 
     private nonisolated func catalogEntry(for serviceID: UUID) -> ServiceCatalogEntry? {
-        MainActor.assumeIsolated {
-            guard let entryID = fetchService(id: serviceID)?.catalogEntryID else { return nil }
+        withService(id: serviceID) { service -> ServiceCatalogEntry? in
+            guard let entryID = service.catalogEntryID else { return nil }
             return ServiceCatalog.shared.entry(for: entryID)
-        }
+        } ?? nil
     }
 
     private func setupMenuBarNavigation() {

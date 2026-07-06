@@ -119,7 +119,7 @@ struct GeneralSettingsView: View {
             }
 
             Section("Web Content") {
-                Toggle("Automatically dismiss cookie banners", isOn: Binding(
+                Toggle("Accept cookie banners automatically", isOn: Binding(
                     get: { prefs.autoDismissCookieBanners },
                     set: { value in
                         ensurePrefs().autoDismissCookieBanners = value
@@ -127,6 +127,9 @@ struct GeneralSettingsView: View {
                         save("cookie banner preference")
                     }
                 ))
+                Text("This accepts consent pop-ups for you. That includes advertising and tracking cookies, so turn it off to answer each site's banner yourself.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Startup") {
