@@ -3,6 +3,30 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.3.0</title>
+            <pubDate>Sun, 05 Jul 2026 20:10:39 -0700</pubDate>
+            <sparkle:version>7</sparkle:version>
+            <sparkle:shortVersionString>1.3.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Added</h3>
+<ul>
+<li>Keyboard navigation for the spaces and services rails. With a rail focused, the arrow keys move the selection, and Option with an arrow reorders the focused item.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>In the top-bar and hybrid layouts, a service tab shows its icon alone, with its name on hover, and you can drag the open part of the strip to move the window.</li>
+<li>The cookie-banner setting now spells out what it does: it accepts consent pop-ups for you, tracking cookies included. Turn it off to answer each site yourself.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>A service's unread badge no longer goes stale after you follow a link that switches to it.</li>
+<li>The preview shown while a service loads fills the pane instead of cropping or stretching it, and it clears once the page finishes loading.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.3.0/Chorus-1.3.0.dmg" length="6936626" type="application/octet-stream" sparkle:edSignature="UMYGONmkerDTjR/QZ0A1v/WBj/wSAvdXESGessTZssQ2DPIYgPre3hE8G1218euGaL6EwR9TCAY/2jkHJWQTAw=="/>
+        </item>
+        <item>
             <title>1.2.1</title>
             <pubDate>Sun, 05 Jul 2026 15:32:50 -0700</pubDate>
             <sparkle:version>6</sparkle:version>
