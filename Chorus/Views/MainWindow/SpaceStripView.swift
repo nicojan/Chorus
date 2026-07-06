@@ -15,6 +15,9 @@ struct SpaceStripView: View {
     @State private var showingAddSpace = false
     @State private var editingSpace: Space?
     @State private var confirmingDeleteSpace: Space?
+    // Content width of the horizontal chip strip; caps the ScrollView so it hugs
+    // the chips. See `horizontalBody`.
+    @State private var stripWidth: CGFloat = .infinity
 
     var body: some View {
         content
@@ -77,16 +80,30 @@ struct SpaceStripView: View {
     }
 
     private var horizontalBody: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(spaces) { space in
-                    spaceCell(space)
+        HStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    ForEach(spaces) { space in
+                        spaceCell(space)
+                    }
+                    addSpaceButton
                 }
-                addSpaceButton
+                .padding(.leading, 8 + contentInset)
+                .padding(.trailing, 8)
+                .padding(.vertical, 2)
+                .background(RailContentWidthReader())
             }
-            .padding(.leading, 8 + contentInset)
-            .padding(.trailing, 8)
-            .padding(.vertical, 2)
+            // Hug the chips (see ServiceSidebarView.horizontalBody) so the rest
+            // of the row is a window-drag gap.
+            .frame(maxWidth: stripWidth, alignment: .leading)
+            .onPreferenceChange(RailContentWidthKey.self) { stripWidth = $0 }
+
+            // The OS window drag is off in this layout (chip drags reorder), so a
+            // trailing handle keeps the top row a place to move the window from.
+            WindowDragHandle()
+                .frame(minWidth: 40, maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .accessibilityHidden(true)
         }
         .frame(height: ServiceTabView.height + 4)
         .background(Color(nsColor: .windowBackgroundColor))
@@ -110,7 +127,6 @@ struct SpaceStripView: View {
         ) {
             selectedSpaceID = space.id
         }
-        .blocksWindowDrag()
         .draggable(space.id.uuidString) {
             // Custom drag preview. Source-dimming is intentionally left to
             // SwiftUI: manually tracking a "dragging" id to dim the source can't

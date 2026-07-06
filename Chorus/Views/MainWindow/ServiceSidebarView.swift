@@ -8,33 +8,75 @@ enum ServiceReorderPlacement {
     case after
 }
 
-/// Bridges an AppKit view that opts out of window dragging.
+/// Sets whether the user can move the window by dragging its background.
 ///
-/// With `.windowStyle(.hiddenTitleBar)` the window keeps a transparent,
-/// full-size-content title bar, so the top strip stays a window-drag region.
-/// A rail item sitting in that strip (top-bar and hybrid layouts) gets its
-/// click-drag grabbed by the window move before SwiftUI's `.draggable` reorder
-/// can start — the window slides instead of the item.
+/// With `.windowStyle(.hiddenTitleBar)` the top ~32px stays a title-bar drag
+/// band. In the top-bar and hybrid layouts the rails sit in that band, so a
+/// click-drag on a tab was grabbed by the window move before SwiftUI's
+/// `.draggable` reorder could start — the window slid instead of the tab
+/// reordering. A view nested in a SwiftUI `ScrollView` can't opt out of that
+/// drag (the scroll view short-circuits AppKit hit-testing, so a
+/// `mouseDownCanMoveWindow == false` nested view is never consulted).
 ///
-/// Placing this behind a draggable item makes the view under the cursor report
-/// `mouseDownCanMoveWindow == false`, so AppKit forwards the drag to SwiftUI.
-/// It sits behind only the items, so dragging the empty rail background still
-/// moves the window.
-private struct WindowDragBlocker: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView { BlockingView() }
-    func updateNSView(_ nsView: NSView, context: Context) {}
+/// So we turn the OS window drag off for those layouts and hand dragging to
+/// explicit `WindowDragHandle`s instead (Chrome's model). The sidebar layout,
+/// whose rails don't hold draggable tabs in the band, keeps the normal drag.
+struct WindowMovableConfigurator: NSViewRepresentable {
+    let isMovable: Bool
 
-    private final class BlockingView: NSView {
-        override var mouseDownCanMoveWindow: Bool { false }
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        applyWhenAttached(to: view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        applyWhenAttached(to: nsView)
+    }
+
+    private func applyWhenAttached(to view: NSView) {
+        let isMovable = isMovable
+        DispatchQueue.main.async {
+            view.window?.isMovable = isMovable
+        }
     }
 }
 
-extension View {
-    /// Stops a click-drag on this view from moving the window, so a `.draggable`
-    /// reorder works even when the item sits in the title-bar strip. See
-    /// `WindowDragBlocker`.
-    func blocksWindowDrag() -> some View {
-        background(WindowDragBlocker())
+/// Reports the width of a horizontal rail's content, so the strip can be capped
+/// at its content width (hug the tabs, leave the rest of the row draggable).
+struct RailContentWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = .infinity
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+/// Measures its container's width and publishes it via `RailContentWidthKey`.
+struct RailContentWidthReader: View {
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear.preference(key: RailContentWidthKey.self, value: proxy.size.width)
+        }
+    }
+}
+
+/// A transparent strip that moves the window on click-drag, the way Chrome lets
+/// you drag the empty part of its tab strip. Used to fill the reserved gap in
+/// the top-bar rails, where the OS window drag is off (see
+/// `WindowMovableConfigurator`). A double-click zooms, matching a title bar.
+struct WindowDragHandle: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { DragView() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private final class DragView: NSView {
+        override func mouseDown(with event: NSEvent) {
+            guard let window else { return }
+            if event.clickCount == 2 {
+                window.performZoom(nil)
+            } else {
+                window.performDrag(with: event)
+            }
+        }
     }
 }
 
@@ -87,6 +129,9 @@ struct ServiceSidebarView: View {
     @State private var showingAddService = false
     @State private var confirmingDelete: SpaceServiceLink?
     @State private var editingService: ServiceInstance?
+    // Content width of the horizontal tab strip; caps the ScrollView so it hugs
+    // the tabs (starts unconstrained until measured). See `horizontalBody`.
+    @State private var tabStripWidth: CGFloat = .infinity
     private static let serviceDropMidpoint: CGFloat = 23
     private static let serviceDropMidpointHorizontal: CGFloat = 60
 
@@ -190,6 +235,7 @@ struct ServiceSidebarView: View {
                     .padding(.leading, 8 + contentInset)
                     .padding(.trailing, 8)
                     .padding(.vertical, 2)
+                    .background(RailContentWidthReader())
                 }
                 // Keep the active service visible when it's selected off-screen
                 // (⌘1–9, quick switcher, or a routed link).
@@ -204,7 +250,21 @@ struct ServiceSidebarView: View {
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // Cap the tab strip at its content width so it hugs the tabs when
+            // they fit (freeing the rest of the row for the drag gap) and
+            // shrinks-and-scrolls only when there are too many to fit.
+            .frame(maxWidth: tabStripWidth, alignment: .leading)
+            .onPreferenceChange(RailContentWidthKey.self) { tabStripWidth = $0 }
+
+            // A gap that moves the window on drag, filling the strip between the
+            // tabs and the nav buttons. The OS window drag is off in this layout
+            // so tab drags reorder (see WindowMovableConfigurator); this keeps a
+            // place to move the window from, the way Chrome lets you drag the
+            // empty part of its tab strip.
+            WindowDragHandle()
+                .frame(minWidth: 72, maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .accessibilityHidden(true)
 
             // Nav buttons live at the far right of the tab bar (top-right corner
             // of the window), acting on the active service.
@@ -231,7 +291,6 @@ struct ServiceSidebarView: View {
         let muted = link.service.isEffectivelyMuted
 
         cell(for: link, isSelected: isSel, badge: badge, hibernated: hibernated, muted: muted)
-            .blocksWindowDrag()
             .draggable(link.id.uuidString) {
                 // Custom drag preview. Source-dimming is left to SwiftUI (as in
                 // SpaceStripView): manually tracking a "dragging" id can't be
@@ -293,7 +352,8 @@ struct ServiceSidebarView: View {
                 isSelected: isSelected,
                 badgeCount: badge,
                 isHibernated: hibernated,
-                isMuted: muted
+                isMuted: muted,
+                iconOnly: true
             ) {
                 selectedServiceID = link.service.id
             }

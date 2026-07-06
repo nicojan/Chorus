@@ -61,6 +61,12 @@ struct ContentView: View {
             // top-left clear.
             .ignoresSafeArea(.container, edges: .top)
         }
+        // The top-bar and hybrid layouts put draggable tabs in the title-bar
+        // drag band, so turn the OS window drag off there (a click-drag on a tab
+        // would otherwise move the window instead of reordering) and let the
+        // WindowDragHandles move the window instead. The sidebar keeps the
+        // normal title-bar drag.
+        .background(WindowMovableConfigurator(isMovable: appState.railLayout == .sidebar))
         .onChange(of: appState.selectedSpaceID) { _, newSpaceID in
             if let spaceID = newSpaceID {
                 appState.preloadServicesForSpace(spaceID)
