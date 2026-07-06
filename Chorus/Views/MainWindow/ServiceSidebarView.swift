@@ -129,6 +129,10 @@ struct ServiceSidebarView: View {
     @State private var showingAddService = false
     @State private var confirmingDelete: SpaceServiceLink?
     @State private var editingService: ServiceInstance?
+    /// The service cell that currently holds keyboard focus. Two-way bound to
+    /// each cell's `.focused`, so a click or Tab that focuses a cell records it
+    /// here and the arrow keys move relative to it.
+    @FocusState private var focusedServiceID: UUID?
     // Content width of the horizontal tab strip; caps the ScrollView so it hugs
     // the tabs (starts unconstrained until measured). See `horizontalBody`.
     @State private var tabStripWidth: CGFloat = .infinity
@@ -322,6 +326,44 @@ struct ServiceSidebarView: View {
             .accessibilityAction(named: "Move up") { moveServiceUp(link) }
             .accessibilityAction(named: "Move down") { moveServiceDown(link) }
             .contextMenu { serviceContextMenu(for: link) }
+            .focusable()
+            .focused($focusedServiceID, equals: link.service.id)
+            .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow]) { press in
+                handleServiceKey(press, for: link)
+            }
+    }
+
+    /// Arrow keys move the selection along the rail's axis (↑/↓ vertical,
+    /// ←/→ horizontal); ⌥+arrow reorders the focused service, reusing the same
+    /// move helpers that back the VoiceOver actions. Selection stops at the ends
+    /// (no wrap). Cross-axis arrows are left unhandled so the scroll view keeps
+    /// them.
+    private func handleServiceKey(_ press: KeyPress, for link: SpaceServiceLink) -> KeyPress.Result {
+        let forward: Bool
+        switch (axis, press.key) {
+        case (.vertical, .upArrow), (.horizontal, .leftArrow):
+            forward = false
+        case (.vertical, .downArrow), (.horizontal, .rightArrow):
+            forward = true
+        default:
+            return .ignored
+        }
+
+        if press.modifiers.contains(.option) {
+            if forward { moveServiceDown(link) } else { moveServiceUp(link) }
+            // The service kept its id but changed slot — hold focus on it.
+            focusedServiceID = link.service.id
+            return .handled
+        }
+
+        let links = filteredLinks
+        guard let index = links.firstIndex(where: { $0.id == link.id }) else { return .handled }
+        let neighborIndex = forward ? index + 1 : index - 1
+        guard links.indices.contains(neighborIndex) else { return .handled }
+        let neighborID = links[neighborIndex].service.id
+        selectedServiceID = neighborID
+        focusedServiceID = neighborID
+        return .handled
     }
 
     @ViewBuilder

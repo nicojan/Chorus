@@ -15,6 +15,9 @@ struct SpaceStripView: View {
     @State private var showingAddSpace = false
     @State private var editingSpace: Space?
     @State private var confirmingDeleteSpace: Space?
+    /// The space cell that currently holds keyboard focus. Two-way bound to each
+    /// cell's `.focused` so the arrow keys move relative to it.
+    @FocusState private var focusedSpaceID: UUID?
     // Content width of the horizontal chip strip; caps the ScrollView so it hugs
     // the chips. See `horizontalBody`.
     @State private var stripWidth: CGFloat = .infinity
@@ -150,6 +153,11 @@ struct SpaceStripView: View {
         }
         .accessibilityAction(named: "Move up") { moveSpaceUp(space) }
         .accessibilityAction(named: "Move down") { moveSpaceDown(space) }
+        .focusable()
+        .focused($focusedSpaceID, equals: space.id)
+        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow]) { press in
+            handleSpaceKey(press, for: space)
+        }
         .contextMenu {
             Toggle("Mute Notifications", isOn: Binding(
                 get: { space.isMutedEffective },
@@ -204,6 +212,35 @@ struct SpaceStripView: View {
         } catch {
             AppLogger.dataStore.error("Failed to save (\(context)): \(error.localizedDescription)")
         }
+    }
+
+    /// Arrow keys move the space selection along the rail's axis (↑/↓ vertical,
+    /// ←/→ horizontal); ⌥+arrow reorders the focused space, reusing the move
+    /// helpers behind the VoiceOver actions. Selection stops at the ends.
+    private func handleSpaceKey(_ press: KeyPress, for space: Space) -> KeyPress.Result {
+        let forward: Bool
+        switch (axis, press.key) {
+        case (.vertical, .upArrow), (.horizontal, .leftArrow):
+            forward = false
+        case (.vertical, .downArrow), (.horizontal, .rightArrow):
+            forward = true
+        default:
+            return .ignored
+        }
+
+        if press.modifiers.contains(.option) {
+            if forward { moveSpaceDown(space) } else { moveSpaceUp(space) }
+            focusedSpaceID = space.id
+            return .handled
+        }
+
+        guard let index = spaces.firstIndex(where: { $0.id == space.id }) else { return .handled }
+        let neighborIndex = forward ? index + 1 : index - 1
+        guard spaces.indices.contains(neighborIndex) else { return .handled }
+        let neighborID = spaces[neighborIndex].id
+        selectedSpaceID = neighborID
+        focusedSpaceID = neighborID
+        return .handled
     }
 
     private func moveSpaceUp(_ space: Space) {
