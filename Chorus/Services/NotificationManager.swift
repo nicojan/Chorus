@@ -237,6 +237,26 @@ final class NotificationManager {
         return count
     }
 
+    /// Whether the view layer should stop the outgoing service's poll when the
+    /// displayed service changes. The pool is the authority on poll mode for a
+    /// service it has transitioned: on a normal sidebar switch the pool hasn't
+    /// moved yet (its `activeServiceID` still equals the outgoing service), so
+    /// this is the right place to stop that service's active poll before the
+    /// pool soft-hibernates it onto a background poll. On a deep-link switch,
+    /// `AppState.switchToService` has already made the incoming service active
+    /// and downgraded the outgoing one to a background poll, so `poolActiveID`
+    /// no longer equals `previousID` — stopping here would wrongly kill that
+    /// background poll and leave the outgoing service silent. Reconciling
+    /// against the pool's active id (rather than trusting the last writer)
+    /// fixes the deep-link race. See OPEN-ITEMS item 1.
+    nonisolated static func shouldStopOutgoingPoll(
+        previousID: UUID?,
+        poolActiveID: UUID?
+    ) -> Bool {
+        guard let previousID else { return false }
+        return poolActiveID == previousID
+    }
+
     /// Whether a service's intercepted web notification should be forwarded to
     /// macOS Notification Center. Pure, so the gating policy is unit-testable.
     /// A notification fires only when the service is not muted, has OS
@@ -287,7 +307,10 @@ final class NotificationManager {
 private final class NotificationCenterDelegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     let onServiceRequested: @Sendable (UUID) -> Void
     let isDoNotDisturb: @Sendable () -> Bool
-    static var retained: NotificationCenterDelegate?
+    // Keeps the delegate alive (UNUserNotificationCenter holds it weakly).
+    // Written once from the main-actor `configureNotificationDelegate()`, so
+    // it's main-actor state rather than free-floating mutable global state.
+    @MainActor static var retained: NotificationCenterDelegate?
 
     init(
         onServiceRequested: @escaping @Sendable (UUID) -> Void,

@@ -2,7 +2,8 @@ import Foundation
 import WebKit
 import AppKit
 
-final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, @unchecked Sendable {
+@MainActor
+final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
 
     private var popupWebView: WKWebView?
     private var popupWindow: NSWindow?
@@ -46,8 +47,16 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     ]
 
     deinit {
+        // A backstop for the popup lifecycle, which is normally torn down by
+        // popupWindowWillClose / webViewDidClose. deinit is nonisolated, so it
+        // can't call the main-actor-isolated cleanupPopup(); invalidate the
+        // (thread-safe) KVO observation here and close any still-open popup
+        // window on the main actor. The window is captured as a local so the
+        // hop never touches `self`, which is being deallocated.
         popupTitleObservation?.invalidate()
-        cleanupPopup()
+        if let window = popupWindow {
+            Task { @MainActor in window.close() }
+        }
     }
 
     // MARK: - Navigation Delegate
@@ -371,8 +380,13 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         // sees what's actually loaded (e.g. "Google Drive — Sign in") rather
         // than the stale initial host name.
         popupTitleObservation?.invalidate()
-        popupTitleObservation = popup.observe(\.title, options: [.new]) { [weak window] webView, _ in
-            let newTitle = (webView.title?.isEmpty == false) ? webView.title! : (webView.url?.host ?? "Chorus")
+        // Read the new title from the (Sendable String?) KVO change value rather
+        // than reaching back into the web view — the observe closure is
+        // nonisolated/@Sendable, and touching the main-actor-isolated WKWebView
+        // from it is a data race under Swift 6. An empty title leaves the bar on
+        // its current text (the host it was seeded with) instead of clearing it.
+        popupTitleObservation = popup.observe(\.title, options: [.new]) { [weak window] _, change in
+            guard let newTitle = change.newValue ?? nil, !newTitle.isEmpty else { return }
             Task { @MainActor in
                 window?.title = newTitle
             }
@@ -460,15 +474,13 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     func download(
         _ download: WKDownload,
         decideDestinationUsing response: URLResponse,
-        suggestedFilename: String,
-        completionHandler: @escaping (URL?) -> Void
-    ) {
+        suggestedFilename: String
+    ) async -> URL? {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = suggestedFilename
         panel.canCreateDirectories = true
-        panel.begin { result in
-            completionHandler(result == .OK ? panel.url : nil)
-        }
+        let result = await panel.begin()
+        return result == .OK ? panel.url : nil
     }
 
     // MARK: - Helpers
@@ -476,7 +488,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// Reduces a host to its registrable domain (eTLD+1), e.g.
     /// `app.slack.com` → `slack.com`, `foo.co.uk` → `foo.co.uk`. Exposed so
     /// `belongsToService` and its callers share one definition of "same site".
-    static func effectiveDomain(_ host: String) -> String {
+    nonisolated static func effectiveDomain(_ host: String) -> String {
         var h = host.lowercased()
         if h.hasPrefix("www.") {
             h = String(h.dropFirst(4))
@@ -520,7 +532,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// Services that use per-tenant/workspace subdomains (e.g. *.slack.com,
     /// *.atlassian.net) are deliberately NOT listed — there a subdomain change
     /// is still the same app and should stay in-app.
-    static let sharedUmbrellaDomains: Set<String> = [
+    nonisolated static let sharedUmbrellaDomains: Set<String> = [
         "google.com",
         "microsoft.com",
         "live.com",
@@ -534,7 +546,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// Slack can switch workspaces across *.slack.com in-app — except for
     /// shared-umbrella domains (see `sharedUmbrellaDomains`) where only the exact
     /// host matches. Used to decide in-app vs. browser for links and new windows.
-    static func belongsToService(_ targetHost: String, serviceHost: String) -> Bool {
+    nonisolated static func belongsToService(_ targetHost: String, serviceHost: String) -> Bool {
         let target = normalizedHost(targetHost)
         let service = normalizedHost(serviceHost)
         guard !target.isEmpty, !service.isEmpty else { return false }
@@ -554,7 +566,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// in-app to complete. They sit on shared-umbrella domains (accounts vs.
     /// mail.google.com), so `belongsToService`'s exact-host rule would otherwise
     /// treat them as leaving the service and open the browser mid-login.
-    static let authHosts: Set<String> = [
+    nonisolated static let authHosts: Set<String> = [
         "accounts.google.com",
         "accounts.youtube.com",
         "login.microsoftonline.com",
@@ -568,14 +580,14 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
     /// Whether `host` is a known authentication gateway (an exact match or a
     /// subdomain of one). Callers keep such hosts in-app so sign-in completes.
-    static func isAuthHost(_ host: String) -> Bool {
+    nonisolated static func isAuthHost(_ host: String) -> Bool {
         let h = normalizedHost(host)
         return authHosts.contains(h) || authHosts.contains { h.hasSuffix("." + $0) }
     }
 
     /// Lowercases a host and drops a leading `www.` so host comparisons ignore
     /// casing and the optional www prefix.
-    private static func normalizedHost(_ host: String) -> String {
+    nonisolated private static func normalizedHost(_ host: String) -> String {
         var h = host.lowercased()
         if h.hasPrefix("www.") { h = String(h.dropFirst(4)) }
         return h

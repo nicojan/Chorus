@@ -348,6 +348,24 @@ final class ChorusTests: XCTestCase {
             isMuted: false, notifyOS: true, doNotDisturb: true), "DND vetoes")
     }
 
+    func testShouldStopOutgoingPollReconcilesAgainstPoolActiveID() {
+        let outgoing = UUID()
+        let incoming = UUID()
+        // Normal sidebar switch: the pool still regards the outgoing service as
+        // active, so the view layer stops its active poll before the pool
+        // downgrades it to background.
+        XCTAssertTrue(NotificationManager.shouldStopOutgoingPoll(
+            previousID: outgoing, poolActiveID: outgoing))
+        // Deep-link switch: AppState already made the incoming service active
+        // and moved the outgoing one onto a background poll, so the view layer
+        // must NOT stop it (that was the OPEN-ITEMS item 1 race).
+        XCTAssertFalse(NotificationManager.shouldStopOutgoingPoll(
+            previousID: outgoing, poolActiveID: incoming))
+        // No previously displayed service: nothing to stop.
+        XCTAssertFalse(NotificationManager.shouldStopOutgoingPoll(
+            previousID: nil, poolActiveID: incoming))
+    }
+
     func testNotifiesOSEffectiveDefaultsToEnabledForLegacyRows() {
         let service = ServiceInstance(label: "X", url: "https://x.test")
         // nil (new row, or a row created before the flag existed) → enabled,

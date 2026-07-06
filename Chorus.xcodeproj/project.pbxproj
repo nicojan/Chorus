@@ -486,7 +486,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nicojan.ChorusTests;
 				SDKROOT = macosx;
-				SWIFT_VERSION = 5.9;
+				SWIFT_VERSION = 6.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Chorus.app/Contents/MacOS/Chorus";
 			};
 			name = Debug;
@@ -569,7 +569,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.nicojan.Chorus;
 				PRODUCT_NAME = Chorus;
 				SDKROOT = macosx;
-				SWIFT_VERSION = 5.9;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Release;
 		};
@@ -657,7 +657,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.nicojan.Chorus;
 				PRODUCT_NAME = Chorus;
 				SDKROOT = macosx;
-				SWIFT_VERSION = 5.9;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
@@ -675,7 +675,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nicojan.ChorusTests;
 				SDKROOT = macosx;
-				SWIFT_VERSION = 5.9;
+				SWIFT_VERSION = 6.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Chorus.app/Contents/MacOS/Chorus";
 			};
 			name = Release;

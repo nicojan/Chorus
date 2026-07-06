@@ -245,8 +245,7 @@ final class WebViewPool {
 
     /// Check if a service currently has an active WebRTC call.
     func hasActiveCall(for instanceID: UUID) async -> Bool {
-        guard let webView = webViews[instanceID] else { return false }
-        let queryJS = UserScriptManager.callDetectionQueryJS
+        guard webViews[instanceID] != nil else { return false }
         // Bound the JS check. A wedged WebContent process can leave
         // evaluateJavaScript's continuation pending forever; without a timeout
         // the id would stay in `evictionInFlight` and be excluded from every
@@ -254,14 +253,15 @@ final class WebViewPool {
         // Treat "no answer within the window" as "no call" so eviction proceeds
         // (a process that can't answer a one-property read in 2s is wedged and
         // should be reclaimed anyway).
+        //
+        // The child tasks are nonisolated closures that capture only Sendable
+        // values (a weak self + the id) and hop to the main actor via
+        // `probeCallDetection`. An explicit `@MainActor` closure here instead
+        // trips the region-isolation checker ("pattern … does not understand
+        // how to check") under the Swift 6 language mode.
         return await withTaskGroup(of: Bool.self) { group in
-            group.addTask { @MainActor in
-                do {
-                    let result = try await webView.evaluateJavaScript(queryJS)
-                    return (result as? Bool) == true
-                } catch {
-                    return false
-                }
+            group.addTask { [weak self] in
+                await self?.probeCallDetection(instanceID) ?? false
             }
             group.addTask {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -271,6 +271,15 @@ final class WebViewPool {
             group.cancelAll()
             return first
         }
+    }
+
+    /// Runs the call-detection JS for a service on the main actor, returning
+    /// false if the service has no live web view or the query fails. Split out
+    /// so `hasActiveCall`'s timeout race captures only Sendable values.
+    private func probeCallDetection(_ instanceID: UUID) async -> Bool {
+        guard let webView = webViews[instanceID] else { return false }
+        let result = try? await webView.evaluateJavaScript(UserScriptManager.callDetectionQueryJS)
+        return (result as? Bool) == true
     }
 
     /// Memory usage estimate: count of loaded web views

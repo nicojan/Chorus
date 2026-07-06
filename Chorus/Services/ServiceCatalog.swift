@@ -1,6 +1,10 @@
 import Foundation
 
-final class ServiceCatalog {
+// Immutable after init — `entries` is a `let` of Sendable elements and every
+// member is read-only — so the shared singleton is safe to touch from any
+// actor. Conforming to Sendable (rather than pinning it to @MainActor) keeps
+// the off-main callers, e.g. AppState's nonisolated `catalogEntry(for:)`.
+final class ServiceCatalog: Sendable {
     static let shared = ServiceCatalog()
 
     let entries: [ServiceCatalogEntry]

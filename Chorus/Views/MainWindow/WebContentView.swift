@@ -95,8 +95,17 @@ struct WebContentView: View {
     }
 
     private func loadWebViewForSelectedService() {
-        // Stop polling for the previously selected service
-        if let previousID = previousServiceID {
+        // Stop the outgoing service's active poll — but only if the pool still
+        // regards it as the active service. On a deep-link switch AppState has
+        // already made the incoming service active and moved the outgoing one
+        // onto a background poll; stopping here would wrongly kill it. On a
+        // normal switch the pool hasn't transitioned yet, so this is the right
+        // point to stop. (See NotificationManager.shouldStopOutgoingPoll.)
+        if let previousID = previousServiceID,
+           NotificationManager.shouldStopOutgoingPoll(
+               previousID: previousID,
+               poolActiveID: appState.webViewPool.activeServiceID
+           ) {
             appState.notificationManager.stopPolling(for: previousID)
         }
 
