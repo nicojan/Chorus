@@ -80,11 +80,26 @@ Run from the repo root. Replace `X.Y.Z` with the new version.
      -exportOptionsPlist ExportOptions.plist -exportPath build/export
    ```
 
-4. **Package a DMG** (e.g. with `create-dmg`, or `hdiutil`). Name it without
-   spaces (`Chorus-X.Y.Z.dmg`) so the enclosure URL stays clean:
+4. **Package a DMG.** The installed `create-dmg` is the create-dmg/create-dmg
+   shell tool, and its syntax puts the output name first:
+   `create-dmg [options] <output.dmg> <source_folder>`. (Earlier notes here used
+   the argument order of a different tool of the same name, so the command
+   failed.) Stage the notarized, stapled app into a clean
+   folder, then build a drag-to-Applications image named without spaces
+   (`Chorus-X.Y.Z.dmg`) so the enclosure URL stays clean:
    ```sh
-   create-dmg build/export/Chorus.app build/ --dmg-title "Chorus"
-   mv "build/Chorus "*.dmg "build/Chorus-X.Y.Z.dmg"
+   rm -rf build/dmg-src && mkdir -p build/dmg-src
+   cp -R Chorus.app build/dmg-src/Chorus.app
+   create-dmg --volname "Chorus" --window-size 600 320 --icon-size 100 \
+     --icon "Chorus.app" 160 155 --app-drop-link 440 155 \
+     build/Chorus-X.Y.Z.dmg build/dmg-src
+   ```
+   The tool lays the window out with AppleScript, so it needs a logged-in GUI
+   session. Without one, fall back to `hdiutil create -volname "Chorus"
+   -srcfolder build/dmg-src -ov -format UDZO build/Chorus-X.Y.Z.dmg`. Then sign
+   the DMG so it carries your identity:
+   ```sh
+   codesign --force --sign "Developer ID Application: … (TEAMID)" build/Chorus-X.Y.Z.dmg
    ```
 
 5. **Notarize and staple** (one-time: store creds with
@@ -101,17 +116,24 @@ Run from the repo root. Replace `X.Y.Z` with the new version.
      --repo nicojan/Chorus --title "Chorus X.Y.Z" --notes "Release notes…"
    ```
 
-7. **Sign + regenerate the appcast.** `generate_appcast` reads the EdDSA private
-   key from your Keychain and writes signed `<item>` entries; point the enclosure
-   URLs at the release you just created. The binary ships in the Sparkle
-   distribution's `bin/` (or under DerivedData at
-   `…/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast`):
+7. **Sign the DMG and add an appcast item by hand.** `generate_appcast` works but
+   has seed-and-prune traps that can drop older entries; signing with
+   `sign_update` and editing one `<item>` in is simpler and keeps full history.
+   Run `sign_update` on the **final stapled** DMG. Stapling changes the bytes, so
+   sign after step 6 rather than before. It reads the EdDSA key from your Keychain
+   and prints the `edSignature` and `length`:
    ```sh
-   mkdir -p updates && cp build/Chorus-X.Y.Z.dmg updates/
-   generate_appcast \
-     --download-url-prefix "https://github.com/nicojan/Chorus/releases/download/vX.Y.Z/" \
-     updates/
-   cp updates/appcast.xml docs/appcast.xml
+   …/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update build/Chorus-X.Y.Z.dmg
+   ```
+   Add a new `<item>` at the top of `docs/appcast.xml`, copying an existing item's
+   shape: set `sparkle:version` to the build number and `sparkle:shortVersionString`
+   to `X.Y.Z`, point the enclosure at
+   `https://github.com/nicojan/Chorus/releases/download/vX.Y.Z/Chorus-X.Y.Z.dmg`,
+   and paste in the `length` and `edSignature`. Put the release notes in a CDATA
+   `<description>` so Sparkle's prompt shows what changed. Confirm the enclosure
+   `length` equals the uploaded asset's size, then check the file:
+   ```sh
+   xmllint --noout docs/appcast.xml
    ```
 
 8. **Commit the appcast** so GitHub Pages republishes it at `SUFeedURL`:

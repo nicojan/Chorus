@@ -22,6 +22,8 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ### Fixed
 
+- Dragging a service or space tab in a top or hybrid rail now reorders it
+  instead of moving the window.
 - A service's unread badge no longer goes stale after you follow a link that
   switches to it.
 - The preview shown while a service loads fills the pane instead of cropping or
@@ -31,8 +33,6 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ### Fixed
 
-- Dragging a service or space in a top or hybrid rail now reorders it instead of
-  moving the window.
 - Dragging a space to reorder it drops it exactly where you release it.
 - The spaces rail scrolls, so every space and the add button stay reachable when
   you have more than fit the window.
