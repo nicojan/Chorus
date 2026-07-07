@@ -30,3 +30,6 @@ Packages/
 
 # Playwright MCP scratch output
 .playwright-mcp/
+
+# Personal marketing drafts (not part of the repo)
+/chorus-linkedin-launch.txt

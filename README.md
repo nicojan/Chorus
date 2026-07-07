@@ -7,8 +7,10 @@ and Franz, built for Apple Silicon.
 
 **[Download the latest release](https://github.com/nicojan/Chorus/releases/latest)** (macOS 14 or later). The build is signed, notarized, and updates itself via Sparkle.
 
-> Status: 1.0.2 is the current release. See [CHANGELOG.md](CHANGELOG.md) for
+> Status: 1.3.0 is the current release. See [CHANGELOG.md](CHANGELOG.md) for
 > what changed.
+
+![Chorus running several web services in one window](assets/screenshot.png)
 
 ## Features
 
@@ -91,7 +93,7 @@ Or open `Chorus.xcodeproj` in Xcode and run the **Chorus** scheme.
 | `Chorus/Resources/` | Service catalog JSON and assets |
 | `ChorusTests/` | Unit tests (pure logic: badges, validation, parsing, reordering, …) |
 
-Architecture details live in [chorus-architecture-v2.md](chorus-architecture-v2.md).
+Architecture details live in [docs/internal/chorus-architecture-v2.md](docs/internal/chorus-architecture-v2.md).
 
 ## Notes
 
