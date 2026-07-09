@@ -576,6 +576,94 @@ final class ChorusTests: XCTestCase {
         XCTAssertFalse(WebViewCoordinator.belongsToService("docs.google.com", serviceHost: "mail.google.com"))
     }
 
+    // MARK: - Download destination
+
+    func testSanitizedDownloadFilenameStripsPathParts() {
+        // A crafted name must not be able to escape the Downloads folder.
+        XCTAssertEqual(WebViewCoordinator.sanitizedDownloadFilename("../../etc/passwd"), "passwd")
+        XCTAssertEqual(WebViewCoordinator.sanitizedDownloadFilename("report.pdf"), "report.pdf")
+        XCTAssertEqual(WebViewCoordinator.sanitizedDownloadFilename("a/b/c.txt"), "c.txt")
+    }
+
+    func testSanitizedDownloadFilenameFallsBackWhenEmpty() {
+        XCTAssertEqual(WebViewCoordinator.sanitizedDownloadFilename(""), "download")
+        XCTAssertEqual(WebViewCoordinator.sanitizedDownloadFilename("   "), "download")
+        XCTAssertEqual(WebViewCoordinator.sanitizedDownloadFilename("/"), "download")
+    }
+
+    func testNonCollidingURLReturnsBaseWhenFree() {
+        let dir = URL(fileURLWithPath: "/Users/x/Downloads")
+        let url = WebViewCoordinator.nonCollidingURL(in: dir, filename: "a.txt", fileExists: { _ in false })
+        XCTAssertEqual(url.lastPathComponent, "a.txt")
+    }
+
+    func testNonCollidingURLAppendsIndexOnCollision() {
+        let dir = URL(fileURLWithPath: "/Users/x/Downloads")
+        // "a.txt" and "a (1).txt" are taken; the next free name is "a (2).txt".
+        let taken: Set<String> = ["a.txt", "a (1).txt"]
+        let url = WebViewCoordinator.nonCollidingURL(
+            in: dir,
+            filename: "a.txt",
+            fileExists: { taken.contains($0.lastPathComponent) }
+        )
+        XCTAssertEqual(url.lastPathComponent, "a (2).txt")
+    }
+
+    func testNonCollidingURLHandlesExtensionlessNames() {
+        let dir = URL(fileURLWithPath: "/Users/x/Downloads")
+        let taken: Set<String> = ["README"]
+        let url = WebViewCoordinator.nonCollidingURL(
+            in: dir,
+            filename: "README",
+            fileExists: { taken.contains($0.lastPathComponent) }
+        )
+        XCTAssertEqual(url.lastPathComponent, "README (1)")
+    }
+
+    private func httpResponse(headers: [String: String]) -> HTTPURLResponse {
+        HTTPURLResponse(
+            url: URL(string: "https://example.com/file")!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: headers
+        )!
+    }
+
+    func testIsAttachmentDetectsDisposition() {
+        XCTAssertTrue(WebViewCoordinator.isAttachment(
+            httpResponse(headers: ["Content-Disposition": "attachment; filename=\"report.pdf\""])
+        ))
+        // Case-insensitive on the header value.
+        XCTAssertTrue(WebViewCoordinator.isAttachment(
+            httpResponse(headers: ["Content-Disposition": "ATTACHMENT"])
+        ))
+    }
+
+    func testIsAttachmentFalseForInlineOrMissing() {
+        XCTAssertFalse(WebViewCoordinator.isAttachment(
+            httpResponse(headers: ["Content-Disposition": "inline"])
+        ))
+        XCTAssertFalse(WebViewCoordinator.isAttachment(httpResponse(headers: [:])))
+        // A non-HTTP response has no headers to inspect.
+        let url = URL(string: "https://example.com")!
+        XCTAssertFalse(WebViewCoordinator.isAttachment(
+            URLResponse(url: url, mimeType: "application/pdf", expectedContentLength: 1, textEncodingName: nil)
+        ))
+    }
+
+    // MARK: - Passkey notice
+
+    func testNeedsPasskeyNoticeDefaultsTrueForNewService() {
+        // A freshly created service has never seen the notice.
+        let service = ServiceInstance(label: "Test", url: "https://example.com")
+        XCTAssertTrue(service.needsPasskeyNotice)
+    }
+
+    func testNeedsPasskeyNoticeFalseOnceSeen() {
+        let service = ServiceInstance(label: "Test", url: "https://example.com", hasSeenPasskeyNotice: true)
+        XCTAssertFalse(service.needsPasskeyNotice)
+    }
+
     // MARK: - Rail layout preference
 
     func testRailLayoutParsesFromStoredValueWithSidebarFallback() {

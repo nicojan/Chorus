@@ -18,4 +18,9 @@ enum AppCapabilities {
     /// (currently the Add Service sheet).
     static let passkeyUnavailableNotice =
         "Passkey sign-in isn’t available yet. Log in with your password and two-factor code instead."
+
+    /// Fuller wording for the passive banner shown the first time a service is
+    /// opened, where there's room to say why passkeys don't work.
+    static let passkeyUnavailableBanner =
+        "Passkeys aren't available for sign-in here. Apple doesn't let apps like Chorus use them, so sign in with your password or another method."
 }

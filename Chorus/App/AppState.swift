@@ -169,7 +169,8 @@ final class AppState {
         setupSystemSleepHandling()
         setupNetworkHandling()
         setupExternalLinkRouting()
-        seedDefaultDataIfNeeded()
+        let didSeedDefaults = seedDefaultDataIfNeeded()
+        backfillPasskeyNoticeIfNeeded(freshInstall: didSeedDefaults)
         reapOrphanedServices()
         restoreWindowState()
         fetchMissingAndStaleFavicons()
@@ -1204,7 +1205,12 @@ final class AppState {
         }
     }
 
-    private func seedDefaultDataIfNeeded() {
+    /// Seeds the default spaces and services on a first launch. Returns `true`
+    /// if it seeded (a fresh install), `false` if data already existed or the
+    /// fetch failed — the caller uses this to decide whether to backfill the
+    /// passkey notice.
+    @discardableResult
+    private func seedDefaultDataIfNeeded() -> Bool {
         let context = modelContainer.mainContext
 
         // Sorted so the fallback selection is the top space (sortOrder 0), not a
@@ -1215,12 +1221,12 @@ final class AppState {
             existingSpaces = try context.fetch(descriptor)
         } catch {
             AppLogger.dataStore.error("Failed to fetch spaces during seeding: \(error.localizedDescription)")
-            return
+            return false
         }
 
         guard existingSpaces.isEmpty else {
             selectedSpaceID = existingSpaces.first?.id
-            return
+            return false
         }
 
         let personalSpace = Space(name: "Personal", emoji: "🏠", sortOrder: 0)
@@ -1283,8 +1289,71 @@ final class AppState {
             } catch {
                 AppLogger.dataStore.error("Failed to fetch services for favicon seeding: \(error.localizedDescription)")
             }
+            return true
         } catch {
             AppLogger.dataStore.error("Failed to seed default data: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private static let passkeyNoticeBackfilledKey = "passkeyNoticeBackfilled"
+
+    /// Runs once, the first time a build with the passkey notice launches. For a
+    /// pre-existing install it marks every current service as having seen the
+    /// notice, so the banner only appears for services added afterward rather
+    /// than for every service the user already had. On a fresh install
+    /// (`freshInstall == true`) it skips the marking, so the notice still shows
+    /// the first time each seeded service is opened.
+    private func backfillPasskeyNoticeIfNeeded(freshInstall: Bool) {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: Self.passkeyNoticeBackfilledKey) else { return }
+        // Set the flag first so a failure below doesn't re-run (and re-suppress)
+        // the notice on a later launch after the user has added new services.
+        defaults.set(true, forKey: Self.passkeyNoticeBackfilledKey)
+
+        guard !freshInstall else { return }
+
+        let context = modelContainer.mainContext
+        let services: [ServiceInstance]
+        do {
+            services = try context.fetch(FetchDescriptor<ServiceInstance>())
+        } catch {
+            AppLogger.dataStore.error("Failed to fetch services for passkey-notice backfill: \(error.localizedDescription)")
+            return
+        }
+
+        var changed = false
+        for service in services where service.hasSeenPasskeyNotice == nil {
+            service.hasSeenPasskeyNotice = true
+            changed = true
+        }
+        guard changed else { return }
+        do {
+            try context.save()
+            AppLogger.dataStore.info("Backfilled passkey notice for \(services.count) existing service(s)")
+        } catch {
+            AppLogger.dataStore.error("Failed to backfill passkey notice: \(error.localizedDescription)")
+        }
+    }
+
+    /// Whether the passkey-limitation banner should show for `service` — true
+    /// until the notice has been seen once for that service.
+    func shouldShowPasskeyNotice(for service: ServiceInstance) -> Bool {
+        service.needsPasskeyNotice
+    }
+
+    /// Records that the passkey notice has been shown for the given service so
+    /// it never appears again for it.
+    func markPasskeyNoticeSeen(for serviceID: UUID) {
+        let context = modelContainer.mainContext
+        var descriptor = FetchDescriptor<ServiceInstance>(predicate: #Predicate { $0.id == serviceID })
+        descriptor.fetchLimit = 1
+        guard let service = try? context.fetch(descriptor).first, service.needsPasskeyNotice else { return }
+        service.hasSeenPasskeyNotice = true
+        do {
+            try context.save()
+        } catch {
+            AppLogger.dataStore.error("Failed to persist passkey notice dismissal: \(error.localizedDescription)")
         }
     }
 }

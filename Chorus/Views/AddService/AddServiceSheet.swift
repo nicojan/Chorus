@@ -6,6 +6,7 @@ struct AddServiceSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(AppState.self) private var appState
     @State private var searchText = ""
     @State private var selectedTab: AddServiceTab = .catalog
     @State private var customURL = ""
@@ -171,6 +172,10 @@ struct AddServiceSheet: View {
         } catch {
             AppLogger.dataStore.error("Failed to save custom service: \(error.localizedDescription)")
         }
+
+        // Switch to the service the user just added.
+        appState.selectedSpaceID = spaceID
+        appState.selectedServiceID = service.id
 
         // Fetch favicon in background — capture ID before the await
         let serviceID = service.id

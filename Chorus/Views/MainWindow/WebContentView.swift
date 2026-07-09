@@ -10,6 +10,7 @@ struct WebContentView: View {
     @State private var currentWebView: WKWebView?
     @State private var transitionSnapshot: NSImage?
     @State private var previousServiceID: UUID?
+    @State private var showPasskeyNotice = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Shared nav state so the top tab bar can host the nav buttons.
@@ -23,6 +24,10 @@ struct WebContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             if let service = selectedService, let webView = currentWebView {
+                if showPasskeyNotice {
+                    passkeyNoticeBanner
+                }
+
                 // Horizontal layouts host the nav buttons in the top tab bar; the
                 // sidebar layout shows them in a slim row above the content.
                 if appState.railLayout == .sidebar {
@@ -71,6 +76,7 @@ struct WebContentView: View {
                 emptyState
             }
         }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: showPasskeyNotice)
         .onAppear {
             loadWebViewForSelectedService()
         }
@@ -130,6 +136,17 @@ struct WebContentView: View {
         webViewState.attach(to: webView)
         previousServiceID = service.id
 
+        // Passive one-time notice: WKWebView can't use passkeys for sign-in, so
+        // warn the user the first time each service is opened. Gated by the same
+        // capability switch as the Add Service notice, and marked seen as soon
+        // as it's shown so switching away and back doesn't re-trigger it.
+        if !AppCapabilities.passkeysSupported, appState.shouldShowPasskeyNotice(for: service) {
+            showPasskeyNotice = true
+            appState.markPasskeyNoticeSeen(for: service.id)
+        } else {
+            showPasskeyNotice = false
+        }
+
         // Once the view is shown its frame settles a render tick later. Some SPAs
         // (Gmail) cache a viewport-height layout and, if it was measured against a
         // stale/transitional frame, leave their fixed header stranded above the
@@ -154,6 +171,42 @@ struct WebContentView: View {
             catalogEntry: catalogEntry,
             mode: .active
         )
+    }
+
+    /// A slim, dismissible bar warning that passkey sign-in isn't available in
+    /// Chorus's web views. Auto-hides after a short delay; the "seen" state is
+    /// already persisted when it appears, so it never returns for this service.
+    private var passkeyNoticeBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "person.badge.key.fill")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+
+            Text(AppCapabilities.passkeyUnavailableBanner)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 8)
+
+            Button {
+                showPasskeyNotice = false
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .overlay(alignment: .bottom) { Divider() }
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .task {
+            try? await Task.sleep(for: .seconds(12))
+            showPasskeyNotice = false
+        }
     }
 
     /// Whether the currently selected space contains any services. Only

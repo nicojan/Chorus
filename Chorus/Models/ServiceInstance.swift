@@ -41,6 +41,14 @@ final class ServiceInstance {
     /// `isForceDarkModeEnabled`.
     var forceDarkMode: Bool?
 
+    /// Whether the one-time "Passkeys aren't available for sign-in" notice has
+    /// been shown for this service. Optional for SwiftData lightweight
+    /// migration; nil is treated as "not yet seen" (see `needsPasskeyNotice`).
+    /// A one-time launch backfill marks the services of a pre-existing install
+    /// as seen, so the notice only appears for services added after this
+    /// shipped — not retroactively for every service the user already had.
+    var hasSeenPasskeyNotice: Bool?
+
     @Relationship(deleteRule: .cascade, inverse: \SpaceServiceLink.service)
     var spaceLinks: [SpaceServiceLink]
 
@@ -52,6 +60,10 @@ final class ServiceInstance {
 
     /// Materialises the storage-optional force-dark flag (nil → false).
     var isForceDarkModeEnabled: Bool { forceDarkMode ?? false }
+
+    /// Whether the passkey-limitation notice still needs to be shown for this
+    /// service (nil or false → not yet seen).
+    var needsPasskeyNotice: Bool { !(hasSeenPasskeyNotice ?? false) }
 
     /// Materialises the storage-optional OS-notification flag (nil → true), so
     /// services created before this flag existed keep forwarding notifications.
@@ -81,7 +93,8 @@ final class ServiceInstance {
         pageZoom: Double? = nil,
         osNotificationsEnabled: Bool? = nil,
         customCSS: String? = nil,
-        forceDarkMode: Bool? = nil
+        forceDarkMode: Bool? = nil,
+        hasSeenPasskeyNotice: Bool? = nil
     ) {
         self.id = id
         self.label = label
@@ -99,6 +112,7 @@ final class ServiceInstance {
         self.osNotificationsEnabled = osNotificationsEnabled
         self.customCSS = customCSS
         self.forceDarkMode = forceDarkMode
+        self.hasSeenPasskeyNotice = hasSeenPasskeyNotice
         self.spaceLinks = []
         self.createdAt = Date()
         self.lastAccessedAt = Date()

@@ -7,6 +7,7 @@ struct CatalogGridView: View {
     let onAdd: () -> Void
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(AppState.self) private var appState
 
     private let catalog = ServiceCatalog.shared
     private let columns = [
@@ -86,6 +87,10 @@ struct CatalogGridView: View {
         } catch {
             AppLogger.dataStore.error("Failed to save catalog service: \(error.localizedDescription)")
         }
+
+        // Switch to the service the user just added.
+        appState.selectedSpaceID = spaceID
+        appState.selectedServiceID = service.id
 
         // Fetch favicon in background — capture ID before the await
         let serviceID = service.id

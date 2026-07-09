@@ -91,6 +91,7 @@ struct SpaceEditorSheet: View {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
 
+        var createdSpaceID: UUID?
         if let space = editingSpace {
             space.name = trimmed
             space.emoji = selectedEmoji
@@ -98,12 +99,20 @@ struct SpaceEditorSheet: View {
             let nextOrder = (spaces.map(\.sortOrder).max() ?? -1) + 1
             let space = Space(name: trimmed, emoji: selectedEmoji, sortOrder: nextOrder)
             modelContext.insert(space)
+            createdSpaceID = space.id
         }
 
         do {
             try modelContext.save()
         } catch {
             AppLogger.dataStore.error("Failed to save space: \(error.localizedDescription)")
+        }
+
+        // Switch to a freshly created space. It has no services yet, so clear the
+        // service selection — the content area shows the empty state for it.
+        if let createdSpaceID {
+            selectedSpaceID = createdSpaceID
+            appState.selectedServiceID = nil
         }
         dismiss()
     }

@@ -78,7 +78,17 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             return .cancel
         }
 
-        // 2. Cmd-clicks unconditionally go to the system browser — matches
+        // 2. A navigation WebKit has flagged as a download — an `<a download>`
+        //    click, or a link whose response will be streamed to disk. Convert
+        //    it to a download in-app. This must come before the external-link
+        //    routing below: a Teams/SharePoint "Download" link points at a
+        //    different host, so routing would kick it to the browser (or, for a
+        //    same-host PDF, WebKit would show it inline) and no file would save.
+        if navigationAction.shouldPerformDownload {
+            return .download
+        }
+
+        // 3. Cmd-clicks unconditionally go to the system browser — matches
         //    Safari's "open in new tab/window" convention. Detected via the
         //    modifierFlags on the navigation action.
         if navigationAction.navigationType == .linkActivated,
@@ -87,7 +97,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             return .cancel
         }
 
-        // 3. A link the user clicked that leaves the current service is routed
+        // 4. A link the user clicked that leaves the current service is routed
         //    through the external-link handler, which opens another matching
         //    Chorus service if one owns that domain, otherwise the default
         //    browser. This covers both new-window links (targetFrame == nil) and
@@ -120,7 +130,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             return .cancel
         }
 
-        // 4. Everything else (same-service navigation, cross-domain in-frame
+        // 5. Everything else (same-service navigation, cross-domain in-frame
         //    OAuth round-trips, and programmatic new-window requests handled by
         //    createWebViewWith) loads in place.
         return .allow
@@ -130,7 +140,14 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         _ webView: WKWebView,
         decidePolicyFor navigationResponse: WKNavigationResponse
     ) async -> WKNavigationResponsePolicy {
-        navigationResponse.canShowMIMEType ? .allow : .download
+        // An explicit `Content-Disposition: attachment` means "download this",
+        // even for a type WebKit could render inline (e.g. a PDF served as a
+        // download — the reported Teams case). Otherwise download anything we
+        // can't display.
+        if Self.isAttachment(navigationResponse.response) {
+            return .download
+        }
+        return navigationResponse.canShowMIMEType ? .allow : .download
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -461,19 +478,115 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         download.delegate = self
     }
 
+    /// Maps each in-flight download to the destination we chose for it, so the
+    /// finish handler can reveal the right file (WKDownload doesn't hand the
+    /// destination back). Keyed by object identity; cleared on finish/failure.
+    private var downloadDestinations: [ObjectIdentifier: URL] = [:]
+
+    // Save straight to the user's Downloads folder — the browser-like default —
+    // rather than prompting with a save panel for every file. WKDownload fails
+    // if the destination already exists, so we pick a non-colliding name.
     func download(
         _ download: WKDownload,
         decideDestinationUsing response: URLResponse,
         suggestedFilename: String
     ) async -> URL? {
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = suggestedFilename
-        panel.canCreateDirectories = true
-        let result = await panel.begin()
-        return result == .OK ? panel.url : nil
+        let fileManager = FileManager.default
+        let downloads: URL
+        do {
+            downloads = try fileManager.url(
+                for: .downloadsDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            )
+        } catch {
+            AppLogger.webView.error("Couldn't locate the Downloads folder: \(error.localizedDescription)")
+            return nil
+        }
+
+        let filename = Self.sanitizedDownloadFilename(suggestedFilename)
+        let destination = Self.nonCollidingURL(
+            in: downloads,
+            filename: filename,
+            fileExists: { fileManager.fileExists(atPath: $0.path) }
+        )
+        downloadDestinations[ObjectIdentifier(download)] = destination
+        return destination
+    }
+
+    func downloadDidFinish(_ download: WKDownload) {
+        let key = ObjectIdentifier(download)
+        let destination = downloadDestinations.removeValue(forKey: key)
+        guard let destination else { return }
+        AppLogger.webView.info("Download finished: \(destination.lastPathComponent)")
+        // Bounce the Downloads stack in the Dock — the standard macOS
+        // "download finished" feedback, so the user can see where it landed.
+        DistributedNotificationCenter.default().post(
+            name: NSNotification.Name("com.apple.DownloadFileFinished"),
+            object: destination.path
+        )
+    }
+
+    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+        downloadDestinations.removeValue(forKey: ObjectIdentifier(download))
+        AppLogger.webView.error("Download failed: \(error.localizedDescription)")
     }
 
     // MARK: - Helpers
+
+    /// Reduces a server-suggested filename to a safe single path component:
+    /// strips any directory parts and path separators so a crafted name can't
+    /// escape the Downloads folder, and falls back to "download" if empty.
+    nonisolated static func sanitizedDownloadFilename(_ suggested: String) -> String {
+        // Take the last path component off the raw name first (so "../../x"
+        // reduces to "x"), then scrub any separators the OS still treats as
+        // path-significant.
+        let cleaned = (suggested as NSString).lastPathComponent
+            .replacingOccurrences(of: "\0", with: "")
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleaned.isEmpty || cleaned == "." || cleaned == ".." || cleaned == "-" {
+            return "download"
+        }
+        return cleaned
+    }
+
+    /// Whether the response asks to be saved rather than displayed, i.e. it
+    /// carries a `Content-Disposition: attachment` header. Used so a downloadable
+    /// file WebKit could otherwise render inline (a PDF, an image) still saves.
+    nonisolated static func isAttachment(_ response: URLResponse) -> Bool {
+        guard let http = response as? HTTPURLResponse,
+              let disposition = http.value(forHTTPHeaderField: "Content-Disposition") else {
+            return false
+        }
+        return disposition.lowercased().contains("attachment")
+    }
+
+    /// Returns a URL in `directory` for `filename` that no file occupies,
+    /// inserting " (1)", " (2)", … before the extension on collisions — matching
+    /// how browsers de-duplicate downloads. `fileExists` is injected so the
+    /// logic is testable without touching the disk.
+    nonisolated static func nonCollidingURL(
+        in directory: URL,
+        filename: String,
+        fileExists: (URL) -> Bool
+    ) -> URL {
+        let candidate = directory.appendingPathComponent(filename)
+        guard fileExists(candidate) else { return candidate }
+
+        let ns = filename as NSString
+        let ext = ns.pathExtension
+        let base = ns.deletingPathExtension
+        var index = 1
+        while true {
+            let name = ext.isEmpty ? "\(base) (\(index))" : "\(base) (\(index)).\(ext)"
+            let url = directory.appendingPathComponent(name)
+            if !fileExists(url) { return url }
+            index += 1
+        }
+    }
 
     /// Reduces a host to its registrable domain (eTLD+1), e.g.
     /// `app.slack.com` → `slack.com`, `foo.co.uk` → `foo.co.uk`. Exposed so
