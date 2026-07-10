@@ -3,6 +3,31 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.4.0</title>
+            <pubDate>Thu, 09 Jul 2026 22:17:19 -0700</pubDate>
+            <sparkle:version>8</sparkle:version>
+            <sparkle:shortVersionString>1.4.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>New</h3>
+<ul>
+<li>Ad and tracker blocking (HaGezi "Light"), on by default in Settings &rarr; Privacy. It blocks known ad and tracking domains, but not ads a site serves from its own domain.</li>
+<li>Reader mode: a toolbar button strips an article to clean, readable text with Mozilla's Readability, on your Mac with no network.</li>
+<li>Real dark theming: per-service dark mode now uses Dark Reader for proper per-element theming, following the app's Light/Dark appearance.</li>
+<li>Auto dark mode: optionally dark-theme services that lack one while the app is dark. Override per service with Auto, On, or Off.</li>
+<li>Hide annoyances: optionally hide cookie notices, newsletter pop-ups, and floating bars (off by default).</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Downloading a file now saves it to your Downloads folder; some downloads, including PDFs from Microsoft Teams, did nothing before.</li>
+<li>Microsoft Teams opens on its current address, so it no longer shows the "Teams has a new URL" banner.</li>
+<li>Adding a service, or creating a space, now switches to it right away.</li>
+<li>A brief banner explains that passkey sign-in isn't available in Chorus.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.4.0/Chorus-1.4.0.dmg" length="8686808" type="application/octet-stream" sparkle:edSignature="cyrqCsvzXyhqiJEkNCddEkivUfnnL1ohNgRSogp2caAROB7hNz7Plh8XAeBzZnvDB7KCUcROuj032W5/r+XbAw=="/>
+        </item>
+        <item>
             <title>1.3.0</title>
             <pubDate>Sun, 05 Jul 2026 20:10:39 -0700</pubDate>
             <sparkle:version>7</sparkle:version>
