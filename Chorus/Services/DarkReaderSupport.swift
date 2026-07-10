@@ -24,10 +24,59 @@ enum DarkReaderSupport {
     /// theming is turned off.
     private static let antiFlashID = "chorus-dr-antiflash"
 
-    /// Whether a service should be themed right now: it's opted in AND the app's
-    /// effective appearance is dark. Pure; unit-tested.
-    static func shouldTheme(marked: Bool, effectiveDark: Bool) -> Bool {
-        marked && effectiveDark
+    /// What to inject for a service: nothing, the theme (library + enable), or the
+    /// detection probe.
+    enum DarkInjection {
+        case none, themed, probe
+    }
+
+    /// The single source of truth for what a service needs, given its mode, the
+    /// global auto setting, the app's effective appearance, and any cached
+    /// detection verdict. Pure; unit-tested. Because it guards on `appDark`,
+    /// `.themed` always implies the app is dark.
+    static func injection(
+        mode: ServiceDarkMode,
+        globalAuto: Bool,
+        appDark: Bool,
+        detectedLacksDark: Bool?
+    ) -> DarkInjection {
+        guard appDark else { return .none }
+        switch mode {
+        case .off: return .none
+        case .on: return .themed
+        case .auto:
+            guard globalAuto else { return .none }
+            switch detectedLacksDark {
+            case .some(true): return .themed
+            case .some(false): return .none
+            case .none: return .probe
+            }
+        }
+    }
+
+    /// Whether a service should be themed right now. Derived from `injection`.
+    static func shouldTheme(
+        mode: ServiceDarkMode,
+        globalAuto: Bool,
+        appDark: Bool,
+        detectedLacksDark: Bool?
+    ) -> Bool {
+        injection(mode: mode, globalAuto: globalAuto, appDark: appDark, detectedLacksDark: detectedLacksDark) == .themed
+    }
+
+    /// Relative luminance (0…1) of an sRGB color, ignoring gamma (good enough to
+    /// separate a near-black dark theme from a near-white light page).
+    static func relativeLuminance(r: Double, g: Double, b: Double) -> Double {
+        (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
+    }
+
+    /// Classifies a sampled background color as "the site lacks a dark theme."
+    /// A near-transparent background means the browser default (white) shows
+    /// through, so treat it as light. Otherwise a bright background (luminance
+    /// above the threshold) means the site didn't go dark on its own.
+    static func classifyLacksDark(r: Double, g: Double, b: Double, a: Double, threshold: Double = 0.5) -> Bool {
+        guard a >= 0.5 else { return true }
+        return relativeLuminance(r: r, g: g, b: b) > threshold
     }
 
     /// The Dark Reader library source, loaded once from the app bundle.

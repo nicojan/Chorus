@@ -90,6 +90,10 @@ final class AppState {
     /// `setContentBlockingEnabled(_:)`.
     var contentBlockingEnabled = true
 
+    /// Global "dark-theme services without one" toggle, mirrored from
+    /// AppPreferences at launch. Written via `setAutoDarkModeEnabled(_:)`.
+    var autoDarkModeEnabled = false
+
     /// Non-nil when the persistent store failed and we fell back to in-memory storage.
     /// The UI should display a warning banner when this is set.
     private(set) var storeError: String?
@@ -186,6 +190,27 @@ final class AppState {
             contentBlocker: contentBlocker
         )
         self.networkMonitor = NetworkMonitor()
+
+        // Self is fully initialized here, so the pool (a Sendable @MainActor
+        // class) can be captured. A dark-detection probe caches its verdict once
+        // and applies it live. didReceive runs on the main thread, so hop onto
+        // the main actor for SwiftData + the pool.
+        let container2 = self.modelContainer
+        let pool = self.webViewPool
+        self.userScriptManager.onDarkProbeVerdict = { @Sendable serviceID, lacksDark in
+            MainActor.assumeIsolated {
+                let context = container2.mainContext
+                var descriptor = FetchDescriptor<ServiceInstance>(
+                    predicate: #Predicate { $0.id == serviceID }
+                )
+                descriptor.fetchLimit = 1
+                guard let service = try? context.fetch(descriptor).first,
+                      service.detectedLacksDarkTheme == nil else { return }
+                service.detectedLacksDarkTheme = lacksDark
+                try? context.save()
+                pool.refreshDarkMode(for: service)
+            }
+        }
 
         loadAppPreferences()
         startContentBlocker()
@@ -413,14 +438,10 @@ final class AppState {
             webViewPool.recreateWebView(for: serviceID, preserveURL: !urlChanged)
             webViewRebuildToken &+= 1
         } else {
-            // Dark-mode toggle applies live without a rebuild (inject/enable or
-            // disable Dark Reader on the current page).
+            // Dark-mode change applies live without a rebuild — the pool
+            // recomputes the injection from the service's new mode.
             if darkModeChanged {
-                webViewPool.setDarkMode(
-                    enabled: service.isForceDarkModeEnabled,
-                    for: service,
-                    isDark: isEffectiveAppearanceDark
-                )
+                webViewPool.refreshDarkMode(for: service)
             }
             if userAgentChanged {
                 webViewPool.setUserAgent(service.userAgent, for: serviceID)
@@ -990,6 +1011,7 @@ final class AppState {
         lockOnLaunch = prefs?.lockOnLaunch ?? true
         lockOnSleep = prefs?.lockOnSleep ?? true
         contentBlockingEnabled = prefs?.contentBlockingEnabledEffective ?? true
+        autoDarkModeEnabled = prefs?.autoDarkModeEnabledEffective ?? false
         // Start locked at launch when opted in; ContentView's lock overlay
         // prompts for Touch ID on appear.
         if appLockEnabled && lockOnLaunch {
@@ -1024,20 +1046,30 @@ final class AppState {
     }
 
     /// Re-evaluates the effective Light/Dark appearance and, when it actually
-    /// changed, retheme all dark-opted-in live web views. Called at launch, when
-    /// the user picks an appearance, and when the OS theme flips in System mode.
+    /// changed, re-applies dark theming across all live web views. Called at
+    /// launch, when the user picks an appearance, and when the OS theme flips in
+    /// System mode.
     func applyEffectiveAppearanceChange() {
         let dark = isEffectiveAppearanceDark
         guard dark != lastKnownAppearanceDark else { return }
         lastKnownAppearanceDark = dark
-        webViewPool.applyAppearance(isDark: dark, markedServices: markedDarkServices())
+        webViewPool.applyDarkState(isDark: dark, autoEnabled: autoDarkModeEnabled, services: allServices())
     }
 
-    /// All services opted into dark theming (Force dark mode).
-    private func markedDarkServices() -> [ServiceInstance] {
+    /// Flips the global auto-dark setting and re-applies dark theming live. The
+    /// Settings binding persists the value; this drives the in-memory state and
+    /// the web views.
+    func setAutoDarkModeEnabled(_ enabled: Bool) {
+        autoDarkModeEnabled = enabled
+        webViewPool.applyDarkState(isDark: isEffectiveAppearanceDark, autoEnabled: enabled, services: allServices())
+    }
+
+    /// All services (the pool skips those without a live web view). `.auto`
+    /// services need re-evaluating on an appearance/global change, so this can't
+    /// pre-filter to only the explicitly-marked ones.
+    private func allServices() -> [ServiceInstance] {
         let context = modelContainer.mainContext
-        let all = (try? context.fetch(FetchDescriptor<ServiceInstance>())) ?? []
-        return all.filter { $0.isForceDarkModeEnabled }
+        return (try? context.fetch(FetchDescriptor<ServiceInstance>())) ?? []
     }
 
     /// Kicks off content-blocklist compilation at launch (before preload, so it

@@ -106,6 +106,20 @@ struct GeneralSettingsView: View {
                     }
                 }
 
+                Toggle("Give services a dark theme when they lack one", isOn: Binding(
+                    get: { prefs.autoDarkModeEnabledEffective },
+                    set: { value in
+                        ensurePrefs().autoDarkModeEnabled = value
+                        save("auto dark mode")
+                        appState.setAutoDarkModeEnabled(value)
+                    }
+                ))
+                .disabled(prefs.appearanceMode == .light)
+
+                Text("While the app is dark, Chorus applies a dark theme to services that don't have their own. It can't always tell which sites already have one, so set a service to On or Off in its settings if the guess is wrong.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 Picker("Layout", selection: Binding(
                     get: { prefs.railLayout },
                     set: { layout in

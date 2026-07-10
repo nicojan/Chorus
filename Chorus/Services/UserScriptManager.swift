@@ -12,6 +12,7 @@ struct NotificationPayload: Codable {
 @MainActor
 final class UserScriptManager {
     private var messageHandlers: [UUID: NotificationMessageHandler] = [:]
+    private var darkProbeHandlers: [UUID: DarkProbeMessageHandler] = [:]
 
     var isServiceMuted: (@Sendable (UUID) -> Bool)?
     /// Per-service "forward notifications to macOS" flag. Defaults to true when
@@ -20,21 +21,25 @@ final class UserScriptManager {
     var isDoNotDisturbActive: (@Sendable () -> Bool)?
     var autoDismissCookieBanners: Bool = true
 
-    /// Full setup for a freshly built web view: the notification message handler
-    /// (added once) plus all user scripts.
+    /// Called when a service's dark-detection probe reports a verdict
+    /// (serviceID, whether the site lacks its own dark theme).
+    var onDarkProbeVerdict: (@Sendable (UUID, Bool) -> Void)?
+
+    /// Full setup for a freshly built web view: the message handlers (added once)
+    /// plus all user scripts.
     func configureScripts(
         for instance: ServiceInstance,
         customCSS: String?,
-        darkReaderDark: Bool,
+        darkInjection: DarkReaderSupport.DarkInjection,
         on controller: WKUserContentController
     ) {
         installHandlers(for: instance, on: controller)
-        installUserScripts(for: instance, customCSS: customCSS, darkReaderDark: darkReaderDark, on: controller)
+        installUserScripts(for: instance, customCSS: customCSS, darkInjection: darkInjection, on: controller)
     }
 
-    /// Registers the `chorusNotification` message handler. Called once when the
-    /// web view is built — NOT on reinstall, since `removeAllUserScripts()`
-    /// leaves message handlers in place and re-adding would throw.
+    /// Registers the message handlers. Called once when the web view is built —
+    /// NOT on reinstall, since `removeAllUserScripts()` leaves message handlers in
+    /// place and re-adding would throw.
     func installHandlers(for instance: ServiceInstance, on controller: WKUserContentController) {
         let mutedCheck = isServiceMuted
         let notifyOSCheck = isServiceNotifyingOS
@@ -53,16 +58,23 @@ final class UserScriptManager {
         )
         controller.add(handler, name: "chorusNotification")
         messageHandlers[instance.id] = handler
+
+        let verdict = onDarkProbeVerdict
+        let probeHandler = DarkProbeMessageHandler(serviceID: instance.id) { id, lacksDark in
+            verdict?(id, lacksDark)
+        }
+        controller.add(probeHandler, name: "chorusDarkProbe")
+        darkProbeHandlers[instance.id] = probeHandler
     }
 
     /// Adds all user scripts. Safe to call again after `removeAllUserScripts()`
-    /// to re-bake state (e.g. the Dark Reader initial enable/anti-flash) so the
-    /// next full navigation is correct. `darkReaderDark` bakes the initial dark
-    /// state for a service opted into dark theming.
+    /// to re-bake state (e.g. the Dark Reader theme scripts or the detection
+    /// probe) so the next full navigation is correct. `darkInjection` selects
+    /// what dark-theming scripts to bake.
     func installUserScripts(
         for instance: ServiceInstance,
         customCSS: String?,
-        darkReaderDark: Bool,
+        darkInjection: DarkReaderSupport.DarkInjection,
         on controller: WKUserContentController
     ) {
         let notificationScript = makeNotificationInterceptionScript(serviceID: instance.id.uuidString)
@@ -113,21 +125,22 @@ final class UserScriptManager {
             controller.addUserScript(cssScript)
         }
 
-        // Dark theming for a service opted into it (Force dark mode). Injected
-        // into an ISOLATED world so Dark Reader's window.chrome stub and
-        // DarkReader global never reach the site; the shared DOM means the theme
-        // it injects still applies. The library is always injected for a marked
-        // service; the anti-flash style and the initial enable are baked only
-        // when the current effective appearance is dark.
-        if instance.isForceDarkModeEnabled {
-            if darkReaderDark {
-                controller.addUserScript(WKUserScript(
-                    source: DarkReaderSupport.antiFlashScript(),
-                    injectionTime: .atDocumentStart,
-                    forMainFrameOnly: true,
-                    in: DarkReaderSupport.world
-                ))
-            }
+        // Dark theming. `.themed` injects Dark Reader into an ISOLATED world so
+        // its window.chrome stub and DarkReader global never reach the site (the
+        // shared DOM means the theme it injects still applies), with an anti-flash
+        // background and enable baked in. `.probe` injects a tiny background
+        // sampler to decide whether an auto service needs theming. `.none` adds
+        // nothing.
+        switch darkInjection {
+        case .none:
+            break
+        case .themed:
+            controller.addUserScript(WKUserScript(
+                source: DarkReaderSupport.antiFlashScript(),
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true,
+                in: DarkReaderSupport.world
+            ))
             controller.addUserScript(WKUserScript(
                 source: DarkReaderSupport.libraryJS,
                 injectionTime: .atDocumentStart,
@@ -135,10 +148,16 @@ final class UserScriptManager {
                 in: DarkReaderSupport.world
             ))
             controller.addUserScript(WKUserScript(
-                source: DarkReaderSupport.bootstrapScript(enable: darkReaderDark),
+                source: DarkReaderSupport.bootstrapScript(enable: true),
                 injectionTime: .atDocumentStart,
                 forMainFrameOnly: true,
                 in: DarkReaderSupport.world
+            ))
+        case .probe:
+            controller.addUserScript(WKUserScript(
+                source: Self.makeDarkProbeScript(serviceID: instance.id.uuidString),
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: true
             ))
         }
     }
@@ -170,6 +189,37 @@ final class UserScriptManager {
 
     func removeHandler(for instanceID: UUID) {
         messageHandlers.removeValue(forKey: instanceID)
+        darkProbeHandlers.removeValue(forKey: instanceID)
+    }
+
+    /// Samples the page background a beat after load and reports its color to the
+    /// `chorusDarkProbe` handler, which decides whether the site lacks a dark
+    /// theme. The service id is baked in. Reads `<body>` first, falling back to
+    /// `<html>` when the body background is transparent.
+    nonisolated static func makeDarkProbeScript(serviceID: String) -> String {
+        """
+        (function() {
+            function sample() {
+                try {
+                    function rgba(el) {
+                        if (!el) return null;
+                        var c = getComputedStyle(el).backgroundColor || "";
+                        var m = c.match(/rgba?\\(([^)]+)\\)/);
+                        if (!m) return null;
+                        var p = m[1].split(',').map(function(x){ return parseFloat(x.trim()); });
+                        return { r: p[0]||0, g: p[1]||0, b: p[2]||0, a: (p.length > 3 ? p[3] : 1) };
+                    }
+                    var bg = rgba(document.body);
+                    if (!bg || bg.a < 0.5) { var h = rgba(document.documentElement); if (h) bg = h; }
+                    if (!bg) bg = { r: 255, g: 255, b: 255, a: 1 };
+                    window.webkit.messageHandlers.chorusDarkProbe.postMessage(JSON.stringify({
+                        serviceID: "\(serviceID)", r: bg.r, g: bg.g, b: bg.b, a: bg.a
+                    }));
+                } catch (e) {}
+            }
+            setTimeout(sample, 700);
+        })();
+        """
     }
 
     /// JavaScript that can be evaluated to check if a WebRTC call is active.
@@ -439,4 +489,42 @@ enum ServiceCSSDefaults {
     .scaffold-layout__content, .scaffold-layout__list-detail, .scaffold-layout__list-detail-container, .scaffold-layout__list-detail-inner { max-width: none !important; width: 100% !important; }
     .msg-overlay-list-bubble, .msg-overlay { display: none !important; }
     """
+}
+
+private struct DarkProbePayload: Codable {
+    let serviceID: String
+    let r: Double
+    let g: Double
+    let b: Double
+    let a: Double
+}
+
+/// Receives a service's background-color sample from its detection probe and
+/// classifies whether the site lacks its own dark theme, forwarding the verdict.
+final class DarkProbeMessageHandler: NSObject, WKScriptMessageHandler, @unchecked Sendable {
+    let serviceID: UUID
+    let onVerdict: @Sendable (UUID, Bool) -> Void
+
+    init(serviceID: UUID, onVerdict: @escaping @Sendable (UUID, Bool) -> Void) {
+        self.serviceID = serviceID
+        self.onVerdict = onVerdict
+        super.init()
+    }
+
+    func userContentController(
+        _ userContentController: WKUserContentController,
+        didReceive message: WKScriptMessage
+    ) {
+        // Main frame only — a subframe must not spoof a verdict for the service.
+        guard message.name == "chorusDarkProbe", message.frameInfo.isMainFrame else { return }
+        guard let jsonString = message.body as? String,
+              let data = jsonString.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(DarkProbePayload.self, from: data),
+              payload.serviceID == serviceID.uuidString
+        else { return }
+        let lacksDark = DarkReaderSupport.classifyLacksDark(
+            r: payload.r, g: payload.g, b: payload.b, a: payload.a
+        )
+        onVerdict(serviceID, lacksDark)
+    }
 }

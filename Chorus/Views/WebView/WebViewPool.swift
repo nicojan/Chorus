@@ -33,6 +33,10 @@ final class WebViewPool {
     /// opted into dark theming starts in the right state.
     private(set) var effectiveAppearanceDark = false
 
+    /// Whether the global "dark-theme services without one" setting is on, pushed
+    /// by AppState. Drives detection for services in `.auto` mode.
+    private(set) var autoDarkModeEnabled = false
+
     /// The currently active/displayed service
     private(set) var activeServiceID: UUID?
 
@@ -419,10 +423,16 @@ final class WebViewPool {
         config.preferences.isElementFullscreenEnabled = true
 
         let controller = WKUserContentController()
+        let injection = DarkReaderSupport.injection(
+            mode: instance.darkMode,
+            globalAuto: autoDarkModeEnabled,
+            appDark: effectiveAppearanceDark,
+            detectedLacksDark: instance.detectedLacksDarkTheme
+        )
         userScriptManager.configureScripts(
             for: instance,
             customCSS: effectiveCSS(for: instance),
-            darkReaderDark: effectiveAppearanceDark,
+            darkInjection: injection,
             on: controller
         )
         // Attach the compiled content-blocking rule lists (ad/tracker domains)
@@ -467,57 +477,73 @@ final class WebViewPool {
         return css
     }
 
-    /// Applies a Light/Dark appearance change to every live, dark-opted-in web
-    /// view: enables/disables Dark Reader on the current document at once, and
-    /// re-bakes each view's user scripts so its next full navigation starts in
-    /// the right state (and without a flash). Mirrors `reattachContentBlocker`:
-    /// live views only, in place, no teardown. Views rebuilt later read the new
-    /// `effectiveAppearanceDark` via `makeConfiguration`.
-    func applyAppearance(isDark: Bool, markedServices: [ServiceInstance]) {
+    /// Applies a Light/Dark appearance and global-auto change to every live web
+    /// view: recomputes each service's dark injection and applies it on the
+    /// current document at once, re-baking the view's user scripts so its next
+    /// full navigation starts in the right state (and without a flash). Mirrors
+    /// `reattachContentBlocker`: live views only, in place, no teardown. Views
+    /// rebuilt later read the new state via `makeConfiguration`. Pass every
+    /// service (not just marked ones) — `.auto` services need re-evaluating too.
+    func applyDarkState(isDark: Bool, autoEnabled: Bool, services: [ServiceInstance]) {
         effectiveAppearanceDark = isDark
-        let byID = Dictionary(markedServices.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        autoDarkModeEnabled = autoEnabled
+        let byID = Dictionary(services.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         for (id, webView) in webViews {
             guard let instance = byID[id] else { continue }
-            webView.evaluateJavaScript(
-                isDark ? DarkReaderSupport.enableJS : DarkReaderSupport.disableJS,
-                in: nil,
-                in: DarkReaderSupport.world,
-                completionHandler: nil
+            let inj = DarkReaderSupport.injection(
+                mode: instance.darkMode,
+                globalAuto: autoEnabled,
+                appDark: isDark,
+                detectedLacksDark: instance.detectedLacksDarkTheme
             )
-            let controller = webView.configuration.userContentController
-            controller.removeAllUserScripts()
-            userScriptManager.installUserScripts(
-                for: instance,
-                customCSS: effectiveCSS(for: instance),
-                darkReaderDark: isDark,
-                on: controller
-            )
+            applyInjectionLive(inj, to: webView, instance: instance)
         }
     }
 
-    /// Applies a per-service dark-mode toggle live, without rebuilding the view.
-    /// `enabled` is the service's new opt-in state; `isDark` is the current app
-    /// appearance. A no-op if the view isn't live (it rebuilds via
-    /// `makeConfiguration` on next access).
-    func setDarkMode(enabled: Bool, for instance: ServiceInstance, isDark: Bool) {
+    /// Recomputes and applies a single live service's dark injection — used after
+    /// a per-service Auto/On/Off edit and after a detection verdict is cached.
+    /// A no-op if the view isn't live (it rebuilds via `makeConfiguration`).
+    func refreshDarkMode(for instance: ServiceInstance) {
         guard let webView = webViews[instance.id] else { return }
+        let inj = DarkReaderSupport.injection(
+            mode: instance.darkMode,
+            globalAuto: autoDarkModeEnabled,
+            appDark: effectiveAppearanceDark,
+            detectedLacksDark: instance.detectedLacksDarkTheme
+        )
+        applyInjectionLive(inj, to: webView, instance: instance)
+    }
+
+    /// Applies an injection to a live web view in place: enable/disable/probe on
+    /// the current document, then re-bake the view's user scripts so the next
+    /// navigation matches. `.themed` injects the library before enabling because
+    /// the current document's isolated world may not have it yet.
+    private func applyInjectionLive(
+        _ injection: DarkReaderSupport.DarkInjection,
+        to webView: WKWebView,
+        instance: ServiceInstance
+    ) {
         let world = DarkReaderSupport.world
-        if enabled {
-            // The current document's isolated world has no library yet (the
-            // service wasn't marked when it loaded), so inject it before enabling.
+        switch injection {
+        case .themed:
             webView.evaluateJavaScript(DarkReaderSupport.libraryJS, in: nil, in: world, completionHandler: nil)
-            if isDark {
-                webView.evaluateJavaScript(DarkReaderSupport.enableJS, in: nil, in: world, completionHandler: nil)
-            }
-        } else {
+            webView.evaluateJavaScript(DarkReaderSupport.enableJS, in: nil, in: world, completionHandler: nil)
+        case .none:
             webView.evaluateJavaScript(DarkReaderSupport.disableJS, in: nil, in: world, completionHandler: nil)
+        case .probe:
+            webView.evaluateJavaScript(
+                UserScriptManager.makeDarkProbeScript(serviceID: instance.id.uuidString),
+                in: nil,
+                in: .page,
+                completionHandler: nil
+            )
         }
         let controller = webView.configuration.userContentController
         controller.removeAllUserScripts()
         userScriptManager.installUserScripts(
             for: instance,
             customCSS: effectiveCSS(for: instance),
-            darkReaderDark: enabled && isDark,
+            darkInjection: injection,
             on: controller
         )
     }

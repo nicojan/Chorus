@@ -85,6 +85,11 @@ final class AppPreferences {
     /// get blocking on by default.
     var contentBlockingEnabled: Bool?
 
+    /// Global "give services without a dark theme a dark one" switch. Optional for
+    /// SwiftData lightweight migration; nil is treated as off
+    /// (`autoDarkModeEnabledEffective`), so it's opt-in and upgrades unchanged.
+    var autoDarkModeEnabled: Bool?
+
     init(
         id: UUID = UUID(),
         appPresenceMode: AppPresenceMode = .dock,
@@ -103,7 +108,8 @@ final class AppPreferences {
         lockOnSleep: Bool? = nil,
         railLayoutRaw: String? = nil,
         appearanceModeRaw: String? = nil,
-        contentBlockingEnabled: Bool? = nil
+        contentBlockingEnabled: Bool? = nil,
+        autoDarkModeEnabled: Bool? = nil
     ) {
         self.id = id
         self.appPresenceMode = appPresenceMode
@@ -123,6 +129,7 @@ final class AppPreferences {
         self.railLayoutRaw = railLayoutRaw
         self.appearanceModeRaw = appearanceModeRaw
         self.contentBlockingEnabled = contentBlockingEnabled
+        self.autoDarkModeEnabled = autoDarkModeEnabled
     }
 
     /// Materialises the storage-optional default zoom (nil → 1.0).
@@ -141,4 +148,7 @@ final class AppPreferences {
 
     /// Materialises the storage-optional content-blocking flag (nil → true).
     var contentBlockingEnabledEffective: Bool { contentBlockingEnabled ?? true }
+
+    /// Materialises the storage-optional auto-dark flag (nil → false).
+    var autoDarkModeEnabledEffective: Bool { autoDarkModeEnabled ?? false }
 }

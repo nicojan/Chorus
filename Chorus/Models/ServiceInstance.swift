@@ -1,6 +1,12 @@
 import Foundation
 import SwiftData
 
+/// Per-service dark-theming choice. `auto` follows the global auto-dark setting
+/// plus detection; `on` always themes (when the app is Dark); `off` never does.
+enum ServiceDarkMode: String, CaseIterable {
+    case auto, on, off
+}
+
 @Model
 final class ServiceInstance {
     @Attribute(.unique) var id: UUID
@@ -41,6 +47,17 @@ final class ServiceInstance {
     /// `isForceDarkModeEnabled`.
     var forceDarkMode: Bool?
 
+    /// Per-service dark-theming choice (auto/on/off), stored raw for SwiftData
+    /// lightweight migration. Read via `darkMode`, which migrates the legacy
+    /// `forceDarkMode` flag. Only `darkModeRaw` is written from now on.
+    var darkModeRaw: String?
+
+    /// Cached detection verdict for `auto` mode: true if the service was found to
+    /// lack its own dark theme (a light background under a dark app). nil until
+    /// probed once; kept so the site only flashes into dark theming on the first
+    /// visit. Cleared when the service's URL changes.
+    var detectedLacksDarkTheme: Bool?
+
     /// Whether the one-time "Passkeys aren't available for sign-in" notice has
     /// been shown for this service. Optional for SwiftData lightweight
     /// migration; nil is treated as "not yet seen" (see `needsPasskeyNotice`).
@@ -60,6 +77,15 @@ final class ServiceInstance {
 
     /// Materialises the storage-optional force-dark flag (nil → false).
     var isForceDarkModeEnabled: Bool { forceDarkMode ?? false }
+
+    /// The effective dark-theming mode. An explicit `darkModeRaw` wins; otherwise
+    /// a legacy `forceDarkMode == true` service maps to `.on` (preserving its
+    /// behavior), and everything else defaults to `.auto`.
+    var darkMode: ServiceDarkMode {
+        if let raw = darkModeRaw, let mode = ServiceDarkMode(rawValue: raw) { return mode }
+        if forceDarkMode == true { return .on }
+        return .auto
+    }
 
     /// Whether the passkey-limitation notice still needs to be shown for this
     /// service (nil or false → not yet seen).
@@ -94,6 +120,8 @@ final class ServiceInstance {
         osNotificationsEnabled: Bool? = nil,
         customCSS: String? = nil,
         forceDarkMode: Bool? = nil,
+        darkModeRaw: String? = nil,
+        detectedLacksDarkTheme: Bool? = nil,
         hasSeenPasskeyNotice: Bool? = nil
     ) {
         self.id = id
@@ -112,6 +140,8 @@ final class ServiceInstance {
         self.osNotificationsEnabled = osNotificationsEnabled
         self.customCSS = customCSS
         self.forceDarkMode = forceDarkMode
+        self.darkModeRaw = darkModeRaw
+        self.detectedLacksDarkTheme = detectedLacksDarkTheme
         self.hasSeenPasskeyNotice = hasSeenPasskeyNotice
         self.spaceLinks = []
         self.createdAt = Date()

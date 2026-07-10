@@ -668,11 +668,42 @@ final class ChorusTests: XCTestCase {
 
     // MARK: - Dark Reader
 
-    func testDarkReaderShouldThemeGating() {
-        XCTAssertTrue(DarkReaderSupport.shouldTheme(marked: true, effectiveDark: true))
-        XCTAssertFalse(DarkReaderSupport.shouldTheme(marked: true, effectiveDark: false))
-        XCTAssertFalse(DarkReaderSupport.shouldTheme(marked: false, effectiveDark: true))
-        XCTAssertFalse(DarkReaderSupport.shouldTheme(marked: false, effectiveDark: false))
+    func testDarkInjectionTruthTable() {
+        typealias I = DarkReaderSupport.DarkInjection
+        func inj(_ m: ServiceDarkMode, _ auto: Bool, _ dark: Bool, _ detected: Bool?) -> I {
+            DarkReaderSupport.injection(mode: m, globalAuto: auto, appDark: dark, detectedLacksDark: detected)
+        }
+        // App light → never themes, whatever the mode.
+        XCTAssertEqual(inj(.on, true, false, true), I.none)
+        // Explicit On themes even with the global toggle off; Off never themes.
+        XCTAssertEqual(inj(.on, false, true, nil), I.themed)
+        XCTAssertEqual(inj(.off, true, true, true), I.none)
+        // Auto needs the global toggle on.
+        XCTAssertEqual(inj(.auto, false, true, true), I.none)
+        // Auto + global: no verdict → probe; lacks-dark → themed; has-dark → none.
+        XCTAssertEqual(inj(.auto, true, true, nil), I.probe)
+        XCTAssertEqual(inj(.auto, true, true, true), I.themed)
+        XCTAssertEqual(inj(.auto, true, true, false), I.none)
+    }
+
+    func testClassifyLacksDark() {
+        XCTAssertTrue(DarkReaderSupport.classifyLacksDark(r: 255, g: 255, b: 255, a: 1))   // white → light
+        XCTAssertFalse(DarkReaderSupport.classifyLacksDark(r: 26, g: 26, b: 26, a: 1))     // #1a1a1a → dark
+        XCTAssertTrue(DarkReaderSupport.classifyLacksDark(r: 0, g: 0, b: 0, a: 0))         // transparent → light
+    }
+
+    func testDarkModeMigrationFromLegacyFlag() {
+        // Explicit mode wins.
+        XCTAssertEqual(ServiceInstance(label: "x", url: "https://e.com", darkModeRaw: "off").darkMode, .off)
+        // Legacy force-dark maps to On.
+        XCTAssertEqual(ServiceInstance(label: "x", url: "https://e.com", forceDarkMode: true).darkMode, .on)
+        // Nothing set defaults to Auto.
+        XCTAssertEqual(ServiceInstance(label: "x", url: "https://e.com").darkMode, .auto)
+    }
+
+    func testAutoDarkModeDefaultsFalse() {
+        XCTAssertFalse(AppPreferences().autoDarkModeEnabledEffective)
+        XCTAssertTrue(AppPreferences(autoDarkModeEnabled: true).autoDarkModeEnabledEffective)
     }
 
     func testDarkReaderBootstrapEnablesOnlyWhenDark() {

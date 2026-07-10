@@ -15,7 +15,7 @@ struct EditServiceSheet: View {
     @State private var url: String = ""
     @State private var keepLoaded: Bool = false
     @State private var mobileView: Bool = false
-    @State private var forceDark: Bool = false
+    @State private var darkMode: ServiceDarkMode = .auto
     @State private var customCSS: String = ""
     @State private var errorMessage: String?
     @State private var confirmingClearSession = false
@@ -63,8 +63,13 @@ struct EditServiceSheet: View {
                 Toggle("Mobile view", isOn: $mobileView)
                     .help("Loads this service as if on an iPhone, so it serves its mobile web layout. Applied on save.")
 
-                Toggle("Dark theme for this service", isOn: $forceDark)
-                    .help("Applies a dark theme with Dark Reader while the app is in Dark, for services that have no dark mode of their own. Turn it off for a service that already follows your Mac's appearance, or if a site looks wrong with it on.")
+                Picker("Dark theme for this service", selection: $darkMode) {
+                    Text("Auto").tag(ServiceDarkMode.auto)
+                    Text("On").tag(ServiceDarkMode.on)
+                    Text("Off").tag(ServiceDarkMode.off)
+                }
+                .pickerStyle(.segmented)
+                .help("Auto follows the app-wide setting and skips services that already have a dark theme. On always applies one while the app is dark; Off never does.")
 
                 if let errorMessage {
                     Text(errorMessage)
@@ -108,7 +113,7 @@ struct EditServiceSheet: View {
             url = service.url
             keepLoaded = service.neverHibernate
             mobileView = service.userAgent == UserAgentProvider.mobileSafari
-            forceDark = service.isForceDarkModeEnabled
+            darkMode = service.darkMode
             // Prefill with the instance's own CSS, or the baked-in default so
             // the user can see and tweak what's already applied.
             customCSS = service.customCSS ?? defaultCSS
@@ -174,9 +179,9 @@ struct EditServiceSheet: View {
             } else {
                 newCSS = customCSS
             }
-            // Dark theming applies live (inject/enable or disable Dark Reader)
-            // without a rebuild, so it's tracked separately from CSS changes.
-            let darkModeChanged = service.isForceDarkModeEnabled != forceDark
+            // Dark theming applies live without a rebuild, so it's tracked
+            // separately from CSS changes.
+            let darkModeChanged = service.darkMode != darkMode
             let cssChanged = (service.customCSS ?? "") != (newCSS ?? "")
 
             let newUserAgent: String? = mobileView ? UserAgentProvider.mobileSafari : nil
@@ -186,7 +191,10 @@ struct EditServiceSheet: View {
             service.url = validURL
             service.neverHibernate = keepLoaded
             service.customCSS = newCSS
-            service.forceDarkMode = forceDark ? true : nil
+            service.darkModeRaw = darkMode.rawValue
+            service.forceDarkMode = nil          // retire the legacy flag
+            // A different site may theme differently — drop the stale verdict.
+            if urlChanged { service.detectedLacksDarkTheme = nil }
             service.userAgent = newUserAgent
 
             appState.applyServiceEdits(

@@ -14,6 +14,10 @@ All notable changes to Chorus are documented here. Format loosely follows
 - **Passkey notice.** The first time you open a service, a brief banner explains
   that passkey sign-in isn't available in Chorus, so you'll sign in with a
   password or another method.
+- **Auto dark mode.** A global Appearance setting gives services without their
+  own dark theme a dark one while the app is dark. Chorus guesses which ones need
+  it by sampling the page background. Override it per service with Auto, On, or
+  Off.
 
 ### Changed
 
