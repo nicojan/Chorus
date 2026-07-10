@@ -666,16 +666,6 @@ final class ChorusTests: XCTestCase {
 
     // MARK: - Content blocker
 
-    func testContentBlockingDisabledDefaultsFalse() {
-        let service = ServiceInstance(label: "Test", url: "https://example.com")
-        XCTAssertFalse(service.isContentBlockingDisabled)
-    }
-
-    func testContentBlockingDisabledWhenOptedOut() {
-        let service = ServiceInstance(label: "Test", url: "https://example.com", contentBlockingDisabled: true)
-        XCTAssertTrue(service.isContentBlockingDisabled)
-    }
-
     func testContentBlockingEnabledDefaultsTrue() {
         // nil (existing installs / fresh) resolves to enabled.
         XCTAssertTrue(AppPreferences().contentBlockingEnabledEffective)

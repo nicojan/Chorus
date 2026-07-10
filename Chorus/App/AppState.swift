@@ -383,17 +383,15 @@ final class AppState {
         serviceID: UUID,
         urlChanged: Bool,
         cssChanged: Bool = false,
-        userAgentChanged: Bool = false,
-        contentBlockingChanged: Bool = false
+        userAgentChanged: Bool = false
     ) {
         guard let service = currentServiceInstance(id: serviceID) else { return }
         webViewPool.setNeverHibernate(service.neverHibernate, for: serviceID)
 
-        if cssChanged || contentBlockingChanged {
-            // Custom CSS and the content-blocking opt-out are both applied when
-            // the web view is built, so rebuild it. The rebuild also picks up any
-            // user-agent change and the new URL, so those are handled here rather
-            // than separately.
+        if cssChanged {
+            // Custom CSS is injected when the web view is built, so rebuild it.
+            // The rebuild also picks up any user-agent change and the new URL, so
+            // those are handled here rather than separately.
             webViewPool.recreateWebView(for: serviceID, preserveURL: !urlChanged)
             webViewRebuildToken &+= 1
         } else {
@@ -989,9 +987,6 @@ final class AppState {
     /// web views that were built first.
     private func startContentBlocker() {
         contentBlocker.isEnabled = contentBlockingEnabled
-        webViewPool.contentBlockingOptOut = { [weak self] id in
-            self?.currentServiceInstance(id: id)?.isContentBlockingDisabled ?? false
-        }
         contentBlocker.onReady = { [weak self] in
             // Lists finished compiling after some web views were already built —
             // attach them in place (no teardown, no reload, no lost polling).

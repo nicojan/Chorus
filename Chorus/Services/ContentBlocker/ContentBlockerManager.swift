@@ -16,7 +16,7 @@ final class ContentBlockerManager {
     /// only a list that outgrows the per-list cap splits into several.
     private(set) var compiledLists: [WKContentRuleList] = []
 
-    /// Global on/off, mirrored from `AppPreferences`. When false, `ruleLists(for:)`
+    /// Global on/off, mirrored from `AppPreferences`. When false, `enabledLists()`
     /// returns nothing so no web view blocks.
     var isEnabled: Bool
 
@@ -34,18 +34,10 @@ final class ContentBlockerManager {
         self.isEnabled = isEnabled
     }
 
-    /// The lists to install on a web view for `instance`: empty when blocking is
-    /// off globally, the service opted out, or compilation hasn't finished.
-    func ruleLists(for instance: ServiceInstance) -> [WKContentRuleList] {
-        ruleLists(optedOut: instance.isContentBlockingDisabled)
-    }
-
-    /// Same gate as `ruleLists(for:)` but keyed on the opt-out flag directly, so
-    /// the pool can re-evaluate a live web view by service id without holding the
-    /// `ServiceInstance`.
-    func ruleLists(optedOut: Bool) -> [WKContentRuleList] {
-        guard isEnabled, !optedOut else { return [] }
-        return compiledLists
+    /// The lists to install on a web view: the compiled lists when blocking is
+    /// enabled, otherwise empty. Also empty until compilation finishes.
+    func enabledLists() -> [WKContentRuleList] {
+        isEnabled ? compiledLists : []
     }
 
     /// Loads and compiles the bundled list once. Safe to call during launch —

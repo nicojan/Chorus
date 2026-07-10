@@ -16,7 +16,6 @@ struct EditServiceSheet: View {
     @State private var keepLoaded: Bool = false
     @State private var mobileView: Bool = false
     @State private var forceDark: Bool = false
-    @State private var blockAds: Bool = true
     @State private var customCSS: String = ""
     @State private var errorMessage: String?
     @State private var confirmingClearSession = false
@@ -67,11 +66,6 @@ struct EditServiceSheet: View {
                 Toggle("Force dark mode", isOn: $forceDark)
                     .help("Inverts the page to force a dark appearance — for services with no dark theme of their own. Leave it off for services that already follow your Mac's light/dark setting.")
 
-                if appState.contentBlockingEnabled {
-                    Toggle("Block ads and trackers", isOn: $blockAds)
-                        .help("Blocks known ad and tracking domains on this service. Turn it off if the service misbehaves with blocking on. Applied on save.")
-                }
-
                 if let errorMessage {
                     Text(errorMessage)
                         .font(.caption)
@@ -115,7 +109,6 @@ struct EditServiceSheet: View {
             keepLoaded = service.neverHibernate
             mobileView = service.userAgent == UserAgentProvider.mobileSafari
             forceDark = service.isForceDarkModeEnabled
-            blockAds = !service.isContentBlockingDisabled
             // Prefill with the instance's own CSS, or the baked-in default so
             // the user can see and tweak what's already applied.
             customCSS = service.customCSS ?? defaultCSS
@@ -189,25 +182,18 @@ struct EditServiceSheet: View {
             let newUserAgent: String? = mobileView ? UserAgentProvider.mobileSafari : nil
             let userAgentChanged = (service.userAgent ?? "") != (newUserAgent ?? "")
 
-            // Content blocking is applied at web-view build time (like CSS), so a
-            // change to the per-service opt-out needs a rebuild.
-            let blockingDisabled = !blockAds
-            let contentBlockingChanged = service.isContentBlockingDisabled != blockingDisabled
-
             service.label = validLabel
             service.url = validURL
             service.neverHibernate = keepLoaded
             service.customCSS = newCSS
             service.forceDarkMode = forceDark ? true : nil
-            service.contentBlockingDisabled = blockingDisabled ? true : nil
             service.userAgent = newUserAgent
 
             appState.applyServiceEdits(
                 serviceID: service.id,
                 urlChanged: urlChanged,
                 cssChanged: cssChanged,
-                userAgentChanged: userAgentChanged,
-                contentBlockingChanged: contentBlockingChanged
+                userAgentChanged: userAgentChanged
             )
             dismiss()
         }
