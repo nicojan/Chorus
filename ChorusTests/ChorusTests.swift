@@ -666,6 +666,31 @@ final class ChorusTests: XCTestCase {
 
     // MARK: - Content blocker
 
+    // MARK: - Dark Reader
+
+    func testDarkReaderShouldThemeGating() {
+        XCTAssertTrue(DarkReaderSupport.shouldTheme(marked: true, effectiveDark: true))
+        XCTAssertFalse(DarkReaderSupport.shouldTheme(marked: true, effectiveDark: false))
+        XCTAssertFalse(DarkReaderSupport.shouldTheme(marked: false, effectiveDark: true))
+        XCTAssertFalse(DarkReaderSupport.shouldTheme(marked: false, effectiveDark: false))
+    }
+
+    func testDarkReaderBootstrapEnablesOnlyWhenDark() {
+        let dark = DarkReaderSupport.bootstrapScript(enable: true)
+        XCTAssertTrue(dark.contains("DarkReader.enable"))
+        XCTAssertTrue(dark.contains("setFetchMethod(window.fetch)"))
+
+        let light = DarkReaderSupport.bootstrapScript(enable: false)
+        XCTAssertFalse(light.contains("DarkReader.enable("))
+        XCTAssertTrue(light.contains("setFetchMethod(window.fetch)"))
+    }
+
+    func testDarkReaderAntiFlashSetsDarkBackground() {
+        let s = DarkReaderSupport.antiFlashScript()
+        XCTAssertTrue(s.contains("chorus-dr-antiflash"))
+        XCTAssertTrue(s.contains("#1a1a1a"))
+    }
+
     func testContentBlockingEnabledDefaultsTrue() {
         // nil (existing installs / fresh) resolves to enabled.
         XCTAssertTrue(AppPreferences().contentBlockingEnabledEffective)

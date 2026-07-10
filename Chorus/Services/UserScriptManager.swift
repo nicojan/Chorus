@@ -20,11 +20,22 @@ final class UserScriptManager {
     var isDoNotDisturbActive: (@Sendable () -> Bool)?
     var autoDismissCookieBanners: Bool = true
 
+    /// Full setup for a freshly built web view: the notification message handler
+    /// (added once) plus all user scripts.
     func configureScripts(
         for instance: ServiceInstance,
         customCSS: String?,
+        darkReaderDark: Bool,
         on controller: WKUserContentController
     ) {
+        installHandlers(for: instance, on: controller)
+        installUserScripts(for: instance, customCSS: customCSS, darkReaderDark: darkReaderDark, on: controller)
+    }
+
+    /// Registers the `chorusNotification` message handler. Called once when the
+    /// web view is built — NOT on reinstall, since `removeAllUserScripts()`
+    /// leaves message handlers in place and re-adding would throw.
+    func installHandlers(for instance: ServiceInstance, on controller: WKUserContentController) {
         let mutedCheck = isServiceMuted
         let notifyOSCheck = isServiceNotifyingOS
         let dndCheck = isDoNotDisturbActive
@@ -42,7 +53,18 @@ final class UserScriptManager {
         )
         controller.add(handler, name: "chorusNotification")
         messageHandlers[instance.id] = handler
+    }
 
+    /// Adds all user scripts. Safe to call again after `removeAllUserScripts()`
+    /// to re-bake state (e.g. the Dark Reader initial enable/anti-flash) so the
+    /// next full navigation is correct. `darkReaderDark` bakes the initial dark
+    /// state for a service opted into dark theming.
+    func installUserScripts(
+        for instance: ServiceInstance,
+        customCSS: String?,
+        darkReaderDark: Bool,
+        on controller: WKUserContentController
+    ) {
         let notificationScript = makeNotificationInterceptionScript(serviceID: instance.id.uuidString)
         let userScript = WKUserScript(
             source: notificationScript,
@@ -89,6 +111,35 @@ final class UserScriptManager {
                 forMainFrameOnly: true
             )
             controller.addUserScript(cssScript)
+        }
+
+        // Dark theming for a service opted into it (Force dark mode). Injected
+        // into an ISOLATED world so Dark Reader's window.chrome stub and
+        // DarkReader global never reach the site; the shared DOM means the theme
+        // it injects still applies. The library is always injected for a marked
+        // service; the anti-flash style and the initial enable are baked only
+        // when the current effective appearance is dark.
+        if instance.isForceDarkModeEnabled {
+            if darkReaderDark {
+                controller.addUserScript(WKUserScript(
+                    source: DarkReaderSupport.antiFlashScript(),
+                    injectionTime: .atDocumentStart,
+                    forMainFrameOnly: true,
+                    in: DarkReaderSupport.world
+                ))
+            }
+            controller.addUserScript(WKUserScript(
+                source: DarkReaderSupport.libraryJS,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true,
+                in: DarkReaderSupport.world
+            ))
+            controller.addUserScript(WKUserScript(
+                source: DarkReaderSupport.bootstrapScript(enable: darkReaderDark),
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true,
+                in: DarkReaderSupport.world
+            ))
         }
     }
 
@@ -387,22 +438,5 @@ enum ServiceCSSDefaults {
     .scaffold-layout__aside { display: none !important; }
     .scaffold-layout__content, .scaffold-layout__list-detail, .scaffold-layout__list-detail-container, .scaffold-layout__list-detail-inner { max-width: none !important; width: 100% !important; }
     .msg-overlay-list-bubble, .msg-overlay { display: none !important; }
-    """
-}
-
-/// Forces dark mode on services that lack their own. Uses a whole-page inversion
-/// filter — the only universal way to darken a site with no dark theme — and
-/// re-inverts photographic content (img/video/picture/canvas/backgrounds) so it
-/// keeps its real colors. `svg` is deliberately NOT re-inverted: most SVGs are
-/// monochrome UI icons, and re-inverting them flips them back to dark-on-dark
-/// (invisible). Letting them take the single page inversion keeps them legible.
-/// Imperfect by nature; a service that needs a polished theme can use custom CSS.
-enum DarkMode {
-    static let css = """
-    html { filter: invert(1) hue-rotate(180deg) !important; background: #1a1a1a !important; }
-    img, video, picture, canvas, iframe,
-    [style*="background-image"], [style*="background:url"], [style*="background: url"] {
-        filter: invert(1) hue-rotate(180deg) !important;
-    }
     """
 }

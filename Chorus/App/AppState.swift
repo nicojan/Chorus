@@ -53,6 +53,23 @@ final class AppState {
         }
     }
 
+    /// The effective Light/Dark the app is showing right now, resolving `.system`
+    /// against the current macOS appearance. Drives Dark Reader theming. Reads
+    /// AppKit for the `.system` case, so call it on the main actor after launch,
+    /// not during AppState.init.
+    var isEffectiveAppearanceDark: Bool {
+        switch appearanceMode {
+        case .dark: return true
+        case .light: return false
+        case .system:
+            return NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        }
+    }
+
+    /// Last effective dark state pushed to the web-view pool, so appearance
+    /// notifications that don't actually change Light/Dark are ignored.
+    private var lastKnownAppearanceDark: Bool?
+
     /// Scheduled "quiet hours" Do Not Disturb, loaded from AppPreferences.
     /// `doNotDisturb` above stays the manual toggle; the effective DND that
     /// gates badges and notifications is `doNotDisturb || scheduledDNDActive`.
@@ -383,18 +400,28 @@ final class AppState {
         serviceID: UUID,
         urlChanged: Bool,
         cssChanged: Bool = false,
-        userAgentChanged: Bool = false
+        userAgentChanged: Bool = false,
+        darkModeChanged: Bool = false
     ) {
         guard let service = currentServiceInstance(id: serviceID) else { return }
         webViewPool.setNeverHibernate(service.neverHibernate, for: serviceID)
 
         if cssChanged {
             // Custom CSS is injected when the web view is built, so rebuild it.
-            // The rebuild also picks up any user-agent change and the new URL, so
-            // those are handled here rather than separately.
+            // The rebuild also re-bakes the dark-mode scripts and picks up any
+            // user-agent change and the new URL, so those are handled here.
             webViewPool.recreateWebView(for: serviceID, preserveURL: !urlChanged)
             webViewRebuildToken &+= 1
         } else {
+            // Dark-mode toggle applies live without a rebuild (inject/enable or
+            // disable Dark Reader on the current page).
+            if darkModeChanged {
+                webViewPool.setDarkMode(
+                    enabled: service.isForceDarkModeEnabled,
+                    for: service,
+                    isDark: isEffectiveAppearanceDark
+                )
+            }
             if userAgentChanged {
                 webViewPool.setUserAgent(service.userAgent, for: serviceID)
             }
@@ -978,7 +1005,39 @@ final class AppState {
             self.refreshEffectiveDoNotDisturb()
             self.startQuietHoursTimer()
             self.setupLockObservers()
+            self.startDarkMode()
         }
+    }
+
+    /// Pushes the initial effective appearance to the pool (so dark-opted-in
+    /// services theme correctly) and observes macOS appearance changes for when
+    /// the app follows the system. Runs after launch, on the main actor.
+    private func startDarkMode() {
+        applyEffectiveAppearanceChange()
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyEffectiveAppearanceChange() }
+        }
+    }
+
+    /// Re-evaluates the effective Light/Dark appearance and, when it actually
+    /// changed, retheme all dark-opted-in live web views. Called at launch, when
+    /// the user picks an appearance, and when the OS theme flips in System mode.
+    func applyEffectiveAppearanceChange() {
+        let dark = isEffectiveAppearanceDark
+        guard dark != lastKnownAppearanceDark else { return }
+        lastKnownAppearanceDark = dark
+        webViewPool.applyAppearance(isDark: dark, markedServices: markedDarkServices())
+    }
+
+    /// All services opted into dark theming (Force dark mode).
+    private func markedDarkServices() -> [ServiceInstance] {
+        let context = modelContainer.mainContext
+        let all = (try? context.fetch(FetchDescriptor<ServiceInstance>())) ?? []
+        return all.filter { $0.isForceDarkModeEnabled }
     }
 
     /// Kicks off content-blocklist compilation at launch (before preload, so it

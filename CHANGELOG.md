@@ -18,6 +18,9 @@ All notable changes to Chorus are documented here. Format loosely follows
 ### Changed
 
 - Adding a service, or creating a space, now switches to it right away.
+- Force dark mode now uses Dark Reader for real per-element dark theming instead
+  of inverting the page's colors, and it follows the app's Light/Dark appearance
+  rather than staying dark always.
 
 ### Fixed
 

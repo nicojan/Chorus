@@ -63,8 +63,8 @@ struct EditServiceSheet: View {
                 Toggle("Mobile view", isOn: $mobileView)
                     .help("Loads this service as if on an iPhone, so it serves its mobile web layout. Applied on save.")
 
-                Toggle("Force dark mode", isOn: $forceDark)
-                    .help("Inverts the page to force a dark appearance — for services with no dark theme of their own. Leave it off for services that already follow your Mac's light/dark setting.")
+                Toggle("Dark theme for this service", isOn: $forceDark)
+                    .help("Applies a dark theme with Dark Reader while the app is in Dark, for services that have no dark mode of their own. Turn it off for a service that already follows your Mac's appearance, or if a site looks wrong with it on.")
 
                 if let errorMessage {
                     Text(errorMessage)
@@ -174,10 +174,10 @@ struct EditServiceSheet: View {
             } else {
                 newCSS = customCSS
             }
-            // Force-dark is injected as part of the page CSS at web-view build
-            // time, so a change to it needs the same rebuild as a CSS change.
-            let darkChanged = service.isForceDarkModeEnabled != forceDark
-            let cssChanged = (service.customCSS ?? "") != (newCSS ?? "") || darkChanged
+            // Dark theming applies live (inject/enable or disable Dark Reader)
+            // without a rebuild, so it's tracked separately from CSS changes.
+            let darkModeChanged = service.isForceDarkModeEnabled != forceDark
+            let cssChanged = (service.customCSS ?? "") != (newCSS ?? "")
 
             let newUserAgent: String? = mobileView ? UserAgentProvider.mobileSafari : nil
             let userAgentChanged = (service.userAgent ?? "") != (newUserAgent ?? "")
@@ -193,7 +193,8 @@ struct EditServiceSheet: View {
                 serviceID: service.id,
                 urlChanged: urlChanged,
                 cssChanged: cssChanged,
-                userAgentChanged: userAgentChanged
+                userAgentChanged: userAgentChanged,
+                darkModeChanged: darkModeChanged
             )
             dismiss()
         }

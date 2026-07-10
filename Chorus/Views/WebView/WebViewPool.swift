@@ -28,6 +28,11 @@ final class WebViewPool {
     private let userScriptManager: UserScriptManager
     private let contentBlocker: ContentBlockerManager
 
+    /// The app's current effective Light/Dark appearance, pushed by AppState.
+    /// Baked into each web view's Dark Reader scripts at build time so a service
+    /// opted into dark theming starts in the right state.
+    private(set) var effectiveAppearanceDark = false
+
     /// The currently active/displayed service
     private(set) var activeServiceID: UUID?
 
@@ -414,15 +419,10 @@ final class WebViewPool {
         config.preferences.isElementFullscreenEnabled = true
 
         let controller = WKUserContentController()
-        let baseCSS = ServiceCSSDefaults.effectiveCSS(
-            instanceCSS: instance.customCSS,
-            catalogID: instance.catalogEntryID
-        )
-        let darkCSS = instance.isForceDarkModeEnabled ? DarkMode.css : nil
-        let combinedCSS = [baseCSS, darkCSS].compactMap { $0 }.joined(separator: "\n\n")
         userScriptManager.configureScripts(
             for: instance,
-            customCSS: combinedCSS.isEmpty ? nil : combinedCSS,
+            customCSS: effectiveCSS(for: instance),
+            darkReaderDark: effectiveAppearanceDark,
             on: controller
         )
         // Attach the compiled content-blocking rule lists (ad/tracker domains)
@@ -453,6 +453,73 @@ final class WebViewPool {
                 controller.add(ruleList)
             }
         }
+    }
+
+    /// The effective per-service CSS (service defaults + any custom CSS), or nil
+    /// when there's none. Shared by `makeConfiguration` and the dark-mode
+    /// reinstall paths so both bake the same scripts.
+    private func effectiveCSS(for instance: ServiceInstance) -> String? {
+        let css = ServiceCSSDefaults.effectiveCSS(
+            instanceCSS: instance.customCSS,
+            catalogID: instance.catalogEntryID
+        )
+        guard let css, !css.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return css
+    }
+
+    /// Applies a Light/Dark appearance change to every live, dark-opted-in web
+    /// view: enables/disables Dark Reader on the current document at once, and
+    /// re-bakes each view's user scripts so its next full navigation starts in
+    /// the right state (and without a flash). Mirrors `reattachContentBlocker`:
+    /// live views only, in place, no teardown. Views rebuilt later read the new
+    /// `effectiveAppearanceDark` via `makeConfiguration`.
+    func applyAppearance(isDark: Bool, markedServices: [ServiceInstance]) {
+        effectiveAppearanceDark = isDark
+        let byID = Dictionary(markedServices.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        for (id, webView) in webViews {
+            guard let instance = byID[id] else { continue }
+            webView.evaluateJavaScript(
+                isDark ? DarkReaderSupport.enableJS : DarkReaderSupport.disableJS,
+                in: nil,
+                in: DarkReaderSupport.world,
+                completionHandler: nil
+            )
+            let controller = webView.configuration.userContentController
+            controller.removeAllUserScripts()
+            userScriptManager.installUserScripts(
+                for: instance,
+                customCSS: effectiveCSS(for: instance),
+                darkReaderDark: isDark,
+                on: controller
+            )
+        }
+    }
+
+    /// Applies a per-service dark-mode toggle live, without rebuilding the view.
+    /// `enabled` is the service's new opt-in state; `isDark` is the current app
+    /// appearance. A no-op if the view isn't live (it rebuilds via
+    /// `makeConfiguration` on next access).
+    func setDarkMode(enabled: Bool, for instance: ServiceInstance, isDark: Bool) {
+        guard let webView = webViews[instance.id] else { return }
+        let world = DarkReaderSupport.world
+        if enabled {
+            // The current document's isolated world has no library yet (the
+            // service wasn't marked when it loaded), so inject it before enabling.
+            webView.evaluateJavaScript(DarkReaderSupport.libraryJS, in: nil, in: world, completionHandler: nil)
+            if isDark {
+                webView.evaluateJavaScript(DarkReaderSupport.enableJS, in: nil, in: world, completionHandler: nil)
+            }
+        } else {
+            webView.evaluateJavaScript(DarkReaderSupport.disableJS, in: nil, in: world, completionHandler: nil)
+        }
+        let controller = webView.configuration.userContentController
+        controller.removeAllUserScripts()
+        userScriptManager.installUserScripts(
+            for: instance,
+            customCSS: effectiveCSS(for: instance),
+            darkReaderDark: enabled && isDark,
+            on: controller
+        )
     }
 
     /// When exceeding maxLoaded web views, fully hibernate the least recently used ones.

@@ -97,6 +97,8 @@ struct GeneralSettingsView: View {
                         ensurePrefs().appearanceModeRaw = mode.rawValue
                         appState.appearanceMode = mode
                         save("appearance mode")
+                        // Re-theme dark-opted-in services for the new appearance.
+                        appState.applyEffectiveAppearanceChange()
                     }
                 )) {
                     ForEach(AppearanceMode.allCases, id: \.self) { mode in
@@ -452,6 +454,7 @@ struct AboutSettingsView: View {
     private let licenseURL = URL(string: "https://github.com/nicojan/Chorus/blob/main/LICENSE")!
     private let authorURL = URL(string: "https://nicojan.com/")!
     private let blocklistURL = URL(string: "https://github.com/hagezi/dns-blocklists")!
+    private let darkReaderURL = URL(string: "https://github.com/darkreader/darkreader")!
 
     var body: some View {
         Form {
@@ -482,6 +485,13 @@ struct AboutSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Link("HaGezi blocklists (GPL-3.0)", destination: blocklistURL)
+            }
+
+            Section("Dark theme") {
+                Text("Per-service dark theming uses Dark Reader.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Link("Dark Reader (MIT)", destination: darkReaderURL)
             }
 
             Section {
