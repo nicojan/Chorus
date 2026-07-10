@@ -792,4 +792,94 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(AppPreferences(appearanceModeRaw: "garbage").appearanceMode, .system)
     }
 
+    // MARK: - Notification grouping by space
+
+    /// Wires a service into a space on both relationship sides, mirroring what a
+    /// live model context would maintain, so `NotificationGrouping` sees it.
+    @discardableResult
+    private func link(_ service: ServiceInstance, to space: Space, sortOrder: Int) -> SpaceServiceLink {
+        let link = SpaceServiceLink(sortOrder: sortOrder, space: space, service: service)
+        space.serviceLinks.append(link)
+        service.spaceLinks.append(link)
+        return link
+    }
+
+    func testNotificationGroupingIsFlatAndHeaderlessWhenNoSpacesHaveMembers() {
+        let a = ServiceInstance(label: "Zulip", url: "https://z.example")
+        let b = ServiceInstance(label: "Asana", url: "https://a.example")
+        let empty = Space(name: "Empty", emoji: "📭", sortOrder: 0)
+
+        let result = NotificationGrouping.grouped(spaces: [empty], services: [a, b])
+
+        XCTAssertFalse(result.showsHeaders)
+        XCTAssertEqual(result.groups.count, 1)
+        XCTAssertNil(result.groups[0].space)
+        // Flat bucket is sorted by label.
+        XCTAssertEqual(result.groups[0].services.map(\.label), ["Asana", "Zulip"])
+    }
+
+    func testNotificationGroupingFollowsSpaceOrderThenLinkOrder() {
+        let work = Space(name: "Work", emoji: "🏢", sortOrder: 0)
+        let play = Space(name: "Play", emoji: "🎮", sortOrder: 1)
+        let slack = ServiceInstance(label: "Slack", url: "https://s.example")
+        let gmail = ServiceInstance(label: "Gmail", url: "https://g.example")
+        let discord = ServiceInstance(label: "Discord", url: "https://d.example")
+        // Add gmail first but at a higher sortOrder to prove link order wins.
+        link(gmail, to: work, sortOrder: 1)
+        link(slack, to: work, sortOrder: 0)
+        link(discord, to: play, sortOrder: 0)
+
+        let result = NotificationGrouping.grouped(spaces: [work, play], services: [slack, gmail, discord])
+
+        XCTAssertTrue(result.showsHeaders)
+        XCTAssertEqual(result.groups.map { $0.space?.name }, ["Work", "Play"])
+        XCTAssertEqual(result.groups[0].services.map(\.label), ["Slack", "Gmail"])
+        XCTAssertEqual(result.groups[1].services.map(\.label), ["Discord"])
+    }
+
+    func testNotificationGroupingPutsUngroupedServicesInTrailingBucket() {
+        let work = Space(name: "Work", emoji: "🏢", sortOrder: 0)
+        let slack = ServiceInstance(label: "Slack", url: "https://s.example")
+        let loose2 = ServiceInstance(label: "Notion", url: "https://n.example")
+        let loose1 = ServiceInstance(label: "Figma", url: "https://f.example")
+        link(slack, to: work, sortOrder: 0)
+
+        let result = NotificationGrouping.grouped(spaces: [work], services: [slack, loose2, loose1])
+
+        XCTAssertTrue(result.showsHeaders)
+        XCTAssertEqual(result.groups.count, 2)
+        XCTAssertEqual(result.groups[0].space?.name, "Work")
+        XCTAssertNil(result.groups[1].space)  // the ungrouped bucket, last
+        XCTAssertEqual(result.groups[1].services.map(\.label), ["Figma", "Notion"])
+    }
+
+    func testNotificationGroupingSkipsSpacesWithNoServices() {
+        let full = Space(name: "Full", emoji: "📥", sortOrder: 0)
+        let empty = Space(name: "Empty", emoji: "📭", sortOrder: 1)
+        let slack = ServiceInstance(label: "Slack", url: "https://s.example")
+        link(slack, to: full, sortOrder: 0)
+
+        let result = NotificationGrouping.grouped(spaces: [full, empty], services: [slack])
+
+        XCTAssertEqual(result.groups.map { $0.space?.name }, ["Full"])
+    }
+
+    func testNotificationGroupingRepeatsServiceInEachSpace() {
+        let home = Space(name: "Home", emoji: "🏠", sortOrder: 0)
+        let design = Space(name: "Design", emoji: "🎨", sortOrder: 1)
+        let slack = ServiceInstance(label: "Slack", url: "https://s.example")
+        link(slack, to: home, sortOrder: 0)
+        link(slack, to: design, sortOrder: 0)
+
+        let result = NotificationGrouping.grouped(spaces: [home, design], services: [slack])
+
+        XCTAssertEqual(result.groups.count, 2)
+        XCTAssertEqual(result.groups[0].services.map(\.label), ["Slack"])
+        XCTAssertEqual(result.groups[1].services.map(\.label), ["Slack"])
+        // Same underlying object under both headers, so toggles stay in sync.
+        XCTAssertTrue(result.groups[0].services[0] === result.groups[1].services[0])
+        // No ungrouped bucket when every service belongs to a space.
+        XCTAssertFalse(result.groups.contains { $0.space == nil })
+    }
+
 }

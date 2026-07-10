@@ -197,6 +197,7 @@ struct GeneralSettingsView: View {
 
 struct NotificationSettingsView: View {
     @Query private var services: [ServiceInstance]
+    @Query(sort: \Space.sortOrder) private var spaces: [Space]
     @Query private var preferences: [AppPreferences]
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
@@ -238,7 +239,8 @@ struct NotificationSettingsView: View {
     }
 
     private var serviceTable: some View {
-        Grid(alignment: .center, horizontalSpacing: 12, verticalSpacing: 10) {
+        let grouped = NotificationGrouping.grouped(spaces: spaces, services: services)
+        return Grid(alignment: .center, horizontalSpacing: 12, verticalSpacing: 10) {
             GridRow {
                 Text("Service")
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -252,31 +254,57 @@ struct NotificationSettingsView: View {
 
             Divider()
 
-            ForEach(services) { service in
-                GridRow {
-                    Text(service.label)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+            ForEach(grouped.groups) { group in
+                if grouped.showsHeaders {
+                    GridRow {
+                        Text(headerTitle(group))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 4)
+                            .gridCellColumns(4)
+                    }
+                }
 
-                    Toggle("", isOn: enabledBinding(service))
-                        .labelsHidden()
-                        .toggleStyle(.checkbox)
-                        .accessibilityLabel("Notifications for \(service.label)")
-
-                    Toggle("", isOn: macOSBinding(service))
-                        .labelsHidden()
-                        .toggleStyle(.checkbox)
-                        .disabled(service.isMuted)
-                        .accessibilityLabel("macOS notifications for \(service.label)")
-
-                    Toggle("", isOn: badgeBinding(service))
-                        .labelsHidden()
-                        .toggleStyle(.checkbox)
-                        .disabled(service.isMuted)
-                        .accessibilityLabel("Badge count for \(service.label)")
+                ForEach(group.services) { service in
+                    serviceRow(service)
                 }
             }
+        }
+    }
+
+    /// A space's "emoji  name", or "Ungrouped" for services in no space. The
+    /// same service can appear under several space headers; every row binds to
+    /// the same model object, so their toggles stay in sync.
+    private func headerTitle(_ group: NotificationGrouping.Group) -> String {
+        guard let space = group.space else { return "Ungrouped" }
+        return "\(space.emoji)  \(space.name)"
+    }
+
+    @ViewBuilder
+    private func serviceRow(_ service: ServiceInstance) -> some View {
+        GridRow {
+            Text(service.label)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Toggle("", isOn: enabledBinding(service))
+                .labelsHidden()
+                .toggleStyle(.checkbox)
+                .accessibilityLabel("Notifications for \(service.label)")
+
+            Toggle("", isOn: macOSBinding(service))
+                .labelsHidden()
+                .toggleStyle(.checkbox)
+                .disabled(service.isMuted)
+                .accessibilityLabel("macOS notifications for \(service.label)")
+
+            Toggle("", isOn: badgeBinding(service))
+                .labelsHidden()
+                .toggleStyle(.checkbox)
+                .disabled(service.isMuted)
+                .accessibilityLabel("Badge count for \(service.label)")
         }
     }
 
@@ -566,5 +594,61 @@ enum AppVersion {
 
     static var current: String {
         string(from: Bundle.main.infoDictionary)
+    }
+}
+
+/// Groups services by space for the per-service notifications list. Pure (fed
+/// plain arrays) so the ordering and bucketing rules can be unit-tested without
+/// a running app or a model container.
+///
+/// Rules: spaces appear in the caller's order (the view sorts by `sortOrder`);
+/// within a space, services follow their link `sortOrder`; a service in several
+/// spaces appears under each; services in no space fall into a trailing
+/// "Ungrouped" bucket (`space == nil`), sorted by label. Spaces with no
+/// services are skipped. When nothing is grouped — no spaces have members —
+/// `showsHeaders` is false and a single flat, headerless bucket holds every
+/// service, matching the pre-grouping layout.
+enum NotificationGrouping {
+    struct Group: Identifiable {
+        /// The space, or `nil` for the ungrouped / flat bucket.
+        let space: Space?
+        let services: [ServiceInstance]
+
+        var id: String { space?.id.uuidString ?? "ungrouped" }
+    }
+
+    struct Result {
+        let groups: [Group]
+        /// False only when no space has members, so the view renders a plain
+        /// flat list with no space headers.
+        let showsHeaders: Bool
+    }
+
+    static func grouped(spaces: [Space], services: [ServiceInstance]) -> Result {
+        var spaceGroups: [Group] = []
+        for space in spaces {
+            let members = space.serviceLinks
+                .sorted { $0.sortOrder < $1.sortOrder }
+                .map(\.service)
+            if !members.isEmpty {
+                spaceGroups.append(Group(space: space, services: members))
+            }
+        }
+
+        // No space has members → flat, headerless list of everything.
+        guard !spaceGroups.isEmpty else {
+            let flat = services.sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
+            return Result(groups: [Group(space: nil, services: flat)], showsHeaders: false)
+        }
+
+        let ungrouped = services
+            .filter { $0.spaceLinks.isEmpty }
+            .sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
+
+        var groups = spaceGroups
+        if !ungrouped.isEmpty {
+            groups.append(Group(space: nil, services: ungrouped))
+        }
+        return Result(groups: groups, showsHeaders: true)
     }
 }

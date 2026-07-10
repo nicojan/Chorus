@@ -16,6 +16,9 @@ struct EditServiceSheet: View {
     @State private var keepLoaded: Bool = false
     @State private var mobileView: Bool = false
     @State private var darkMode: ServiceDarkMode = .auto
+    @State private var notify: Bool = true
+    @State private var osNotify: Bool = true
+    @State private var badge: Bool = true
     @State private var customCSS: String = ""
     @State private var errorMessage: String?
     @State private var confirmingClearSession = false
@@ -80,6 +83,10 @@ struct EditServiceSheet: View {
 
                 Divider()
 
+                notificationsSection
+
+                Divider()
+
                 customCSSSection
 
                 Divider()
@@ -114,6 +121,9 @@ struct EditServiceSheet: View {
             keepLoaded = service.neverHibernate
             mobileView = service.userAgent == UserAgentProvider.mobileSafari
             darkMode = service.darkMode
+            notify = !service.isMuted
+            osNotify = service.notifiesOSEffective
+            badge = service.showBadge
             // Prefill with the instance's own CSS, or the baked-in default so
             // the user can see and tweak what's already applied.
             customCSS = service.customCSS ?? defaultCSS
@@ -129,6 +139,28 @@ struct EditServiceSheet: View {
             }
         } message: {
             Text("This clears this service's cookies and storage on this Mac. You'll need to sign in again.")
+        }
+    }
+
+    @ViewBuilder
+    private var notificationsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Notifications")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            Toggle("Allow notifications", isOn: $notify)
+                .help("The master switch for this service. Off silences its banners and badge.")
+
+            Toggle("macOS notification banners", isOn: $osNotify)
+                .disabled(!notify)
+                .padding(.leading, 16)
+                .help("Forward this service's alerts to macOS Notification Center.")
+
+            Toggle("Badge count", isOn: $badge)
+                .disabled(!notify)
+                .padding(.leading, 16)
+                .help("Show this service's unread count on its icon and in the Dock.")
         }
     }
 
@@ -187,6 +219,12 @@ struct EditServiceSheet: View {
             let newUserAgent: String? = mobileView ? UserAgentProvider.mobileSafari : nil
             let userAgentChanged = (service.userAgent ?? "") != (newUserAgent ?? "")
 
+            // Notification changes: mute and badge affect the dock/rail badge, so
+            // they need an explicit refresh below — applyServiceEdits doesn't.
+            let muted = !notify
+            let muteChanged = service.isMuted != muted
+            let badgeChanged = service.showBadge != badge
+
             service.label = validLabel
             service.url = validURL
             service.neverHibernate = keepLoaded
@@ -196,6 +234,9 @@ struct EditServiceSheet: View {
             // A different site may theme differently — drop the stale verdict.
             if urlChanged { service.detectedLacksDarkTheme = nil }
             service.userAgent = newUserAgent
+            service.isMuted = muted
+            service.osNotificationsEnabled = osNotify
+            service.showBadge = badge
 
             appState.applyServiceEdits(
                 serviceID: service.id,
@@ -204,6 +245,9 @@ struct EditServiceSheet: View {
                 userAgentChanged: userAgentChanged,
                 darkModeChanged: darkModeChanged
             )
+            if muteChanged || badgeChanged {
+                appState.refreshBadgeState(for: service.id)
+            }
             dismiss()
         }
     }
