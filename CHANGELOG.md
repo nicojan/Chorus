@@ -22,6 +22,9 @@ All notable changes to Chorus are documented here. Format loosely follows
   newsletter pop-ups, floating share bars, and similar clutter with Fanboy's
   Annoyance List. It's off by default, since it can occasionally hide something
   you wanted.
+- **Reader mode.** A toolbar button strips an article page to clean, readable
+  text with Mozilla's Readability. It runs on your Mac with no network; press it
+  again to return to the full page.
 
 ### Changed
 

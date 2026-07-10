@@ -706,6 +706,16 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(AppPreferences(autoDarkModeEnabled: true).autoDarkModeEnabledEffective)
     }
 
+    func testAnnoyanceBlockingDefaultsFalse() {
+        XCTAssertFalse(AppPreferences().annoyanceBlockingEnabledEffective)
+        XCTAssertTrue(AppPreferences(annoyanceBlockingEnabled: true).annoyanceBlockingEnabledEffective)
+    }
+
+    func testReaderModeLibraryLoads() {
+        XCTAssertFalse(ReaderMode.libraryJS.isEmpty)
+        XCTAssertTrue(ReaderMode.libraryJS.contains("Readability"))
+    }
+
     func testDarkReaderBootstrapEnablesOnlyWhenDark() {
         let dark = DarkReaderSupport.bootstrapScript(enable: true)
         XCTAssertTrue(dark.contains("DarkReader.enable"))

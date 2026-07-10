@@ -36,6 +36,12 @@ struct WebNavButtons: View {
                     webViewState.webView?.load(URLRequest(url: homeURL))
                 }
             }
+
+            navButton("doc.plaintext", label: "Reader", enabled: webViewState.webView != nil) {
+                if let webView = webViewState.webView {
+                    ReaderMode.toggle(on: webView)
+                }
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Navigation")

@@ -479,6 +479,7 @@ struct AboutSettingsView: View {
     private let blocklistURL = URL(string: "https://github.com/hagezi/dns-blocklists")!
     private let annoyanceListURL = URL(string: "https://easylist.to/")!
     private let darkReaderURL = URL(string: "https://github.com/darkreader/darkreader")!
+    private let readabilityURL = URL(string: "https://github.com/mozilla/readability")!
 
     var body: some View {
         Form {
@@ -517,6 +518,13 @@ struct AboutSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Link("Dark Reader (MIT)", destination: darkReaderURL)
+            }
+
+            Section("Reader mode") {
+                Text("Reader mode uses Mozilla's Readability.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Link("Readability (Apache-2.0)", destination: readabilityURL)
             }
 
             Section {

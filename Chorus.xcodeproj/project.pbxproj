@@ -18,6 +18,7 @@
 		3291B385E6F0AED73FAE2B61 /* ServiceInstance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4666C49AA129F26D936B0715 /* ServiceInstance.swift */; };
 		3416D37A6D2684D8950E2549 /* BlocklistSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBCB337C1EF863BC5957ABE9 /* BlocklistSupport.swift */; };
 		365FD38EBDA7455F8E86BEEF /* ServiceIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E84C935C8A82FD6B6B969E6B /* ServiceIconView.swift */; };
+		39BA918A8D3077E90F5EB5C2 /* readability.js in Resources */ = {isa = PBXBuildFile; fileRef = 29A02AF72ACD3B332ED513C2 /* readability.js */; };
 		39F97AD8B45E39F8D1F45281 /* darkreader.js in Resources */ = {isa = PBXBuildFile; fileRef = 31B99E22D6D2E2F8EBDE7A31 /* darkreader.js */; };
 		3DEA98A98656EE981A29A71D /* FindInPageBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76865DDEE671C34CC88CF4D8 /* FindInPageBar.swift */; };
 		4129642FB0AD19AC83F01A30 /* UserAgentProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E431CF7CE145D536081A23 /* UserAgentProvider.swift */; };
@@ -28,6 +29,7 @@
 		5561BE9B6C6D8AA46CD42884 /* WebViewContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D9F34755F65BE5A3C76C88 /* WebViewContainer.swift */; };
 		5E59730D46AE1AED21F82ECA /* AppPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88C307C75776869CE8A82618 /* AppPreferences.swift */; };
 		69FF2932CDD4A1208CA5DA71 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D9D707C0F9A04B5E0744F59 /* SettingsView.swift */; };
+		6EA5537AC54A97170DA92F68 /* ReaderMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99194740C493CCA3EAFC7E18 /* ReaderMode.swift */; };
 		701984CFE765170D8EAE50EE /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D811CC9D75730152E17859C /* MenuBarView.swift */; };
 		71E467BDECC180049BF6708B /* AppPresenceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1D24379DD182D4A7B6DD11 /* AppPresenceManager.swift */; };
 		75C395B384D9E21AF94FBC4F /* UserScriptManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBBF69E002BB39BB6EFF9BDB /* UserScriptManager.swift */; };
@@ -82,6 +84,7 @@
 		1ACFB877AD2138035F9E3EAE /* FaviconFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaviconFetcher.swift; sourceTree = "<group>"; };
 		1D9D707C0F9A04B5E0744F59 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		24EE83C0600AFD4A12914883 /* HibernatedBadgePoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HibernatedBadgePoller.swift; sourceTree = "<group>"; };
+		29A02AF72ACD3B332ED513C2 /* readability.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = readability.js; sourceTree = "<group>"; };
 		312995FF05808961FD519D76 /* SpaceServiceLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceServiceLink.swift; sourceTree = "<group>"; };
 		31B99E22D6D2E2F8EBDE7A31 /* darkreader.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = darkreader.js; sourceTree = "<group>"; };
 		3A3640458AF427BC8D3C8F2A /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
@@ -104,6 +107,7 @@
 		88C307C75776869CE8A82618 /* AppPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreferences.swift; sourceTree = "<group>"; };
 		8F17BFF4DCC563429E130A13 /* CatalogGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogGridView.swift; sourceTree = "<group>"; };
 		94326A5DEE01135F945E9DF3 /* Chorus.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Chorus.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		99194740C493CCA3EAFC7E18 /* ReaderMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderMode.swift; sourceTree = "<group>"; };
 		9D811CC9D75730152E17859C /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		9DD5F8F7C2450C88FA1A3886 /* EditServiceSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditServiceSheet.swift; sourceTree = "<group>"; };
 		9EDCAF66B6DD05BA3A244E9E /* EmojiData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiData.swift; sourceTree = "<group>"; };
@@ -186,6 +190,7 @@
 				D2AC7E996360A4BC660FD194 /* KeyboardShortcutManager.swift */,
 				3A3640458AF427BC8D3C8F2A /* NetworkMonitor.swift */,
 				3BEC6FCF1B60E1B9CD89A3A2 /* NotificationManager.swift */,
+				99194740C493CCA3EAFC7E18 /* ReaderMode.swift */,
 				E30F23AFD0B5D81AF103BF37 /* ServiceCatalog.swift */,
 				CBBF69E002BB39BB6EFF9BDB /* UserScriptManager.swift */,
 				F1846EB9EB4BB58BDC89DC99 /* ContentBlocker */,
@@ -218,6 +223,7 @@
 				9EDCAF66B6DD05BA3A244E9E /* EmojiData.swift */,
 				0D9CBE47687FB4FF2EF6BED5 /* fanboy-annoyance.json */,
 				D9E64C2450C98941A48AC7BD /* hagezi-light.json */,
+				29A02AF72ACD3B332ED513C2 /* readability.js */,
 				0F2F565F064A603E639DC26E /* ServiceCatalog.json */,
 			);
 			path = Resources;
@@ -426,6 +432,7 @@
 				39F97AD8B45E39F8D1F45281 /* darkreader.js in Resources */,
 				C14E7A689411E8DCCC20ED74 /* fanboy-annoyance.json in Resources */,
 				CAD06ACCA8483CC80764D8C8 /* hagezi-light.json in Resources */,
+				39BA918A8D3077E90F5EB5C2 /* readability.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -463,6 +470,7 @@
 				8E4B7701A7A18F51C6109E10 /* NetworkMonitor.swift in Sources */,
 				FC24793EEE444C3F48F17559 /* NotificationManager.swift in Sources */,
 				53C0B5A438EDC6C98FE081AB /* QuickSwitcherView.swift in Sources */,
+				6EA5537AC54A97170DA92F68 /* ReaderMode.swift in Sources */,
 				C65C95AB514FF50CEE9A75D6 /* ServiceCatalog.swift in Sources */,
 				2D9A102388157D9B3C660F70 /* ServiceCatalogEntry.swift in Sources */,
 				365FD38EBDA7455F8E86BEEF /* ServiceIconView.swift in Sources */,
