@@ -22,6 +22,7 @@ targets:
     resources:
       - path: Chorus/Resources/ServiceCatalog.json
       - path: Chorus/Resources/hagezi-light.json
+      - path: Chorus/Resources/fanboy-annoyance.json
       - path: Chorus/Resources/darkreader.js
       - path: Chorus/Resources/NotificationScripts
         optional: true

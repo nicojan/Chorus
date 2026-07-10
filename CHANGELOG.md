@@ -18,6 +18,10 @@ All notable changes to Chorus are documented here. Format loosely follows
   own dark theme a dark one while the app is dark. Chorus guesses which ones need
   it by sampling the page background. Override it per service with Auto, On, or
   Off.
+- **Hide annoyances.** An optional content-blocking setting hides cookie notices,
+  newsletter pop-ups, floating share bars, and similar clutter with Fanboy's
+  Annoyance List. It's off by default, since it can occasionally hide something
+  you wanted.
 
 ### Changed
 

@@ -437,6 +437,15 @@ struct PrivacySettingsView: View {
                 Text("Blocks known ad and tracking domains across your services. It won't remove ads a site serves from its own domain, so YouTube and Facebook ads still get through.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Toggle("Hide annoyances", isOn: Binding(
+                    get: { appState.annoyanceBlockingEnabled },
+                    set: { appState.setAnnoyanceBlockingEnabled($0) }
+                ))
+
+                Text("Hides cookie notices, newsletter pop-ups, floating share bars, and similar clutter. It's more aggressive than ad blocking and can occasionally hide something you wanted, so it's off by default.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -468,6 +477,7 @@ struct AboutSettingsView: View {
     private let licenseURL = URL(string: "https://github.com/nicojan/Chorus/blob/main/LICENSE")!
     private let authorURL = URL(string: "https://nicojan.com/")!
     private let blocklistURL = URL(string: "https://github.com/hagezi/dns-blocklists")!
+    private let annoyanceListURL = URL(string: "https://easylist.to/")!
     private let darkReaderURL = URL(string: "https://github.com/darkreader/darkreader")!
 
     var body: some View {
@@ -495,10 +505,11 @@ struct AboutSettingsView: View {
             }
 
             Section("Content blocking") {
-                Text("Ad and tracker blocking uses the HaGezi DNS blocklist.")
+                Text("Ad and tracker blocking uses the HaGezi DNS blocklist. Annoyance hiding uses Fanboy's Annoyance List from EasyList.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Link("HaGezi blocklists (GPL-3.0)", destination: blocklistURL)
+                Link("EasyList / Fanboy Annoyance List", destination: annoyanceListURL)
             }
 
             Section("Dark theme") {

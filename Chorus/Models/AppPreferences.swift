@@ -90,6 +90,12 @@ final class AppPreferences {
     /// (`autoDarkModeEnabledEffective`), so it's opt-in and upgrades unchanged.
     var autoDarkModeEnabled: Bool?
 
+    /// "Hide annoyances" (cookie notices, newsletter pop-ups, floating bars) on
+    /// top of ad/tracker blocking. Optional for SwiftData lightweight migration;
+    /// nil is treated as off — it's opt-in because cosmetic hiding is more
+    /// aggressive than domain blocking.
+    var annoyanceBlockingEnabled: Bool?
+
     init(
         id: UUID = UUID(),
         appPresenceMode: AppPresenceMode = .dock,
@@ -109,7 +115,8 @@ final class AppPreferences {
         railLayoutRaw: String? = nil,
         appearanceModeRaw: String? = nil,
         contentBlockingEnabled: Bool? = nil,
-        autoDarkModeEnabled: Bool? = nil
+        autoDarkModeEnabled: Bool? = nil,
+        annoyanceBlockingEnabled: Bool? = nil
     ) {
         self.id = id
         self.appPresenceMode = appPresenceMode
@@ -130,6 +137,7 @@ final class AppPreferences {
         self.appearanceModeRaw = appearanceModeRaw
         self.contentBlockingEnabled = contentBlockingEnabled
         self.autoDarkModeEnabled = autoDarkModeEnabled
+        self.annoyanceBlockingEnabled = annoyanceBlockingEnabled
     }
 
     /// Materialises the storage-optional default zoom (nil → 1.0).
@@ -151,4 +159,7 @@ final class AppPreferences {
 
     /// Materialises the storage-optional auto-dark flag (nil → false).
     var autoDarkModeEnabledEffective: Bool { autoDarkModeEnabled ?? false }
+
+    /// Materialises the storage-optional annoyance-blocking flag (nil → false).
+    var annoyanceBlockingEnabledEffective: Bool { annoyanceBlockingEnabled ?? false }
 }

@@ -90,6 +90,10 @@ final class AppState {
     /// `setContentBlockingEnabled(_:)`.
     var contentBlockingEnabled = true
 
+    /// "Hide annoyances" toggle, mirrored from AppPreferences at launch. Written
+    /// via `setAnnoyanceBlockingEnabled(_:)`.
+    var annoyanceBlockingEnabled = false
+
     /// Global "dark-theme services without one" toggle, mirrored from
     /// AppPreferences at launch. Written via `setAutoDarkModeEnabled(_:)`.
     var autoDarkModeEnabled = false
@@ -1011,6 +1015,7 @@ final class AppState {
         lockOnLaunch = prefs?.lockOnLaunch ?? true
         lockOnSleep = prefs?.lockOnSleep ?? true
         contentBlockingEnabled = prefs?.contentBlockingEnabledEffective ?? true
+        annoyanceBlockingEnabled = prefs?.annoyanceBlockingEnabledEffective ?? false
         autoDarkModeEnabled = prefs?.autoDarkModeEnabledEffective ?? false
         // Start locked at launch when opted in; ContentView's lock overlay
         // prompts for Touch ID on appear.
@@ -1078,6 +1083,7 @@ final class AppState {
     /// web views that were built first.
     private func startContentBlocker() {
         contentBlocker.isEnabled = contentBlockingEnabled
+        contentBlocker.annoyanceEnabled = annoyanceBlockingEnabled
         contentBlocker.onReady = { [weak self] in
             // Lists finished compiling after some web views were already built —
             // attach them in place (no teardown, no reload, no lost polling).
@@ -1097,6 +1103,20 @@ final class AppState {
             try modelContainer.mainContext.save()
         } catch {
             AppLogger.dataStore.error("Failed to save content-blocking toggle: \(error.localizedDescription)")
+        }
+        webViewPool.reattachContentBlocker()
+    }
+
+    /// Flips annoyance hiding, persists it, and re-attaches lists to live views.
+    func setAnnoyanceBlockingEnabled(_ enabled: Bool) {
+        annoyanceBlockingEnabled = enabled
+        contentBlocker.annoyanceEnabled = enabled
+        let prefs = ensurePreferences()
+        prefs.annoyanceBlockingEnabled = enabled
+        do {
+            try modelContainer.mainContext.save()
+        } catch {
+            AppLogger.dataStore.error("Failed to save annoyance-blocking toggle: \(error.localizedDescription)")
         }
         webViewPool.reattachContentBlocker()
     }
