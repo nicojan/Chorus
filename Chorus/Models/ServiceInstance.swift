@@ -49,6 +49,12 @@ final class ServiceInstance {
     /// shipped — not retroactively for every service the user already had.
     var hasSeenPasskeyNotice: Bool?
 
+    /// Per-service opt-out from the global content blocker. Optional for
+    /// SwiftData lightweight migration; nil is treated as "not opted out"
+    /// (see `isContentBlockingDisabled`), so a service is blocked whenever the
+    /// global toggle is on unless the user turns it off for that service.
+    var contentBlockingDisabled: Bool?
+
     @Relationship(deleteRule: .cascade, inverse: \SpaceServiceLink.service)
     var spaceLinks: [SpaceServiceLink]
 
@@ -64,6 +70,10 @@ final class ServiceInstance {
     /// Whether the passkey-limitation notice still needs to be shown for this
     /// service (nil or false → not yet seen).
     var needsPasskeyNotice: Bool { !(hasSeenPasskeyNotice ?? false) }
+
+    /// Whether the content blocker is turned off for this service (nil → not
+    /// opted out, i.e. the service is blocked when the global toggle is on).
+    var isContentBlockingDisabled: Bool { contentBlockingDisabled ?? false }
 
     /// Materialises the storage-optional OS-notification flag (nil → true), so
     /// services created before this flag existed keep forwarding notifications.
@@ -94,7 +104,8 @@ final class ServiceInstance {
         osNotificationsEnabled: Bool? = nil,
         customCSS: String? = nil,
         forceDarkMode: Bool? = nil,
-        hasSeenPasskeyNotice: Bool? = nil
+        hasSeenPasskeyNotice: Bool? = nil,
+        contentBlockingDisabled: Bool? = nil
     ) {
         self.id = id
         self.label = label
@@ -113,6 +124,7 @@ final class ServiceInstance {
         self.customCSS = customCSS
         self.forceDarkMode = forceDarkMode
         self.hasSeenPasskeyNotice = hasSeenPasskeyNotice
+        self.contentBlockingDisabled = contentBlockingDisabled
         self.spaceLinks = []
         self.createdAt = Date()
         self.lastAccessedAt = Date()

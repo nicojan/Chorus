@@ -156,6 +156,23 @@ testers the notarized DMG directly.
 
 ---
 
+## Content blocklist
+
+The ad/tracker blocker compiles a bundled rule list (`Chorus/Resources/hagezi-light.json`)
+at launch; there is no runtime download, so list updates ship with each release.
+
+To refresh it, run `scripts/convert_blocklist.sh` and commit the regenerated JSON.
+The script downloads a pinned HaGezi "Light" release and converts it to Safari
+content-blocker JSON with AdGuard's SafariConverterLib. Bump the pinned
+`HAGEZI_REF` / `CONVERTER_REF` in the script deliberately.
+
+**Licensing:** SafariConverterLib is GPLv3 and is used **only as a build tool** —
+its JSON output is bundled; the library is never linked into the app. Do NOT add
+it to `project.yml` `packages`, or Chorus (MIT) becomes a GPL derivative. HaGezi's
+data is GPL-3.0; its attribution + source link ship in the About settings pane.
+
+---
+
 ## Known gaps / future work
 
 - **Camera/microphone**: entitlements + `NS*UsageDescription` strings are in

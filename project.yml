@@ -21,6 +21,7 @@ targets:
           - "**/.DS_Store"
     resources:
       - path: Chorus/Resources/ServiceCatalog.json
+      - path: Chorus/Resources/hagezi-light.json
       - path: Chorus/Resources/NotificationScripts
         optional: true
     dependencies:

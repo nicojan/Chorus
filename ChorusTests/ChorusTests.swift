@@ -664,6 +664,60 @@ final class ChorusTests: XCTestCase {
         XCTAssertFalse(service.needsPasskeyNotice)
     }
 
+    // MARK: - Content blocker
+
+    func testContentBlockingDisabledDefaultsFalse() {
+        let service = ServiceInstance(label: "Test", url: "https://example.com")
+        XCTAssertFalse(service.isContentBlockingDisabled)
+    }
+
+    func testContentBlockingDisabledWhenOptedOut() {
+        let service = ServiceInstance(label: "Test", url: "https://example.com", contentBlockingDisabled: true)
+        XCTAssertTrue(service.isContentBlockingDisabled)
+    }
+
+    func testContentBlockingEnabledDefaultsTrue() {
+        // nil (existing installs / fresh) resolves to enabled.
+        XCTAssertTrue(AppPreferences().contentBlockingEnabledEffective)
+        XCTAssertFalse(AppPreferences(contentBlockingEnabled: false).contentBlockingEnabledEffective)
+    }
+
+    func testBlocklistIdentifierIsStableAndContentAddressed() {
+        let a = BlocklistSupport.identifier(prefix: "hz", forJSON: "[1,2,3]")
+        let b = BlocklistSupport.identifier(prefix: "hz", forJSON: "[1,2,3]")
+        let c = BlocklistSupport.identifier(prefix: "hz", forJSON: "[1,2,4]")
+        XCTAssertEqual(a, b)                 // same JSON → same id (cache hit)
+        XCTAssertNotEqual(a, c)              // changed JSON → new id (recompile)
+        XCTAssertTrue(a.hasPrefix("hz-"))
+    }
+
+    func testBlocklistRuleCountAndChunkingGuard() throws {
+        let json = "[{\"x\":1},{\"x\":2},{\"x\":3}]"
+        XCTAssertEqual(try BlocklistSupport.ruleCount(inJSON: json), 3)
+        XCTAssertFalse(BlocklistSupport.needsChunking(count: 3, cap: 5))
+        XCTAssertTrue(BlocklistSupport.needsChunking(count: 6, cap: 5))
+    }
+
+    func testBlocklistChunkUnderCapReturnsSingle() throws {
+        let json = "[{\"x\":1},{\"x\":2}]"
+        let chunks = try BlocklistSupport.chunk(json: json, cap: 10)
+        XCTAssertEqual(chunks.count, 1)
+        XCTAssertEqual(chunks.first, json)
+    }
+
+    func testBlocklistChunkSplitsOverCapPreservingTotal() throws {
+        let rules = (0..<7).map { "{\"x\":\($0)}" }.joined(separator: ",")
+        let json = "[\(rules)]"
+        let chunks = try BlocklistSupport.chunk(json: json, cap: 3)
+        XCTAssertEqual(chunks.count, 3)  // 3 + 3 + 1
+        let total = try chunks.reduce(0) { $0 + (try BlocklistSupport.ruleCount(inJSON: $1)) }
+        XCTAssertEqual(total, 7)
+    }
+
+    func testBlocklistChunkRejectsNonArray() {
+        XCTAssertThrowsError(try BlocklistSupport.chunk(json: "{\"not\":\"an array\"}"))
+    }
+
     // MARK: - Rail layout preference
 
     func testRailLayoutParsesFromStoredValueWithSidebarFallback() {

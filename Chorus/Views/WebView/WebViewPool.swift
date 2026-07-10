@@ -26,6 +26,7 @@ final class WebViewPool {
 
     private let dataStoreManager: DataStoreManager
     private let userScriptManager: UserScriptManager
+    private let contentBlocker: ContentBlockerManager
 
     /// The currently active/displayed service
     private(set) var activeServiceID: UUID?
@@ -80,10 +81,12 @@ final class WebViewPool {
 
     init(
         dataStoreManager: DataStoreManager,
-        userScriptManager: UserScriptManager
+        userScriptManager: UserScriptManager,
+        contentBlocker: ContentBlockerManager
     ) {
         self.dataStoreManager = dataStoreManager
         self.userScriptManager = userScriptManager
+        self.contentBlocker = contentBlocker
     }
 
     func webView(for instance: ServiceInstance) -> WKWebView {
@@ -422,9 +425,39 @@ final class WebViewPool {
             customCSS: combinedCSS.isEmpty ? nil : combinedCSS,
             on: controller
         )
+        // Attach the compiled content-blocking rule lists (ad/tracker domains)
+        // when blocking is enabled and this service hasn't opted out. Returns
+        // empty — a no-op — until the lists finish compiling at launch; those
+        // web views pick the lists up via reattachContentBlocker().
+        for ruleList in contentBlocker.ruleLists(for: instance) {
+            controller.add(ruleList)
+        }
+
         config.userContentController = controller
 
         return config
+    }
+
+    /// Resolves a service's per-service content-blocking opt-out by id. Wired at
+    /// AppState init so `reattachContentBlocker` can re-evaluate a live web view
+    /// without holding its `ServiceInstance`.
+    var contentBlockingOptOut: ((UUID) -> Bool)?
+
+    /// Updates the content-blocking rule lists on every live web view *in place*
+    /// — no teardown — so it takes effect without reloading the page, dropping
+    /// background badge polls, or discarding preloaded views. Called when the
+    /// blocklist finishes compiling after launch and when the global toggle
+    /// flips; views built afterward already carry the right lists via
+    /// `makeConfiguration`.
+    func reattachContentBlocker() {
+        for (id, webView) in webViews {
+            let controller = webView.configuration.userContentController
+            controller.removeAllContentRuleLists()
+            let optedOut = contentBlockingOptOut?(id) ?? false
+            for ruleList in contentBlocker.ruleLists(optedOut: optedOut) {
+                controller.add(ruleList)
+            }
+        }
     }
 
     /// When exceeding maxLoaded web views, fully hibernate the least recently used ones.

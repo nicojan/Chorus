@@ -79,6 +79,12 @@ final class AppPreferences {
     /// unknown resolves to `.system`. Read via `appearanceMode`.
     var appearanceModeRaw: String?
 
+    /// Global on/off for the network content blocker. Optional for SwiftData
+    /// lightweight migration; nil is treated as enabled (`contentBlockingEnabledEffective`),
+    /// so both fresh installs and existing installs upgrading into the feature
+    /// get blocking on by default.
+    var contentBlockingEnabled: Bool?
+
     init(
         id: UUID = UUID(),
         appPresenceMode: AppPresenceMode = .dock,
@@ -96,7 +102,8 @@ final class AppPreferences {
         lockOnLaunch: Bool? = nil,
         lockOnSleep: Bool? = nil,
         railLayoutRaw: String? = nil,
-        appearanceModeRaw: String? = nil
+        appearanceModeRaw: String? = nil,
+        contentBlockingEnabled: Bool? = nil
     ) {
         self.id = id
         self.appPresenceMode = appPresenceMode
@@ -115,6 +122,7 @@ final class AppPreferences {
         self.lockOnSleep = lockOnSleep
         self.railLayoutRaw = railLayoutRaw
         self.appearanceModeRaw = appearanceModeRaw
+        self.contentBlockingEnabled = contentBlockingEnabled
     }
 
     /// Materialises the storage-optional default zoom (nil → 1.0).
@@ -130,4 +138,7 @@ final class AppPreferences {
     var appearanceMode: AppearanceMode {
         appearanceModeRaw.flatMap(AppearanceMode.init(rawValue:)) ?? .system
     }
+
+    /// Materialises the storage-optional content-blocking flag (nil → true).
+    var contentBlockingEnabledEffective: Bool { contentBlockingEnabled ?? true }
 }

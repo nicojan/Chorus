@@ -411,6 +411,17 @@ struct PrivacySettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Section("Content Blocking") {
+                Toggle("Block ads and trackers", isOn: Binding(
+                    get: { appState.contentBlockingEnabled },
+                    set: { appState.setContentBlockingEnabled($0) }
+                ))
+
+                Text("Blocks known ad and tracking domains across your services. It won't remove ads a site serves from its own domain, so YouTube and Facebook ads still get through.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
     }
@@ -440,6 +451,7 @@ struct AboutSettingsView: View {
     private let repoURL = URL(string: "https://github.com/nicojan/Chorus")!
     private let licenseURL = URL(string: "https://github.com/nicojan/Chorus/blob/main/LICENSE")!
     private let authorURL = URL(string: "https://nicojan.com/")!
+    private let blocklistURL = URL(string: "https://github.com/hagezi/dns-blocklists")!
 
     var body: some View {
         Form {
@@ -463,6 +475,13 @@ struct AboutSettingsView: View {
             Section {
                 Link("GitHub Repository", destination: repoURL)
                 Link("MIT License", destination: licenseURL)
+            }
+
+            Section("Content blocking") {
+                Text("Ad and tracker blocking uses the HaGezi DNS blocklist.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Link("HaGezi blocklists (GPL-3.0)", destination: blocklistURL)
             }
 
             Section {

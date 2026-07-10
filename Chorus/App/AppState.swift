@@ -8,6 +8,7 @@ import LocalAuthentication
 final class AppState {
     let modelContainer: ModelContainer
     let webViewPool: WebViewPool
+    let contentBlocker: ContentBlockerManager
     let dataStoreManager: DataStoreManager
     let userScriptManager: UserScriptManager
     let badgeManager: BadgeManager
@@ -66,6 +67,11 @@ final class AppState {
     var lockOnLaunch = true
     var lockOnSleep = true
     var isLocked = false
+
+    /// Global content-blocking toggle, mirrored from AppPreferences at launch.
+    /// The Settings switch writes both this and the persisted value via
+    /// `setContentBlockingEnabled(_:)`.
+    var contentBlockingEnabled = true
 
     /// Non-nil when the persistent store failed and we fell back to in-memory storage.
     /// The UI should display a warning banner when this is set.
@@ -156,13 +162,16 @@ final class AppState {
             badgeManager: badgeManager,
             dataStoreManager: dataStoreManager
         )
+        self.contentBlocker = ContentBlockerManager()
         self.webViewPool = WebViewPool(
             dataStoreManager: dataStoreManager,
-            userScriptManager: userScriptManager
+            userScriptManager: userScriptManager,
+            contentBlocker: contentBlocker
         )
         self.networkMonitor = NetworkMonitor()
 
         loadAppPreferences()
+        startContentBlocker()
         setupNotificationNavigation()
         setupHibernationCallbacks()
         setupMenuBarNavigation()
@@ -374,15 +383,17 @@ final class AppState {
         serviceID: UUID,
         urlChanged: Bool,
         cssChanged: Bool = false,
-        userAgentChanged: Bool = false
+        userAgentChanged: Bool = false,
+        contentBlockingChanged: Bool = false
     ) {
         guard let service = currentServiceInstance(id: serviceID) else { return }
         webViewPool.setNeverHibernate(service.neverHibernate, for: serviceID)
 
-        if cssChanged {
-            // Custom CSS is injected when the web view is built, so rebuild it.
-            // The rebuild also picks up any user-agent change and the new URL,
-            // so those are handled here rather than separately.
+        if cssChanged || contentBlockingChanged {
+            // Custom CSS and the content-blocking opt-out are both applied when
+            // the web view is built, so rebuild it. The rebuild also picks up any
+            // user-agent change and the new URL, so those are handled here rather
+            // than separately.
             webViewPool.recreateWebView(for: serviceID, preserveURL: !urlChanged)
             webViewRebuildToken &+= 1
         } else {
@@ -953,6 +964,7 @@ final class AppState {
         appLockEnabled = prefs?.appLockEnabled ?? false
         lockOnLaunch = prefs?.lockOnLaunch ?? true
         lockOnSleep = prefs?.lockOnSleep ?? true
+        contentBlockingEnabled = prefs?.contentBlockingEnabledEffective ?? true
         // Start locked at launch when opted in; ContentView's lock overlay
         // prompts for Touch ID on appear.
         if appLockEnabled && lockOnLaunch {
@@ -969,6 +981,38 @@ final class AppState {
             self.startQuietHoursTimer()
             self.setupLockObservers()
         }
+    }
+
+    /// Kicks off content-blocklist compilation at launch (before preload, so it
+    /// usually finishes before the first web view is built). Syncs the enabled
+    /// state from prefs and, once the lists are ready, re-attaches them to any
+    /// web views that were built first.
+    private func startContentBlocker() {
+        contentBlocker.isEnabled = contentBlockingEnabled
+        webViewPool.contentBlockingOptOut = { [weak self] id in
+            self?.currentServiceInstance(id: id)?.isContentBlockingDisabled ?? false
+        }
+        contentBlocker.onReady = { [weak self] in
+            // Lists finished compiling after some web views were already built —
+            // attach them in place (no teardown, no reload, no lost polling).
+            self?.webViewPool.reattachContentBlocker()
+        }
+        contentBlocker.start()
+    }
+
+    /// Flips the global content blocker, persists it, and rebuilds live web
+    /// views so the change takes effect immediately.
+    func setContentBlockingEnabled(_ enabled: Bool) {
+        contentBlockingEnabled = enabled
+        contentBlocker.isEnabled = enabled
+        let prefs = ensurePreferences()
+        prefs.contentBlockingEnabled = enabled
+        do {
+            try modelContainer.mainContext.save()
+        } catch {
+            AppLogger.dataStore.error("Failed to save content-blocking toggle: \(error.localizedDescription)")
+        }
+        webViewPool.reattachContentBlocker()
     }
 
     private func setupHibernationCallbacks() {
