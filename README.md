@@ -30,6 +30,9 @@ and Franz, built for Apple Silicon.
   reload (`⌘R`), and drag-to-reorder services and spaces.
 - **Smart link routing.** Cross-service links open in a matching Chorus service
   when one exists, otherwise in your default browser.
+- **Ad & tracker blocking.** Blocks known ad and tracking domains across your
+  services with the HaGezi blocklist, on by default. It won't remove ads a site
+  serves from its own domain, like YouTube.
 - **Resilient.** Pauses polling when offline or asleep, recovers from WebContent
   crashes with backoff, and never deletes your data without consent.
 

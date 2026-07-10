@@ -3,6 +3,29 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Ad and tracker blocking.** Chorus blocks known ad and tracking domains
+  across your services, using the HaGezi "Light" blocklist. It's on by default;
+  turn it off in Settings under Privacy. Because it works at the domain level, it
+  won't remove ads a site serves from its own domain, such as YouTube or Facebook.
+- **Passkey notice.** The first time you open a service, a brief banner explains
+  that passkey sign-in isn't available in Chorus, so you'll sign in with a
+  password or another method.
+
+### Changed
+
+- Adding a service, or creating a space, now switches to it right away.
+
+### Fixed
+
+- Downloading a file now saves it to your Downloads folder. Before, some
+  downloads did nothing, including PDFs from Microsoft Teams.
+- Microsoft Teams opens on its current address, so it no longer shows the
+  "Teams has a new URL" banner.
+
 ## [1.3.0] - 2026-07-05
 
 ### Added
