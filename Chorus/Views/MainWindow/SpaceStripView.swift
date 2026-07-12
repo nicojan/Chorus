@@ -18,9 +18,6 @@ struct SpaceStripView: View {
     /// The space cell that currently holds keyboard focus. Two-way bound to each
     /// cell's `.focused` so the arrow keys move relative to it.
     @FocusState private var focusedSpaceID: UUID?
-    // Content width of the horizontal chip strip; caps the ScrollView so it hugs
-    // the chips. See `horizontalBody`.
-    @State private var stripWidth: CGFloat = .infinity
 
     var body: some View {
         content
@@ -84,32 +81,47 @@ struct SpaceStripView: View {
 
     private var horizontalBody: some View {
         HStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    ForEach(spaces) { space in
-                        spaceCell(space)
-                    }
-                    addSpaceButton
-                }
-                .padding(.leading, 8 + contentInset)
-                .padding(.trailing, 8)
-                .padding(.vertical, 2)
-                .background(RailContentWidthReader())
-            }
-            // Hug the chips (see ServiceSidebarView.horizontalBody) so the rest
-            // of the row is a window-drag gap.
-            .frame(maxWidth: stripWidth, alignment: .leading)
-            .onPreferenceChange(RailContentWidthKey.self) { stripWidth = $0 }
+            chipStrip
 
-            // The OS window drag is off in this layout (chip drags reorder), so a
-            // trailing handle keeps the top row a place to move the window from.
-            WindowDragHandle()
-                .frame(minWidth: 40, maxWidth: .infinity)
-                .contentShape(Rectangle())
-                .accessibilityHidden(true)
+            // Empty stretch. It draws nothing and takes no hit of its own, so a
+            // click here falls through to the window-drag handle behind the row.
+            Spacer(minLength: 40)
         }
         .frame(height: ServiceTabView.height + 4)
+        // The OS window drag is off in this layout (chip drags reorder), so a
+        // full-width drag handle behind the row makes every empty area move the
+        // window; the chips sit in front and take their own clicks. Mirrors
+        // ServiceSidebarView.horizontalBody.
+        .background(WindowDragHandle())
         .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    /// The chip strip hugs its content when the spaces fit — leaving the rest of
+    /// the row as draggable empty space — and scrolls only on overflow.
+    /// `ViewThatFits` is deterministic where measuring the content width and
+    /// capping the scroll view was not (it could leave the scroll view filling
+    /// half the row, so only the far side dragged).
+    private var chipStrip: some View {
+        ViewThatFits(in: .horizontal) {
+            chipRow
+            ScrollView(.horizontal, showsIndicators: false) {
+                chipRow
+            }
+        }
+    }
+
+    /// The row of space chips plus the add button. A plain `HStack` (not lazy)
+    /// so `ViewThatFits` can measure its width to decide whether the chips fit.
+    private var chipRow: some View {
+        HStack(spacing: 4) {
+            ForEach(spaces) { space in
+                spaceCell(space)
+            }
+            addSpaceButton
+        }
+        .padding(.leading, 8 + contentInset)
+        .padding(.trailing, 8)
+        .padding(.vertical, 2)
     }
 
     @ViewBuilder

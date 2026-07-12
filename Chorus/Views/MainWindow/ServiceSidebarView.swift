@@ -42,24 +42,6 @@ struct WindowMovableConfigurator: NSViewRepresentable {
     }
 }
 
-/// Reports the width of a horizontal rail's content, so the strip can be capped
-/// at its content width (hug the tabs, leave the rest of the row draggable).
-struct RailContentWidthKey: PreferenceKey {
-    static let defaultValue: CGFloat = .infinity
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-/// Measures its container's width and publishes it via `RailContentWidthKey`.
-struct RailContentWidthReader: View {
-    var body: some View {
-        GeometryReader { proxy in
-            Color.clear.preference(key: RailContentWidthKey.self, value: proxy.size.width)
-        }
-    }
-}
-
 /// A transparent strip that moves the window on click-drag, the way Chrome lets
 /// you drag the empty part of its tab strip. Used to fill the reserved gap in
 /// the top-bar rails, where the OS window drag is off (see
