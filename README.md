@@ -7,7 +7,7 @@ and Franz, built for Apple Silicon.
 
 **[Download the latest release](https://github.com/nicojan/Chorus/releases/latest)** (macOS 14 or later). The build is signed, notarized, and updates itself via Sparkle.
 
-> Status: 1.4.0 is the current release. See [CHANGELOG.md](CHANGELOG.md) for
+> Status: 1.5.0 is the current release. See [CHANGELOG.md](CHANGELOG.md) for
 > what changed.
 
 ![Chorus running several web services in one window](assets/screenshot.png)
@@ -69,7 +69,7 @@ than syncing across devices.
 ## Requirements
 
 - macOS 14 (Sonoma) or later
-- Xcode 15+ / Swift 5.9+
+- Xcode 16+ / Swift 6
 - [XcodeGen](https://github.com/yonsm/XcodeGen) (`brew install xcodegen`). The
   Xcode project is generated from `project.yml`.
 
