@@ -149,9 +149,6 @@ struct ServiceSidebarView: View {
     /// each cell's `.focused`, so a click or Tab that focuses a cell records it
     /// here and the arrow keys move relative to it.
     @FocusState private var focusedServiceID: UUID?
-    // Content width of the horizontal tab strip; caps the ScrollView so it hugs
-    // the tabs (starts unconstrained until measured). See `horizontalBody`.
-    @State private var tabStripWidth: CGFloat = .infinity
     private static let serviceDropMidpoint: CGFloat = 23
     private static let serviceDropMidpointHorizontal: CGFloat = 60
 
@@ -260,19 +257,42 @@ struct ServiceSidebarView: View {
 
     private var horizontalBody: some View {
         HStack(spacing: 8) {
+            tabStrip
+
+            // Empty stretch between the tabs and the nav buttons. It draws
+            // nothing and takes no hit of its own, so a click here falls through
+            // to the window-drag handle behind the row.
+            Spacer(minLength: 40)
+
+            // Nav buttons live at the far right of the tab bar (top-right corner
+            // of the window), acting on the active service.
+            WebNavButtons(webViewState: appState.webViewState, homeURL: activeHomeURL)
+                .padding(.trailing, 10)
+        }
+        .frame(height: ServiceTabView.height + 4)
+        // The OS window drag is off in the top-bar and hybrid layouts, so tab
+        // drags reorder instead of moving the window (see
+        // WindowMovableConfigurator). A full-width drag handle behind the row
+        // restores "click any empty part of the bar to move the window": the
+        // tabs and nav buttons sit in front and take their own clicks, and every
+        // empty area falls through to here. This replaces a measure-and-cap on
+        // the tab scroll view that could leave it greedily filling half the row
+        // — so only the far side dragged.
+        .background(WindowDragHandle())
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    /// The tab strip hugs its content when the tabs fit — leaving the rest of the
+    /// bar as draggable empty space — and scrolls only when there are too many to
+    /// fit. `ViewThatFits` picks the plain (hugging) row first and falls back to
+    /// the scrolling row, which is deterministic where measuring the content
+    /// width and capping the scroll view was not.
+    private var tabStrip: some View {
+        ViewThatFits(in: .horizontal) {
+            tabRow
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 4) {
-                        ForEach(filteredLinks) { link in
-                            serviceRow(for: link)
-                                .id(link.service.id)
-                        }
-                        addServiceButton
-                    }
-                    .padding(.leading, 8 + contentInset)
-                    .padding(.trailing, 8)
-                    .padding(.vertical, 2)
-                    .background(RailContentWidthReader())
+                    tabRow
                 }
                 // Keep the active service visible when it's selected off-screen
                 // (⌘1–9, quick switcher, or a routed link).
@@ -287,29 +307,22 @@ struct ServiceSidebarView: View {
                     }
                 }
             }
-            // Cap the tab strip at its content width so it hugs the tabs when
-            // they fit (freeing the rest of the row for the drag gap) and
-            // shrinks-and-scrolls only when there are too many to fit.
-            .frame(maxWidth: tabStripWidth, alignment: .leading)
-            .onPreferenceChange(RailContentWidthKey.self) { tabStripWidth = $0 }
-
-            // A gap that moves the window on drag, filling the strip between the
-            // tabs and the nav buttons. The OS window drag is off in this layout
-            // so tab drags reorder (see WindowMovableConfigurator); this keeps a
-            // place to move the window from, the way Chrome lets you drag the
-            // empty part of its tab strip.
-            WindowDragHandle()
-                .frame(minWidth: 72, maxWidth: .infinity)
-                .contentShape(Rectangle())
-                .accessibilityHidden(true)
-
-            // Nav buttons live at the far right of the tab bar (top-right corner
-            // of the window), acting on the active service.
-            WebNavButtons(webViewState: appState.webViewState, homeURL: activeHomeURL)
-                .padding(.trailing, 10)
         }
-        .frame(height: ServiceTabView.height + 4)
-        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    /// The row of service tabs plus the add button. A plain `HStack` (not lazy)
+    /// so `ViewThatFits` can measure its width to decide whether the tabs fit.
+    private var tabRow: some View {
+        HStack(spacing: 4) {
+            ForEach(filteredLinks) { link in
+                serviceRow(for: link)
+                    .id(link.service.id)
+            }
+            addServiceButton
+        }
+        .padding(.leading, 8 + contentInset)
+        .padding(.trailing, 8)
+        .padding(.vertical, 2)
     }
 
     /// Home URL of the currently selected service, for the nav home button.
