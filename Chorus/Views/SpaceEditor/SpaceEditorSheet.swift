@@ -4,6 +4,10 @@ import SwiftData
 struct SpaceEditorSheet: View {
     let editingSpace: Space?
     @Binding var selectedSpaceID: UUID?
+    /// Called with the newly created space right after it's saved and selected.
+    /// Lets a caller act on the new space — e.g. move a service into it. Not
+    /// called when editing an existing space.
+    var onCreate: ((Space) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -91,7 +95,7 @@ struct SpaceEditorSheet: View {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
 
-        var createdSpaceID: UUID?
+        var createdSpace: Space?
         if let space = editingSpace {
             space.name = trimmed
             space.emoji = selectedEmoji
@@ -99,7 +103,7 @@ struct SpaceEditorSheet: View {
             let nextOrder = (spaces.map(\.sortOrder).max() ?? -1) + 1
             let space = Space(name: trimmed, emoji: selectedEmoji, sortOrder: nextOrder)
             modelContext.insert(space)
-            createdSpaceID = space.id
+            createdSpace = space
         }
 
         do {
@@ -110,9 +114,12 @@ struct SpaceEditorSheet: View {
 
         // Switch to a freshly created space. It has no services yet, so clear the
         // service selection — the content area shows the empty state for it.
-        if let createdSpaceID {
-            selectedSpaceID = createdSpaceID
+        // A caller can hook `onCreate` to place something in it (e.g. move a
+        // service), which may re-set the service selection.
+        if let createdSpace {
+            selectedSpaceID = createdSpace.id
             appState.selectedServiceID = nil
+            onCreate?(createdSpace)
         }
         dismiss()
     }

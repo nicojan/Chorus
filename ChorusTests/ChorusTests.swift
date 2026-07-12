@@ -1,4 +1,5 @@
 import XCTest
+import SwiftData
 @testable import Chorus
 
 @MainActor
@@ -880,6 +881,79 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(result.groups[0].services[0] === result.groups[1].services[0])
         // No ungrouped bucket when every service belongs to a space.
         XCTAssertFalse(result.groups.contains { $0.space == nil })
+    }
+
+    // MARK: - Move service to space
+
+    func testEligibleSpaceIDsExcludesCurrentMemberships() {
+        let a = UUID(), b = UUID(), c = UUID()
+        // A service that lives in `a` can be moved to `b` and `c`, not `a`.
+        XCTAssertEqual(
+            SpaceMove.eligibleSpaceIDs(allSpaceIDs: [a, b, c], memberSpaceIDs: [a]),
+            [b, c]
+        )
+        // Order follows `allSpaceIDs` (the sorted space rail).
+        XCTAssertEqual(
+            SpaceMove.eligibleSpaceIDs(allSpaceIDs: [c, a, b], memberSpaceIDs: [a]),
+            [c, b]
+        )
+    }
+
+    func testEligibleSpaceIDsEmptyWhenServiceIsEverywhere() {
+        let a = UUID(), b = UUID()
+        // Already a member of every space → nothing to move into (menu falls
+        // back to "New Space…" only).
+        XCTAssertEqual(
+            SpaceMove.eligibleSpaceIDs(allSpaceIDs: [a, b], memberSpaceIDs: [a, b]),
+            []
+        )
+        // No spaces at all → nothing eligible.
+        XCTAssertEqual(
+            SpaceMove.eligibleSpaceIDs(allSpaceIDs: [], memberSpaceIDs: [a]),
+            []
+        )
+    }
+
+    /// Exercises the SwiftData reassignment behind `ServiceSidebarView.moveService`
+    /// against a real in-memory store: repointing a link's `space` relocates the
+    /// service between spaces (the source space loses it, the target gains it at
+    /// the tail) and never leaves the service with zero or duplicate links.
+    func testMoveServiceRelocatesLinkBetweenSpacesAtTail() throws {
+        let container = try ModelContainer(
+            for: Space.self, ServiceInstance.self, SpaceServiceLink.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let ctx = container.mainContext
+
+        let spaceA = Space(name: "A", emoji: "🅰️", sortOrder: 0)
+        let spaceB = Space(name: "B", emoji: "🅱️", sortOrder: 1)
+        let moving = ServiceInstance(label: "Slack", url: "https://s.example")
+        let residentOfB = ServiceInstance(label: "Gmail", url: "https://g.example")
+        [spaceA, spaceB].forEach(ctx.insert)
+        [moving, residentOfB].forEach(ctx.insert)
+
+        let movingLink = SpaceServiceLink(sortOrder: 0, space: spaceA, service: moving)
+        let bLink = SpaceServiceLink(sortOrder: 0, space: spaceB, service: residentOfB)
+        [movingLink, bLink].forEach(ctx.insert)
+        try ctx.save()
+
+        // Replicate moveService: compute the target's tail order *before*
+        // repointing, then reassign the link's space.
+        let before = try ctx.fetch(FetchDescriptor<SpaceServiceLink>())
+        let targetOrders = before.filter { $0.space.id == spaceB.id }.map(\.sortOrder)
+        movingLink.sortOrder = (targetOrders.max() ?? -1) + 1
+        movingLink.space = spaceB
+        try ctx.save()
+
+        let after = try ctx.fetch(FetchDescriptor<SpaceServiceLink>())
+        let inA = after.filter { $0.space.id == spaceA.id }
+        let inB = after.filter { $0.space.id == spaceB.id }.sorted { $0.sortOrder < $1.sortOrder }
+
+        XCTAssertTrue(inA.isEmpty, "source space should hold no links after the move")
+        XCTAssertEqual(inB.map { $0.service.label }, ["Gmail", "Slack"], "moved service lands at the tail of the target")
+        XCTAssertEqual(inB.last?.sortOrder, 1)
+        // The service keeps exactly one link: no orphan, no double-link.
+        XCTAssertEqual(after.filter { $0.service.id == moving.id }.count, 1)
     }
 
 }

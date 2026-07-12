@@ -80,6 +80,17 @@ struct WindowDragHandle: NSViewRepresentable {
     }
 }
 
+enum SpaceMove {
+    /// The spaces a service can be moved into: every space except the ones it
+    /// already belongs to. Moving into a space it's already in would just
+    /// double-link it, and the current space is one of those memberships, so
+    /// this naturally leaves it out too. Order follows `allSpaceIDs` (the
+    /// sorted space rail).
+    static func eligibleSpaceIDs(allSpaceIDs: [UUID], memberSpaceIDs: Set<UUID>) -> [UUID] {
+        allSpaceIDs.filter { !memberSpaceIDs.contains($0) }
+    }
+}
+
 enum ServiceReorder {
     static func reorderedIDs(
         _ ids: [UUID],
@@ -116,6 +127,7 @@ struct ServiceSidebarView: View {
     let spaceID: UUID
     @Binding var selectedServiceID: UUID?
     @Query private var allLinks: [SpaceServiceLink]
+    @Query(sort: \Space.sortOrder) private var spaces: [Space]
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
 
@@ -129,6 +141,10 @@ struct ServiceSidebarView: View {
     @State private var showingAddService = false
     @State private var confirmingDelete: SpaceServiceLink?
     @State private var editingService: ServiceInstance?
+    /// The link whose service is being moved into a brand-new space: set when the
+    /// user picks "New Space…", it presents the space editor and, on create,
+    /// moves the service into the freshly made space.
+    @State private var movingToNewSpace: SpaceServiceLink?
     /// The service cell that currently holds keyboard focus. Two-way bound to
     /// each cell's `.focused`, so a click or Tab that focuses a cell records it
     /// here and the arrow keys move relative to it.
@@ -187,6 +203,23 @@ struct ServiceSidebarView: View {
             }
         }
         Divider()
+        Menu("Move to Space") {
+            let targets = eligibleSpaces(for: link.service)
+            ForEach(targets) { space in
+                Button {
+                    moveService(link: link, to: space, followToSpace: false)
+                } label: {
+                    Text("\(space.emoji)  \(space.name)")
+                }
+                .accessibilityLabel(space.name)
+            }
+            if !targets.isEmpty {
+                Divider()
+            }
+            Button("New Space…") {
+                movingToNewSpace = link
+            }
+        }
         Button("Remove from this space") {
             removeFromSpace(link: link)
         }
@@ -437,6 +470,18 @@ struct ServiceSidebarView: View {
         .sheet(item: $editingService) { service in
             EditServiceSheet(service: service)
         }
+        .sheet(item: $movingToNewSpace) { link in
+            SpaceEditorSheet(
+                editingSpace: nil,
+                selectedSpaceID: Binding(
+                    get: { appState.selectedSpaceID },
+                    set: { appState.selectedSpaceID = $0 }
+                ),
+                onCreate: { newSpace in
+                    moveService(link: link, to: newSpace, followToSpace: true)
+                }
+            )
+        }
         .confirmationDialog(
             "Delete \(confirmingDelete?.service.label ?? "service")?",
             isPresented: Binding(
@@ -480,6 +525,49 @@ struct ServiceSidebarView: View {
     /// waiting for the next poll tick.
     private func syncBadge(for service: ServiceInstance) {
         appState.refreshBadgeState(for: service.id)
+    }
+
+    /// Spaces the service can be moved into: every space except the ones it's
+    /// already in. Membership is read from the reliable `allLinks` query, not the
+    /// service's inverse `spaceLinks` relationship, which can be stale (see the
+    /// badge-count note in SpaceStripView).
+    private func eligibleSpaces(for service: ServiceInstance) -> [Space] {
+        let memberIDs = Set(
+            allLinks
+                .filter { $0.modelContext != nil && $0.service.id == service.id }
+                .map { $0.space.id }
+        )
+        let eligible = Set(SpaceMove.eligibleSpaceIDs(allSpaceIDs: spaces.map(\.id), memberSpaceIDs: memberIDs))
+        return spaces.filter { eligible.contains($0.id) }
+    }
+
+    /// Relocates a service to another space by repointing its existing link
+    /// (rather than delete-then-create), so the service never drops to zero links
+    /// and no data store is orphaned. The link lands at the end of the target's
+    /// list. `followToSpace` switches the view to the target and re-selects the
+    /// service there — used for the new-space path, where the target is empty and
+    /// landing on it makes sense; the existing-space path leaves the view put and
+    /// just clears selection if the moved service was showing, matching
+    /// "Remove from this space".
+    private func moveService(link: SpaceServiceLink, to targetSpace: Space, followToSpace: Bool) {
+        guard link.modelContext != nil, link.space.id != targetSpace.id else { return }
+        let serviceID = link.service.id
+
+        // Compute the tail order before repointing, so the link's old order in
+        // its current space doesn't count toward the target's max.
+        let targetOrders = allLinks
+            .filter { $0.modelContext != nil && $0.space.id == targetSpace.id }
+            .map(\.sortOrder)
+        link.sortOrder = (targetOrders.max() ?? -1) + 1
+        link.space = targetSpace
+        save("move service to space")
+
+        if followToSpace {
+            appState.selectedSpaceID = targetSpace.id
+            selectedServiceID = serviceID
+        } else if selectedServiceID == serviceID {
+            selectedServiceID = nil
+        }
     }
 
     private func removeFromSpace(link: SpaceServiceLink) {
