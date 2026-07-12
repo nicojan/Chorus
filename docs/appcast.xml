@@ -3,6 +3,24 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.0</title>
+            <pubDate>Sun, 12 Jul 2026 11:50:32 -0700</pubDate>
+            <sparkle:version>9</sparkle:version>
+            <sparkle:shortVersionString>1.5.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>New</h3>
+<ul>
+<li>Move a service to another space: right-click it and pick "Move to Space", then choose an existing space or make a new one.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>You can now move the window by dragging any empty part of the top bar. Before, only the right side worked.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.0/Chorus-1.5.0.dmg" length="8117295" type="application/octet-stream" sparkle:edSignature="Q0kDB3j8FVfAge0wU3i+2xtx7U5USFmxiZLnWHSUDKS4OvotAxU0PxWdUbFpEJeJIwCnQ7f8jA/tw2eIQUOMAw=="/>
+        </item>
+        <item>
             <title>1.4.0</title>
             <pubDate>Thu, 09 Jul 2026 22:17:19 -0700</pubDate>
             <sparkle:version>8</sparkle:version>
