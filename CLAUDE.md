@@ -7,7 +7,7 @@ with Sparkle auto-updates. Not sandboxed, not on the App Store.
 ## Public-facing writing
 
 Everything a user or the public reads — `README.md`, GitHub release notes, the
-appcast and any website copy, `DISTRIBUTION.md`, and every other doc in this
+appcast and any website copy, `release/DISTRIBUTION.md`, and every other doc in this
 public repo — must meet two standards:
 
 1. **Pass the mcp-humanizer check.** Draft the text, run `humanizer_check_text`
@@ -37,6 +37,6 @@ Write plain, direct, active, concrete prose. No marketing gloss, no AI tells.
 
 ## Releasing
 
-See `DISTRIBUTION.md`. In short: the notarized, stapled `Chorus.app` is placed at
+See `release/DISTRIBUTION.md`. In short: the notarized, stapled `Chorus.app` is placed at
 the repo root; package a DMG with `hdiutil`, cut a `gh release`, then sign and
 regenerate `docs/appcast.xml`.

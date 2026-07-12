@@ -19,7 +19,7 @@ same Sparkle signing key):
 | Key | Where | Value |
 |---|---|---|
 | `SUPublicEDKey` | `Chorus/Info.plist` | `6/h2Pfjbo39vHie8JIt/kY7h0wQvmQxj9Ea0W3gnH0w=` — verified to match the ed25519 private key in your login Keychain |
-| `teamID` | `ExportOptions.plist` | `3CY4DX3K45` |
+| `teamID` | `release/ExportOptions.plist` | `3CY4DX3K45` |
 | `SUFeedURL` | `Chorus/Info.plist` | `https://nicojan.github.io/Chorus/appcast.xml` |
 
 ### Hosting (GitHub)
@@ -53,7 +53,7 @@ backed up — if it's lost you cannot ship signed updates to existing users.
 
 2. **Signing** — in the Chorus target's Signing & Capabilities, set your Team and
    ensure the release build signs with **Developer ID Application** (Hardened
-   Runtime already enabled). Set the same Team ID in `ExportOptions.plist`.
+   Runtime already enabled). Set the same Team ID in `release/ExportOptions.plist`.
 
 ---
 
@@ -77,7 +77,7 @@ Run from the repo root. Replace `X.Y.Z` with the new version.
 3. **Export with Developer ID:**
    ```sh
    xcodebuild -exportArchive -archivePath build/Chorus.xcarchive \
-     -exportOptionsPlist ExportOptions.plist -exportPath build/export
+     -exportOptionsPlist release/ExportOptions.plist -exportPath build/export
    ```
 
 4. **Package a DMG.** The installed `create-dmg` is the create-dmg/create-dmg
