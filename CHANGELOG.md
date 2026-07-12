@@ -3,6 +3,18 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.5.0] - 2026-07-12
+
+### Added
+
+- **Move a service to another space.** Right-click a service and pick "Move to
+  Space", then choose an existing space or make a new one.
+
+### Fixed
+
+- You can now move the window by dragging any empty part of the top bar. Before,
+  only the right side worked.
+
 ## [1.4.0] - 2026-07-09
 
 ### Added
