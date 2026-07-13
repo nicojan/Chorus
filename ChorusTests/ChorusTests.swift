@@ -259,6 +259,96 @@ final class ChorusTests: XCTestCase {
         )
     }
 
+    // MARK: - Store integrity after deleting a space (repro: "delete second workspace and quit, won't start")
+
+    /// Reproduces the reported sequence against a real on-disk store: seed two
+    /// spaces with linked services, delete the second (reclaiming its orphaned
+    /// services exactly as `AppState.deleteSpace` does at the SwiftData layer),
+    /// close the container, then reopen it and run the launch-time queries.
+    /// A dangling `SpaceServiceLink` or corrupt store would trap here.
+    func testDeleteSecondSpaceThenReopenStoreIsClean() throws {
+        let schema = Schema([
+            ServiceInstance.self,
+            Space.self,
+            SpaceServiceLink.self,
+            AppPreferences.self,
+        ])
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-repro-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // --- Session 1: seed two spaces, then delete the second ---
+        do {
+            let config = ModelConfiguration(schema: schema, url: storeURL)
+            let container = try ModelContainer(for: schema, configurations: [config])
+            let context = container.mainContext
+
+            let personal = Space(name: "Personal", emoji: "🏠", sortOrder: 0)
+            let work = Space(name: "Work", emoji: "💼", sortOrder: 1)
+            context.insert(personal)
+            context.insert(work)
+
+            func link(_ label: String, to space: Space, order: Int) {
+                let svc = ServiceInstance(label: label, url: "https://\(label).example", catalogEntryID: label)
+                context.insert(svc)
+                context.insert(SpaceServiceLink(sortOrder: order, space: space, service: svc))
+            }
+            link("gmail-personal", to: personal, order: 0)
+            link("claude", to: personal, order: 1)
+            link("gmail-work", to: work, order: 0)
+            link("slack", to: work, order: 1)
+            try context.save()
+
+            // Replicate AppState.deleteSpace's SwiftData operations for `work`.
+            let workID = work.id
+            let doomed = try context.fetch(
+                FetchDescriptor<Space>(predicate: #Predicate { $0.id == workID })
+            ).first!
+            let linkedServices = doomed.serviceLinks.map(\.service)
+            var memberships: [UUID: Set<UUID>] = [:]
+            for service in linkedServices {
+                memberships[service.id] = Set(service.spaceLinks.map { $0.space.id })
+            }
+            // The inverse must be wired for this to be non-empty — the bug was
+            // that it read 0, so nothing was reclaimed and the space's links
+            // were left dangling after the space was deleted.
+            XCTAssertEqual(doomed.serviceLinks.count, 2, "Space.serviceLinks inverse must be populated")
+            let orphaned = AppState.servicesOrphaned(byDeletingSpace: workID, memberships: memberships)
+            XCTAssertEqual(orphaned.count, 2, "Both of Work's services should be reclaimed")
+            for service in linkedServices where orphaned.contains(service.id) {
+                context.delete(service)
+            }
+            context.delete(doomed)
+            try context.save()
+        }
+
+        // --- Session 2: reopen the SAME store and run launch-time queries ---
+        let config = ModelConfiguration(schema: schema, url: storeURL)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+
+        // reapOrphanedServices(): fetch all services, find any with no spaceLinks.
+        let services = try context.fetch(FetchDescriptor<ServiceInstance>())
+        XCTAssertEqual(services.count, 2, "Only Personal's two services should remain")
+        let orphans = services.filter { $0.spaceLinks.isEmpty }
+        XCTAssertTrue(orphans.isEmpty, "No orphaned services should survive the delete")
+
+        // servicesForSpace guard path: materialize each link's relationships.
+        let links = try context.fetch(FetchDescriptor<SpaceServiceLink>())
+        XCTAssertEqual(links.count, 2, "Only Personal's two links should remain")
+        for l in links {
+            XCTAssertNotNil(l.modelContext)
+            XCTAssertNotNil(l.space.modelContext, "Link's space must not dangle")
+            XCTAssertNotNil(l.service.modelContext, "Link's service must not dangle")
+        }
+
+        let spaces = try context.fetch(FetchDescriptor<Space>())
+        XCTAssertEqual(spaces.count, 1)
+        XCTAssertEqual(spaces.first?.name, "Personal")
+    }
+
     // MARK: - WebContent crash backoff
 
     func testCrashBackoffStopsAfterRepeatedCrashes() {

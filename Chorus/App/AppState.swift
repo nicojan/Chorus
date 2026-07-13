@@ -226,6 +226,7 @@ final class AppState {
         setupExternalLinkRouting()
         let didSeedDefaults = seedDefaultDataIfNeeded()
         backfillPasskeyNoticeIfNeeded(freshInstall: didSeedDefaults)
+        reapDanglingLinks()
         reapOrphanedServices()
         restoreWindowState()
         fetchMissingAndStaleFavicons()
@@ -744,6 +745,59 @@ final class AppState {
         }
 
         cleanUpOrphanedDataStores()
+    }
+
+    /// Repairs stores corrupted by a build that shipped before `Space`'s
+    /// link relationship declared its inverse. Without the inverse the
+    /// `.cascade` rule never fired, so deleting a space left its
+    /// `SpaceServiceLink` rows behind with a *dangling* `space` — a non-optional
+    /// relationship pointing at a deleted row. Reading that relationship
+    /// (e.g. the launch badge sweep's `$0.space.id`) traps, which is why an
+    /// affected app crashes on every launch. This finds those links without
+    /// ever touching a dead relationship — it walks outward only from live
+    /// spaces and services (reading link `id`s, never their `space`/`service`)
+    /// and treats any link not reachable from BOTH sides as dangling. Runs once
+    /// at launch, before `reapOrphanedServices` (which then reclaims services
+    /// left with no links) and before anything materializes a link's space.
+    private func reapDanglingLinks() {
+        let context = modelContainer.mainContext
+        let spaces: [Space]
+        let services: [ServiceInstance]
+        let links: [SpaceServiceLink]
+        do {
+            spaces = try context.fetch(FetchDescriptor<Space>())
+            services = try context.fetch(FetchDescriptor<ServiceInstance>())
+            links = try context.fetch(FetchDescriptor<SpaceServiceLink>())
+        } catch {
+            AppLogger.dataStore.error("Failed to fetch models for dangling-link reaping: \(error.localizedDescription)")
+            return
+        }
+        guard !links.isEmpty else { return }
+
+        // A link is intact only if it is reachable from a live space AND a live
+        // service. Building these sets reads `id` on links owned by live models
+        // (safe); it never reads the `space`/`service` of a dangling link.
+        var reachableFromSpace: Set<UUID> = []
+        for space in spaces {
+            for link in space.serviceLinks { reachableFromSpace.insert(link.id) }
+        }
+        var reachableFromService: Set<UUID> = []
+        for service in services {
+            for link in service.spaceLinks { reachableFromService.insert(link.id) }
+        }
+
+        let dangling = links.filter {
+            !reachableFromSpace.contains($0.id) || !reachableFromService.contains($0.id)
+        }
+        guard !dangling.isEmpty else { return }
+
+        for link in dangling { context.delete(link) }
+        do {
+            try context.save()
+            AppLogger.dataStore.info("Reaped \(dangling.count) dangling link(s) at launch")
+        } catch {
+            AppLogger.dataStore.error("Failed to reap dangling links: \(error.localizedDescription)")
+        }
     }
 
     /// Safety net for crash-mid-delete (or stores written by a build that

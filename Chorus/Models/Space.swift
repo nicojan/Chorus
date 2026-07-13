@@ -13,7 +13,14 @@ final class Space {
     /// treats `nil` as `false`.
     var isMuted: Bool?
 
-    @Relationship(deleteRule: .cascade)
+    /// The inverse must be declared explicitly. `SpaceServiceLink` has two
+    /// relationships to different models (`space` and `service`), and the
+    /// service side already claims its own inverse
+    /// (`ServiceInstance.spaceLinks -> inverse: \.service`). With the space
+    /// side left implicit, SwiftData does not wire this pair — `serviceLinks`
+    /// then reads empty and the `.cascade` rule never fires, so deleting a
+    /// Space leaks its links (dangling `space`) and never reclaims services.
+    @Relationship(deleteRule: .cascade, inverse: \SpaceServiceLink.space)
     var serviceLinks: [SpaceServiceLink]
 
     var createdAt: Date

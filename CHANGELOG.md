@@ -3,6 +3,16 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.5.1] - 2026-07-13
+
+### Fixed
+
+- Chorus could fail to start after you deleted a space and quit. Deleting a
+  space left behind stale links to the services it held, and the next launch
+  failed on them. Now deleting a space removes those links, and Chorus repairs
+  any left behind by an earlier version the next time it starts. Thanks to
+  /u/roman_np on Reddit for reporting this.
+
 ## [1.5.0] - 2026-07-12
 
 ### Added

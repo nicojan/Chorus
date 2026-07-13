@@ -7,7 +7,7 @@ and Franz, built for Apple Silicon.
 
 **[Download the latest release](https://github.com/nicojan/Chorus/releases/latest)** (macOS 14 or later). The build is signed, notarized, and updates itself via Sparkle.
 
-> Status: 1.5.0 is the current release. See [CHANGELOG.md](CHANGELOG.md) for
+> Status: 1.5.1 is the current release. See [CHANGELOG.md](CHANGELOG.md) for
 > what changed.
 
 ![Chorus running several web services in one window](assets/screenshot.png)
