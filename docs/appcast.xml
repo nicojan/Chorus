@@ -3,6 +3,20 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.1</title>
+            <pubDate>Mon, 13 Jul 2026 09:54:15 -0700</pubDate>
+            <sparkle:version>10</sparkle:version>
+            <sparkle:shortVersionString>1.5.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Fixed</h3>
+<ul>
+<li>Chorus could fail to start after you deleted a space and quit. Deleting a space left behind stale links to the services it held, and the next launch failed on them. Now deleting a space removes those links, and Chorus repairs any left behind by an earlier version the next time it starts. Thanks to /u/roman_np on Reddit for reporting this.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.1/Chorus-1.5.1.dmg" length="8117625" type="application/octet-stream" sparkle:edSignature="4tqi9Jd4NVNGCmwC24Gbh7FAmmhlQGepb3rabpEho3mv+e83avnTSo37/P4a9uow/qPm0e51/7F13+rGITXeBQ=="/>
+        </item>
+        <item>
             <title>1.5.0</title>
             <pubDate>Sun, 12 Jul 2026 11:50:32 -0700</pubDate>
             <sparkle:version>9</sparkle:version>
