@@ -453,6 +453,45 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         }
     }
 
+    // MARK: - File Upload Picker
+
+    /// Presents the native file picker when a page triggers an
+    /// `<input type="file">` (e.g. Slack's "Upload File" for a profile photo).
+    /// WKWebView shows no picker at all unless this delegate method is
+    /// implemented, so without it every file-upload button silently does
+    /// nothing. Honors the input's `multiple` and `webkitdirectory` attributes.
+    ///
+    /// CRITICAL: `completionHandler` MUST be `@MainActor`. The WebKit header
+    /// annotates the block `WK_SWIFT_UI_ACTOR` (= `@MainActor`), so the imported
+    /// optional-protocol requirement carries that isolation. Drop it and Swift
+    /// silently declines to treat this as the witness — the method never reaches
+    /// the Objective-C runtime (`responds(to:)` is false), WebKit never calls it,
+    /// and the picker never opens, with no error or warning.
+    func webView(
+        _ webView: WKWebView,
+        runOpenPanelWith parameters: WKOpenPanelParameters,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping @MainActor ([URL]?) -> Void
+    ) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = parameters.allowsDirectories
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.resolvesAliases = true
+
+        let handleResponse: (NSApplication.ModalResponse) -> Void = { response in
+            completionHandler(response == .OK ? panel.urls : nil)
+        }
+
+        // Attach as a sheet to the web view's window when we have one; fall back
+        // to a standalone modal panel otherwise (e.g. an OAuth popup web view).
+        if let window = webView.window {
+            panel.beginSheetModal(for: window, completionHandler: handleResponse)
+        } else {
+            panel.begin(completionHandler: handleResponse)
+        }
+    }
+
     // MARK: - Context Menu
 
     // WKWebView provides native context menus by default on macOS.
