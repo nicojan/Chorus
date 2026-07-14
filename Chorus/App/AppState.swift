@@ -57,6 +57,10 @@ final class AppState {
     struct MediaPermissionRequest: Identifiable, Equatable {
         let id: UUID
         let serviceLabel: String
+        /// The requesting origin's host when it differs from the service's own site
+        /// (a cross-domain page inside the service's web view). nil means the
+        /// request came from the service's own origin.
+        let originHost: String?
         /// The device(s) actually being asked about (kind-involved and currently
         /// `.ask`), so the prompt copy names only what's in question — never more.
         let camAsked: Bool
@@ -69,6 +73,21 @@ final class AppState {
             case (true, false): return "camera"
             case (false, false): return "camera or microphone"  // not reached: a prompt always asks something
             }
+        }
+
+        /// Prompt title, naming the real requester: the origin host for a
+        /// cross-domain request, otherwise the service.
+        var title: String {
+            "Allow \(originHost ?? serviceLabel) to use your \(kindLabel)?"
+        }
+
+        /// Prompt body. A cross-domain request says which service opened the
+        /// origin, so the user isn't misled about who is asking.
+        var message: String {
+            if let originHost {
+                return "\(originHost), opened by \(serviceLabel), wants to use your \(kindLabel)."
+            }
+            return "\(serviceLabel) wants to use your \(kindLabel). Change this anytime in the service's settings."
         }
 
         static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
@@ -391,22 +410,11 @@ final class AppState {
 
         let kind = Self.captureKind(from: type)
         let resolution = MediaPermissionResolver.resolve(kind, camera: camera, microphone: microphone)
-        if resolution == .deny { return .deny }
+        if resolution == .deny { return .deny }  // an explicit Deny blocks any origin
 
-        // Shared gates for any grant OR prompt — all fail closed:
-        //  - the requesting origin must belong to the service (closes the
-        //    cross-origin subframe, navigated-away top frame, and shared-OAuth-popup
-        //    escalations);
-        //  - the app must be unlocked (never leak a service name or grant capture
-        //    behind the lock screen);
-        //  - only the service the user is actively viewing may capture — a
-        //    preloaded/background service must never silently grab the camera/mic
-        //    (the .grant path needs this as much as the prompt path) nor throw a
-        //    surprise prompt.
-        guard isCaptureFrameTrusted(frame, service: service) else {
-            logMediaDenyUntrusted(frame, service: service)
-            return .deny
-        }
+        // Never grant or prompt behind the lock screen, or for a service the user
+        // isn't actively viewing — a preloaded/background service must not grab the
+        // camera/mic or throw a surprise prompt. Both fail closed.
         guard !isLocked else {
             AppLogger.webView.info("Media capture denied: app is locked")
             return .deny
@@ -416,22 +424,43 @@ final class AppState {
             return .deny
         }
 
-        if resolution == .grant { return .grant }
+        if isCaptureFrameTrusted(frame, service: service) {
+            // The service's own origin: honor its policy. `.ask` prompts and
+            // remembers the answer on ONLY the device(s) actually asked about
+            // (kind-gated), so a mic-only prompt can't silently pin the camera.
+            if resolution == .grant { return .grant }
+            let asked = MediaPermissionResolver.askedFields(kind, camera: camera, microphone: microphone)
+            let allowed = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                enqueueMediaRequest(
+                    serviceID: serviceID, serviceLabel: service.label, originHost: nil,
+                    camAsked: asked.camera, micAsked: asked.microphone, continuation: continuation)
+            }
+            persistMediaAnswer(serviceID: serviceID, allow: allowed, camAsked: asked.camera, micAsked: asked.microphone)
+            return allowed ? .grant : .deny
+        }
 
-        // resolution == .ask: prompt, and remember the answer on ONLY the
-        // device(s) actually asked about (kind-gated), so a mic-only prompt can
-        // never silently pin the camera to Allow, or vice versa.
-        let asked = MediaPermissionResolver.askedFields(kind, camera: camera, microphone: microphone)
+        // A cross-domain origin inside the service's own web view (e.g. a call
+        // service whose media host differs from its home host). Only the MAIN
+        // frame may prompt — a third-party subframe can't meaningfully consent and
+        // is the spoofiest case, so it fails closed. Prompt naming the REAL origin,
+        // never auto-grant it even when the service is Allow (that would be the
+        // shared-suffix leak), and don't persist (policy is keyed per service, not
+        // per origin — ask again as needed, like a browser).
+        guard frame.isMainFrame else {
+            logMediaDenyUntrusted(frame, service: service)
+            return .deny
+        }
+        let originHost = frame.securityOrigin.host
+        guard !originHost.isEmpty else {
+            logMediaDenyUntrusted(frame, service: service)
+            return .deny
+        }
+        let asked = MediaPermissionResolver.askedFields(kind, camera: .ask, microphone: .ask)
         let allowed = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             enqueueMediaRequest(
-                serviceID: serviceID,
-                serviceLabel: service.label,
-                camAsked: asked.camera,
-                micAsked: asked.microphone,
-                continuation: continuation
-            )
+                serviceID: serviceID, serviceLabel: service.label, originHost: originHost,
+                camAsked: asked.camera, micAsked: asked.microphone, continuation: continuation)
         }
-        persistMediaAnswer(serviceID: serviceID, allow: allowed, camAsked: asked.camera, micAsked: asked.microphone)
         return allowed ? .grant : .deny
     }
 
@@ -439,12 +468,14 @@ final class AppState {
     private func enqueueMediaRequest(
         serviceID: UUID,
         serviceLabel: String,
+        originHost: String?,
         camAsked: Bool,
         micAsked: Bool,
         continuation: CheckedContinuation<Bool, Never>
     ) {
         let request = MediaPermissionRequest(
-            id: UUID(), serviceLabel: serviceLabel, camAsked: camAsked, micAsked: micAsked)
+            id: UUID(), serviceLabel: serviceLabel, originHost: originHost,
+            camAsked: camAsked, micAsked: micAsked)
         mediaQueue.append(PendingMediaEntry(
             request: request,
             serviceID: serviceID,

@@ -17,7 +17,7 @@ The feature is committed but not released. To ship it:
    Mac), put it at the repo root, build the DMG, cut the `gh release`, then sign
    and regenerate `docs/appcast.xml`. Steps are in `release/DISTRIBUTION.md`.
 
-## Camera/microphone trust boundary: one case fixed, one open
+## Camera/microphone trust boundary: both cases handled
 
 Fixed: the capture check now uses
 `WebViewCoordinator.captureOriginBelongsToService`, which treats a curated set of
@@ -27,34 +27,18 @@ so a service pinned to Allow can no longer hand its grant to another site there.
 Same registrable domain still matches, so `*.slack.com` workspaces keep working. A
 test covers it.
 
-Open: trust is anchored to a service's home host, so a call service whose live
-capture host differs by registrable domain is denied. It fails safe, but the call
-breaks. Messenger (`facebook.com` then `messenger.com`) and Teams
-(`*.cloud.microsoft`) are the likely cases, still unverified.
-
-The mechanism to build once it's confirmed is a per-origin prompt. A static
-allowlist is the weaker alternative. When a capture request comes from the
-service's own web view on a host that is not the service's origin, and it comes
-from the main frame rather than a third-party subframe, show a prompt that names
-the real origin ("Allow messenger.com to use your microphone?") instead of
-denying. A service set to Deny still denies, and a matching Allow is never
-extended silently to the foreign origin, so the shared-suffix protection holds.
-Don't persist the foreign-origin answer; our policy store is keyed per service, so
-there is nowhere to record a per-origin choice, and we ask again as needed, the
-way a browser does. This needs no per-service data and no host list to maintain.
-First confirm a Teams, Messenger, or WhatsApp call actually hits this path (the
-`Media capture denied: request origin ...` line names the host). A full Public
-Suffix List would still generalise the suffix handling above.
-
-## Humanizer-check the in-app strings
-
-The public-writing rules now cover in-app strings and error messages (main commit
-`7f55ab8`). Before shipping, run the media feature's user-facing text through the
-humanizer check and Orwell's rules. Cover:
-
-- the permission alert title and message in `ContentView`;
-- the Camera and microphone labels and help in the Edit sheet and Privacy settings;
-- any capture message a user can see.
+Cross-domain calls (also handled): trust is anchored to a service's home host, so
+a call service whose live capture host differs by registrable domain used to be
+denied. Now, when a capture request comes from the service's own web view on a
+non-matching host and it comes from the main frame (not a third-party subframe),
+`resolveMediaPermission` prompts naming the real origin ("Allow messenger.com to
+use your microphone?") instead of denying. A service set to Deny still denies, a
+matching Allow is never extended silently to the foreign origin, and the answer is
+not persisted (policy is keyed per service). Messenger (`facebook.com` then
+`messenger.com`) and Teams (`*.cloud.microsoft`) are the suspected cases but stay
+unverified. Confirm by hand that such a call now prompts rather than failing
+silently. A full Public Suffix List would still generalise the suffix handling
+above.
 
 ## Close the test gaps
 

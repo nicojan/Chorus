@@ -106,8 +106,7 @@ struct ContentView: View {
                 .modelContainer(appState.modelContainer)
         }
         .alert(
-            appState.pendingMediaRequest
-                .map { "Allow \($0.serviceLabel) to use your \($0.kindLabel)?" } ?? "",
+            appState.pendingMediaRequest?.title ?? "",
             isPresented: Binding(
                 get: { appState.pendingMediaRequest != nil },
                 set: { _ in }   // dismissal always routes through a button below
@@ -117,8 +116,7 @@ struct ContentView: View {
             Button("Allow") { appState.answerMediaRequest(request.id, allow: true) }
             Button("Don't Allow", role: .cancel) { appState.answerMediaRequest(request.id, allow: false) }
         } message: { request in
-            Text("\(request.serviceLabel) is asking to use your \(request.kindLabel). "
-                + "You can change this later in the service's settings.")
+            Text(request.message)
         }
         .overlay {
             if appState.isLocked {

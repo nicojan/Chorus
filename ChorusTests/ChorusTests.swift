@@ -1411,4 +1411,18 @@ final class ChorusTests: XCTestCase {
         XCTAssertFalse(C.captureOriginBelongsToService("", serviceHost: "alice.web.app"))
     }
 
+    func testMediaPromptCopyNamesTheRealRequester() {
+        // The service's own origin — the prompt names the service.
+        let own = AppState.MediaPermissionRequest(
+            id: UUID(), serviceLabel: "Slack", originHost: nil, camAsked: false, micAsked: true)
+        XCTAssertEqual(own.title, "Allow Slack to use your microphone?")
+        XCTAssertTrue(own.message.hasPrefix("Slack wants to use your microphone"))
+        // A cross-domain origin — the prompt names the ORIGIN (not the service),
+        // and the body says which service opened it, so it can't spoof the service.
+        let foreign = AppState.MediaPermissionRequest(
+            id: UUID(), serviceLabel: "Messenger", originHost: "messenger.com", camAsked: true, micAsked: true)
+        XCTAssertEqual(foreign.title, "Allow messenger.com to use your camera and microphone?")
+        XCTAssertTrue(foreign.message.hasPrefix("messenger.com, opened by Messenger"))
+    }
+
 }
