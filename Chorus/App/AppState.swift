@@ -32,7 +32,19 @@ final class AppState {
     var selectedServiceID: UUID?
     var showAddService = false
     var showQuickSwitcher = false
-    var doNotDisturb = false
+
+    /// True once launch-time preference loading has finished. Gates the DND
+    /// `didSet`s below so they don't push the effective DND (which touches the
+    /// AppKit dock tile) while `loadAppPreferences` is still assigning them
+    /// during init — the same early-AppKit race that code defers a runloop tick.
+    @ObservationIgnored private var isLaunchComplete = false
+
+    /// Manual Do Not Disturb toggle. `didSet` re-pushes the effective DND so any
+    /// writer (menu command, Settings) keeps the badge/dock/notification gate in
+    /// sync without having to remember to call `refreshEffectiveDoNotDisturb()`.
+    var doNotDisturb = false {
+        didSet { if isLaunchComplete { refreshEffectiveDoNotDisturb() } }
+    }
     /// Drives the Find-in-Page overlay in WebContentView. Toggled by Cmd-F.
     var findInPageVisible = false
 
@@ -78,13 +90,39 @@ final class AppState {
     /// notifications that don't actually change Light/Dark are ignored.
     private var lastKnownAppearanceDark: Bool?
 
+    /// Tokens for the NSWorkspace sleep/wake observers, removed in `deinit`.
+    /// AppState is a process-lifetime singleton, so this is hygiene rather than a
+    /// live leak, but keeping registration and teardown symmetric avoids a
+    /// dangling observer if that ever changes. Not observed UI state, so
+    /// `@ObservationIgnored`; `nonisolated(unsafe)` so the nonisolated deinit can
+    /// read it — it's only mutated during main-actor setup and read once at
+    /// teardown, so there's no real concurrency exposure.
+    @ObservationIgnored nonisolated(unsafe) private var systemObserverTokens: [NSObjectProtocol] = []
+
+    /// Tokens for `DistributedNotificationCenter` observers (screen-lock,
+    /// appearance-change), removed in `deinit` for the same symmetry as the
+    /// workspace tokens above.
+    @ObservationIgnored nonisolated(unsafe) private var distributedObserverTokens: [NSObjectProtocol] = []
+
+    /// Data-store identifiers a `cleanUpOrphanedDataStores` invocation is
+    /// currently processing, so overlapping calls don't both run the backoff loop
+    /// and issue `WKWebsiteDataStore.remove(...)` for the same store at once.
+    /// Main-actor only.
+    @ObservationIgnored private var dataStoresBeingRemoved: Set<UUID> = []
+
     /// Scheduled "quiet hours" Do Not Disturb, loaded from AppPreferences.
     /// `doNotDisturb` above stays the manual toggle; the effective DND that
     /// gates badges and notifications is `doNotDisturb || scheduledDNDActive`.
-    var scheduledDNDEnabled = false
-    var dndStartMinutes = 22 * 60
-    var dndEndMinutes = 7 * 60
-    private var quietHoursTask: Task<Void, Never>?
+    var scheduledDNDEnabled = false {
+        didSet { if isLaunchComplete { refreshEffectiveDoNotDisturb() } }
+    }
+    var dndStartMinutes = 22 * 60 {
+        didSet { if isLaunchComplete { refreshEffectiveDoNotDisturb() } }
+    }
+    var dndEndMinutes = 7 * 60 {
+        didSet { if isLaunchComplete { refreshEffectiveDoNotDisturb() } }
+    }
+    @ObservationIgnored nonisolated(unsafe) private var quietHoursTask: Task<Void, Never>?
 
     /// App lock (Touch ID / password), loaded from AppPreferences. `isLocked`
     /// drives an opaque cover over the window content in ContentView.
@@ -257,6 +295,16 @@ final class AppState {
         cleanUpOrphanedDataStores()
     }
 
+    deinit {
+        for token in systemObserverTokens {
+            NSWorkspace.shared.notificationCenter.removeObserver(token)
+        }
+        for token in distributedObserverTokens {
+            DistributedNotificationCenter.default().removeObserver(token)
+        }
+        quietHoursTask?.cancel()
+    }
+
     /// Wires the WebViewPool's external-link handler so that cross-domain
     /// target=_blank navigations route through `handleExternalLink(_:)` —
     /// which prefers switching to a matching Chorus service over opening
@@ -307,7 +355,9 @@ final class AppState {
         // Prefer one inside the current space; fall back to any match.
         if let spaceID,
            let inCurrentSpace = matches.first(where: { service in
-               service.spaceLinks.contains { $0.space.id == spaceID }
+               service.spaceLinks.contains {
+                   $0.modelContext != nil && $0.space.modelContext != nil && $0.space.id == spaceID
+               }
            }) {
             return inCurrentSpace
         }
@@ -318,7 +368,9 @@ final class AppState {
         // Make sure we're in a space that contains this service so the
         // sidebar selection becomes visible. If the service lives in
         // multiple spaces, pick the first.
-        if let firstSpace = service.spaceLinks.first?.space.id {
+        if let firstSpace = service.spaceLinks.first(where: {
+            $0.modelContext != nil && $0.space.modelContext != nil
+        })?.space.id {
             selectedSpaceID = firstSpace
         }
         selectedServiceID = service.id
@@ -337,7 +389,7 @@ final class AppState {
     /// displayed service, background mode for the rest.
     private func setupSystemSleepHandling() {
         let center = NSWorkspace.shared.notificationCenter
-        center.addObserver(
+        systemObserverTokens.append(center.addObserver(
             forName: NSWorkspace.willSleepNotification,
             object: nil,
             queue: .main
@@ -345,8 +397,8 @@ final class AppState {
             Task { @MainActor in
                 self?.suspendPolling(reason: "system sleep")
             }
-        }
-        center.addObserver(
+        })
+        systemObserverTokens.append(center.addObserver(
             forName: NSWorkspace.didWakeNotification,
             object: nil,
             queue: .main
@@ -354,7 +406,7 @@ final class AppState {
             Task { @MainActor in
                 self?.resumePolling(reason: "system wake")
             }
-        }
+        })
     }
 
     /// Pauses or resumes polling when network connectivity toggles. While
@@ -634,10 +686,10 @@ final class AppState {
                 self.lock()
             }
         }
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main, using: lockOnSleepIfNeeded)
-        DistributedNotificationCenter.default().addObserver(
-            forName: Notification.Name("com.apple.screenIsLocked"), object: nil, queue: .main, using: lockOnSleepIfNeeded)
+        systemObserverTokens.append(NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main, using: lockOnSleepIfNeeded))
+        distributedObserverTokens.append(DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.apple.screenIsLocked"), object: nil, queue: .main, using: lockOnSleepIfNeeded))
     }
 
 
@@ -737,10 +789,18 @@ final class AppState {
             return
         }
 
-        let linkedServices = space.serviceLinks.map(\.service)
+        // Guard against dangling links on both sides before materializing
+        // `.service`/`.space` — reading a deleted model traps.
+        let linkedServices = space.serviceLinks
+            .filter { $0.modelContext != nil && $0.service.modelContext != nil }
+            .map(\.service)
         var memberships: [UUID: Set<UUID>] = [:]
         for service in linkedServices {
-            memberships[service.id] = Set(service.spaceLinks.map { $0.space.id })
+            memberships[service.id] = Set(
+                service.spaceLinks
+                    .filter { $0.modelContext != nil && $0.space.modelContext != nil }
+                    .map { $0.space.id }
+            )
         }
         let orphanedIDs = Self.servicesOrphaned(byDeletingSpace: spaceID, memberships: memberships)
 
@@ -825,8 +885,13 @@ final class AppState {
             spaces = try context.fetch(FetchDescriptor<Space>())
             services = try context.fetch(FetchDescriptor<ServiceInstance>())
         } catch {
-            AppLogger.dataStore.error("Failed to fetch models for dangling-link check: \(error.localizedDescription)")
-            return false
+            // Fail CLOSED: if we can't verify the store is clean, assume it
+            // isn't. Returning false here would open a possibly-corrupt store
+            // live, and the inline `.modelContext` guards are only a backstop —
+            // treating an unverifiable store as unsafe (→ in-memory fallback) is
+            // the safe default.
+            AppLogger.dataStore.error("Dangling-link check failed; treating store as unsafe: \(error.localizedDescription)")
+            return true
         }
 
         var reachableFromSpace: Set<UUID> = []
@@ -859,16 +924,22 @@ final class AppState {
         let orphans = services.filter { $0.spaceLinks.isEmpty }
         guard !orphans.isEmpty else { return }
 
+        // Capture identifiers before deleting; tombstoning + removing the on-disk
+        // stores is irreversible, so defer it until the delete actually commits
+        // (matches deleteSpace). A failed save rolls back so nothing is wiped.
+        let orphanedIDs = orphans.map(\.dataStoreIdentifier)
         for service in orphans {
-            markDataStoreOrphaned(service.dataStoreIdentifier)
             context.delete(service)
         }
         do {
             try context.save()
             AppLogger.dataStore.info("Reaped \(orphans.count) orphaned service(s) at launch")
         } catch {
-            AppLogger.dataStore.error("Failed to reap orphaned services: \(error.localizedDescription)")
+            context.rollback()
+            AppLogger.dataStore.error("Failed to reap orphaned services; rolled back: \(error.localizedDescription)")
+            return
         }
+        for id in orphanedIDs { markDataStoreOrphaned(id) }
         cleanUpOrphanedDataStores()
     }
 
@@ -885,8 +956,12 @@ final class AppState {
     /// Removes any data store identifiers previously marked as orphaned.
     /// Runs at launch (deferred) and after the user deletes a service.
     func cleanUpOrphanedDataStores() {
-        let orphans = Self.loadOrphanedIdentifiers()
+        // Exclude identifiers a prior invocation is already processing, so two
+        // overlapping calls (e.g. two deletes soon after launch) don't both run
+        // the backoff loop and call `remove(...)` on the same store concurrently.
+        let orphans = Self.loadOrphanedIdentifiers().subtracting(dataStoresBeingRemoved)
         guard !orphans.isEmpty else { return }
+        dataStoresBeingRemoved.formUnion(orphans)
 
         // Drop cached handles so a live instance can't keep the on-disk store
         // alive while we try to remove it.
@@ -900,21 +975,36 @@ final class AppState {
         // (EXC_BREAKPOINT). Both `Task.sleep` and the async `remove` suspend
         // rather than block, so running here doesn't stall the UI.
         Task { @MainActor in
-            // Let SwiftUI finish dropping any WKWebView that referenced
-            // a just-deleted service's data store before removing it —
-            // WebKit also traps when an in-use store is removed.
-            try? await Task.sleep(for: .seconds(2))
-
+            // Removing a store while its WKWebView is still retained traps inside
+            // WebKit, so removal must wait for the view to drop. The pool has
+            // already released its own reference by the time this runs; the last
+            // lingering one is SwiftUI's view hierarchy, which the pool can't see
+            // — so we can't cheaply gate on "pool has no live view for this id".
+            // Rather than trust one fixed delay (too short on a slow machine →
+            // trap; too long always → sluggish), wait a conservative beat, then
+            // retry with backoff, re-attempting only the stores WebKit still
+            // reports as in use. Anything that never succeeds stays in the
+            // tombstone list and is retried at the next launch, so no store leaks.
             var removed: Set<UUID> = []
-            for identifier in orphans {
-                do {
-                    try await WKWebsiteDataStore.remove(forIdentifier: identifier)
-                    removed.insert(identifier)
-                    AppLogger.dataStore.info("Removed orphaned data store \(identifier)")
-                } catch {
-                    AppLogger.dataStore.warning("Failed to remove orphaned data store \(identifier): \(error.localizedDescription)")
+            let backoff: [Duration] = [.seconds(2), .seconds(3), .seconds(5)]
+            for delay in backoff {
+                try? await Task.sleep(for: delay)
+                let pending = orphans.subtracting(removed)
+                guard !pending.isEmpty else { break }
+                for identifier in pending {
+                    do {
+                        try await WKWebsiteDataStore.remove(forIdentifier: identifier)
+                        removed.insert(identifier)
+                        AppLogger.dataStore.info("Removed orphaned data store \(identifier)")
+                    } catch {
+                        AppLogger.dataStore.warning("Data store \(identifier) not yet removable, will retry: \(error.localizedDescription)")
+                    }
                 }
             }
+
+            // Release the in-flight claim so a later delete of the same store
+            // (should one somehow re-orphan) isn't blocked.
+            dataStoresBeingRemoved.subtract(orphans)
 
             // Read-modify-write rather than overwriting with a stale snapshot:
             // another delete may have appended new orphans while we slept, and
@@ -1027,7 +1117,9 @@ final class AppState {
         struct SweepEntry { let id: UUID; let url: String; let dataStoreID: UUID }
         let entries: [SweepEntry] = services.compactMap { service in
             let inActiveSpace = activeSpaceID != nil
-                && service.spaceLinks.contains { $0.space.id == activeSpaceID }
+                && service.spaceLinks.contains {
+                    $0.modelContext != nil && $0.space.modelContext != nil && $0.space.id == activeSpaceID
+                }
             guard !inActiveSpace, !service.isEffectivelyMuted, service.showBadge else { return nil }
             return SweepEntry(id: service.id, url: service.url, dataStoreID: service.dataStoreIdentifier)
         }
@@ -1122,6 +1214,9 @@ final class AppState {
         let resolvedShowBadge = prefs?.showBadgeCountInDock ?? true
         let resolvedPresenceMode = prefs?.appPresenceMode ?? .dock
         Task { @MainActor in
+            // Launch AppKit-facing setup is now safe (past the init runloop tick).
+            // Flip the flag first so the DND `didSet`s become live from here on.
+            self.isLaunchComplete = true
             self.badgeManager.showBadgeCountInDock = resolvedShowBadge
             AppPresenceManager().apply(mode: resolvedPresenceMode)
             // Apply any active quiet-hours schedule now, then keep it current.
@@ -1137,13 +1232,13 @@ final class AppState {
     /// the app follows the system. Runs after launch, on the main actor.
     private func startDarkMode() {
         applyEffectiveAppearanceChange()
-        DistributedNotificationCenter.default().addObserver(
+        distributedObserverTokens.append(DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
             object: nil,
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.applyEffectiveAppearanceChange() }
-        }
+        })
     }
 
     /// Re-evaluates the effective Light/Dark appearance and, when it actually
@@ -1199,6 +1294,7 @@ final class AppState {
             try modelContainer.mainContext.save()
         } catch {
             AppLogger.dataStore.error("Failed to save content-blocking toggle: \(error.localizedDescription)")
+            modelContainer.mainContext.rollback()
         }
         webViewPool.reattachContentBlocker()
     }
@@ -1213,6 +1309,7 @@ final class AppState {
             try modelContainer.mainContext.save()
         } catch {
             AppLogger.dataStore.error("Failed to save annoyance-blocking toggle: \(error.localizedDescription)")
+            modelContainer.mainContext.rollback()
         }
         webViewPool.reattachContentBlocker()
     }
@@ -1339,9 +1436,10 @@ final class AppState {
         notificationManager.onServiceRequested = { [weak self] serviceID in
             self?.navigateToServiceFromNotification(serviceID)
         }
-        // Drain any notification tap that arrived (e.g. launched the app)
-        // before the handler was wired.
-        if let pending = notificationManager.handlePendingNotification() {
+        // Drain any notification taps that arrived (e.g. launched the app)
+        // before the handler was wired, in order. The last one wins the final
+        // selection, but each is processed rather than silently dropped.
+        for pending in notificationManager.drainPendingNotifications() {
             navigateToServiceFromNotification(pending)
         }
     }
@@ -1354,8 +1452,14 @@ final class AppState {
         guard let service = try? context.fetch(descriptor).first else { return }
 
         // If the service isn't in the current space, move to one that has it.
-        let inCurrentSpace = service.spaceLinks.contains { $0.space.id == selectedSpaceID }
-        if !inCurrentSpace, let firstSpace = service.spaceLinks.first?.space.id {
+        // Guard the link relationships first: reading `$0.space.id` on a link
+        // whose Space was deleted (a dangling link that outlived StoreRepair)
+        // faults the freed model and traps. Reading `.modelContext` is safe.
+        let liveLinks = service.spaceLinks.filter {
+            $0.modelContext != nil && $0.space.modelContext != nil
+        }
+        let inCurrentSpace = liveLinks.contains { $0.space.id == selectedSpaceID }
+        if !inCurrentSpace, let firstSpace = liveLinks.first?.space.id {
             selectedSpaceID = firstSpace
         }
         selectedServiceID = serviceID
@@ -1447,6 +1551,7 @@ final class AppState {
                 AppLogger.favicon.info("Favicon refresh complete")
             } catch {
                 AppLogger.dataStore.error("Failed to save refreshed favicons: \(error.localizedDescription)")
+                context.rollback()
             }
         }
     }
@@ -1530,6 +1635,7 @@ final class AppState {
                         try context.save()
                     } catch {
                         AppLogger.dataStore.error("Failed to save seeded favicons: \(error.localizedDescription)")
+                        context.rollback()
                     }
                 }
             } catch {
@@ -1579,6 +1685,7 @@ final class AppState {
             AppLogger.dataStore.info("Backfilled passkey notice for \(services.count) existing service(s)")
         } catch {
             AppLogger.dataStore.error("Failed to backfill passkey notice: \(error.localizedDescription)")
+            context.rollback()
         }
     }
 
@@ -1600,6 +1707,7 @@ final class AppState {
             try context.save()
         } catch {
             AppLogger.dataStore.error("Failed to persist passkey notice dismissal: \(error.localizedDescription)")
+            context.rollback()
         }
     }
 }

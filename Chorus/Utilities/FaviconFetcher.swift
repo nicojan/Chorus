@@ -53,6 +53,14 @@ actor FaviconFetcher {
         let sorted = iconURLs.sorted { $0.size > $1.size }
 
         for iconInfo in sorted {
+            // The href came from (possibly hostile / compromised) page HTML, so
+            // gate it: http/https only, no loopback/link-local/private hosts.
+            // Without this a `<link rel=icon href="file:///…">` or an internal-IP
+            // href would make this non-sandboxed app read local files / hit
+            // internal hosts (SSRF).
+            guard let iconURL = URL(string: iconInfo.url), Self.isFetchableIconURL(iconURL) else {
+                continue
+            }
             if let data = await fetchURL(iconInfo.url), isValidImage(data) {
                 AppLogger.favicon.debug("Favicon from HTML link: \(iconInfo.url)")
                 return data
@@ -60,6 +68,41 @@ actor FaviconFetcher {
         }
 
         return nil
+    }
+
+    /// Whether an icon URL parsed from page HTML is safe to fetch: http/https
+    /// only and not aimed at a loopback/link-local/private host.
+    nonisolated static func isFetchableIconURL(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+            return false
+        }
+        guard let host = url.host?.lowercased(), !host.isEmpty else { return false }
+        if host == "localhost" || host.hasSuffix(".localhost") { return false }
+        return !isPrivateOrReservedHost(host)
+    }
+
+    /// Recognizes literal loopback / link-local / private / reserved IPs so they
+    /// can't be reached via a parsed favicon href. A normal hostname (not a
+    /// literal IP) returns false — DNS-level rebinding is out of scope.
+    nonisolated static func isPrivateOrReservedHost(_ host: String) -> Bool {
+        if host.contains(":") {  // IPv6 literal
+            let h = host.hasPrefix("[") ? String(host.dropFirst().dropLast()) : host
+            let lower = h.lowercased()
+            if lower == "::1" || lower == "::" { return true }
+            return lower.hasPrefix("fe80") || lower.hasPrefix("fc") || lower.hasPrefix("fd")
+        }
+        let parts = host.split(separator: ".")
+        guard parts.count == 4, parts.allSatisfy({ Int($0) != nil }),
+              let a = Int(parts[0]), let b = Int(parts[1]) else {
+            return false  // not a dotted-quad IPv4 → treat as a normal hostname
+        }
+        switch a {
+        case 0, 10, 127: return true                      // this-network, private, loopback
+        case 169 where b == 254: return true              // link-local
+        case 172 where (16...31).contains(b): return true // private
+        case 192 where b == 168: return true              // private
+        default: return false
+        }
     }
 
     struct IconLink: Equatable {
@@ -111,15 +154,33 @@ actor FaviconFetcher {
         }.max() ?? 0
     }
 
+    /// Hard ceiling on any single fetch (favicon or the HTML we parse for links).
+    /// Favicons are KBs; this only exists to stop a hostile/broken endpoint from
+    /// streaming a huge body into memory.
+    private static let maxFetchBytes = 5 * 1024 * 1024  // 5 MB
+
     private func fetchURL(_ urlString: String) async -> Data? {
         guard let url = URL(string: urlString) else { return nil }
         do {
             var request = URLRequest(url: url, timeoutInterval: 10)
             request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
-            let (data, response) = try await URLSession.shared.data(for: request)
-            if let http = response as? HTTPURLResponse, http.statusCode == 200, !data.isEmpty {
-                return data
+            // Stream so we can stop at the cap instead of buffering an unbounded
+            // response all at once (memory DoS via an oversized favicon/HTML body).
+            let (bytes, response) = try await URLSession.shared.bytes(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                return nil
             }
+            if http.expectedContentLength > Int64(Self.maxFetchBytes) { return nil }
+
+            var data = Data()
+            if http.expectedContentLength > 0 {
+                data.reserveCapacity(min(Int(http.expectedContentLength), Self.maxFetchBytes))
+            }
+            for try await byte in bytes {
+                data.append(byte)
+                if data.count > Self.maxFetchBytes { return nil }
+            }
+            return data.isEmpty ? nil : data
         } catch {
             AppLogger.favicon.debug("Fetch failed for \(urlString): \(error.localizedDescription)")
         }
@@ -137,8 +198,39 @@ actor FaviconFetcher {
         if header[0] == 0x00 && header[1] == 0x00 && header[2] == 0x01 && header[3] == 0x00 { return true }
         // GIF
         if header[0] == 0x47 && header[1] == 0x49 && header[2] == 0x46 { return true }
-        // WebP (RIFF)
-        if header[0] == 0x52 && header[1] == 0x49 && header[2] == 0x46 && header[3] == 0x46 { return true }
+        // WebP: the container is "RIFF"<size>"WEBP". Verify the WEBP tag at
+        // bytes 8–11, not just the RIFF magic — WAV/AVI are also RIFF and would
+        // be cached as junk that never renders.
+        if data.count >= 12,
+           header[0] == 0x52, header[1] == 0x49, header[2] == 0x46, header[3] == 0x46 {
+            let tag = [UInt8](data.prefix(12).suffix(4))
+            if tag == [0x57, 0x45, 0x42, 0x50] { return true }  // "WEBP"
+        }
+        // SVG is text, not a binary magic number; sniff the head for an <svg
+        // root. NSImage renders SVG on modern macOS, so accept it rather than
+        // rejecting it and falling through to the lower-res Google API.
+        if Self.looksLikeSVG(data) { return true }
         return false
+    }
+
+    /// Whether `data` is an SVG document — its *root* element is `<svg`, past an
+    /// optional BOM, XML declaration, and leading comments. Anchored at the root
+    /// (not "contains <svg anywhere") so an HTML page with an inline `<svg>` icon
+    /// — e.g. an SPA index returned with 200 for an unknown /favicon path — isn't
+    /// false-accepted and cached as a non-rendering image. UTF-8 only (SVG is
+    /// text); the isoLatin1 fallback that never fails is deliberately dropped.
+    nonisolated private static func looksLikeSVG(_ data: Data) -> Bool {
+        let head = data.prefix(1024)
+        guard var text = String(data: head, encoding: .utf8) else { return false }
+        if text.hasPrefix("\u{FEFF}") { text.removeFirst() }
+        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.lowercased().hasPrefix("<?xml"), let close = text.range(of: "?>") {
+            text = String(text[close.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        while text.hasPrefix("<!--"), let close = text.range(of: "-->") {
+            text = String(text[close.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let lower = text.lowercased()
+        return lower.hasPrefix("<svg") || lower.hasPrefix("<!doctype svg")
     }
 }

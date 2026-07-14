@@ -368,7 +368,12 @@ final class WebViewPool {
         webView.takeSnapshot(with: nil) { [weak self] image, _ in
             guard let image else { return }
             Task { @MainActor [weak self] in
-                self?.snapshots[id] = image
+                guard let self else { return }
+                // The snapshot completes asynchronously; if the service was
+                // removed (deleted) meanwhile, don't re-insert a snapshot for a
+                // dead id — that would be a small permanent leak.
+                guard self.webViews[id] != nil else { return }
+                self.snapshots[id] = image
             }
         }
         AppLogger.webView.debug("Soft-hibernated service \(id)")

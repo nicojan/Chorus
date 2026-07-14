@@ -29,13 +29,9 @@ final class DataStoreManager {
         cache.removeValue(forKey: identifier)
     }
 
-    func deleteDataStore(for instance: ServiceInstance) async throws {
-        evict(identifier: instance.dataStoreIdentifier)
-        try await WKWebsiteDataStore.remove(forIdentifier: instance.dataStoreIdentifier)
-    }
-
-    func deleteDataStore(identifier: UUID) async throws {
-        evict(identifier: identifier)
-        try await WKWebsiteDataStore.remove(forIdentifier: identifier)
-    }
+    // NOTE: there is deliberately no direct `deleteDataStore(...)` here. Removing
+    // a `WKWebsiteDataStore` while its `WKWebView` is still retained hard-crashes
+    // inside WebKit, so every on-disk removal must go through AppState's
+    // `markDataStoreOrphaned` → deferred `cleanUpOrphanedDataStores` path, which
+    // evicts the cached handle and only removes once the web view has torn down.
 }

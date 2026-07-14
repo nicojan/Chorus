@@ -19,6 +19,13 @@ struct SpaceStripView: View {
     /// cell's `.focused` so the arrow keys move relative to it.
     @FocusState private var focusedSpaceID: UUID?
 
+    /// Measured size of each drop cell, so a drop's before/after split uses the
+    /// target's true midpoint. Falls back to the constants below until the first
+    /// geometry pass records a size.
+    @State private var cellSizes: [UUID: CGSize] = [:]
+    private static let spaceDropMidpoint: CGFloat = 22          // vertical cell ≈ 44pt
+    private static let spaceDropMidpointHorizontal: CGFloat = 40
+
     var body: some View {
         content
             .sheet(isPresented: $showingAddSpace) {
@@ -157,16 +164,33 @@ struct SpaceStripView: View {
                 .background(.ultraThickMaterial)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
         }
-        .dropDestination(for: String.self) { items, _ in
+        .dropDestination(for: String.self) { items, location in
             guard let droppedIDString = items.first,
                   let droppedID = UUID(uuidString: droppedIDString),
                   droppedID != space.id
             else { return false }
-            // Returns false when the dropped id isn't a space in this rail (e.g. a
-            // service tab dragged onto a space), so the drop isn't reported as a
-            // success that did nothing.
-            return reorderSpace(droppedSpaceID: droppedID, beforeSpace: space)
+            // Split at the target's real midpoint so a chip can be dropped after
+            // the last space (before-only would leave the final slot unreachable
+            // by drag). Returns false when the dropped id isn't a space in this
+            // rail (e.g. a service tab), so the drop isn't reported as a no-op success.
+            let placement: ServiceReorderPlacement = {
+                let size = cellSizes[space.id]
+                if axis == .vertical {
+                    let mid = (size?.height).map { $0 / 2 } ?? Self.spaceDropMidpoint
+                    return location.y < mid ? .before : .after
+                }
+                let mid = (size?.width).map { $0 / 2 } ?? Self.spaceDropMidpointHorizontal
+                return location.x < mid ? .before : .after
+            }()
+            return reorderSpace(droppedSpaceID: droppedID, relativeTo: space, placement: placement)
         }
+        .background(
+            GeometryReader { proxy in
+                Color.clear.onChange(of: proxy.size, initial: true) {
+                    cellSizes[space.id] = proxy.size
+                }
+            }
+        )
         .accessibilityAction(named: "Move up") { moveSpaceUp(space) }
         .accessibilityAction(named: "Move down") { moveSpaceDown(space) }
         .focusable()
@@ -276,18 +300,17 @@ struct SpaceStripView: View {
     }
 
     @discardableResult
-    private func reorderSpace(droppedSpaceID: UUID, beforeSpace target: Space) -> Bool {
+    private func reorderSpace(droppedSpaceID: UUID, relativeTo target: Space, placement: ServiceReorderPlacement) -> Bool {
         let orderedSpaces = spaces
         let spacesByID = Dictionary(uniqueKeysWithValues: orderedSpaces.map { ($0.id, $0) })
         // Reuse the service rail's tested reorder math. The old inline version
         // inserted at a pre-removal index, so a forward drag landed one slot past
         // the target; ServiceReorder decrements the index when moving forward.
-        // Spaces always drop *before* the target.
         guard let reorderedIDs = ServiceReorder.reorderedIDs(
             orderedSpaces.map(\.id),
             moving: droppedSpaceID,
             relativeTo: target.id,
-            placement: .before
+            placement: placement
         ) else {
             return false
         }

@@ -131,12 +131,22 @@ struct ServiceSidebarView: View {
     /// each cell's `.focused`, so a click or Tab that focuses a cell records it
     /// here and the arrow keys move relative to it.
     @FocusState private var focusedServiceID: UUID?
+    // Fallback drop midpoints, used only until the first geometry pass records a
+    // cell's real size. The horizontal fallback matches an icon-only tab (~34pt
+    // wide) rather than a full-width tab — a wrong (too large) value would make
+    // every horizontal drop resolve `.before` and leave the last slot unreachable.
     private static let serviceDropMidpoint: CGFloat = 23
-    private static let serviceDropMidpointHorizontal: CGFloat = 60
+    private static let serviceDropMidpointHorizontal: CGFloat = 17
+    /// Measured size of each drop cell, so the before/after split uses the target's
+    /// true midpoint instead of a hardcoded guess.
+    @State private var cellSizes: [UUID: CGSize] = [:]
 
     private var filteredLinks: [SpaceServiceLink] {
         allLinks
-            .filter { $0.modelContext != nil && $0.service.modelContext != nil && $0.space.id == spaceID }
+            // Guard all three relationships before reading `$0.space.id`: a link
+            // whose Space (or service) was deleted would fault the freed model
+            // and trap on this hot render path. Matches `AppState.servicesForSpace`.
+            .filter { $0.modelContext != nil && $0.service.modelContext != nil && $0.space.modelContext != nil && $0.space.id == spaceID }
             .sorted { $0.sortOrder < $1.sortOrder }
     }
 
@@ -340,10 +350,13 @@ struct ServiceSidebarView: View {
                       droppedID != link.id
                 else { return false }
                 let placement: ServiceReorderPlacement = {
+                    let size = cellSizes[link.id]
                     if axis == .vertical {
-                        return location.y < Self.serviceDropMidpoint ? .before : .after
+                        let mid = (size?.height).map { $0 / 2 } ?? Self.serviceDropMidpoint
+                        return location.y < mid ? .before : .after
                     }
-                    return location.x < Self.serviceDropMidpointHorizontal ? .before : .after
+                    let mid = (size?.width).map { $0 / 2 } ?? Self.serviceDropMidpointHorizontal
+                    return location.x < mid ? .before : .after
                 }()
                 return reorderService(
                     droppedLinkID: droppedID,
@@ -351,6 +364,13 @@ struct ServiceSidebarView: View {
                     placement: placement
                 )
             }
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.onChange(of: proxy.size, initial: true) {
+                        cellSizes[link.id] = proxy.size
+                    }
+                }
+            )
             .accessibilityAction(named: "Move up") { moveServiceUp(link) }
             .accessibilityAction(named: "Move down") { moveServiceDown(link) }
             .contextMenu { serviceContextMenu(for: link) }
@@ -496,11 +516,18 @@ struct ServiceSidebarView: View {
         }
     }
 
-    private func save(_ context: String) {
+    @discardableResult
+    private func save(_ context: String) -> Bool {
         do {
             try modelContext.save()
+            return true
         } catch {
             AppLogger.dataStore.error("Failed to save (\(context)): \(error.localizedDescription)")
+            // Discard the failed mutation so it can't ride along on the next
+            // unrelated successful save, and so destructive callers can skip
+            // their irreversible teardown when the store didn't actually change.
+            modelContext.rollback()
+            return false
         }
     }
 
@@ -529,7 +556,7 @@ struct ServiceSidebarView: View {
     private func eligibleSpaces(for service: ServiceInstance) -> [Space] {
         let memberIDs = Set(
             allLinks
-                .filter { $0.modelContext != nil && $0.service.id == service.id }
+                .filter { $0.modelContext != nil && $0.service.modelContext != nil && $0.space.modelContext != nil && $0.service.id == service.id }
                 .map { $0.space.id }
         )
         let eligible = Set(SpaceMove.eligibleSpaceIDs(allSpaceIDs: spaces.map(\.id), memberSpaceIDs: memberIDs))
@@ -575,15 +602,24 @@ struct ServiceSidebarView: View {
 
         modelContext.delete(link)
 
-        // Check remaining links *after* the delete so the count is current
+        // Check remaining links *after* the delete so the count is current.
         let hasOtherLinks = service.spaceLinks.contains { $0.id != link.id }
+        // Capture the identifier before the service is deleted — reading it off a
+        // deleted model would fault the freed backing data.
         let orphanedIdentifier: UUID? = hasOtherLinks ? nil : service.dataStoreIdentifier
         if !hasOtherLinks {
-            appState.webViewPool.removeWebView(for: serviceID)
             modelContext.delete(service)
         }
 
-        save("remove service from space")
+        // Only run the irreversible teardown (web-view removal, on-disk data-store
+        // wipe) once the delete actually commits. A failed save rolls back, so
+        // doing these first would log the user out / drop cookies for a service
+        // whose row still exists — the data-loss pattern `deleteSpace` avoids.
+        guard save("remove service from space") else { return }
+
+        if !hasOtherLinks {
+            appState.webViewPool.removeWebView(for: serviceID)
+        }
         if let orphanedIdentifier {
             appState.markDataStoreOrphaned(orphanedIdentifier)
             appState.cleanUpOrphanedDataStores()
@@ -673,16 +709,19 @@ struct ServiceSidebarView: View {
             selectedServiceID = nil
         }
 
-        appState.webViewPool.removeWebView(for: serviceID)
-
         // Delete links explicitly first — avoids cascade-delete leaving dangling
-        // relationship references in the @Query results during the re-render
+        // relationship references in the @Query results during the re-render.
         for spaceLink in service.spaceLinks {
             modelContext.delete(spaceLink)
         }
         modelContext.delete(service)
 
-        save("delete service")
+        // Gate the irreversible teardown behind a committed save (see
+        // removeFromSpace) so a failed save can't wipe a still-present service's
+        // web view and on-disk data store.
+        guard save("delete service") else { return }
+
+        appState.webViewPool.removeWebView(for: serviceID)
         appState.markDataStoreOrphaned(dataStoreIdentifier)
         appState.cleanUpOrphanedDataStores()
     }

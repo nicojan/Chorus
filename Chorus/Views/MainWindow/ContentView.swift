@@ -86,6 +86,18 @@ struct ContentView: View {
         .sheet(isPresented: $state.showAddService) {
             if let spaceID = appState.selectedSpaceID {
                 AddServiceSheet(spaceID: spaceID)
+            } else {
+                // Defensive: ⌘N is disabled without a selected space, but if the
+                // sheet is ever presented in that state, give it a way out rather
+                // than a blank, un-dismissable panel.
+                VStack(spacing: 16) {
+                    Text("Select or create a space before adding a service.")
+                        .multilineTextAlignment(.center)
+                    Button("OK") { state.showAddService = false }
+                        .keyboardShortcut(.defaultAction)
+                }
+                .padding(40)
+                .frame(minWidth: 320)
             }
         }
         .sheet(isPresented: $state.showQuickSwitcher) {

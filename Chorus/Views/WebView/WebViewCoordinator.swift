@@ -20,6 +20,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// Timestamps of recent WebContent terminations, used to break a crash →
     /// reload → crash loop. Accessed only from main-thread delegate callbacks.
     private var crashTimestamps: [Date] = []
+    /// Same, for the OAuth/sign-in popup web view — tracked separately so a
+    /// looping popup gets the same backoff the main view has instead of
+    /// reloading forever.
+    private var popupCrashTimestamps: [Date] = []
     // nonisolated so the nonisolated `shouldAutoReload` can use them as default
     // argument values — they're immutable Sendable constants.
     private nonisolated static let maxCrashesInWindow = 3
@@ -53,10 +57,18 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         // (thread-safe) KVO observation here and close any still-open popup
         // window on the main actor. The window is captured as a local so the
         // hop never touches `self`, which is being deallocated.
+        //
         popupTitleObservation?.invalidate()
         if let window = popupWindow {
             Task { @MainActor in window.close() }
         }
+        // Mirror cleanupPopup's removeObserver so the willClose observer is gone
+        // even if the coordinator is deallocated with a popup still open. Must
+        // come LAST: passing `self` copies it, after which isolated stored
+        // properties can't be touched in a deinit. removeObserver(self) is
+        // thread-safe; the modern runtime would auto-clear it anyway, but drop it
+        // explicitly for symmetry.
+        NotificationCenter.default.removeObserver(self)
     }
 
     // MARK: - Navigation Delegate
@@ -164,13 +176,32 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     // crashes in a short window and show a recovery page instead.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         // The OAuth/sign-in popup shares this coordinator as its delegate.
-        // Don't apply the service's crash recovery (fallbackURL + backoff) to
+        // Don't apply the service's crash recovery (fallbackURL + home page) to
         // it — that would reload the popup on the service's home URL, not the
-        // popup's own page. Reload its own page if it has one.
+        // popup's own page. Reload its own page, but with the same crash-window
+        // backoff the main view has: a popup that crashes deterministically
+        // would otherwise reload-crash forever. Give up by closing the popup.
         if webView === popupWebView {
+            let now = Date()
+            popupCrashTimestamps.append(now)
+            popupCrashTimestamps = popupCrashTimestamps.filter { now.timeIntervalSince($0) <= Self.crashWindow }
+            guard Self.shouldAutoReload(
+                crashTimestamps: popupCrashTimestamps,
+                now: now,
+                maxCrashes: Self.maxCrashesInWindow,
+                window: Self.crashWindow
+            ) else {
+                AppLogger.webView.error("OAuth popup WebContent terminated repeatedly — closing popup")
+                cleanupPopup()
+                return
+            }
             if webView.url != nil { webView.reload() }
             return
         }
+
+        // The service's own content process died — reconcile downloads it started
+        // so a stuck transfer can't leak this coordinator (see cancelActiveDownloads).
+        cancelActiveDownloads()
 
         let now = Date()
         crashTimestamps.append(now)
@@ -266,7 +297,12 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         }
 
         let retryBlock: String
-        if let retryURLString {
+        // Only wire the retry button for http/https targets — the URL derives from
+        // the failing navigation, but refuse `javascript:`/`data:` so a crafted
+        // failing URL can't run script when the user clicks Try Again.
+        if let retryURLString,
+           let retryScheme = URL(string: retryURLString)?.scheme?.lowercased(),
+           retryScheme == "http" || retryScheme == "https" {
             // Escape for embedding inside a double-quoted JS string literal so
             // a URL with quotes/newlines can't break out (or close the script).
             let escaped = retryURLString
@@ -444,6 +480,9 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         popupWindow?.close()
         popupWebView = nil
         popupWindow = nil
+        // Give the next popup its own crash budget — a prior popup's tally must
+        // not shorten the backoff for an unrelated sign-in opened soon after.
+        popupCrashTimestamps = []
     }
 
     func webViewDidClose(_ webView: WKWebView) {
@@ -479,13 +518,20 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         panel.allowsMultipleSelection = parameters.allowsMultipleSelection
         panel.resolvesAliases = true
 
+        // WebKit hangs the page's `<input type=file>` until `completionHandler`
+        // fires exactly once. Route it through a one-shot latch so it can't fire
+        // twice and — crucially — so the page is released even if the host window
+        // closes while the sheet is open, in which case the sheet's own handler
+        // may never run and the input would hang forever.
+        let session = FilePickerSession(completionHandler)
         let handleResponse: (NSApplication.ModalResponse) -> Void = { response in
-            completionHandler(response == .OK ? panel.urls : nil)
+            session.finish(response == .OK ? panel.urls : nil)
         }
 
         // Attach as a sheet to the web view's window when we have one; fall back
         // to a standalone modal panel otherwise (e.g. an OAuth popup web view).
         if let window = webView.window {
+            session.observeClose(of: window)
             panel.beginSheetModal(for: window, completionHandler: handleResponse)
         } else {
             panel.begin(completionHandler: handleResponse)
@@ -531,17 +577,34 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// the coordinator, drop the delegate, lose `downloadDestinations`, and
     /// silently abort the transfer. Keeping `self` alive until the last
     /// download finishes lets it complete regardless of the web view's fate.
-    private var activeDownloadIDs: Set<ObjectIdentifier> = []
+    // Hold the WKDownloads themselves (not just their ids) so a WebContent crash
+    // can cancel any that are still in flight — otherwise a download that never
+    // delivers a terminal callback would keep `selfRetainWhileDownloading`
+    // (and this coordinator's data-store refs) alive for the app's lifetime.
+    private var activeDownloads: Set<WKDownload> = []
     private var selfRetainWhileDownloading: WebViewCoordinator?
 
     private func trackDownload(_ download: WKDownload) {
-        activeDownloadIDs.insert(ObjectIdentifier(download))
+        activeDownloads.insert(download)
         selfRetainWhileDownloading = self
     }
 
     private func untrackDownload(_ download: WKDownload) {
-        activeDownloadIDs.remove(ObjectIdentifier(download))
-        if activeDownloadIDs.isEmpty { selfRetainWhileDownloading = nil }
+        activeDownloads.remove(download)
+        if activeDownloads.isEmpty { selfRetainWhileDownloading = nil }
+    }
+
+    /// Cancels every in-flight download and clears the self-retain. Called when
+    /// the main web view's content process dies: such downloads can't be relied
+    /// on to deliver a terminal callback, so releasing here prevents a permanent
+    /// coordinator leak. The page has already crashed, so an aborted transfer is
+    /// an acceptable tradeoff (the user can retry).
+    private func cancelActiveDownloads() {
+        guard !activeDownloads.isEmpty else { return }
+        for download in activeDownloads { download.cancel(nil) }
+        activeDownloads.removeAll()
+        downloadDestinations.removeAll()
+        selfRetainWhileDownloading = nil
     }
 
     // Save straight to the user's Downloads folder — the browser-like default —
@@ -757,5 +820,43 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         var h = host.lowercased()
         if h.hasPrefix("www.") { h = String(h.dropFirst(4)) }
         return h
+    }
+}
+
+/// Drives a file-open panel to a single completion. WebKit hangs the page's
+/// `<input type=file>` until the handler fires exactly once, so this guarantees
+/// it fires — on selection, cancel, or the host window closing first — and never
+/// twice. `@MainActor` (hence Sendable) so the close observer can hold it.
+@MainActor
+private final class FilePickerSession {
+    private var completion: (@MainActor ([URL]?) -> Void)?
+    private var closeObserver: NSObjectProtocol?
+
+    init(_ completion: @escaping @MainActor ([URL]?) -> Void) {
+        self.completion = completion
+    }
+
+    /// Fires the completion with nil if `window` closes before the panel does,
+    /// releasing the page's file input instead of leaving it hung.
+    func observeClose(of window: NSWindow) {
+        closeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            // The .main queue delivers this on the main thread, so assuming main
+            // isolation to reach the @MainActor method is safe here.
+            MainActor.assumeIsolated { self?.finish(nil) }
+        }
+    }
+
+    /// Idempotent: the first call fires the handler and detaches the observer;
+    /// later calls are no-ops.
+    func finish(_ urls: [URL]?) {
+        guard let completion else { return }
+        self.completion = nil
+        if let closeObserver {
+            NotificationCenter.default.removeObserver(closeObserver)
+            self.closeObserver = nil
+        }
+        completion(urls)
     }
 }

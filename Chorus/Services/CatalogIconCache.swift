@@ -14,7 +14,11 @@ actor CatalogIconCache {
     private var imageCache: [String: NSImage] = [:]
 
     private init() {
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        // Fall back to the temp directory rather than trapping if the caches
+        // directory can't be located — a missing icon cache is a cosmetic
+        // degradation, not a reason to crash the app at launch.
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
         cacheDirectory = caches.appendingPathComponent("CatalogIcons", isDirectory: true)
         try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
     }

@@ -1049,20 +1049,36 @@ final class ChorusTests: XCTestCase {
 
     // MARK: - Notification grouping by space
 
-    /// Wires a service into a space on both relationship sides, mirroring what a
-    /// live model context would maintain, so `NotificationGrouping` sees it.
+    /// A fresh in-memory store. `NotificationGrouping.grouped` now skips links
+    /// whose service has no `modelContext` (a dangling or never-inserted model),
+    /// so these tests must use live, inserted models rather than detached ones.
+    /// Returns the container — the caller must hold it for the test's duration;
+    /// using only its `mainContext` after the container deallocates crashes.
+    private func makeGroupingContainer() throws -> ModelContainer {
+        try ModelContainer(
+            for: Space.self, ServiceInstance.self, SpaceServiceLink.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+    }
+
+    /// Links an already-inserted service to an already-inserted space by
+    /// inserting a join row; SwiftData maintains both relationship sides.
     @discardableResult
-    private func link(_ service: ServiceInstance, to space: Space, sortOrder: Int) -> SpaceServiceLink {
+    private func link(_ service: ServiceInstance, to space: Space, sortOrder: Int, in ctx: ModelContext) -> SpaceServiceLink {
         let link = SpaceServiceLink(sortOrder: sortOrder, space: space, service: service)
-        space.serviceLinks.append(link)
-        service.spaceLinks.append(link)
+        ctx.insert(link)
         return link
     }
 
-    func testNotificationGroupingIsFlatAndHeaderlessWhenNoSpacesHaveMembers() {
+    func testNotificationGroupingIsFlatAndHeaderlessWhenNoSpacesHaveMembers() throws {
+        let container = try makeGroupingContainer()
+        let ctx = container.mainContext
         let a = ServiceInstance(label: "Zulip", url: "https://z.example")
         let b = ServiceInstance(label: "Asana", url: "https://a.example")
         let empty = Space(name: "Empty", emoji: "📭", sortOrder: 0)
+        [a, b].forEach(ctx.insert)
+        ctx.insert(empty)
+        try ctx.save()
 
         let result = NotificationGrouping.grouped(spaces: [empty], services: [a, b])
 
@@ -1073,16 +1089,21 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(result.groups[0].services.map(\.label), ["Asana", "Zulip"])
     }
 
-    func testNotificationGroupingFollowsSpaceOrderThenLinkOrder() {
+    func testNotificationGroupingFollowsSpaceOrderThenLinkOrder() throws {
+        let container = try makeGroupingContainer()
+        let ctx = container.mainContext
         let work = Space(name: "Work", emoji: "🏢", sortOrder: 0)
         let play = Space(name: "Play", emoji: "🎮", sortOrder: 1)
         let slack = ServiceInstance(label: "Slack", url: "https://s.example")
         let gmail = ServiceInstance(label: "Gmail", url: "https://g.example")
         let discord = ServiceInstance(label: "Discord", url: "https://d.example")
+        [work, play].forEach(ctx.insert)
+        [slack, gmail, discord].forEach(ctx.insert)
         // Add gmail first but at a higher sortOrder to prove link order wins.
-        link(gmail, to: work, sortOrder: 1)
-        link(slack, to: work, sortOrder: 0)
-        link(discord, to: play, sortOrder: 0)
+        link(gmail, to: work, sortOrder: 1, in: ctx)
+        link(slack, to: work, sortOrder: 0, in: ctx)
+        link(discord, to: play, sortOrder: 0, in: ctx)
+        try ctx.save()
 
         let result = NotificationGrouping.grouped(spaces: [work, play], services: [slack, gmail, discord])
 
@@ -1092,12 +1113,17 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(result.groups[1].services.map(\.label), ["Discord"])
     }
 
-    func testNotificationGroupingPutsUngroupedServicesInTrailingBucket() {
+    func testNotificationGroupingPutsUngroupedServicesInTrailingBucket() throws {
+        let container = try makeGroupingContainer()
+        let ctx = container.mainContext
         let work = Space(name: "Work", emoji: "🏢", sortOrder: 0)
         let slack = ServiceInstance(label: "Slack", url: "https://s.example")
         let loose2 = ServiceInstance(label: "Notion", url: "https://n.example")
         let loose1 = ServiceInstance(label: "Figma", url: "https://f.example")
-        link(slack, to: work, sortOrder: 0)
+        ctx.insert(work)
+        [slack, loose2, loose1].forEach(ctx.insert)
+        link(slack, to: work, sortOrder: 0, in: ctx)
+        try ctx.save()
 
         let result = NotificationGrouping.grouped(spaces: [work], services: [slack, loose2, loose1])
 
@@ -1108,23 +1134,33 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(result.groups[1].services.map(\.label), ["Figma", "Notion"])
     }
 
-    func testNotificationGroupingSkipsSpacesWithNoServices() {
+    func testNotificationGroupingSkipsSpacesWithNoServices() throws {
+        let container = try makeGroupingContainer()
+        let ctx = container.mainContext
         let full = Space(name: "Full", emoji: "📥", sortOrder: 0)
         let empty = Space(name: "Empty", emoji: "📭", sortOrder: 1)
         let slack = ServiceInstance(label: "Slack", url: "https://s.example")
-        link(slack, to: full, sortOrder: 0)
+        [full, empty].forEach(ctx.insert)
+        ctx.insert(slack)
+        link(slack, to: full, sortOrder: 0, in: ctx)
+        try ctx.save()
 
         let result = NotificationGrouping.grouped(spaces: [full, empty], services: [slack])
 
         XCTAssertEqual(result.groups.map { $0.space?.name }, ["Full"])
     }
 
-    func testNotificationGroupingRepeatsServiceInEachSpace() {
+    func testNotificationGroupingRepeatsServiceInEachSpace() throws {
+        let container = try makeGroupingContainer()
+        let ctx = container.mainContext
         let home = Space(name: "Home", emoji: "🏠", sortOrder: 0)
         let design = Space(name: "Design", emoji: "🎨", sortOrder: 1)
         let slack = ServiceInstance(label: "Slack", url: "https://s.example")
-        link(slack, to: home, sortOrder: 0)
-        link(slack, to: design, sortOrder: 0)
+        [home, design].forEach(ctx.insert)
+        ctx.insert(slack)
+        link(slack, to: home, sortOrder: 0, in: ctx)
+        link(slack, to: design, sortOrder: 0, in: ctx)
+        try ctx.save()
 
         let result = NotificationGrouping.grouped(spaces: [home, design], services: [slack])
 
@@ -1135,6 +1171,40 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(result.groups[0].services[0] === result.groups[1].services[0])
         // No ungrouped bucket when every service belongs to a space.
         XCTAssertFalse(result.groups.contains { $0.space == nil })
+    }
+
+    /// Exercises the dangling-link guard: a link whose service has no
+    /// `modelContext` (a deleted or never-inserted model — the crash class the
+    /// guard exists for) must be skipped, not grouped or trapped on.
+    func testNotificationGroupingSkipsLinkWhoseServiceIsDetached() throws {
+        // A live space with a real, inserted, linked service.
+        let container = try makeGroupingContainer()
+        let ctx = container.mainContext
+        let live = Space(name: "Live", emoji: "✅", sortOrder: 0)
+        let alpha = ServiceInstance(label: "Alpha", url: "https://a.example")
+        ctx.insert(live)
+        ctx.insert(alpha)
+        link(alpha, to: live, sortOrder: 0, in: ctx)
+        try ctx.save()
+
+        // A detached space whose link points at a never-inserted service — the
+        // stand-in for a dangling link. Its service has a nil modelContext, so
+        // the guard must skip it rather than group it.
+        let ghost = Space(name: "Ghost", emoji: "👻", sortOrder: 1)
+        let beta = ServiceInstance(label: "Beta", url: "https://b.example")
+        let danglingLink = SpaceServiceLink(sortOrder: 0, space: ghost, service: beta)
+        ghost.serviceLinks.append(danglingLink)
+        beta.spaceLinks.append(danglingLink)
+
+        let result = NotificationGrouping.grouped(spaces: [live, ghost], services: [alpha, beta])
+
+        // Only the live space is grouped; the ghost's dangling link is skipped
+        // and Beta appears nowhere. Without the guard, Ghost/Beta would show.
+        XCTAssertEqual(result.groups.map { $0.space?.name }, ["Live"])
+        XCTAssertEqual(result.groups.first?.services.map(\.label), ["Alpha"])
+        XCTAssertFalse(result.groups.contains { group in
+            group.services.contains { $0.label == "Beta" }
+        })
     }
 
     // MARK: - Move service to space

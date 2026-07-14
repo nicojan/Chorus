@@ -628,6 +628,10 @@ enum NotificationGrouping {
         var spaceGroups: [Group] = []
         for space in spaces {
             let members = space.serviceLinks
+                // Skip dangling links (a link whose Space or ServiceInstance was
+                // deleted): materializing `.service` on a faulted model traps.
+                // `.modelContext` is nil once deleted and safe to read.
+                .filter { $0.modelContext != nil && $0.service.modelContext != nil }
                 .sorted { $0.sortOrder < $1.sortOrder }
                 .map(\.service)
             if !members.isEmpty {

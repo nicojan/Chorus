@@ -172,6 +172,10 @@ final class UserScriptManager {
            let json = String(data: data, encoding: .utf8) {
             literal = json
         } else {
+            // Encoding a String basically never fails, but if it did we'd inject
+            // an empty style and silently lose the user's CSS — log so it isn't
+            // a mystery.
+            AppLogger.general.warning("Custom CSS could not be JSON-encoded; injecting no CSS for this service")
             literal = "\"\""
         }
         return """
@@ -190,6 +194,19 @@ final class UserScriptManager {
     func removeHandler(for instanceID: UUID) {
         messageHandlers.removeValue(forKey: instanceID)
         darkProbeHandlers.removeValue(forKey: instanceID)
+    }
+
+    /// Encodes a Swift string as a JS string literal (quotes included) so it can
+    /// be interpolated into a script without breaking out of the surrounding
+    /// literal. Falls back to `""`. Used for the service id baked into the probe
+    /// and notification scripts — a UUID today, but encode it so it stays safe
+    /// regardless of what feeds it.
+    nonisolated static func jsStringLiteral(_ value: String) -> String {
+        guard let data = try? JSONEncoder().encode(value),
+              let json = String(data: data, encoding: .utf8) else {
+            return "\"\""
+        }
+        return json
     }
 
     /// Samples the page background a beat after load and reports its color to the
@@ -213,7 +230,7 @@ final class UserScriptManager {
                     if (!bg || bg.a < 0.5) { var h = rgba(document.documentElement); if (h) bg = h; }
                     if (!bg) bg = { r: 255, g: 255, b: 255, a: 1 };
                     window.webkit.messageHandlers.chorusDarkProbe.postMessage(JSON.stringify({
-                        serviceID: "\(serviceID)", r: bg.r, g: bg.g, b: bg.b, a: bg.a
+                        serviceID: \(jsStringLiteral(serviceID)), r: bg.r, g: bg.g, b: bg.b, a: bg.a
                     }));
                 } catch (e) {}
             }
@@ -330,7 +347,6 @@ final class UserScriptManager {
     }
 
     private func makeNotificationInterceptionScript(serviceID: String) -> String {
-        let escapedID = serviceID.replacingOccurrences(of: "'", with: "\\'")
         return """
         (function() {
             var OrigNotification = window.Notification;
@@ -341,7 +357,7 @@ final class UserScriptManager {
                         body: (options && options.body) || '',
                         icon: (options && options.icon) || '',
                         tag: (options && options.tag) || '',
-                        serviceID: '\(escapedID)'
+                        serviceID: \(Self.jsStringLiteral(serviceID))
                     })
                 );
                 return new OrigNotification(title, options);
@@ -391,9 +407,23 @@ final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unche
         // trusted service (spoofing / phishing).
         let frame = message.frameInfo
         if !frame.isMainFrame {
-            let frameHost = frame.securityOrigin.host
-            let mainHost = message.webView?.url?.host ?? ""
-            guard !frameHost.isEmpty, frameHost == mainHost else { return }
+            // Compare the full origin (scheme + host + port), not just the host:
+            // a same-host subframe on a different scheme/port is a different
+            // origin and must not post a notification attributed to the service.
+            let origin = frame.securityOrigin
+            guard let mainURL = message.webView?.url,
+                  let mainScheme = mainURL.scheme?.lowercased(),
+                  let mainHost = mainURL.host,
+                  !origin.host.isEmpty,
+                  origin.protocol.lowercased() == mainScheme,
+                  origin.host == mainHost
+            else { return }
+            // WKSecurityOrigin reports 0 for the scheme's default port; URL
+            // reports nil. Normalize both before comparing.
+            let defaultPort = mainScheme == "https" ? 443 : 80
+            let originPort = origin.port == 0 ? defaultPort : origin.port
+            let mainPort = mainURL.port ?? defaultPort
+            guard originPort == mainPort else { return }
         }
 
         guard let jsonString = message.body as? String,
