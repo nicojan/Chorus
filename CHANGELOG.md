@@ -3,6 +3,14 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.5.2] - 2026-07-13
+
+### Fixed
+
+- You can now upload files to your services. Clicking a file-picker button, such
+  as Slack's "Upload file" for a profile photo, used to do nothing because Chorus
+  never opened the file browser. It now opens.
+
 ## [1.5.1] - 2026-07-13
 
 ### Fixed
