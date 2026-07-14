@@ -1,34 +1,54 @@
 # Open items
 
-Nothing is open. The deferred work from the last handoff is done and on `main`.
+Camera and microphone support is built and committed on
+`harden/1.5.3-review-fixes`, tested by hand (Meet: camera, mic, screen share;
+Discord: voice). Here is what is left for the next session.
+
+## Cut the 1.5.3 release
+
+The feature is committed but not released. To ship it:
+
+1. Bump the version in both `project.yml` and the `.pbxproj` (`MARKETING_VERSION`
+   to `1.5.3`, `CURRENT_PROJECT_VERSION` up one), then run `xcodegen generate`.
+2. Write a CHANGELOG and release-notes entry for the feature. Run the text through
+   the humanizer check and Orwell's rules first; the repo requires it for anything
+   the public reads.
+3. Notarize and staple `Chorus.app` (this needs the Developer ID identity on your
+   Mac), put it at the repo root, build the DMG, cut the `gh release`, then sign
+   and regenerate `docs/appcast.xml`. Steps are in `release/DISTRIBUTION.md`.
+
+## Decide the camera/microphone trust boundary
+
+The same-site check (`WebViewCoordinator.belongsToService` / `effectiveDomain`)
+approximates a service's registrable domain from a hardcoded two-part-TLD list.
+Because that list is not a full public-suffix list, two linked cases slip through:
+
+- Shared-hosting suffixes (`github.io`, `web.app`, `vercel.app`, `pages.dev`,
+  `herokuapp.com`) collapse to one site, so a service pinned to Allow on such a
+  suffix could hand its grant to another site on the same suffix.
+- Trust is anchored to a service's home host, so a call service whose live capture
+  host differs (Messenger `facebook.com` then `messenger.com`, Teams
+  `*.cloud.microsoft`) is denied. It fails safe, but the call breaks.
+
+Tightening to an exact-host match closes the first case and worsens the second, so
+the fix needs data. For each call service, note the host it actually calls
+`getUserMedia` from (the `Media capture denied: request origin ...` line in the
+Console names it), then choose between a public-suffix list and an exact-host match
+with a per-service allowlist.
+
+## Close the test gaps
+
+Unit tests cover the policy resolver and the asked-field gating. Still untested:
+the prompt-queue rules (answer-by-id, drain on delete or teardown), the
+cross-origin `isCaptureFrameTrusted` check, `muteAllMicrophones` target selection,
+and the `captureKind` mapping. Pulling a couple more pure helpers out would make
+them reachable.
+
+## Try the rest by hand
+
+Not yet exercised: the ⇧⌘M "Mute All Microphones" command (the mic dot should turn
+orange and the far end should see you muted) and a per-service Camera or Microphone
+set to Deny.
 
 Build and test: `xcodebuild test -project Chorus.xcodeproj -scheme Chorus -destination 'platform=macOS'`.
-Reference commit: `7d33387`. Wider background lives in the review-backlog memory.
-
-## Done this session
-
-- **Top-bar tab drag (was uncommitted)** — kept. A tab drag reorders, the gap
-  moves the window, a double-click on the gap zooms. Committed once tested by
-  hand. `ServiceSidebarView`, `ServiceTabView`, `SpaceStripView`, `ContentView`.
-- **Poll-task dual ownership (item 1)** — fixed. On a deep-link switch the
-  outgoing service kept exactly one poll in background mode instead of going
-  silent. `WebContentView` reconciles against the pool's `activeServiceID`
-  (`NotificationManager.shouldStopOutgoingPoll`) rather than trusting the last
-  writer. Covered by a unit test.
-- **Swift 6 (item 2)** — done. `WebViewCoordinator` is `@MainActor`, and the
-  language mode is on (`SWIFT_VERSION` 6.0 for both targets, in `project.yml`
-  and the `.pbxproj`). Everything it surfaced is cleared: async `decidePolicyFor`
-  and download-destination delegate methods, a Sendable-safe popup-title KVO
-  read, `ServiceCatalog: Sendable`, a region-checker-safe `hasActiveCall`,
-  `@MainActor` on `UserScriptManager` / `AppPresenceManager` /
-  `NotificationCenterDelegate.retained`, and a `@MainActor` test class. A clean
-  build and 48 tests pass with no warnings.
-- **Rail keyboard navigation (item 6)** — added. Arrow along the rail's axis
-  selects; ⌥+arrow reorders, reusing the VoiceOver move helpers. Both the
-  spaces rail and the services rail. `ServiceSidebarView`, `SpaceStripView`.
-
-## Standing product decisions (not open — recorded so they aren't re-raised)
-
-- **Google favicon fallback** — kept on by default (`FaviconFetcher`).
-- **Cookie-consent auto-accept** — kept on by default, with the setting reworded
-  to state the trade-off plainly (`SettingsView`).
+Background lives in the camera-mic-permissions and review-backlog memories.

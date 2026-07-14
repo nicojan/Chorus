@@ -43,6 +43,20 @@ final class WebViewPool {
     /// Set of service IDs currently fully hibernated (web view destroyed)
     private(set) var hibernatedServiceIDs: Set<UUID> = []
 
+    /// Per-service camera/microphone capture state, driven by KVO on each web
+    /// view. Populated for background services too (a call on a service you're
+    /// not viewing), so the rail can show an in-use dot. Absent ⇒ nothing live.
+    struct MediaCaptureState: Equatable {
+        var cameraActive = false   // camera live (capturing, not paused); a
+                                   // paused (.muted) camera shows no dot, matching
+                                   // the mic's distinct muted state below
+        var micActive = false      // microphone live
+        var micMuted = false       // microphone engaged but muted
+        var isCapturing: Bool { cameraActive || micActive || micMuted }
+    }
+    private(set) var mediaCaptureStates: [UUID: MediaCaptureState] = [:]
+    private var mediaObservations: [UUID: [NSKeyValueObservation]] = [:]
+
     /// Called when a service is fully hibernated (for badge poller tracking)
     var onServiceHibernated: ((UUID) -> Void)?
 
@@ -58,10 +72,23 @@ final class WebViewPool {
     /// Called when a service's web view is permanently removed (deletion, not hibernation)
     var onServiceRemoved: ((UUID) -> Void)?
 
+    /// Called whenever a service's web view is torn down for ANY reason — full
+    /// hibernation, rebuild (recreateWebView), LRU eviction, or removal — i.e. the
+    /// single `teardownWebView` chokepoint. Distinct from `onServiceRemoved`
+    /// (permanent deletion only); used to invalidate a pending media prompt whose
+    /// web view is going away.
+    var onServiceTornDown: ((UUID) -> Void)?
+
     /// Wired up at AppState init and applied to every coordinator the pool
     /// creates. Routes cross-domain target=_blank links + Cmd-clicks through
     /// service-aware matching before falling back to the system browser.
     var externalLinkHandler: ((URL) -> Void)?
+
+    /// Wired up at AppState init and applied to every coordinator. Resolves a
+    /// camera/microphone capture request to a WebKit decision from the persisted
+    /// per-service policy. The pool is a pass-through — it owns neither the policy
+    /// nor the prompt UI.
+    var mediaCapturePolicyProvider: ((UUID, WKMediaCaptureType, WKFrameInfo) async -> WKPermissionDecision)?
 
     /// Called after a service has been preloaded (web view created and load
     /// dispatched, but not yet displayed). Allows callers to start background
@@ -136,6 +163,7 @@ final class WebViewPool {
 
         webViews[instance.id] = webView
         lastAccessTimes[instance.id] = Date()
+        observeCaptureState(webView, id: instance.id)
 
         // Restore the last-visited URL when waking from full hibernation
         // so the user lands back where they left off, not at the home URL.
@@ -177,6 +205,7 @@ final class WebViewPool {
 
         webViews[instance.id] = webView
         lastAccessTimes[instance.id] = Date()
+        observeCaptureState(webView, id: instance.id)
 
         if let url = URL(string: instance.url) {
             webView.load(URLRequest(url: url))
@@ -390,6 +419,71 @@ final class WebViewPool {
 
     // MARK: - Private
 
+    /// Observes a web view's camera/mic capture state so the rail shows an in-use
+    /// dot even for a background service. Mirrors WebViewState's KVO discipline:
+    /// the callback captures only Sendable values (the id + an object-identity
+    /// token), hops to main, and re-fetches the live view — re-checking identity
+    /// so a torn-down view's late callback can't light a dot for a recycled id.
+    private func observeCaptureState(_ webView: WKWebView, id: UUID) {
+        let token = ObjectIdentifier(webView)
+        // Inlined (not a shared local) so each closure literal is inferred
+        // @Sendable — a stored non-Sendable function value trips Swift 6's
+        // data-race check when handed to `observe`'s @Sendable changeHandler.
+        mediaObservations[id] = [
+            webView.observe(\.cameraCaptureState, options: [.new]) { [weak self] _, _ in
+                DispatchQueue.main.async {
+                    guard let self, let live = self.webViews[id],
+                          ObjectIdentifier(live) == token else { return }
+                    self.refreshMediaCaptureState(id: id, webView: live)
+                }
+            },
+            webView.observe(\.microphoneCaptureState, options: [.new]) { [weak self] _, _ in
+                DispatchQueue.main.async {
+                    guard let self, let live = self.webViews[id],
+                          ObjectIdentifier(live) == token else { return }
+                    self.refreshMediaCaptureState(id: id, webView: live)
+                }
+            },
+        ]
+    }
+
+    /// Recomputes and stores a service's capture state from its live web view,
+    /// dropping the entry entirely when nothing is live.
+    private func refreshMediaCaptureState(id: UUID, webView: WKWebView) {
+        var state = MediaCaptureState()
+        // Only .active counts as "live" — a .muted (paused) camera shouldn't show
+        // a green in-use dot. Mic tracks active vs. muted separately so the glyph
+        // can distinguish "live" from "muted".
+        state.cameraActive = (webView.cameraCaptureState == .active)
+        state.micActive = (webView.microphoneCaptureState == .active)
+        state.micMuted = (webView.microphoneCaptureState == .muted)
+        if state.isCapturing {
+            mediaCaptureStates[id] = state
+        } else {
+            mediaCaptureStates.removeValue(forKey: id)
+        }
+    }
+
+    /// Mutes or unmutes a service's live microphone (host-side, so the far end
+    /// sees it). No-op without a live capturing web view.
+    func setMicrophoneMuted(_ muted: Bool, for id: UUID) {
+        guard let webView = webViews[id],
+              webView.microphoneCaptureState != WKMediaCaptureState.none else { return }
+        webView.setMicrophoneCaptureState(muted ? .muted : .active, completionHandler: nil)
+    }
+
+    /// Mutes every service whose microphone is currently live. Returns how many
+    /// were muted, so a caller can tell when nothing was live.
+    @discardableResult
+    func muteAllMicrophones() -> Int {
+        var count = 0
+        for (_, webView) in webViews where webView.microphoneCaptureState == .active {
+            webView.setMicrophoneCaptureState(.muted, completionHandler: nil)
+            count += 1
+        }
+        return count
+    }
+
     private func teardownWebView(_ instanceID: UUID) {
         if let webView = webViews[instanceID] {
             webView.configuration.userContentController.removeAllScriptMessageHandlers()
@@ -397,10 +491,14 @@ final class WebViewPool {
             webView.navigationDelegate = nil
             webView.uiDelegate = nil
         }
+        mediaObservations[instanceID]?.forEach { $0.invalidate() }
+        mediaObservations.removeValue(forKey: instanceID)
+        mediaCaptureStates.removeValue(forKey: instanceID)
         webViews.removeValue(forKey: instanceID)
         lastAccessTimes.removeValue(forKey: instanceID)
         coordinators.removeValue(forKey: instanceID)
         snapshots.removeValue(forKey: instanceID)
+        onServiceTornDown?(instanceID)
     }
 
     /// Builds a navigation/UI coordinator wired to this service. Shared by
@@ -411,6 +509,7 @@ final class WebViewPool {
         coordinator.instanceID = instance.id
         coordinator.fallbackURL = URL(string: instance.url)
         coordinator.externalLinkHandler = externalLinkHandler
+        coordinator.mediaCapturePolicyProvider = mediaCapturePolicyProvider
         coordinator.onNavigationFinished = { [weak self] id in
             self?.onNavigationFinished?(id)
         }
@@ -426,6 +525,10 @@ final class WebViewPool {
 
         // Enable back-forward cache so swiping back loads instantly from cache
         config.preferences.isElementFullscreenEnabled = true
+
+        // NOTE: no picture-in-picture config flag here. That flag
+        // (allowsPictureInPictureMediaPlayback) is iOS-only; on macOS WebKit
+        // exposes video PiP through the native media controls automatically.
 
         let controller = WKUserContentController()
         let injection = DarkReaderSupport.injection(

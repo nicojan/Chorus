@@ -48,6 +48,41 @@ final class AppState {
     /// Drives the Find-in-Page overlay in WebContentView. Toggled by Cmd-F.
     var findInPageVisible = false
 
+    /// The head of the camera/microphone permission-prompt queue, or nil when no
+    /// prompt is showing. Drives the alert in ContentView. Only ever set on the
+    /// main actor; answered via `answerMediaRequest(allow:)`.
+    private(set) var pendingMediaRequest: MediaPermissionRequest?
+
+    /// The public, UI-facing shape of a pending capture prompt (no continuation).
+    struct MediaPermissionRequest: Identifiable, Equatable {
+        let id: UUID
+        let serviceLabel: String
+        /// The device(s) actually being asked about (kind-involved and currently
+        /// `.ask`), so the prompt copy names only what's in question — never more.
+        let camAsked: Bool
+        let micAsked: Bool
+
+        var kindLabel: String {
+            switch (camAsked, micAsked) {
+            case (true, true): return "camera and microphone"
+            case (false, true): return "microphone"
+            case (true, false): return "camera"
+            case (false, false): return "camera or microphone"  // not reached: a prompt always asks something
+            }
+        }
+
+        static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+    }
+
+    /// Queue entry: the public request (which carries the asked-field flags used
+    /// for both the prompt copy and persistence) plus its awaiting continuation.
+    private struct PendingMediaEntry {
+        let request: MediaPermissionRequest
+        let serviceID: UUID
+        let continuation: CheckedContinuation<Bool, Never>
+    }
+    @ObservationIgnored private var mediaQueue: [PendingMediaEntry] = []
+
     /// Bumped when a service's web view is rebuilt for an edit that only takes
     /// effect at creation time (custom CSS). WebContentView observes this and
     /// re-fetches the active service's web view so the change shows at once.
@@ -143,6 +178,13 @@ final class AppState {
     /// Global "dark-theme services without one" toggle, mirrored from
     /// AppPreferences at launch. Written via `setAutoDarkModeEnabled(_:)`.
     var autoDarkModeEnabled = false
+
+    /// Default camera/microphone permission for services that haven't pinned
+    /// their own, mirrored from AppPreferences at launch. Written via
+    /// `setDefaultCameraPolicy(_:)` / `setDefaultMicrophonePolicy(_:)`. Read on
+    /// the permission hot path, so kept in memory rather than re-fetched.
+    var defaultCameraPolicy: MediaPermissionPolicy = .ask
+    var defaultMicrophonePolicy: MediaPermissionPolicy = .ask
 
     /// Non-nil when the persistent store failed and we fell back to in-memory storage.
     /// The UI should display a warning banner when this is set.
@@ -284,6 +326,7 @@ final class AppState {
         setupSystemSleepHandling()
         setupNetworkHandling()
         setupExternalLinkRouting()
+        setupMediaPermissions()
         let didSeedDefaults = seedDefaultDataIfNeeded()
         backfillPasskeyNoticeIfNeeded(freshInstall: didSeedDefaults)
         reapOrphanedServices()
@@ -312,6 +355,230 @@ final class AppState {
     private func setupExternalLinkRouting() {
         webViewPool.externalLinkHandler = { [weak self] url in
             self?.handleExternalLink(url)
+        }
+    }
+
+    /// Wires the WebViewPool's media-capture handler so every service's
+    /// `getUserMedia()` is resolved against the persisted per-service policy.
+    private func setupMediaPermissions() {
+        webViewPool.mediaCapturePolicyProvider = { [weak self] serviceID, type, frame in
+            await self?.resolveMediaPermission(serviceID: serviceID, type: type, frame: frame) ?? .deny
+        }
+        // Any teardown of a service's web view (hibernate, recreate, evict, or
+        // remove) invalidates a pending prompt for it — deny + drain so a stale
+        // prompt can't linger and block a later service's prompt.
+        webViewPool.onServiceTornDown = { [weak self] serviceID in
+            self?.drainMediaRequests(for: serviceID)
+        }
+    }
+
+    /// Resolves a service's camera/microphone request into a WebKit decision from
+    /// the persisted per-service policy (falling back to the global default, then
+    /// `.ask`). Fails closed (`.deny`) whenever anything is uncertain: unknown
+    /// service, a persisted grant reached from a cross-origin subframe, or — until
+    /// the prompt lands in the next step — an `.ask` outcome.
+    @MainActor
+    func resolveMediaPermission(
+        serviceID: UUID,
+        type: WKMediaCaptureType,
+        frame: WKFrameInfo
+    ) async -> WKPermissionDecision {
+        guard let service = fetchService(id: serviceID) else { return .deny }
+        let camera = MediaPermissionResolver.effectivePolicy(
+            serviceRaw: service.cameraPolicyRaw, globalRaw: defaultCameraPolicy.rawValue)
+        let microphone = MediaPermissionResolver.effectivePolicy(
+            serviceRaw: service.microphonePolicyRaw, globalRaw: defaultMicrophonePolicy.rawValue)
+
+        let kind = Self.captureKind(from: type)
+        let resolution = MediaPermissionResolver.resolve(kind, camera: camera, microphone: microphone)
+        if resolution == .deny { return .deny }
+
+        // Shared gates for any grant OR prompt — all fail closed:
+        //  - the requesting origin must belong to the service (closes the
+        //    cross-origin subframe, navigated-away top frame, and shared-OAuth-popup
+        //    escalations);
+        //  - the app must be unlocked (never leak a service name or grant capture
+        //    behind the lock screen);
+        //  - only the service the user is actively viewing may capture — a
+        //    preloaded/background service must never silently grab the camera/mic
+        //    (the .grant path needs this as much as the prompt path) nor throw a
+        //    surprise prompt.
+        guard isCaptureFrameTrusted(frame, service: service) else {
+            logMediaDenyUntrusted(frame, service: service)
+            return .deny
+        }
+        guard !isLocked else {
+            AppLogger.webView.info("Media capture denied: app is locked")
+            return .deny
+        }
+        guard webViewPool.activeServiceID == serviceID else {
+            AppLogger.webView.info("Media capture denied: \(service.label) isn't the active service")
+            return .deny
+        }
+
+        if resolution == .grant { return .grant }
+
+        // resolution == .ask: prompt, and remember the answer on ONLY the
+        // device(s) actually asked about (kind-gated), so a mic-only prompt can
+        // never silently pin the camera to Allow, or vice versa.
+        let asked = MediaPermissionResolver.askedFields(kind, camera: camera, microphone: microphone)
+        let allowed = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            enqueueMediaRequest(
+                serviceID: serviceID,
+                serviceLabel: service.label,
+                camAsked: asked.camera,
+                micAsked: asked.microphone,
+                continuation: continuation
+            )
+        }
+        persistMediaAnswer(serviceID: serviceID, allow: allowed, camAsked: asked.camera, micAsked: asked.microphone)
+        return allowed ? .grant : .deny
+    }
+
+    /// Appends a prompt to the queue and shows it if none is currently up.
+    private func enqueueMediaRequest(
+        serviceID: UUID,
+        serviceLabel: String,
+        camAsked: Bool,
+        micAsked: Bool,
+        continuation: CheckedContinuation<Bool, Never>
+    ) {
+        let request = MediaPermissionRequest(
+            id: UUID(), serviceLabel: serviceLabel, camAsked: camAsked, micAsked: micAsked)
+        mediaQueue.append(PendingMediaEntry(
+            request: request,
+            serviceID: serviceID,
+            continuation: continuation
+        ))
+        if pendingMediaRequest == nil {
+            pendingMediaRequest = mediaQueue.first?.request
+        }
+    }
+
+    /// Answers the shown prompt (from the alert's buttons), resumes its awaiting
+    /// resolver, and presents the next queued prompt. Takes the request id so a
+    /// stray tap can only answer the prompt it was shown for — never the next one.
+    func answerMediaRequest(_ id: UUID, allow: Bool) {
+        guard mediaQueue.first?.request.id == id else { return }
+        let entry = mediaQueue.removeFirst()
+        entry.continuation.resume(returning: allow)
+        presentNextMediaRequest()
+    }
+
+    /// Resumes (with deny) and clears any prompts queued for a service that's
+    /// being removed, so a delete mid-prompt can't strand a continuation.
+    private func drainMediaRequests(for serviceID: UUID) {
+        guard mediaQueue.contains(where: { $0.serviceID == serviceID }) else { return }
+        let headWasStranded = mediaQueue.first?.serviceID == serviceID
+        let stranded = mediaQueue.filter { $0.serviceID == serviceID }
+        mediaQueue.removeAll { $0.serviceID == serviceID }
+        for entry in stranded { entry.continuation.resume(returning: false) }
+        // Only re-present if the prompt currently on screen was one we just
+        // drained; a drained non-head entry leaves the visible prompt alone.
+        if headWasStranded { presentNextMediaRequest() }
+    }
+
+    /// Denies and clears every queued prompt. Used when the app locks — a capture
+    /// prompt must not sit above the lock screen leaking a service name or letting
+    /// the user grant capture without unlocking.
+    private func drainAllMediaRequests() {
+        guard !mediaQueue.isEmpty else { return }
+        let all = mediaQueue
+        mediaQueue.removeAll()
+        for entry in all { entry.continuation.resume(returning: false) }
+        pendingMediaRequest = nil
+    }
+
+    /// Dismisses the current prompt and shows the next queued one on the following
+    /// runloop tick. SwiftUI won't re-present an alert while `isPresented` stays
+    /// true, so the binding must go false → true between entries.
+    private func presentNextMediaRequest() {
+        pendingMediaRequest = nil
+        guard let next = mediaQueue.first?.request else { return }
+        Task { @MainActor [weak self] in
+            guard let self, self.pendingMediaRequest == nil,
+                  self.mediaQueue.first?.request.id == next.id else { return }
+            self.pendingMediaRequest = next
+        }
+    }
+
+    /// Persists an "ask" answer as an explicit allow/deny, on only the fields that
+    /// were asked (leaving an already-explicit camera or mic policy untouched).
+    private func persistMediaAnswer(serviceID: UUID, allow: Bool, camAsked: Bool, micAsked: Bool) {
+        guard let service = fetchService(id: serviceID) else { return }
+        let policy: MediaPermissionPolicy = allow ? .allow : .deny
+        if camAsked { service.cameraPolicy = policy }
+        if micAsked { service.microphonePolicy = policy }
+        do {
+            try modelContainer.mainContext.save()
+        } catch {
+            AppLogger.dataStore.error("Failed to persist media permission: \(error.localizedDescription)")
+            modelContainer.mainContext.rollback()
+        }
+    }
+
+    /// Sets and persists the global default camera policy for services without
+    /// a per-service value. Mirrors the other global-toggle setters.
+    func setDefaultCameraPolicy(_ policy: MediaPermissionPolicy) {
+        defaultCameraPolicy = policy
+        persistDefaultMediaPolicies()
+    }
+
+    /// Sets and persists the global default microphone policy.
+    func setDefaultMicrophonePolicy(_ policy: MediaPermissionPolicy) {
+        defaultMicrophonePolicy = policy
+        persistDefaultMediaPolicies()
+    }
+
+    private func persistDefaultMediaPolicies() {
+        let prefs = ensurePreferences()
+        prefs.defaultCameraPolicyRaw = defaultCameraPolicy.rawValue
+        prefs.defaultMicrophonePolicyRaw = defaultMicrophonePolicy.rawValue
+        do {
+            try modelContainer.mainContext.save()
+        } catch {
+            AppLogger.dataStore.error("Failed to save default media policies: \(error.localizedDescription)")
+            modelContainer.mainContext.rollback()
+        }
+    }
+
+    /// Mutes every service whose microphone is currently live (⇧⌘M). Logs the
+    /// count so the action isn't silent when nothing was muted.
+    func muteAllMicrophones() {
+        let count = webViewPool.muteAllMicrophones()
+        AppLogger.general.info("Muted \(count) live microphone(s)")
+    }
+
+    /// Whether a capture request from `frame` should be attributed to `service`:
+    /// the requesting origin — main frame OR subframe — must belong to the
+    /// service's own site. Checking the MAIN frame too (rather than trusting
+    /// `isMainFrame`) closes two escalations: a service that navigates its top
+    /// frame to another origin, and an OAuth popup that shares this coordinator —
+    /// either would otherwise inherit the service's persisted grant. A request
+    /// from an origin that doesn't belong to the service fails closed (deny).
+    /// Logs a capture denial caused by the requesting origin not belonging to the
+    /// service, naming both hosts — so a cross-domain call that's being wrongly
+    /// blocked is diagnosable in Console rather than a silent nothing.
+    private func logMediaDenyUntrusted(_ frame: WKFrameInfo, service: ServiceInstance) {
+        let frameHost = frame.securityOrigin.host
+        let serviceHost = URL(string: service.url)?.host ?? service.url
+        AppLogger.webView.info(
+            "Media capture denied: request origin \(frameHost, privacy: .public) doesn't belong to \(service.label, privacy: .public) (\(serviceHost, privacy: .public))")
+    }
+
+    private func isCaptureFrameTrusted(_ frame: WKFrameInfo, service: ServiceInstance) -> Bool {
+        guard let serviceHost = URL(string: service.url)?.host else { return false }
+        let frameHost = frame.securityOrigin.host
+        guard !frameHost.isEmpty else { return false }
+        return WebViewCoordinator.belongsToService(frameHost, serviceHost: serviceHost)
+    }
+
+    private static func captureKind(from type: WKMediaCaptureType) -> MediaCaptureKind {
+        switch type {
+        case .camera: return .camera
+        case .microphone: return .microphone
+        case .cameraAndMicrophone: return .cameraAndMicrophone
+        @unknown default: return .cameraAndMicrophone  // unknown ⇒ most restrictive
         }
     }
 
@@ -652,6 +919,8 @@ final class AppState {
     func lock() {
         guard appLockEnabled else { return }
         isLocked = true
+        // Don't leave a capture prompt hanging over the lock screen.
+        drainAllMediaRequests()
     }
 
     /// Prompts for Touch ID (with the login password as fallback) and unlocks on
@@ -1205,6 +1474,8 @@ final class AppState {
         contentBlockingEnabled = prefs?.contentBlockingEnabledEffective ?? true
         annoyanceBlockingEnabled = prefs?.annoyanceBlockingEnabledEffective ?? false
         autoDarkModeEnabled = prefs?.autoDarkModeEnabledEffective ?? false
+        defaultCameraPolicy = prefs?.defaultCameraPolicyRaw.flatMap(MediaPermissionPolicy.init(rawValue:)) ?? .ask
+        defaultMicrophonePolicy = prefs?.defaultMicrophonePolicyRaw.flatMap(MediaPermissionPolicy.init(rawValue:)) ?? .ask
         // Start locked at launch when opted in; ContentView's lock overlay
         // prompts for Touch ID on appear.
         if appLockEnabled && lockOnLaunch {
@@ -1391,6 +1662,7 @@ final class AppState {
             self.notificationManager.stopPolling(for: serviceID)
             self.hibernatedBadgePoller.untrack(serviceID: serviceID)
             self.badgeManager.removeBadge(for: serviceID)
+            self.drainMediaRequests(for: serviceID)
         }
     }
 

@@ -44,6 +44,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// for the next poll tick. Never called for OAuth popup web views.
     var onNavigationFinished: ((UUID) -> Void)?
 
+    /// Resolves a camera/microphone capture request to a WebKit decision. Set by
+    /// `WebViewPool` (supplied by `AppState`), which owns the per-service policy
+    /// and the "ask" prompt. Nil ⇒ deny (fail closed).
+    var mediaCapturePolicyProvider: ((UUID, WKMediaCaptureType, WKFrameInfo) async -> WKPermissionDecision)?
+
     /// URL schemes the OS handles natively. We forward to NSWorkspace rather
     /// than letting WebKit fail with an unsupported-scheme error.
     private static let nonWebSchemes: Set<String> = [
@@ -535,6 +540,38 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             panel.beginSheetModal(for: window, completionHandler: handleResponse)
         } else {
             panel.begin(completionHandler: handleResponse)
+        }
+    }
+
+    // MARK: - Media Capture (camera / microphone) permission
+
+    /// Gates every `getUserMedia()` call. Without this method WKWebView denies
+    /// all capture, so video/voice services never get the camera or mic.
+    ///
+    /// CRITICAL: `decisionHandler` MUST be `@escaping @MainActor (…)`. The WebKit
+    /// header annotates the block `WK_SWIFT_UI_ACTOR` (= `@MainActor`); drop it and
+    /// Swift silently declines to treat this as the protocol witness — the method
+    /// never reaches the Obj-C runtime, WebKit never calls it, and capture fails
+    /// with no error. Same trap as `runOpenPanelWith` above. The `origin`
+    /// parameter is `WKSecurityOrigin` (not URL); getting it wrong also breaks the
+    /// witness. The `Task` captures only locals — never `self` — so a coordinator
+    /// torn down mid-decision leaves the handler a safe no-op.
+    func webView(
+        _ webView: WKWebView,
+        requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+        initiatedByFrame frame: WKFrameInfo,
+        type: WKMediaCaptureType,
+        decisionHandler: @escaping @MainActor (WKPermissionDecision) -> Void
+    ) {
+        // A breadcrumb so QA can confirm the witness actually fires (the trap is
+        // silent, so "did the method get called at all?" is the first question).
+        AppLogger.webView.info("Media capture request (type \(type.rawValue), mainFrame \(frame.isMainFrame))")
+        guard let id = instanceID, let provider = mediaCapturePolicyProvider else {
+            decisionHandler(.deny)
+            return
+        }
+        Task { @MainActor in
+            decisionHandler(await provider(id, type, frame))
         }
     }
 

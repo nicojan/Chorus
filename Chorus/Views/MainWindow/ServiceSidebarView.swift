@@ -331,8 +331,9 @@ struct ServiceSidebarView: View {
         let badge = appState.badgeManager.badgeCount(for: link.service.id)
         let hibernated = !isSel && appState.webViewPool.isHibernated(link.service.id)
         let muted = link.service.isEffectivelyMuted
+        let media = appState.webViewPool.mediaCaptureStates[link.service.id]
 
-        cell(for: link, isSelected: isSel, badge: badge, hibernated: hibernated, muted: muted)
+        cell(for: link, isSelected: isSel, badge: badge, hibernated: hibernated, muted: muted, media: media)
             .draggable(link.id.uuidString) {
                 // Custom drag preview. Source-dimming is left to SwiftUI (as in
                 // SpaceStripView): manually tracking a "dragging" id can't be
@@ -420,7 +421,8 @@ struct ServiceSidebarView: View {
         isSelected: Bool,
         badge: Int,
         hibernated: Bool,
-        muted: Bool
+        muted: Bool,
+        media: WebViewPool.MediaCaptureState?
     ) -> some View {
         if axis == .vertical {
             Button {
@@ -431,7 +433,10 @@ struct ServiceSidebarView: View {
                     isSelected: isSelected,
                     badgeCount: badge,
                     isHibernated: hibernated,
-                    isMuted: muted
+                    isMuted: muted,
+                    cameraActive: media?.cameraActive ?? false,
+                    micActive: media?.micActive ?? false,
+                    micMuted: media?.micMuted ?? false
                 )
             }
             .buttonStyle(.plain)
@@ -443,7 +448,10 @@ struct ServiceSidebarView: View {
                 badgeCount: badge,
                 isHibernated: hibernated,
                 isMuted: muted,
-                iconOnly: true
+                iconOnly: true,
+                cameraActive: media?.cameraActive ?? false,
+                micActive: media?.micActive ?? false,
+                micMuted: media?.micMuted ?? false
             ) {
                 selectService(link)
             }

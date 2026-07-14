@@ -73,6 +73,11 @@ struct ChorusApp: App {
                 }
                 .keyboardShortcut("l", modifiers: [.command, .shift])
                 .disabled(!appState.appLockEnabled)
+
+                Button("Mute All Microphones") {
+                    appState.muteAllMicrophones()
+                }
+                .keyboardShortcut("m", modifiers: [.command, .shift])
             }
 
             KeyboardShortcutCommands(

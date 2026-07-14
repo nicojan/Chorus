@@ -1319,4 +1319,75 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(after.filter { $0.service.id == moving.id }.count, 1)
     }
 
+    // MARK: - Media permission resolution
+
+    func testMediaEffectivePolicyPrefersServiceThenGlobalThenAsk() {
+        // Explicit service value wins over the global default.
+        XCTAssertEqual(MediaPermissionResolver.effectivePolicy(serviceRaw: "allow", globalRaw: "deny"), .allow)
+        // Falls back to the global default when the service has no value.
+        XCTAssertEqual(MediaPermissionResolver.effectivePolicy(serviceRaw: nil, globalRaw: "deny"), .deny)
+        // Falls back to .ask when neither is set, or either is unparseable.
+        XCTAssertEqual(MediaPermissionResolver.effectivePolicy(serviceRaw: nil, globalRaw: nil), .ask)
+        XCTAssertEqual(MediaPermissionResolver.effectivePolicy(serviceRaw: "garbage", globalRaw: nil), .ask)
+    }
+
+    func testMediaResolveSingleTypeReadsTheMatchingField() {
+        // .camera reads only the camera field.
+        XCTAssertEqual(MediaPermissionResolver.resolve(.camera, camera: .allow, microphone: .deny), .grant)
+        XCTAssertEqual(MediaPermissionResolver.resolve(.camera, camera: .deny, microphone: .allow), .deny)
+        XCTAssertEqual(MediaPermissionResolver.resolve(.camera, camera: .ask, microphone: .allow), .ask)
+        // .microphone reads only the microphone field.
+        XCTAssertEqual(MediaPermissionResolver.resolve(.microphone, camera: .allow, microphone: .deny), .deny)
+        XCTAssertEqual(MediaPermissionResolver.resolve(.microphone, camera: .deny, microphone: .allow), .grant)
+        XCTAssertEqual(MediaPermissionResolver.resolve(.microphone, camera: .allow, microphone: .ask), .ask)
+    }
+
+    func testMediaResolveCameraAndMicrophoneIsMostRestrictive() {
+        // Grant only when BOTH allow.
+        XCTAssertEqual(MediaPermissionResolver.resolve(.cameraAndMicrophone, camera: .allow, microphone: .allow), .grant)
+        // Deny if EITHER denies (deny beats ask and allow).
+        XCTAssertEqual(MediaPermissionResolver.resolve(.cameraAndMicrophone, camera: .deny, microphone: .allow), .deny)
+        XCTAssertEqual(MediaPermissionResolver.resolve(.cameraAndMicrophone, camera: .ask, microphone: .deny), .deny)
+        // Ask if EITHER asks and neither denies.
+        XCTAssertEqual(MediaPermissionResolver.resolve(.cameraAndMicrophone, camera: .ask, microphone: .allow), .ask)
+        XCTAssertEqual(MediaPermissionResolver.resolve(.cameraAndMicrophone, camera: .allow, microphone: .ask), .ask)
+    }
+
+    func testMediaPolicyAccessorsDefaultToAskAndRoundTrip() {
+        let service = ServiceInstance(label: "S", url: "https://s.example")
+        // Unset → .ask, and the raw stays nil so resolution can fall back to global.
+        XCTAssertEqual(service.cameraPolicy, .ask)
+        XCTAssertEqual(service.microphonePolicy, .ask)
+        XCTAssertNil(service.cameraPolicyRaw)
+        XCTAssertNil(service.microphonePolicyRaw)
+        // Setting pins the raw string.
+        service.cameraPolicy = .allow
+        service.microphonePolicy = .deny
+        XCTAssertEqual(service.cameraPolicyRaw, "allow")
+        XCTAssertEqual(service.microphonePolicyRaw, "deny")
+        XCTAssertEqual(service.cameraPolicy, .allow)
+        XCTAssertEqual(service.microphonePolicy, .deny)
+    }
+
+    func testMediaAskedFieldsGatesByRequestKind() {
+        // A mic-only request with BOTH fields unset (.ask) marks ONLY the mic as
+        // asked — so answering the prompt can never silently pin the camera to
+        // Allow (the cross-device over-grant this guards).
+        var asked = MediaPermissionResolver.askedFields(.microphone, camera: .ask, microphone: .ask)
+        XCTAssertFalse(asked.camera)
+        XCTAssertTrue(asked.microphone)
+        // Camera-only request → only the camera.
+        asked = MediaPermissionResolver.askedFields(.camera, camera: .ask, microphone: .ask)
+        XCTAssertTrue(asked.camera)
+        XCTAssertFalse(asked.microphone)
+        // Combined request marks a field only when it's actually .ask; an
+        // already-explicit field is left out so it isn't overwritten.
+        asked = MediaPermissionResolver.askedFields(.cameraAndMicrophone, camera: .ask, microphone: .allow)
+        XCTAssertTrue(asked.camera)
+        XCTAssertFalse(asked.microphone)
+        asked = MediaPermissionResolver.askedFields(.cameraAndMicrophone, camera: .ask, microphone: .ask)
+        XCTAssertTrue(asked.camera)
+        XCTAssertTrue(asked.microphone)
+    }
+
 }
