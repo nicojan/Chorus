@@ -1,21 +1,15 @@
 # Open items
 
-Camera and microphone support is built and committed on
-`harden/1.5.3-review-fixes`, tested by hand (Meet: camera, mic, screen share;
-Discord: voice). Here is what is left for the next session.
+## Shipped: 1.5.3 (2026-07-14)
 
-## Cut the 1.5.3 release
+Camera and microphone support, first-party call-vendor capture trust, 24 more
+catalog services, the native-dark Dark Reader skip, and the 1.5.2 review-backlog
+hardening all shipped in 1.5.3. Merged to `main`, notarized DMG on the
+`v1.5.3` GitHub release, appcast signed and live. Verified by hand: Meet (camera,
+mic, screen share), Discord voice, Teams call (first-party cross-domain path).
 
-The feature is committed but not released. To ship it:
-
-1. Bump the version in both `project.yml` and the `.pbxproj` (`MARKETING_VERSION`
-   to `1.5.3`, `CURRENT_PROJECT_VERSION` up one), then run `xcodegen generate`.
-2. Write a CHANGELOG and release-notes entry for the feature. Run the text through
-   the humanizer check and Orwell's rules first; the repo requires it for anything
-   the public reads.
-3. Notarize and staple `Chorus.app` (this needs the Developer ID identity on your
-   Mac), put it at the repo root, build the DMG, cut the `gh release`, then sign
-   and regenerate `docs/appcast.xml`. Steps are in `release/DISTRIBUTION.md`.
+Still worth exercising by hand at some point (low stakes): the ⇧⌘M "Mute All
+Microphones" command and a per-service Camera or Microphone set to Deny.
 
 ## Camera/microphone trust boundary: both cases handled
 
