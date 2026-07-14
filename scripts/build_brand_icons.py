@@ -36,6 +36,15 @@ SLUGS = {
     "canva":"canva","jira":"jira","confluence":"confluence","todoist":"todoist",
     "gitlab":"gitlab","stackoverflow":"stack-overflow",
     "hackernews":"y-combinator","substack":"substack","mistral":"mistral",
+    # Added 2026-07 batch. Keys are exact catalog ids so the written imageset
+    # (brand-<id>) matches ServiceIconView's lookup. Services with no thesvg
+    # mark (google-meet, threads, bluesky, yahoo-mail, zoho-mail, monday,
+    # element, google-voice, coda) fall back to their fetched favicon.
+    "loom":"loom","tiktok":"tiktok","pinterest":"pinterest",
+    "bitbucket":"bitbucket","vercel":"vercel","cloudflare":"cloudflare",
+    "sentry":"sentry","clickup":"clickup","evernote":"evernote",
+    "feedly":"feedly","medium":"medium","apple-music":"apple-music",
+    "soundcloud":"soundcloud","replit":"replit","calendly":"calendly",
 }
 
 def fetch(slug):
