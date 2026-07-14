@@ -101,16 +101,6 @@
         "description": "Google Workspace messaging"
     },
     {
-        "id": "skype",
-        "name": "Skype",
-        "url": "https://web.skype.com/",
-        "icon": "skype-icon",
-        "category": "Messaging",
-        "badgeJS": null,
-        "userAgent": null,
-        "description": "Video calling and messaging"
-    },
-    {
         "id": "linkedin",
         "name": "LinkedIn",
         "url": "https://www.linkedin.com/messaging/",

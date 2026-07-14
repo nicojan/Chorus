@@ -23,7 +23,7 @@ SLUGS = {
     "gmail":"gmail","outlook":"microsoft-outlook","protonmail":"proton-mail",
     "messenger":"messenger","slack":"slack","teams":"microsoft-teams",
     "discord":"discord","whatsapp":"whatsapp","telegram":"telegram",
-    "gchat":"google-chat","skype":"skype","linkedin":"linkedin","x":"x",
+    "gchat":"google-chat","linkedin":"linkedin","x":"x",
     "instagram":"instagram","facebook":"facebook","reddit":"reddit",
     "notion":"notion","trello":"trello","asana":"asana","linear":"linear",
     "gcal":"google-calendar","gdrive":"google-drive","figma":"figma",
