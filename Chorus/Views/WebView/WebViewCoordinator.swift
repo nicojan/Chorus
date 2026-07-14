@@ -826,6 +826,56 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         return true
     }
 
+    /// Multi-tenant hosting suffixes where each label directly under the suffix is
+    /// a DIFFERENT owner — a curated subset of the Public Suffix List's private
+    /// section. For the camera/mic trust decision these are treated as public
+    /// suffixes, so `alice.web.app` and `attacker.web.app` are different sites and
+    /// a capture grant can never leak across them. Not exhaustive (a full PSL is
+    /// the ideal), but it covers the common free-hosting providers a service might
+    /// live on. Used ONLY by the capture check, not by link routing.
+    nonisolated static let captureSharedHostingSuffixes: Set<String> = [
+        "github.io", "gitlab.io", "web.app", "firebaseapp.com", "appspot.com",
+        "run.app", "pages.dev", "workers.dev", "vercel.app", "netlify.app",
+        "herokuapp.com", "onrender.com", "fly.dev", "glitch.me", "repl.co",
+        "replit.dev", "surge.sh", "azurewebsites.net",
+    ]
+
+    /// The registrable domain for the capture trust decision. Like
+    /// `effectiveDomain`, but also treats the multi-tenant hosting suffixes above
+    /// as public suffixes, so a tenant on shared hosting reduces to
+    /// `<tenant>.<suffix>` instead of the bare suffix.
+    nonisolated static func captureRegistrableDomain(_ host: String) -> String {
+        let h = normalizedHost(host)
+        let parts = h.split(separator: ".")
+        guard parts.count >= 2 else { return h }
+        for suffix in captureSharedHostingSuffixes {
+            if h == suffix { return h }
+            if h.hasSuffix("." + suffix) {
+                let labels = suffix.split(separator: ".").count + 1  // tenant + suffix
+                return parts.suffix(labels).joined(separator: ".")
+            }
+        }
+        return effectiveDomain(h)
+    }
+
+    /// Whether a capture request from `frameHost` should be trusted as the service
+    /// at `serviceHost`. Stricter than `belongsToService` (which drives link
+    /// routing): hosts that merely share a multi-tenant hosting suffix are
+    /// different owners and never match, closing a grant leak across e.g.
+    /// `*.web.app`. Same registrable domain still matches (so `*.slack.com`
+    /// workspaces work), and shared-umbrella domains keep their exact-host rule.
+    nonisolated static func captureOriginBelongsToService(_ frameHost: String, serviceHost: String) -> Bool {
+        let frame = normalizedHost(frameHost)
+        let service = normalizedHost(serviceHost)
+        guard !frame.isEmpty, !service.isEmpty else { return false }
+        let frameDomain = captureRegistrableDomain(frame)
+        guard frameDomain == captureRegistrableDomain(service) else { return false }
+        if sharedUmbrellaDomains.contains(frameDomain) {
+            return frame == service
+        }
+        return true
+    }
+
     /// Sign-in / identity gateways. These host the authentication step for a
     /// service (and for third-party "Sign in with…" flows), so they are never a
     /// separate product to route out — a click to one during sign-in must stay

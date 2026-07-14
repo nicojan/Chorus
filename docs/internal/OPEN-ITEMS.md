@@ -17,32 +17,32 @@ The feature is committed but not released. To ship it:
    Mac), put it at the repo root, build the DMG, cut the `gh release`, then sign
    and regenerate `docs/appcast.xml`. Steps are in `release/DISTRIBUTION.md`.
 
-## Decide the camera/microphone trust boundary
+## Camera/microphone trust boundary: one case fixed, one open
 
-The same-site check (`WebViewCoordinator.belongsToService` / `effectiveDomain`)
-approximates a service's registrable domain from a hardcoded two-part-TLD list.
-Because that list is not a full public-suffix list, two linked cases slip through:
+Fixed: the capture check now uses
+`WebViewCoordinator.captureOriginBelongsToService`, which treats a curated set of
+multi-tenant hosting suffixes (`github.io`, `web.app`, `vercel.app`, and more) as
+public suffixes. Two owners on the same shared suffix no longer count as one site,
+so a service pinned to Allow can no longer hand its grant to another site there.
+Same registrable domain still matches, so `*.slack.com` workspaces keep working. A
+test covers it.
 
-- Shared-hosting suffixes (`github.io`, `web.app`, `vercel.app`, `pages.dev`,
-  `herokuapp.com`) collapse to one site, so a service pinned to Allow on such a
-  suffix could hand its grant to another site on the same suffix.
-- Trust is anchored to a service's home host, so a call service whose live capture
-  host differs (Messenger `facebook.com` then `messenger.com`, Teams
-  `*.cloud.microsoft`) is denied. It fails safe, but the call breaks.
-
-Tightening to an exact-host match closes the first case and worsens the second, so
-the fix needs data. For each call service, note the host it actually calls
-`getUserMedia` from (the `Media capture denied: request origin ...` line in the
-Console names it), then choose between a public-suffix list and an exact-host match
-with a per-service allowlist.
+Open: trust is still anchored to a service's home host, so a call service whose
+live capture host differs by registrable domain is denied. It fails safe, but the
+call breaks. Messenger (`facebook.com` then `messenger.com`) and Teams
+(`*.cloud.microsoft`) are the likely cases. Closing this needs data: for each call
+service, note the host it actually calls `getUserMedia` from (the
+`Media capture denied: request origin ...` line in the Console names it), then add
+a per-service allowlist of its capture hosts, with a catalog field as the natural
+home. The curated suffix list above is also not the full Public Suffix List;
+adopting a real one would generalise the fix.
 
 ## Close the test gaps
 
-Unit tests cover the policy resolver and the asked-field gating. Still untested:
-the prompt-queue rules (answer-by-id, drain on delete or teardown), the
-cross-origin `isCaptureFrameTrusted` check, `muteAllMicrophones` target selection,
-and the `captureKind` mapping. Pulling a couple more pure helpers out would make
-them reachable.
+Unit tests cover the policy resolver, the asked-field gating, and the capture
+origin-trust check. Still untested: the prompt-queue rules (answer-by-id, drain on
+delete or teardown), `muteAllMicrophones` target selection, and the `captureKind`
+mapping. Pulling a couple more pure helpers out would make them reachable.
 
 ## Try the rest by hand
 

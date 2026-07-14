@@ -570,7 +570,11 @@ final class AppState {
         guard let serviceHost = URL(string: service.url)?.host else { return false }
         let frameHost = frame.securityOrigin.host
         guard !frameHost.isEmpty else { return false }
-        return WebViewCoordinator.belongsToService(frameHost, serviceHost: serviceHost)
+        // Use the stricter capture-specific same-site test, not the link-routing
+        // one: it won't treat two owners on a shared hosting suffix (*.web.app,
+        // *.github.io, …) as the same site, so an Allow-pinned service can't leak
+        // its grant to another site there.
+        return WebViewCoordinator.captureOriginBelongsToService(frameHost, serviceHost: serviceHost)
     }
 
     private static func captureKind(from type: WKMediaCaptureType) -> MediaCaptureKind {

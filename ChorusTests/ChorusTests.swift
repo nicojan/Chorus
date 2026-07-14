@@ -1390,4 +1390,25 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(asked.microphone)
     }
 
+    func testCaptureOriginTrustSeparatesSharedHostingSuffixes() {
+        typealias C = WebViewCoordinator
+        // Exact host, and same registrable domain for a normal domain — trusted
+        // (e.g. Slack workspace subdomains).
+        XCTAssertTrue(C.captureOriginBelongsToService("app.slack.com", serviceHost: "app.slack.com"))
+        XCTAssertTrue(C.captureOriginBelongsToService("huddle.slack.com", serviceHost: "app.slack.com"))
+        // Different owners sharing a multi-tenant hosting suffix — NOT trusted
+        // (this is the grant-leak the fix closes).
+        XCTAssertFalse(C.captureOriginBelongsToService("attacker.web.app", serviceHost: "alice.web.app"))
+        XCTAssertFalse(C.captureOriginBelongsToService("evil.github.io", serviceHost: "myapp.github.io"))
+        // Same tenant under a shared suffix (its own subdomain) — trusted.
+        XCTAssertTrue(C.captureOriginBelongsToService("sub.alice.web.app", serviceHost: "alice.web.app"))
+        // Cross registrable domain — not trusted (fails safe; pre-existing).
+        XCTAssertFalse(C.captureOriginBelongsToService("messenger.com", serviceHost: "facebook.com"))
+        // Shared-umbrella domains keep the exact-host rule.
+        XCTAssertFalse(C.captureOriginBelongsToService("docs.google.com", serviceHost: "mail.google.com"))
+        XCTAssertTrue(C.captureOriginBelongsToService("mail.google.com", serviceHost: "mail.google.com"))
+        // Empty host — not trusted.
+        XCTAssertFalse(C.captureOriginBelongsToService("", serviceHost: "alice.web.app"))
+    }
+
 }
