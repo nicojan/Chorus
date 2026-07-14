@@ -46,7 +46,7 @@ struct QuickSwitcherView: View {
 
     private func recomputeResults() {
         let serviceResults = allLinks
-            .filter { $0.modelContext != nil && $0.service.modelContext != nil }
+            .filter { $0.modelContext != nil && $0.service.modelContext != nil && $0.space.modelContext != nil }
             .map { link in
                 QuickSwitcherResult(
                     id: "\(link.space.id)-\(link.service.id)",

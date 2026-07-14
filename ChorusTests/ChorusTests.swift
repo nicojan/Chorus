@@ -449,6 +449,55 @@ final class ChorusTests: XCTestCase {
         try context.save()
     }
 
+    /// The launch gate's detector must flag a store that still holds a dangling
+    /// link (true) and clear a repaired one (false). This is what makes `init`
+    /// fall back to in-memory instead of running on a store that would trap on a
+    /// later `.space`/`.service` read.
+    func testStoreHasDanglingLinksDetectsAndClears() throws {
+        let schema = Schema([
+            ServiceInstance.self,
+            Space.self,
+            SpaceServiceLink.self,
+            AppPreferences.self,
+        ])
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-gate-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        do {
+            let config = ModelConfiguration(schema: schema, url: storeURL)
+            let container = try ModelContainer(for: schema, configurations: [config])
+            let context = container.mainContext
+            let work = Space(name: "Work", emoji: "💼", sortOrder: 0)
+            let personal = Space(name: "Personal", emoji: "🏠", sortOrder: 1)
+            context.insert(work)
+            context.insert(personal)
+            let svc = ServiceInstance(label: "slack", url: "https://slack.example", catalogEntryID: "slack")
+            context.insert(svc)
+            context.insert(SpaceServiceLink(sortOrder: 0, space: work, service: svc))
+            let keep = ServiceInstance(label: "gmail", url: "https://gmail.example", catalogEntryID: "gmail")
+            context.insert(keep)
+            context.insert(SpaceServiceLink(sortOrder: 0, space: personal, service: keep))
+            try context.save()
+        }
+
+        // Corrupt: delete Work's row, leaving its link dangling.
+        try Self.runSQLite(storeURL, "DELETE FROM ZSPACE WHERE ZNAME='Work';")
+
+        // Detector must flag the corrupted store.
+        let corruptConfig = ModelConfiguration(schema: schema, url: storeURL)
+        let corrupt = try ModelContainer(for: schema, configurations: [corruptConfig])
+        XCTAssertTrue(AppState.storeHasDanglingLinks(corrupt), "must detect the dangling link")
+
+        // After repair, the same detector must pass the store.
+        StoreRepair.repairDanglingLinks(at: storeURL)
+        let repairedConfig = ModelConfiguration(schema: schema, url: storeURL)
+        let repaired = try ModelContainer(for: schema, configurations: [repairedConfig])
+        XCTAssertFalse(AppState.storeHasDanglingLinks(repaired), "repaired store must be clean")
+    }
+
     /// Runs one SQL statement against a SwiftData store via the sqlite3 CLI and
     /// returns stdout. Used to manufacture on-disk corruption a fixed schema
     /// can't produce through the normal delete path.

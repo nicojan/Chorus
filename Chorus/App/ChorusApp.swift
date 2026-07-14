@@ -141,18 +141,11 @@ struct ChorusApp: App {
 
     @MainActor
     private func servicesForSpace(_ spaceID: UUID) -> [ServiceInstance] {
-        let context = appState.modelContainer.mainContext
-        let descriptor = FetchDescriptor<SpaceServiceLink>()
-        do {
-            let links = try context.fetch(descriptor)
-            return links
-                .filter { $0.space.id == spaceID }
-                .sorted { $0.sortOrder < $1.sortOrder }
-                .map(\.service)
-        } catch {
-            AppLogger.dataStore.error("Failed to fetch services for space: \(error.localizedDescription)")
-            return []
-        }
+        // Route through AppState's implementation, which guards against
+        // dangling links (reading `link.space`/`.service` on a deleted model
+        // traps). This is called from keyboard shortcuts, so an unguarded copy
+        // could crash on a keystroke.
+        appState.servicesForSpace(spaceID)
     }
 
     @MainActor

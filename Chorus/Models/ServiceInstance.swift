@@ -100,7 +100,10 @@ final class ServiceInstance {
     /// is already in hand — it avoids AppState's fetch-all-then-scan lookup.
     var isEffectivelyMuted: Bool {
         if isMuted { return true }
-        return spaceLinks.contains { $0.space.isMutedEffective }
+        // Skip links whose space was deleted: reading `.space` on a dangling
+        // link faults the freed model and traps. `.modelContext` is nil once a
+        // model is deleted, so check it before touching `isMutedEffective`.
+        return spaceLinks.contains { $0.space.modelContext != nil && $0.space.isMutedEffective }
     }
 
     init(

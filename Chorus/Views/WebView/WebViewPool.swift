@@ -563,11 +563,12 @@ final class WebViewPool {
                    && !pinnedIDs.contains($0.key) }
             .sorted { $0.value < $1.value }
 
-        var evicted = 0
-        let needed = webViews.count - maxLoaded
-
         for (id, _) in sorted {
-            guard evicted < needed else { break }
+            // Re-check the live count each pass, not a count captured up front:
+            // a concurrent evictIfNeeded (they interleave at the `await` below)
+            // may have already hibernated views, and a stale target would evict
+            // past the cap, dropping the pool below maxLoaded.
+            guard webViews.count > maxLoaded else { break }
             guard webViews[id] != nil else { continue }
 
             evictionInFlight.insert(id)
@@ -592,7 +593,6 @@ final class WebViewPool {
             }
 
             hibernate(id)
-            evicted += 1
         }
     }
 }

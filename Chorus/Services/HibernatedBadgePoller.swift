@@ -36,9 +36,17 @@ final class HibernatedBadgePoller {
     init(badgeManager: BadgeManager, dataStoreManager: DataStoreManager) {
         self.badgeManager = badgeManager
         self.dataStoreManager = dataStoreManager
-        // Ephemeral session — we attach per-service cookies manually on
-        // each request so the title we read is the authenticated one.
-        self.session = URLSession(configuration: .ephemeral)
+        // Stateless session — we attach each service's cookies manually per
+        // request. An ephemeral config still keeps an in-memory cookie jar
+        // shared across every request, so without disabling it, one service's
+        // Set-Cookie response would be replayed onto another service on the
+        // same host (e.g. two Gmail accounts), reading the wrong account's
+        // unread count. Turning the jar off leaves only our per-service header.
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieAcceptPolicy = .never
+        self.session = URLSession(configuration: configuration)
     }
 
     /// Start tracking a hibernated service for badge polling.

@@ -3,6 +3,14 @@ import SwiftData
 import WebKit
 import LocalAuthentication
 
+/// Reasons the persistent store is unusable and `AppState` must fall back to
+/// in-memory storage.
+private enum StoreError: Error {
+    /// `StoreRepair` ran but the opened store still holds dangling links, so
+    /// reading one would trap. Treated like an open failure.
+    case danglingLinksRemainAfterRepair
+}
+
 @MainActor
 @Observable
 final class AppState {
@@ -123,13 +131,22 @@ final class AppState {
         StoreRepair.repairDanglingLinks(at: config.url)
 
         do {
-            self.modelContainer = try ModelContainer(for: schema, configurations: [config])
+            let opened = try ModelContainer(for: schema, configurations: [config])
+            // Verify StoreRepair fully cleaned the store. If any dangling link
+            // remains (repair skipped an unrecognized schema, or its write
+            // failed), a later unguarded `.space`/`.service` read would fault
+            // the deleted model and brick the app — so don't run on it. Fall
+            // through to the in-memory store, exactly as an open failure does.
+            guard !Self.storeHasDanglingLinks(opened) else {
+                throw StoreError.danglingLinksRemainAfterRepair
+            }
+            self.modelContainer = opened
         } catch {
             // Never auto-delete the user's persistent store: silent destruction
             // is data loss without consent. Fall back to in-memory storage so
             // the app stays usable, surface a banner with the on-disk path,
             // and let the user choose whether to reset via Settings.
-            AppLogger.dataStore.error("Persistent store could not be opened: \(error.localizedDescription). Falling back to in-memory storage; on-disk data is preserved at \(config.url.path).")
+            AppLogger.dataStore.error("Persistent store unusable: \(error.localizedDescription). Falling back to in-memory storage; on-disk data is preserved at \(config.url.path).")
             let inMemoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
             do {
                 self.modelContainer = try ModelContainer(for: schema, configurations: [inMemoryConfig])
@@ -166,8 +183,7 @@ final class AppState {
                 )
                 descriptor.fetchLimit = 1
                 guard let service = try? context.fetch(descriptor).first else { return false }
-                if service.isMuted { return true }
-                return service.spaceLinks.contains { $0.space.isMutedEffective }
+                return service.isEffectivelyMuted
             }
         }
         self.userScriptManager.isServiceNotifyingOS = { @Sendable serviceID in
@@ -232,7 +248,6 @@ final class AppState {
         setupExternalLinkRouting()
         let didSeedDefaults = seedDefaultDataIfNeeded()
         backfillPasskeyNoticeIfNeeded(freshInstall: didSeedDefaults)
-        reapDanglingLinks()
         reapOrphanedServices()
         restoreWindowState()
         fetchMissingAndStaleFavicons()
@@ -370,6 +385,14 @@ final class AppState {
     /// Resumes polling: restarts active/background polling for every live web
     /// view and re-arms the hibernated-service poller.
     private func resumePolling(reason: String) {
+        // Sleep/wake and network changes both drive suspend/resume. Waking while
+        // still offline must not restart polling: NWPathMonitor only fires on a
+        // change, so a still-unsatisfied path delivers no event to re-suspend,
+        // and pollers would hammer a dead network until the next transition.
+        guard networkMonitor.isOnline else {
+            AppLogger.general.info("Not resuming polling — offline (\(reason))")
+            return
+        }
         AppLogger.general.info("Resuming polling — \(reason)")
         restartPollingAfterWake()
         hibernatedBadgePoller.resume()
@@ -721,21 +744,33 @@ final class AppState {
         }
         let orphanedIDs = Self.servicesOrphaned(byDeletingSpace: spaceID, memberships: memberships)
 
-        for service in linkedServices where orphanedIDs.contains(service.id) {
-            let dataStoreID = service.dataStoreIdentifier
-            webViewPool.removeWebView(for: service.id)
-            context.delete(service)
-            markDataStoreOrphaned(dataStoreID)
-        }
-
+        // Delete the models and their orphaned services, but hold off on every
+        // irreversible side effect (tearing down web views, wiping on-disk data
+        // stores) until the save succeeds. Doing them first meant a failed save
+        // left the service still in the store yet logged out with its cookies
+        // deleted 2s later — data loss the rest of the code is careful to avoid.
+        let reclaimed = linkedServices.filter { orphanedIDs.contains($0.id) }
+        // Capture the identifiers BEFORE deleting — reading them off the models
+        // after they're deleted would fault the freed backing data and trap.
+        let reclaimedServiceIDs = reclaimed.map(\.id)
+        let orphanedDataStoreIDs = reclaimed.map(\.dataStoreIdentifier)
+        for service in reclaimed { context.delete(service) }
         context.delete(space)
 
         do {
             try context.save()
-            AppLogger.dataStore.info("Deleted space \(spaceID); reclaimed \(orphanedIDs.count) orphaned service(s)")
+            AppLogger.dataStore.info("Deleted space \(spaceID); reclaimed \(reclaimed.count) orphaned service(s)")
         } catch {
-            AppLogger.dataStore.error("Failed to delete space: \(error.localizedDescription)")
+            // Undo the pending deletes so the store, web views, and data stores
+            // stay consistent with each other; nothing destructive has run yet.
+            context.rollback()
+            AppLogger.dataStore.error("Failed to delete space \(spaceID); rolled back: \(error.localizedDescription)")
+            return
         }
+
+        // Save committed — now the destructive cleanup is safe.
+        for serviceID in reclaimedServiceIDs { webViewPool.removeWebView(for: serviceID) }
+        for dataStoreID in orphanedDataStoreIDs { markDataStoreOrphaned(dataStoreID) }
 
         // Fix up selection: clear a selected service that was just reclaimed,
         // and move off the deleted space to the first remaining one.
@@ -766,23 +801,34 @@ final class AppState {
     /// not reachable from BOTH sides as dangling. It does NOT delete: an
     /// object-graph delete faults the dead space on save (the very crash we
     /// avoid), which is why removal is the raw-file repair's job.
-    private func reapDanglingLinks() {
-        let context = modelContainer.mainContext
+    /// Whether the store still holds any dangling `SpaceServiceLink` — a join
+    /// row whose non-optional `space` or `service` points at a deleted row.
+    /// Reading such a link's relationship faults the deleted model and traps
+    /// ("backing data could no longer be found"), which is the launch/keystroke
+    /// crash `StoreRepair` exists to prevent. `StoreRepair` runs on the raw file
+    /// before the container opens; this is the post-open verification. If it
+    /// returns true, the store is unsafe to run on and `init` falls back to the
+    /// in-memory store rather than let a later unguarded `.space`/`.service`
+    /// read brick the app.
+    ///
+    /// It never touches a dangling relationship: it walks outward only from
+    /// live spaces and services, reading link `id`s (a stored attribute), and
+    /// treats any link not reachable from BOTH sides as dangling.
+    static func storeHasDanglingLinks(_ container: ModelContainer) -> Bool {
+        let context = container.mainContext
         let links: [SpaceServiceLink]
         let spaces: [Space]
         let services: [ServiceInstance]
         do {
             links = try context.fetch(FetchDescriptor<SpaceServiceLink>())
+            guard !links.isEmpty else { return false }
             spaces = try context.fetch(FetchDescriptor<Space>())
             services = try context.fetch(FetchDescriptor<ServiceInstance>())
         } catch {
             AppLogger.dataStore.error("Failed to fetch models for dangling-link check: \(error.localizedDescription)")
-            return
+            return false
         }
-        guard !links.isEmpty else { return }
 
-        // Reachability from live models reads `id` only — never a dangling
-        // link's `space`/`service`, which would trap.
         var reachableFromSpace: Set<UUID> = []
         for space in spaces {
             for link in space.serviceLinks { reachableFromSpace.insert(link.id) }
@@ -791,12 +837,8 @@ final class AppState {
         for service in services {
             for link in service.spaceLinks { reachableFromService.insert(link.id) }
         }
-
-        let danglingCount = links.filter {
+        return links.contains {
             !reachableFromSpace.contains($0.id) || !reachableFromService.contains($0.id)
-        }.count
-        if danglingCount > 0 {
-            AppLogger.dataStore.error("Dangling link(s) survived pre-open repair: \(danglingCount). Store repair may have skipped or failed.")
         }
     }
 

@@ -507,6 +507,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         didBecome download: WKDownload
     ) {
         download.delegate = self
+        trackDownload(download)
     }
 
     func webView(
@@ -515,12 +516,33 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         didBecome download: WKDownload
     ) {
         download.delegate = self
+        trackDownload(download)
     }
 
     /// Maps each in-flight download to the destination we chose for it, so the
     /// finish handler can reveal the right file (WKDownload doesn't hand the
     /// destination back). Keyed by object identity; cleared on finish/failure.
     private var downloadDestinations: [ObjectIdentifier: URL] = [:]
+
+    /// Identities of downloads still running, and a strong self-reference held
+    /// while any are. The coordinator is otherwise retained only by
+    /// `WebViewPool.coordinators`, and `WKDownload.delegate` is weak — so
+    /// evicting/rebuilding/hibernating the web view mid-download would dealloc
+    /// the coordinator, drop the delegate, lose `downloadDestinations`, and
+    /// silently abort the transfer. Keeping `self` alive until the last
+    /// download finishes lets it complete regardless of the web view's fate.
+    private var activeDownloadIDs: Set<ObjectIdentifier> = []
+    private var selfRetainWhileDownloading: WebViewCoordinator?
+
+    private func trackDownload(_ download: WKDownload) {
+        activeDownloadIDs.insert(ObjectIdentifier(download))
+        selfRetainWhileDownloading = self
+    }
+
+    private func untrackDownload(_ download: WKDownload) {
+        activeDownloadIDs.remove(ObjectIdentifier(download))
+        if activeDownloadIDs.isEmpty { selfRetainWhileDownloading = nil }
+    }
 
     // Save straight to the user's Downloads folder — the browser-like default —
     // rather than prompting with a save panel for every file. WKDownload fails
@@ -557,6 +579,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     func downloadDidFinish(_ download: WKDownload) {
         let key = ObjectIdentifier(download)
         let destination = downloadDestinations.removeValue(forKey: key)
+        untrackDownload(download)
         guard let destination else { return }
         AppLogger.webView.info("Download finished: \(destination.lastPathComponent)")
         // Bounce the Downloads stack in the Dock — the standard macOS
@@ -569,6 +592,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
         downloadDestinations.removeValue(forKey: ObjectIdentifier(download))
+        untrackDownload(download)
         AppLogger.webView.error("Download failed: \(error.localizedDescription)")
     }
 

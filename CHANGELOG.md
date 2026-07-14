@@ -17,6 +17,13 @@ All notable changes to Chorus are documented here. Format loosely follows
   those broken references as it starts, and backs up your data file first.
   Version 1.5.1 stopped new deletions from causing this but could not repair a
   store already affected. This does.
+- Downloads no longer stop if you switch away from a service while a file is
+  still downloading.
+- Badge counts no longer mix between two accounts of the same service, such as
+  two Gmail accounts.
+- More reliability fixes: deleting a space no longer risks losing a service's
+  data if the save fails, Chorus won't keep polling a service while your Mac is
+  offline, and closing the find bar now clears its highlights.
 
 ## [1.5.1] - 2026-07-13
 
