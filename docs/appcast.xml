@@ -3,6 +3,24 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.2</title>
+            <pubDate>Mon, 13 Jul 2026 18:37:36 -0700</pubDate>
+            <sparkle:version>11</sparkle:version>
+            <sparkle:shortVersionString>1.5.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Fixed</h3>
+<ul>
+<li>You can now upload files to your services. Clicking a file-picker button, such as Slack's "Upload file" for a profile photo, used to do nothing because Chorus never opened the file browser. It now opens.</li>
+<li>Chorus no longer crashes at launch after you deleted a space on an earlier version. Deleting a space could leave a broken reference in your saved data; the next launch tried to read it and crashed before the window appeared, with no way back except deleting your data by hand. Chorus now finds and clears those broken references as it starts, and backs up your data file first. Version 1.5.1 stopped new deletions from causing this but could not repair a store already affected. This does.</li>
+<li>Downloads no longer stop if you switch away from a service while a file is still downloading.</li>
+<li>Badge counts no longer mix between two accounts of the same service, such as two Gmail accounts.</li>
+<li>More reliability fixes: deleting a space no longer risks losing a service's data if the save fails, Chorus won't keep polling a service while your Mac is offline, and closing the find bar now clears its highlights.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.2/Chorus-1.5.2.dmg" length="8750700" type="application/octet-stream" sparkle:edSignature="T8WSRF4CDV6YfCt1JvhjHN9hn7TUQruFSUH7mYBEZ1mrw9c4C+KGCC/JaL89nzquL0+B5kBihGx5wL0+sxVPCQ=="/>
+        </item>
+        <item>
             <title>1.5.1</title>
             <pubDate>Mon, 13 Jul 2026 09:54:15 -0700</pubDate>
             <sparkle:version>10</sparkle:version>
