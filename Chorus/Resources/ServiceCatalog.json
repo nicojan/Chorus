@@ -37,7 +37,8 @@
         "category": "Messaging",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Facebook Messenger"
+        "description": "Facebook Messenger",
+        "firstParty": true
     },
     {
         "id": "slack",
@@ -57,7 +58,8 @@
         "category": "Messaging",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Microsoft's collaboration platform"
+        "description": "Microsoft's collaboration platform",
+        "firstParty": true
     },
     {
         "id": "discord",
@@ -67,7 +69,8 @@
         "category": "Messaging",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Voice, video, and text chat"
+        "description": "Voice, video, and text chat",
+        "nativeDark": true
     },
     {
         "id": "whatsapp",
@@ -77,7 +80,8 @@
         "category": "Messaging",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Messaging by Meta — requires QR pairing"
+        "description": "Messaging by Meta — requires QR pairing",
+        "firstParty": true
     },
     {
         "id": "telegram",
@@ -97,17 +101,8 @@
         "category": "Messaging",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Google Workspace messaging"
-    },
-    {
-        "id": "skype",
-        "name": "Skype",
-        "url": "https://web.skype.com/",
-        "icon": "skype-icon",
-        "category": "Messaging",
-        "badgeJS": null,
-        "userAgent": null,
-        "description": "Video calling and messaging"
+        "description": "Google Workspace messaging",
+        "firstParty": true
     },
     {
         "id": "linkedin",
@@ -127,7 +122,8 @@
         "category": "Social",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Social media and direct messages"
+        "description": "Social media and direct messages",
+        "nativeDark": true
     },
     {
         "id": "instagram",
@@ -137,7 +133,8 @@
         "category": "Social",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Photo sharing and direct messages"
+        "description": "Photo sharing and direct messages",
+        "nativeDark": true
     },
     {
         "id": "facebook",
@@ -147,7 +144,8 @@
         "category": "Social",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Social network by Meta"
+        "description": "Social network by Meta",
+        "firstParty": true
     },
     {
         "id": "reddit",
@@ -187,7 +185,8 @@
         "category": "Productivity",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Work management platform"
+        "description": "Work management platform",
+        "nativeDark": true
     },
     {
         "id": "linear",
@@ -197,7 +196,8 @@
         "category": "Productivity",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Issue tracking for software teams"
+        "description": "Issue tracking for software teams",
+        "nativeDark": true
     },
     {
         "id": "google-calendar",
@@ -237,7 +237,8 @@
         "category": "Developer",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Code hosting and collaboration"
+        "description": "Code hosting and collaboration",
+        "nativeDark": true
     },
     {
         "id": "chatgpt",
@@ -247,7 +248,8 @@
         "category": "AI",
         "badgeJS": null,
         "userAgent": null,
-        "description": "AI assistant by OpenAI"
+        "description": "AI assistant by OpenAI",
+        "nativeDark": true
     },
     {
         "id": "claude",
@@ -257,7 +259,8 @@
         "category": "AI",
         "badgeJS": null,
         "userAgent": null,
-        "description": "AI assistant by Anthropic"
+        "description": "AI assistant by Anthropic",
+        "nativeDark": true
     },
     {
         "id": "gemini",
@@ -267,7 +270,8 @@
         "category": "AI",
         "badgeJS": null,
         "userAgent": null,
-        "description": "AI assistant by Google"
+        "description": "AI assistant by Google",
+        "nativeDark": true
     },
     {
         "id": "perplexity",
@@ -277,7 +281,8 @@
         "category": "AI",
         "badgeJS": null,
         "userAgent": null,
-        "description": "AI-powered search engine"
+        "description": "AI-powered search engine",
+        "nativeDark": true
     },
     {
         "id": "fastmail",
@@ -297,7 +302,8 @@
         "category": "Email",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Apple iCloud webmail"
+        "description": "Apple iCloud webmail",
+        "nativeDark": true
     },
     {
         "id": "zoom",
@@ -327,7 +333,8 @@
         "category": "Social",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Music streaming"
+        "description": "Music streaming",
+        "nativeDark": true
     },
     {
         "id": "youtube",
@@ -337,7 +344,8 @@
         "category": "Social",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Video sharing"
+        "description": "Video sharing",
+        "nativeDark": true
     },
     {
         "id": "youtube-music",
@@ -347,7 +355,8 @@
         "category": "Social",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Music by YouTube"
+        "description": "Music by YouTube",
+        "nativeDark": true
     },
     {
         "id": "twitch",
@@ -387,7 +396,8 @@
         "category": "Productivity",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Microsoft cloud storage"
+        "description": "Microsoft cloud storage",
+        "nativeDark": true
     },
     {
         "id": "airtable",
@@ -417,7 +427,8 @@
         "category": "Productivity",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Design and templates"
+        "description": "Design and templates",
+        "nativeDark": true
     },
     {
         "id": "jira",
@@ -427,7 +438,8 @@
         "category": "Productivity",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Issue tracking by Atlassian"
+        "description": "Issue tracking by Atlassian",
+        "nativeDark": true
     },
     {
         "id": "confluence",
@@ -437,7 +449,8 @@
         "category": "Productivity",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Team docs by Atlassian"
+        "description": "Team docs by Atlassian",
+        "nativeDark": true
     },
     {
         "id": "todoist",
@@ -457,7 +470,8 @@
         "category": "Developer",
         "badgeJS": null,
         "userAgent": null,
-        "description": "DevOps platform"
+        "description": "DevOps platform",
+        "nativeDark": true
     },
     {
         "id": "stackoverflow",
@@ -498,5 +512,251 @@
         "badgeJS": null,
         "userAgent": null,
         "description": "AI assistant by Mistral"
+    },
+    {
+        "id": "google-meet",
+        "name": "Google Meet",
+        "url": "https://meet.google.com/",
+        "icon": "google-meet-icon",
+        "category": "Messaging",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Google video meetings",
+        "firstParty": true
+    },
+    {
+        "id": "element",
+        "name": "Element",
+        "url": "https://app.element.io/",
+        "icon": "element-icon",
+        "category": "Messaging",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Matrix chat client"
+    },
+    {
+        "id": "google-voice",
+        "name": "Google Voice",
+        "url": "https://voice.google.com/",
+        "icon": "google-voice-icon",
+        "category": "Messaging",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Phone calls and texts"
+    },
+    {
+        "id": "tiktok",
+        "name": "TikTok",
+        "url": "https://www.tiktok.com/",
+        "icon": "tiktok-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Short-form video",
+        "nativeDark": true
+    },
+    {
+        "id": "threads",
+        "name": "Threads",
+        "url": "https://www.threads.net/",
+        "icon": "threads-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Text-based social posts",
+        "nativeDark": true
+    },
+    {
+        "id": "bluesky",
+        "name": "Bluesky",
+        "url": "https://bsky.app/",
+        "icon": "bluesky-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Open social network",
+        "nativeDark": true
+    },
+    {
+        "id": "pinterest",
+        "name": "Pinterest",
+        "url": "https://www.pinterest.com/",
+        "icon": "pinterest-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Image boards and ideas"
+    },
+    {
+        "id": "medium",
+        "name": "Medium",
+        "url": "https://medium.com/",
+        "icon": "medium-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Reading and publishing"
+    },
+    {
+        "id": "feedly",
+        "name": "Feedly",
+        "url": "https://feedly.com/i/latest",
+        "icon": "feedly-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "RSS news reader"
+    },
+    {
+        "id": "apple-music",
+        "name": "Apple Music",
+        "url": "https://music.apple.com/",
+        "icon": "apple-music-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Apple's music streaming"
+    },
+    {
+        "id": "soundcloud",
+        "name": "SoundCloud",
+        "url": "https://soundcloud.com/feed",
+        "icon": "soundcloud-icon",
+        "category": "Social",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Music and audio streaming"
+    },
+    {
+        "id": "loom",
+        "name": "Loom",
+        "url": "https://www.loom.com/",
+        "icon": "loom-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Async video messaging"
+    },
+    {
+        "id": "clickup",
+        "name": "ClickUp",
+        "url": "https://app.clickup.com/",
+        "icon": "clickup-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Project and task management"
+    },
+    {
+        "id": "monday",
+        "name": "monday.com",
+        "url": "https://monday.com/",
+        "icon": "monday-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Team project management"
+    },
+    {
+        "id": "evernote",
+        "name": "Evernote",
+        "url": "https://www.evernote.com/client/web",
+        "icon": "evernote-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Note taking"
+    },
+    {
+        "id": "coda",
+        "name": "Coda",
+        "url": "https://coda.io/",
+        "icon": "coda-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Docs and databases"
+    },
+    {
+        "id": "calendly",
+        "name": "Calendly",
+        "url": "https://calendly.com/app/scheduled_events/user/me",
+        "icon": "calendly-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Meeting scheduling"
+    },
+    {
+        "id": "bitbucket",
+        "name": "Bitbucket",
+        "url": "https://bitbucket.org/",
+        "icon": "bitbucket-icon",
+        "category": "Developer",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Git code hosting"
+    },
+    {
+        "id": "vercel",
+        "name": "Vercel",
+        "url": "https://vercel.com/dashboard",
+        "icon": "vercel-icon",
+        "category": "Developer",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Web app hosting and deploys",
+        "nativeDark": true
+    },
+    {
+        "id": "cloudflare",
+        "name": "Cloudflare",
+        "url": "https://dash.cloudflare.com/",
+        "icon": "cloudflare-icon",
+        "category": "Developer",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Website and network dashboard"
+    },
+    {
+        "id": "sentry",
+        "name": "Sentry",
+        "url": "https://sentry.io/",
+        "icon": "sentry-icon",
+        "category": "Developer",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Error and performance monitoring"
+    },
+    {
+        "id": "replit",
+        "name": "Replit",
+        "url": "https://replit.com/",
+        "icon": "replit-icon",
+        "category": "Developer",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Browser-based coding",
+        "nativeDark": true
+    },
+    {
+        "id": "yahoo-mail",
+        "name": "Yahoo Mail",
+        "url": "https://mail.yahoo.com/",
+        "icon": "yahoo-mail-icon",
+        "category": "Email",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Yahoo webmail"
+    },
+    {
+        "id": "zoho-mail",
+        "name": "Zoho Mail",
+        "url": "https://mail.zoho.com/",
+        "icon": "zoho-mail-icon",
+        "category": "Email",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Zoho business email"
     }
 ]

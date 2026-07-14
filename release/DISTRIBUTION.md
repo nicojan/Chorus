@@ -175,10 +175,11 @@ data is GPL-3.0; its attribution + source link ship in the About settings pane.
 
 ## Known gaps / future work
 
-- **Camera/microphone**: entitlements + `NS*UsageDescription` strings are in
-  place, but WKWebView won't grant capture to embedded services until a
-  `WKUIDelegate` `webView(_:requestMediaCapturePermissionFor:…)` handler is
-  implemented. Prepped, not yet active.
+- **Camera/microphone**: shipped in 1.5.3. A `WKUIDelegate`
+  `requestMediaCapturePermissionFor` handler grants capture from a per-service
+  Allow, Ask, or Deny policy, with a global default and a mute-all command.
+  First-party call vendors are trusted across their own domains so cross-domain
+  calls work without a prompt.
 - **Passkeys (WebAuthn)**: gated off in `AppCapabilities.passkeysSupported`. The
   `com.apple.developer.web-browser.public-key-credential` entitlement is
   Apple-managed and must be requested/granted before flipping it on (it also

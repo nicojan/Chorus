@@ -14,6 +14,9 @@ struct ServiceTabView: View {
     var isHibernated: Bool = false
     var isMuted: Bool = false
     var iconOnly: Bool = false
+    var cameraActive: Bool = false
+    var micActive: Bool = false
+    var micMuted: Bool = false
     let action: () -> Void
 
     @State private var isHovering = false
@@ -28,8 +31,11 @@ struct ServiceTabView: View {
             content
                 .frame(height: Self.height)
                 .opacity(isHibernated ? 0.6 : (isMuted ? 0.8 : 1.0))
-                .background(fillStyle)
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+                // Fill + clip only the background to the rounded shape — do NOT
+                // wrap `content` in a whole-view clipShape: the icon-only badge
+                // sits at a small top-trailing negative offset and a view clip
+                // would shave its corner. The border is a stroke overlay (no clip).
+                .background(fillStyle, in: RoundedRectangle(cornerRadius: cornerRadius))
                 .overlay(
                     RoundedRectangle(cornerRadius: cornerRadius)
                         .strokeBorder(
@@ -47,7 +53,10 @@ struct ServiceTabView: View {
             name: instance.label,
             badgeCount: badgeCount,
             isHibernated: isHibernated,
-            isMuted: isMuted
+            isMuted: isMuted,
+            cameraActive: cameraActive,
+            micActive: micActive,
+            micMuted: micMuted
         ))
         .accessibilityAddTraits([.isButton, isSelected ? .isSelected : []])
     }
@@ -69,6 +78,9 @@ struct ServiceTabView: View {
                         .offset(x: 2, y: -2)
                         .accessibilityHidden(true)
                 }
+
+                MediaIndicatorGlyph(cameraActive: cameraActive, micActive: micActive, micMuted: micMuted)
+                    .offset(x: -10, y: 8)
             }
         } else {
             HStack(spacing: 8) {

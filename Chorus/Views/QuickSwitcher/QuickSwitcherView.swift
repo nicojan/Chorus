@@ -61,13 +61,21 @@ struct QuickSwitcherView: View {
 
         if searchText.trimmingCharacters(in: .whitespaces).isEmpty {
             results = serviceResults
-            return
+        } else {
+            let query = searchText.lowercased()
+            results = serviceResults.filter {
+                $0.label.lowercased().contains(query)
+                    || $0.spaceName.lowercased().contains(query)
+            }
         }
 
-        let query = searchText.lowercased()
-        results = serviceResults.filter {
-            $0.label.lowercased().contains(query)
-                || $0.spaceName.lowercased().contains(query)
+        // Keep the highlight in range when the result set shrinks (e.g. a
+        // service was removed or moved while the switcher is open). onChange of
+        // searchText resets the index to 0, but a membership/rename recompute
+        // doesn't — an out-of-range index would highlight nothing and send Enter
+        // to the wrong (or no) target.
+        if selectedIndex >= results.count {
+            selectedIndex = max(0, results.count - 1)
         }
     }
 

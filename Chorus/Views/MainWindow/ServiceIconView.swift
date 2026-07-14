@@ -96,6 +96,9 @@ struct ServiceIconView: View {
     var badgeCount: Int = 0
     var isHibernated: Bool = false
     var isMuted: Bool = false
+    var cameraActive: Bool = false
+    var micActive: Bool = false
+    var micMuted: Bool = false
 
     @State private var isHovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -138,6 +141,9 @@ struct ServiceIconView: View {
                         .offset(x: 4, y: 18)
                         .accessibilityHidden(true)
                 }
+
+                MediaIndicatorGlyph(cameraActive: cameraActive, micActive: micActive, micMuted: micMuted)
+                    .offset(x: -12, y: 18)
             }
             .frame(width: 40, height: 40)
             .opacity(isHibernated ? 0.5 : (isMuted ? 0.75 : 1.0))
@@ -152,7 +158,10 @@ struct ServiceIconView: View {
             name: instance.label,
             badgeCount: badgeCount,
             isHibernated: isHibernated,
-            isMuted: isMuted
+            isMuted: isMuted,
+            cameraActive: cameraActive,
+            micActive: micActive,
+            micMuted: micMuted
         ))
         .accessibilityAddTraits([.isButton, isSelected ? .isSelected : []])
     }
@@ -170,14 +179,61 @@ struct ServiceIconView: View {
 /// Builds the spoken label for a service cell so the rail and the tabs read the
 /// same to VoiceOver.
 enum ServiceAccessibility {
-    static func label(name: String, badgeCount: Int, isHibernated: Bool, isMuted: Bool) -> String {
+    static func label(
+        name: String,
+        badgeCount: Int,
+        isHibernated: Bool,
+        isMuted: Bool,
+        cameraActive: Bool = false,
+        micActive: Bool = false,
+        micMuted: Bool = false
+    ) -> String {
         var parts = [name]
         if badgeCount > 0 {
             parts.append(badgeCount == 1 ? "1 unread" : "\(badgeCount) unread")
         }
         if isHibernated { parts.append("hibernated") }
         if isMuted { parts.append("muted") }
+        if cameraActive { parts.append("camera in use") }
+        if micActive {
+            parts.append("microphone in use")
+        } else if micMuted {
+            parts.append("microphone muted")
+        }
         return parts.joined(separator: ", ")
+    }
+}
+
+/// The camera/microphone "in use" glyph shown on a service cell. Camera takes
+/// precedence (video implies the mic is live too); a muted-only mic shows the
+/// slash. Renders nothing when nothing is live.
+struct MediaIndicatorGlyph: View {
+    let cameraActive: Bool
+    let micActive: Bool
+    let micMuted: Bool
+
+    var body: some View {
+        if let symbol {
+            Image(systemName: symbol)
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(.white)
+                .padding(3)
+                .background(Circle().fill(tint))
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var symbol: String? {
+        if cameraActive { return "video.fill" }
+        if micActive { return "mic.fill" }
+        if micMuted { return "mic.slash.fill" }
+        return nil
+    }
+
+    /// Green while genuinely live; orange when the only thing engaged is a muted
+    /// mic (a call you've muted yourself into).
+    private var tint: Color {
+        (micMuted && !cameraActive && !micActive) ? .orange : .green
     }
 }
 

@@ -20,6 +20,13 @@ struct EditServiceSheet: View {
     @State private var osNotify: Bool = true
     @State private var badge: Bool = true
     @State private var customCSS: String = ""
+    @State private var cameraPolicy: MediaPermissionPolicy = .ask
+    @State private var microphonePolicy: MediaPermissionPolicy = .ask
+    // The effective values the pickers opened at, so save only pins a policy the
+    // user actually changed — editing an unrelated field must not silently pin
+    // (and thus stop inheriting) the global default.
+    @State private var initialCameraPolicy: MediaPermissionPolicy = .ask
+    @State private var initialMicrophonePolicy: MediaPermissionPolicy = .ask
     @State private var errorMessage: String?
     @State private var confirmingClearSession = false
 
@@ -87,6 +94,10 @@ struct EditServiceSheet: View {
 
                 Divider()
 
+                cameraMicrophoneSection
+
+                Divider()
+
                 customCSSSection
 
                 Divider()
@@ -127,6 +138,15 @@ struct EditServiceSheet: View {
             // Prefill with the instance's own CSS, or the baked-in default so
             // the user can see and tweak what's already applied.
             customCSS = service.customCSS ?? defaultCSS
+            // Start the pickers at the EFFECTIVE policy (the service's own value,
+            // else the global default), so what's shown is what applies. Saving
+            // pins it on the service (consistent with the dark-theme picker).
+            cameraPolicy = MediaPermissionResolver.effectivePolicy(
+                serviceRaw: service.cameraPolicyRaw, globalRaw: appState.defaultCameraPolicy.rawValue)
+            microphonePolicy = MediaPermissionResolver.effectivePolicy(
+                serviceRaw: service.microphonePolicyRaw, globalRaw: appState.defaultMicrophonePolicy.rawValue)
+            initialCameraPolicy = cameraPolicy
+            initialMicrophonePolicy = microphonePolicy
         }
         .confirmationDialog(
             "Log out of \(service.label)?",
@@ -161,6 +181,35 @@ struct EditServiceSheet: View {
                 .disabled(!notify)
                 .padding(.leading, 16)
                 .help("Show this service's unread count on its icon and in the Dock.")
+        }
+    }
+
+    @ViewBuilder
+    private var cameraMicrophoneSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Camera & microphone")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            Picker("Camera", selection: $cameraPolicy) {
+                ForEach(MediaPermissionPolicy.allCases, id: \.self) { policy in
+                    Text(policy.displayName).tag(policy)
+                }
+            }
+            .pickerStyle(.segmented)
+            .help("Ask the first time this service wants your camera and remember the choice, always allow, or always deny.")
+
+            Picker("Microphone", selection: $microphonePolicy) {
+                ForEach(MediaPermissionPolicy.allCases, id: \.self) { policy in
+                    Text(policy.displayName).tag(policy)
+                }
+            }
+            .pickerStyle(.segmented)
+            .help("Ask the first time this service wants your microphone and remember the choice, always allow, or always deny.")
+
+            Text("Screen sharing is handled by macOS and isn't controlled here.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -237,6 +286,12 @@ struct EditServiceSheet: View {
             service.isMuted = muted
             service.osNotificationsEnabled = osNotify
             service.showBadge = badge
+            // Pin a camera/mic policy only if the user actually changed it, so
+            // opening the sheet to edit something else doesn't stop the service
+            // from inheriting the global default. No rebuild needed — the value is
+            // read at the next getUserMedia; applyServiceEdits saves the context.
+            if cameraPolicy != initialCameraPolicy { service.cameraPolicy = cameraPolicy }
+            if microphonePolicy != initialMicrophonePolicy { service.microphonePolicy = microphonePolicy }
 
             appState.applyServiceEdits(
                 serviceID: service.id,

@@ -475,6 +475,32 @@ struct PrivacySettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Section("Camera & Microphone") {
+                Picker("Camera", selection: Binding(
+                    get: { appState.defaultCameraPolicy },
+                    set: { appState.setDefaultCameraPolicy($0) }
+                )) {
+                    ForEach(MediaPermissionPolicy.allCases, id: \.self) { policy in
+                        Text(policy.displayName).tag(policy)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Picker("Microphone", selection: Binding(
+                    get: { appState.defaultMicrophonePolicy },
+                    set: { appState.setDefaultMicrophonePolicy($0) }
+                )) {
+                    ForEach(MediaPermissionPolicy.allCases, id: \.self) { policy in
+                        Text(policy.displayName).tag(policy)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Text("The default for new services. \"Ask\" prompts the first time a service wants your camera or microphone and remembers the answer. Set a single service's own rule in its Edit sheet. Mute every live microphone at once with ⇧⌘M.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
     }
@@ -628,6 +654,10 @@ enum NotificationGrouping {
         var spaceGroups: [Group] = []
         for space in spaces {
             let members = space.serviceLinks
+                // Skip dangling links (a link whose Space or ServiceInstance was
+                // deleted): materializing `.service` on a faulted model traps.
+                // `.modelContext` is nil once deleted and safe to read.
+                .filter { $0.modelContext != nil && $0.service.modelContext != nil }
                 .sorted { $0.sortOrder < $1.sortOrder }
                 .map(\.service)
             if !members.isEmpty {

@@ -32,9 +32,75 @@ final class AppState {
     var selectedServiceID: UUID?
     var showAddService = false
     var showQuickSwitcher = false
-    var doNotDisturb = false
+
+    /// True once launch-time preference loading has finished. Gates the DND
+    /// `didSet`s below so they don't push the effective DND (which touches the
+    /// AppKit dock tile) while `loadAppPreferences` is still assigning them
+    /// during init — the same early-AppKit race that code defers a runloop tick.
+    @ObservationIgnored private var isLaunchComplete = false
+
+    /// Manual Do Not Disturb toggle. `didSet` re-pushes the effective DND so any
+    /// writer (menu command, Settings) keeps the badge/dock/notification gate in
+    /// sync without having to remember to call `refreshEffectiveDoNotDisturb()`.
+    var doNotDisturb = false {
+        didSet { if isLaunchComplete { refreshEffectiveDoNotDisturb() } }
+    }
     /// Drives the Find-in-Page overlay in WebContentView. Toggled by Cmd-F.
     var findInPageVisible = false
+
+    /// The head of the camera/microphone permission-prompt queue, or nil when no
+    /// prompt is showing. Drives the alert in ContentView. Only ever set on the
+    /// main actor; answered via `answerMediaRequest(allow:)`.
+    private(set) var pendingMediaRequest: MediaPermissionRequest?
+
+    /// The public, UI-facing shape of a pending capture prompt (no continuation).
+    struct MediaPermissionRequest: Identifiable, Equatable {
+        let id: UUID
+        let serviceLabel: String
+        /// The requesting origin's host when it differs from the service's own site
+        /// (a cross-domain page inside the service's web view). nil means the
+        /// request came from the service's own origin.
+        let originHost: String?
+        /// The device(s) actually being asked about (kind-involved and currently
+        /// `.ask`), so the prompt copy names only what's in question — never more.
+        let camAsked: Bool
+        let micAsked: Bool
+
+        var kindLabel: String {
+            switch (camAsked, micAsked) {
+            case (true, true): return "camera and microphone"
+            case (false, true): return "microphone"
+            case (true, false): return "camera"
+            case (false, false): return "camera or microphone"  // not reached: a prompt always asks something
+            }
+        }
+
+        /// Prompt title, naming the real requester: the origin host for a
+        /// cross-domain request, otherwise the service.
+        var title: String {
+            "Allow \(originHost ?? serviceLabel) to use your \(kindLabel)?"
+        }
+
+        /// Prompt body. A cross-domain request says which service opened the
+        /// origin, so the user isn't misled about who is asking.
+        var message: String {
+            if let originHost {
+                return "\(originHost), opened by \(serviceLabel), wants to use your \(kindLabel)."
+            }
+            return "\(serviceLabel) wants to use your \(kindLabel). Change this anytime in the service's settings."
+        }
+
+        static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+    }
+
+    /// Queue entry: the public request (which carries the asked-field flags used
+    /// for both the prompt copy and persistence) plus its awaiting continuation.
+    private struct PendingMediaEntry {
+        let request: MediaPermissionRequest
+        let serviceID: UUID
+        let continuation: CheckedContinuation<Bool, Never>
+    }
+    @ObservationIgnored private var mediaQueue: [PendingMediaEntry] = []
 
     /// Bumped when a service's web view is rebuilt for an edit that only takes
     /// effect at creation time (custom CSS). WebContentView observes this and
@@ -78,13 +144,39 @@ final class AppState {
     /// notifications that don't actually change Light/Dark are ignored.
     private var lastKnownAppearanceDark: Bool?
 
+    /// Tokens for the NSWorkspace sleep/wake observers, removed in `deinit`.
+    /// AppState is a process-lifetime singleton, so this is hygiene rather than a
+    /// live leak, but keeping registration and teardown symmetric avoids a
+    /// dangling observer if that ever changes. Not observed UI state, so
+    /// `@ObservationIgnored`; `nonisolated(unsafe)` so the nonisolated deinit can
+    /// read it — it's only mutated during main-actor setup and read once at
+    /// teardown, so there's no real concurrency exposure.
+    @ObservationIgnored nonisolated(unsafe) private var systemObserverTokens: [NSObjectProtocol] = []
+
+    /// Tokens for `DistributedNotificationCenter` observers (screen-lock,
+    /// appearance-change), removed in `deinit` for the same symmetry as the
+    /// workspace tokens above.
+    @ObservationIgnored nonisolated(unsafe) private var distributedObserverTokens: [NSObjectProtocol] = []
+
+    /// Data-store identifiers a `cleanUpOrphanedDataStores` invocation is
+    /// currently processing, so overlapping calls don't both run the backoff loop
+    /// and issue `WKWebsiteDataStore.remove(...)` for the same store at once.
+    /// Main-actor only.
+    @ObservationIgnored private var dataStoresBeingRemoved: Set<UUID> = []
+
     /// Scheduled "quiet hours" Do Not Disturb, loaded from AppPreferences.
     /// `doNotDisturb` above stays the manual toggle; the effective DND that
     /// gates badges and notifications is `doNotDisturb || scheduledDNDActive`.
-    var scheduledDNDEnabled = false
-    var dndStartMinutes = 22 * 60
-    var dndEndMinutes = 7 * 60
-    private var quietHoursTask: Task<Void, Never>?
+    var scheduledDNDEnabled = false {
+        didSet { if isLaunchComplete { refreshEffectiveDoNotDisturb() } }
+    }
+    var dndStartMinutes = 22 * 60 {
+        didSet { if isLaunchComplete { refreshEffectiveDoNotDisturb() } }
+    }
+    var dndEndMinutes = 7 * 60 {
+        didSet { if isLaunchComplete { refreshEffectiveDoNotDisturb() } }
+    }
+    @ObservationIgnored nonisolated(unsafe) private var quietHoursTask: Task<Void, Never>?
 
     /// App lock (Touch ID / password), loaded from AppPreferences. `isLocked`
     /// drives an opaque cover over the window content in ContentView.
@@ -105,6 +197,13 @@ final class AppState {
     /// Global "dark-theme services without one" toggle, mirrored from
     /// AppPreferences at launch. Written via `setAutoDarkModeEnabled(_:)`.
     var autoDarkModeEnabled = false
+
+    /// Default camera/microphone permission for services that haven't pinned
+    /// their own, mirrored from AppPreferences at launch. Written via
+    /// `setDefaultCameraPolicy(_:)` / `setDefaultMicrophonePolicy(_:)`. Read on
+    /// the permission hot path, so kept in memory rather than re-fetched.
+    var defaultCameraPolicy: MediaPermissionPolicy = .ask
+    var defaultMicrophonePolicy: MediaPermissionPolicy = .ask
 
     /// Non-nil when the persistent store failed and we fell back to in-memory storage.
     /// The UI should display a warning banner when this is set.
@@ -246,15 +345,27 @@ final class AppState {
         setupSystemSleepHandling()
         setupNetworkHandling()
         setupExternalLinkRouting()
+        setupMediaPermissions()
         let didSeedDefaults = seedDefaultDataIfNeeded()
         backfillPasskeyNoticeIfNeeded(freshInstall: didSeedDefaults)
         reapOrphanedServices()
         restoreWindowState()
-        fetchMissingAndStaleFavicons()
-        fetchCatalogIcons()
+        let didUpdate = Self.recordLaunchVersionAndCheckUpdate()
+        fetchMissingAndStaleFavicons(force: didUpdate)
+        fetchCatalogIcons(force: didUpdate)
         preloadActiveSpaceServices()
         fetchInitialBadgesForBackgroundServices()
         cleanUpOrphanedDataStores()
+    }
+
+    deinit {
+        for token in systemObserverTokens {
+            NSWorkspace.shared.notificationCenter.removeObserver(token)
+        }
+        for token in distributedObserverTokens {
+            DistributedNotificationCenter.default().removeObserver(token)
+        }
+        quietHoursTask?.cancel()
     }
 
     /// Wires the WebViewPool's external-link handler so that cross-domain
@@ -264,6 +375,283 @@ final class AppState {
     private func setupExternalLinkRouting() {
         webViewPool.externalLinkHandler = { [weak self] url in
             self?.handleExternalLink(url)
+        }
+    }
+
+    /// Wires the WebViewPool's media-capture handler so every service's
+    /// `getUserMedia()` is resolved against the persisted per-service policy.
+    private func setupMediaPermissions() {
+        webViewPool.mediaCapturePolicyProvider = { [weak self] serviceID, type, frame in
+            await self?.resolveMediaPermission(serviceID: serviceID, type: type, frame: frame) ?? .deny
+        }
+        // Any teardown of a service's web view (hibernate, recreate, evict, or
+        // remove) invalidates a pending prompt for it — deny + drain so a stale
+        // prompt can't linger and block a later service's prompt.
+        webViewPool.onServiceTornDown = { [weak self] serviceID in
+            self?.drainMediaRequests(for: serviceID)
+        }
+    }
+
+    /// Resolves a service's camera/microphone request into a WebKit decision from
+    /// the persisted per-service policy (falling back to the global default, then
+    /// `.ask`). Fails closed (`.deny`) whenever anything is uncertain: unknown
+    /// service, a persisted grant reached from a cross-origin subframe, or — until
+    /// the prompt lands in the next step — an `.ask` outcome.
+    @MainActor
+    func resolveMediaPermission(
+        serviceID: UUID,
+        type: WKMediaCaptureType,
+        frame: WKFrameInfo
+    ) async -> WKPermissionDecision {
+        guard let service = fetchService(id: serviceID) else { return .deny }
+        let camera = MediaPermissionResolver.effectivePolicy(
+            serviceRaw: service.cameraPolicyRaw, globalRaw: defaultCameraPolicy.rawValue)
+        let microphone = MediaPermissionResolver.effectivePolicy(
+            serviceRaw: service.microphonePolicyRaw, globalRaw: defaultMicrophonePolicy.rawValue)
+
+        let kind = Self.captureKind(from: type)
+        let resolution = MediaPermissionResolver.resolve(kind, camera: camera, microphone: microphone)
+        if resolution == .deny { return .deny }  // an explicit Deny blocks any origin
+
+        // Never grant or prompt behind the lock screen, or for a service the user
+        // isn't actively viewing — a preloaded/background service must not grab the
+        // camera/mic or throw a surprise prompt. Both fail closed.
+        guard !isLocked else {
+            AppLogger.webView.info("Media capture denied: app is locked")
+            return .deny
+        }
+        guard webViewPool.activeServiceID == serviceID else {
+            AppLogger.webView.info("Media capture denied: \(service.label) isn't the active service")
+            return .deny
+        }
+
+        if isCaptureFrameTrusted(frame, service: service) {
+            // The service's own origin: honor its policy. `.ask` prompts and
+            // remembers the answer on ONLY the device(s) actually asked about
+            // (kind-gated), so a mic-only prompt can't silently pin the camera.
+            if resolution == .grant { return .grant }
+            let asked = MediaPermissionResolver.askedFields(kind, camera: camera, microphone: microphone)
+            let allowed = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                enqueueMediaRequest(
+                    serviceID: serviceID, serviceLabel: service.label, originHost: nil,
+                    camAsked: asked.camera, micAsked: asked.microphone, continuation: continuation)
+            }
+            persistMediaAnswer(serviceID: serviceID, allow: allowed, camAsked: asked.camera, micAsked: asked.microphone)
+            return allowed ? .grant : .deny
+        }
+
+        // A foreign origin inside the service's own web view (e.g. a call service
+        // whose media host differs from its home host). Decide per the
+        // foreign-origin rules.
+        let originHost = frame.securityOrigin.host
+        switch Self.foreignCaptureOutcome(
+            isMainFrame: frame.isMainFrame,
+            originHost: originHost,
+            isFirstParty: isFirstPartyService(service),
+            resolution: resolution
+        ) {
+        case .deny:
+            logMediaDenyUntrusted(frame, service: service)
+            return .deny
+        case .grantSilently:
+            return .grant
+        case .promptNamingOrigin:
+            let asked = MediaPermissionResolver.askedFields(kind, camera: .ask, microphone: .ask)
+            let allowed = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                enqueueMediaRequest(
+                    serviceID: serviceID, serviceLabel: service.label, originHost: originHost,
+                    camAsked: asked.camera, micAsked: asked.microphone, continuation: continuation)
+            }
+            return allowed ? .grant : .deny
+        }
+    }
+
+    /// Appends a prompt to the queue and shows it if none is currently up.
+    private func enqueueMediaRequest(
+        serviceID: UUID,
+        serviceLabel: String,
+        originHost: String?,
+        camAsked: Bool,
+        micAsked: Bool,
+        continuation: CheckedContinuation<Bool, Never>
+    ) {
+        let request = MediaPermissionRequest(
+            id: UUID(), serviceLabel: serviceLabel, originHost: originHost,
+            camAsked: camAsked, micAsked: micAsked)
+        mediaQueue.append(PendingMediaEntry(
+            request: request,
+            serviceID: serviceID,
+            continuation: continuation
+        ))
+        if pendingMediaRequest == nil {
+            pendingMediaRequest = mediaQueue.first?.request
+        }
+    }
+
+    /// Answers the shown prompt (from the alert's buttons), resumes its awaiting
+    /// resolver, and presents the next queued prompt. Takes the request id so a
+    /// stray tap can only answer the prompt it was shown for — never the next one.
+    func answerMediaRequest(_ id: UUID, allow: Bool) {
+        guard mediaQueue.first?.request.id == id else { return }
+        let entry = mediaQueue.removeFirst()
+        entry.continuation.resume(returning: allow)
+        presentNextMediaRequest()
+    }
+
+    /// Resumes (with deny) and clears any prompts queued for a service that's
+    /// being removed, so a delete mid-prompt can't strand a continuation.
+    private func drainMediaRequests(for serviceID: UUID) {
+        guard mediaQueue.contains(where: { $0.serviceID == serviceID }) else { return }
+        let headWasStranded = mediaQueue.first?.serviceID == serviceID
+        let stranded = mediaQueue.filter { $0.serviceID == serviceID }
+        mediaQueue.removeAll { $0.serviceID == serviceID }
+        for entry in stranded { entry.continuation.resume(returning: false) }
+        // Only re-present if the prompt currently on screen was one we just
+        // drained; a drained non-head entry leaves the visible prompt alone.
+        if headWasStranded { presentNextMediaRequest() }
+    }
+
+    /// Denies and clears every queued prompt. Used when the app locks — a capture
+    /// prompt must not sit above the lock screen leaking a service name or letting
+    /// the user grant capture without unlocking.
+    private func drainAllMediaRequests() {
+        guard !mediaQueue.isEmpty else { return }
+        let all = mediaQueue
+        mediaQueue.removeAll()
+        for entry in all { entry.continuation.resume(returning: false) }
+        pendingMediaRequest = nil
+    }
+
+    /// Dismisses the current prompt and shows the next queued one on the following
+    /// runloop tick. SwiftUI won't re-present an alert while `isPresented` stays
+    /// true, so the binding must go false → true between entries.
+    private func presentNextMediaRequest() {
+        pendingMediaRequest = nil
+        guard let next = mediaQueue.first?.request else { return }
+        Task { @MainActor [weak self] in
+            guard let self, self.pendingMediaRequest == nil,
+                  self.mediaQueue.first?.request.id == next.id else { return }
+            self.pendingMediaRequest = next
+        }
+    }
+
+    /// Persists an "ask" answer as an explicit allow/deny, on only the fields that
+    /// were asked (leaving an already-explicit camera or mic policy untouched).
+    private func persistMediaAnswer(serviceID: UUID, allow: Bool, camAsked: Bool, micAsked: Bool) {
+        guard let service = fetchService(id: serviceID) else { return }
+        let policy: MediaPermissionPolicy = allow ? .allow : .deny
+        if camAsked { service.cameraPolicy = policy }
+        if micAsked { service.microphonePolicy = policy }
+        do {
+            try modelContainer.mainContext.save()
+        } catch {
+            AppLogger.dataStore.error("Failed to persist media permission: \(error.localizedDescription)")
+            modelContainer.mainContext.rollback()
+        }
+    }
+
+    /// Sets and persists the global default camera policy for services without
+    /// a per-service value. Mirrors the other global-toggle setters.
+    func setDefaultCameraPolicy(_ policy: MediaPermissionPolicy) {
+        defaultCameraPolicy = policy
+        persistDefaultMediaPolicies()
+    }
+
+    /// Sets and persists the global default microphone policy.
+    func setDefaultMicrophonePolicy(_ policy: MediaPermissionPolicy) {
+        defaultMicrophonePolicy = policy
+        persistDefaultMediaPolicies()
+    }
+
+    private func persistDefaultMediaPolicies() {
+        let prefs = ensurePreferences()
+        prefs.defaultCameraPolicyRaw = defaultCameraPolicy.rawValue
+        prefs.defaultMicrophonePolicyRaw = defaultMicrophonePolicy.rawValue
+        do {
+            try modelContainer.mainContext.save()
+        } catch {
+            AppLogger.dataStore.error("Failed to save default media policies: \(error.localizedDescription)")
+            modelContainer.mainContext.rollback()
+        }
+    }
+
+    /// Mutes every service whose microphone is currently live (⇧⌘M). Logs the
+    /// count so the action isn't silent when nothing was muted.
+    func muteAllMicrophones() {
+        let count = webViewPool.muteAllMicrophones()
+        AppLogger.general.info("Muted \(count) live microphone(s)")
+    }
+
+    /// Logs a capture denial caused by the requesting origin not belonging to the
+    /// service, naming both hosts — so a cross-domain call that's being wrongly
+    /// blocked is diagnosable in Console rather than a silent nothing.
+    private func logMediaDenyUntrusted(_ frame: WKFrameInfo, service: ServiceInstance) {
+        let frameHost = frame.securityOrigin.host
+        let serviceHost = URL(string: service.url)?.host ?? service.url
+        AppLogger.webView.info(
+            "Media capture denied: request origin \(frameHost, privacy: .public) doesn't belong to \(service.label, privacy: .public) (\(serviceHost, privacy: .public))")
+    }
+
+    private func isCaptureFrameTrusted(_ frame: WKFrameInfo, service: ServiceInstance) -> Bool {
+        guard let serviceHost = URL(string: service.url)?.host else { return false }
+        let frameHost = frame.securityOrigin.host
+        guard !frameHost.isEmpty else { return false }
+        // Stricter capture-specific same-site test (not the link-routing one): two
+        // owners on a shared hosting suffix (*.web.app, *.github.io, …) are NOT the
+        // same site, so an Allow-pinned service can't leak its grant to another site
+        // there. First-party cross-domain trust is handled separately, on the
+        // foreign-origin path in resolveMediaPermission.
+        return WebViewCoordinator.captureOriginBelongsToService(frameHost, serviceHost: serviceHost)
+    }
+
+    /// What to do with a capture request whose origin is NOT the service's own site
+    /// — a foreign origin inside the service's own web view. Pure, so it's
+    /// unit-testable without a live `WKFrameInfo`. `resolution` is already known to
+    /// be `.grant` or `.ask` here (an explicit `.deny` is short-circuited earlier).
+    /// - A third-party SUBFRAME (can't meaningfully consent, the spoofiest case) or
+    ///   an empty origin fails closed.
+    /// - A first-party vendor pinned to Allow grants silently. This is the ONE
+    ///   cross-domain silent grant — the seamless-call case the flag exists for —
+    ///   and its accepted risk: the vendor's own main frame, navigated to a foreign
+    ///   origin, gets the grant.
+    /// - Everything else prompts NAMING THE REAL ORIGIN and does not persist: a
+    ///   non-first-party service, or a first-party vendor still on Ask. Naming the
+    ///   real origin (not the service) stops a hijacked main frame from borrowing
+    ///   the vendor's name; not persisting keeps a one-off foreign answer from
+    ///   pinning a blanket service Allow.
+    enum ForeignCaptureOutcome: Equatable { case grantSilently, promptNamingOrigin, deny }
+
+    static func foreignCaptureOutcome(
+        isMainFrame: Bool,
+        originHost: String,
+        isFirstParty: Bool,
+        resolution: MediaPermissionResolver.Resolution
+    ) -> ForeignCaptureOutcome {
+        guard isMainFrame, !originHost.isEmpty else { return .deny }
+        if isFirstParty, resolution == .grant { return .grantSilently }
+        return .promptNamingOrigin
+    }
+
+    /// Whether `service` is a curated first-party vendor: the catalog entry carries
+    /// the `firstParty` flag AND the service still points at that vendor's own site.
+    /// The second check means a user who edits the service's URL elsewhere doesn't
+    /// carry the vendor's cross-domain trust to the new site. Custom, non-catalog
+    /// services are never first-party.
+    private func isFirstPartyService(_ service: ServiceInstance) -> Bool {
+        guard let id = service.catalogEntryID,
+              let entry = ServiceCatalog.shared.entry(for: id),
+              entry.firstParty == true,
+              let serviceHost = URL(string: service.url)?.host,
+              let entryHost = URL(string: entry.url)?.host else { return false }
+        return WebViewCoordinator.captureOriginBelongsToService(serviceHost, serviceHost: entryHost)
+    }
+
+    private static func captureKind(from type: WKMediaCaptureType) -> MediaCaptureKind {
+        switch type {
+        case .camera: return .camera
+        case .microphone: return .microphone
+        case .cameraAndMicrophone: return .cameraAndMicrophone
+        @unknown default: return .cameraAndMicrophone  // unknown ⇒ most restrictive
         }
     }
 
@@ -307,7 +695,9 @@ final class AppState {
         // Prefer one inside the current space; fall back to any match.
         if let spaceID,
            let inCurrentSpace = matches.first(where: { service in
-               service.spaceLinks.contains { $0.space.id == spaceID }
+               service.spaceLinks.contains {
+                   $0.modelContext != nil && $0.space.modelContext != nil && $0.space.id == spaceID
+               }
            }) {
             return inCurrentSpace
         }
@@ -318,7 +708,9 @@ final class AppState {
         // Make sure we're in a space that contains this service so the
         // sidebar selection becomes visible. If the service lives in
         // multiple spaces, pick the first.
-        if let firstSpace = service.spaceLinks.first?.space.id {
+        if let firstSpace = service.spaceLinks.first(where: {
+            $0.modelContext != nil && $0.space.modelContext != nil
+        })?.space.id {
             selectedSpaceID = firstSpace
         }
         selectedServiceID = service.id
@@ -337,7 +729,7 @@ final class AppState {
     /// displayed service, background mode for the rest.
     private func setupSystemSleepHandling() {
         let center = NSWorkspace.shared.notificationCenter
-        center.addObserver(
+        systemObserverTokens.append(center.addObserver(
             forName: NSWorkspace.willSleepNotification,
             object: nil,
             queue: .main
@@ -345,8 +737,8 @@ final class AppState {
             Task { @MainActor in
                 self?.suspendPolling(reason: "system sleep")
             }
-        }
-        center.addObserver(
+        })
+        systemObserverTokens.append(center.addObserver(
             forName: NSWorkspace.didWakeNotification,
             object: nil,
             queue: .main
@@ -354,7 +746,7 @@ final class AppState {
             Task { @MainActor in
                 self?.resumePolling(reason: "system wake")
             }
-        }
+        })
     }
 
     /// Pauses or resumes polling when network connectivity toggles. While
@@ -600,6 +992,8 @@ final class AppState {
     func lock() {
         guard appLockEnabled else { return }
         isLocked = true
+        // Don't leave a capture prompt hanging over the lock screen.
+        drainAllMediaRequests()
     }
 
     /// Prompts for Touch ID (with the login password as fallback) and unlocks on
@@ -634,10 +1028,10 @@ final class AppState {
                 self.lock()
             }
         }
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main, using: lockOnSleepIfNeeded)
-        DistributedNotificationCenter.default().addObserver(
-            forName: Notification.Name("com.apple.screenIsLocked"), object: nil, queue: .main, using: lockOnSleepIfNeeded)
+        systemObserverTokens.append(NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main, using: lockOnSleepIfNeeded))
+        distributedObserverTokens.append(DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.apple.screenIsLocked"), object: nil, queue: .main, using: lockOnSleepIfNeeded))
     }
 
 
@@ -737,10 +1131,18 @@ final class AppState {
             return
         }
 
-        let linkedServices = space.serviceLinks.map(\.service)
+        // Guard against dangling links on both sides before materializing
+        // `.service`/`.space` — reading a deleted model traps.
+        let linkedServices = space.serviceLinks
+            .filter { $0.modelContext != nil && $0.service.modelContext != nil }
+            .map(\.service)
         var memberships: [UUID: Set<UUID>] = [:]
         for service in linkedServices {
-            memberships[service.id] = Set(service.spaceLinks.map { $0.space.id })
+            memberships[service.id] = Set(
+                service.spaceLinks
+                    .filter { $0.modelContext != nil && $0.space.modelContext != nil }
+                    .map { $0.space.id }
+            )
         }
         let orphanedIDs = Self.servicesOrphaned(byDeletingSpace: spaceID, memberships: memberships)
 
@@ -825,8 +1227,13 @@ final class AppState {
             spaces = try context.fetch(FetchDescriptor<Space>())
             services = try context.fetch(FetchDescriptor<ServiceInstance>())
         } catch {
-            AppLogger.dataStore.error("Failed to fetch models for dangling-link check: \(error.localizedDescription)")
-            return false
+            // Fail CLOSED: if we can't verify the store is clean, assume it
+            // isn't. Returning false here would open a possibly-corrupt store
+            // live, and the inline `.modelContext` guards are only a backstop —
+            // treating an unverifiable store as unsafe (→ in-memory fallback) is
+            // the safe default.
+            AppLogger.dataStore.error("Dangling-link check failed; treating store as unsafe: \(error.localizedDescription)")
+            return true
         }
 
         var reachableFromSpace: Set<UUID> = []
@@ -859,16 +1266,22 @@ final class AppState {
         let orphans = services.filter { $0.spaceLinks.isEmpty }
         guard !orphans.isEmpty else { return }
 
+        // Capture identifiers before deleting; tombstoning + removing the on-disk
+        // stores is irreversible, so defer it until the delete actually commits
+        // (matches deleteSpace). A failed save rolls back so nothing is wiped.
+        let orphanedIDs = orphans.map(\.dataStoreIdentifier)
         for service in orphans {
-            markDataStoreOrphaned(service.dataStoreIdentifier)
             context.delete(service)
         }
         do {
             try context.save()
             AppLogger.dataStore.info("Reaped \(orphans.count) orphaned service(s) at launch")
         } catch {
-            AppLogger.dataStore.error("Failed to reap orphaned services: \(error.localizedDescription)")
+            context.rollback()
+            AppLogger.dataStore.error("Failed to reap orphaned services; rolled back: \(error.localizedDescription)")
+            return
         }
+        for id in orphanedIDs { markDataStoreOrphaned(id) }
         cleanUpOrphanedDataStores()
     }
 
@@ -885,8 +1298,12 @@ final class AppState {
     /// Removes any data store identifiers previously marked as orphaned.
     /// Runs at launch (deferred) and after the user deletes a service.
     func cleanUpOrphanedDataStores() {
-        let orphans = Self.loadOrphanedIdentifiers()
+        // Exclude identifiers a prior invocation is already processing, so two
+        // overlapping calls (e.g. two deletes soon after launch) don't both run
+        // the backoff loop and call `remove(...)` on the same store concurrently.
+        let orphans = Self.loadOrphanedIdentifiers().subtracting(dataStoresBeingRemoved)
         guard !orphans.isEmpty else { return }
+        dataStoresBeingRemoved.formUnion(orphans)
 
         // Drop cached handles so a live instance can't keep the on-disk store
         // alive while we try to remove it.
@@ -900,21 +1317,36 @@ final class AppState {
         // (EXC_BREAKPOINT). Both `Task.sleep` and the async `remove` suspend
         // rather than block, so running here doesn't stall the UI.
         Task { @MainActor in
-            // Let SwiftUI finish dropping any WKWebView that referenced
-            // a just-deleted service's data store before removing it —
-            // WebKit also traps when an in-use store is removed.
-            try? await Task.sleep(for: .seconds(2))
-
+            // Removing a store while its WKWebView is still retained traps inside
+            // WebKit, so removal must wait for the view to drop. The pool has
+            // already released its own reference by the time this runs; the last
+            // lingering one is SwiftUI's view hierarchy, which the pool can't see
+            // — so we can't cheaply gate on "pool has no live view for this id".
+            // Rather than trust one fixed delay (too short on a slow machine →
+            // trap; too long always → sluggish), wait a conservative beat, then
+            // retry with backoff, re-attempting only the stores WebKit still
+            // reports as in use. Anything that never succeeds stays in the
+            // tombstone list and is retried at the next launch, so no store leaks.
             var removed: Set<UUID> = []
-            for identifier in orphans {
-                do {
-                    try await WKWebsiteDataStore.remove(forIdentifier: identifier)
-                    removed.insert(identifier)
-                    AppLogger.dataStore.info("Removed orphaned data store \(identifier)")
-                } catch {
-                    AppLogger.dataStore.warning("Failed to remove orphaned data store \(identifier): \(error.localizedDescription)")
+            let backoff: [Duration] = [.seconds(2), .seconds(3), .seconds(5)]
+            for delay in backoff {
+                try? await Task.sleep(for: delay)
+                let pending = orphans.subtracting(removed)
+                guard !pending.isEmpty else { break }
+                for identifier in pending {
+                    do {
+                        try await WKWebsiteDataStore.remove(forIdentifier: identifier)
+                        removed.insert(identifier)
+                        AppLogger.dataStore.info("Removed orphaned data store \(identifier)")
+                    } catch {
+                        AppLogger.dataStore.warning("Data store \(identifier) not yet removable, will retry: \(error.localizedDescription)")
+                    }
                 }
             }
+
+            // Release the in-flight claim so a later delete of the same store
+            // (should one somehow re-orphan) isn't blocked.
+            dataStoresBeingRemoved.subtract(orphans)
 
             // Read-modify-write rather than overwriting with a stale snapshot:
             // another delete may have appended new orphans while we slept, and
@@ -1027,7 +1459,9 @@ final class AppState {
         struct SweepEntry { let id: UUID; let url: String; let dataStoreID: UUID }
         let entries: [SweepEntry] = services.compactMap { service in
             let inActiveSpace = activeSpaceID != nil
-                && service.spaceLinks.contains { $0.space.id == activeSpaceID }
+                && service.spaceLinks.contains {
+                    $0.modelContext != nil && $0.space.modelContext != nil && $0.space.id == activeSpaceID
+                }
             guard !inActiveSpace, !service.isEffectivelyMuted, service.showBadge else { return nil }
             return SweepEntry(id: service.id, url: service.url, dataStoreID: service.dataStoreIdentifier)
         }
@@ -1059,11 +1493,34 @@ final class AppState {
         }
     }
 
-    private func fetchCatalogIcons() {
+    private func fetchCatalogIcons(force: Bool = false) {
         let entries = ServiceCatalog.shared.entries
         Task.detached(priority: .utility) {
-            await CatalogIconCache.shared.fetchAllIfNeeded(entries: entries)
+            await CatalogIconCache.shared.fetchAllIfNeeded(entries: entries, force: force)
         }
+    }
+
+    private static let lastRunVersionKey = "chorus.lastRunAppVersion"
+
+    /// Records the current app version and reports whether this launch follows an
+    /// update (a different version ran last time). Used to refresh the icon caches
+    /// so a release that adds or changes icons shows them at once, instead of
+    /// waiting out the weekly staleness timer.
+    private static func recordLaunchVersionAndCheckUpdate() -> Bool {
+        let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        let previous = UserDefaults.standard.string(forKey: lastRunVersionKey)
+        if !current.isEmpty {
+            UserDefaults.standard.set(current, forKey: lastRunVersionKey)
+        }
+        return shouldBustCachesOnLaunch(previousVersion: previous, currentVersion: current)
+    }
+
+    /// Pure launch-vs-update decision: bust caches only when a real, different
+    /// prior version is known. A fresh install (no previous) has no stale cache,
+    /// and an unknown current version can't be compared, so both leave caches be.
+    static func shouldBustCachesOnLaunch(previousVersion: String?, currentVersion: String) -> Bool {
+        guard !currentVersion.isEmpty, let previousVersion, !previousVersion.isEmpty else { return false }
+        return previousVersion != currentVersion
     }
 
     /// The single AppPreferences row, created (and inserted) once if missing.
@@ -1113,6 +1570,8 @@ final class AppState {
         contentBlockingEnabled = prefs?.contentBlockingEnabledEffective ?? true
         annoyanceBlockingEnabled = prefs?.annoyanceBlockingEnabledEffective ?? false
         autoDarkModeEnabled = prefs?.autoDarkModeEnabledEffective ?? false
+        defaultCameraPolicy = prefs?.defaultCameraPolicyRaw.flatMap(MediaPermissionPolicy.init(rawValue:)) ?? .ask
+        defaultMicrophonePolicy = prefs?.defaultMicrophonePolicyRaw.flatMap(MediaPermissionPolicy.init(rawValue:)) ?? .ask
         // Start locked at launch when opted in; ContentView's lock overlay
         // prompts for Touch ID on appear.
         if appLockEnabled && lockOnLaunch {
@@ -1122,6 +1581,9 @@ final class AppState {
         let resolvedShowBadge = prefs?.showBadgeCountInDock ?? true
         let resolvedPresenceMode = prefs?.appPresenceMode ?? .dock
         Task { @MainActor in
+            // Launch AppKit-facing setup is now safe (past the init runloop tick).
+            // Flip the flag first so the DND `didSet`s become live from here on.
+            self.isLaunchComplete = true
             self.badgeManager.showBadgeCountInDock = resolvedShowBadge
             AppPresenceManager().apply(mode: resolvedPresenceMode)
             // Apply any active quiet-hours schedule now, then keep it current.
@@ -1137,13 +1599,13 @@ final class AppState {
     /// the app follows the system. Runs after launch, on the main actor.
     private func startDarkMode() {
         applyEffectiveAppearanceChange()
-        DistributedNotificationCenter.default().addObserver(
+        distributedObserverTokens.append(DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
             object: nil,
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.applyEffectiveAppearanceChange() }
-        }
+        })
     }
 
     /// Re-evaluates the effective Light/Dark appearance and, when it actually
@@ -1199,6 +1661,7 @@ final class AppState {
             try modelContainer.mainContext.save()
         } catch {
             AppLogger.dataStore.error("Failed to save content-blocking toggle: \(error.localizedDescription)")
+            modelContainer.mainContext.rollback()
         }
         webViewPool.reattachContentBlocker()
     }
@@ -1213,6 +1676,7 @@ final class AppState {
             try modelContainer.mainContext.save()
         } catch {
             AppLogger.dataStore.error("Failed to save annoyance-blocking toggle: \(error.localizedDescription)")
+            modelContainer.mainContext.rollback()
         }
         webViewPool.reattachContentBlocker()
     }
@@ -1294,6 +1758,7 @@ final class AppState {
             self.notificationManager.stopPolling(for: serviceID)
             self.hibernatedBadgePoller.untrack(serviceID: serviceID)
             self.badgeManager.removeBadge(for: serviceID)
+            self.drainMediaRequests(for: serviceID)
         }
     }
 
@@ -1339,9 +1804,10 @@ final class AppState {
         notificationManager.onServiceRequested = { [weak self] serviceID in
             self?.navigateToServiceFromNotification(serviceID)
         }
-        // Drain any notification tap that arrived (e.g. launched the app)
-        // before the handler was wired.
-        if let pending = notificationManager.handlePendingNotification() {
+        // Drain any notification taps that arrived (e.g. launched the app)
+        // before the handler was wired, in order. The last one wins the final
+        // selection, but each is processed rather than silently dropped.
+        for pending in notificationManager.drainPendingNotifications() {
             navigateToServiceFromNotification(pending)
         }
     }
@@ -1354,8 +1820,14 @@ final class AppState {
         guard let service = try? context.fetch(descriptor).first else { return }
 
         // If the service isn't in the current space, move to one that has it.
-        let inCurrentSpace = service.spaceLinks.contains { $0.space.id == selectedSpaceID }
-        if !inCurrentSpace, let firstSpace = service.spaceLinks.first?.space.id {
+        // Guard the link relationships first: reading `$0.space.id` on a link
+        // whose Space was deleted (a dangling link that outlived StoreRepair)
+        // faults the freed model and traps. Reading `.modelContext` is safe.
+        let liveLinks = service.spaceLinks.filter {
+            $0.modelContext != nil && $0.space.modelContext != nil
+        }
+        let inCurrentSpace = liveLinks.contains { $0.space.id == selectedSpaceID }
+        if !inCurrentSpace, let firstSpace = liveLinks.first?.space.id {
             selectedSpaceID = firstSpace
         }
         selectedServiceID = serviceID
@@ -1398,7 +1870,7 @@ final class AppState {
     /// Fetches favicons for services that have none cached, and refreshes
     /// stale favicons (older than 7 days). Runs in a background Task to avoid
     /// blocking app launch.
-    private func fetchMissingAndStaleFavicons() {
+    private func fetchMissingAndStaleFavicons(force: Bool = false) {
         let context = modelContainer.mainContext
         let descriptor = FetchDescriptor<ServiceInstance>()
         let services: [ServiceInstance]
@@ -1413,9 +1885,11 @@ final class AppState {
 
         let needsFetch = services.filter { service in
             guard service.customIconData == nil else { return false }
-            // Back off on the timestamp for both "never fetched" and "stale":
-            // a service whose favicon keeps failing gets stamped on failure
-            // (below), so it retries at most weekly instead of every launch.
+            // After an app update, refresh every service's favicon regardless of
+            // age. Otherwise back off on the timestamp for both "never fetched"
+            // and "stale": a service whose favicon keeps failing gets stamped on
+            // failure (below), so it retries at most weekly instead of every launch.
+            if force { return true }
             guard let fetchedAt = service.faviconFetchedAt else { return true }
             return fetchedAt < staleThreshold
         }
@@ -1447,6 +1921,7 @@ final class AppState {
                 AppLogger.favicon.info("Favicon refresh complete")
             } catch {
                 AppLogger.dataStore.error("Failed to save refreshed favicons: \(error.localizedDescription)")
+                context.rollback()
             }
         }
     }
@@ -1530,6 +2005,7 @@ final class AppState {
                         try context.save()
                     } catch {
                         AppLogger.dataStore.error("Failed to save seeded favicons: \(error.localizedDescription)")
+                        context.rollback()
                     }
                 }
             } catch {
@@ -1579,6 +2055,7 @@ final class AppState {
             AppLogger.dataStore.info("Backfilled passkey notice for \(services.count) existing service(s)")
         } catch {
             AppLogger.dataStore.error("Failed to backfill passkey notice: \(error.localizedDescription)")
+            context.rollback()
         }
     }
 
@@ -1600,6 +2077,7 @@ final class AppState {
             try context.save()
         } catch {
             AppLogger.dataStore.error("Failed to persist passkey notice dismissal: \(error.localizedDescription)")
+            context.rollback()
         }
     }
 }

@@ -172,6 +172,10 @@ final class UserScriptManager {
            let json = String(data: data, encoding: .utf8) {
             literal = json
         } else {
+            // Encoding a String basically never fails, but if it did we'd inject
+            // an empty style and silently lose the user's CSS — log so it isn't
+            // a mystery.
+            AppLogger.general.warning("Custom CSS could not be JSON-encoded; injecting no CSS for this service")
             literal = "\"\""
         }
         return """
@@ -192,32 +196,78 @@ final class UserScriptManager {
         darkProbeHandlers.removeValue(forKey: instanceID)
     }
 
-    /// Samples the page background a beat after load and reports its color to the
+    /// Encodes a Swift string as a JS string literal (quotes included) so it can
+    /// be interpolated into a script without breaking out of the surrounding
+    /// literal. Falls back to `""`. Used for the service id baked into the probe
+    /// and notification scripts — a UUID today, but encode it so it stays safe
+    /// regardless of what feeds it.
+    nonisolated static func jsStringLiteral(_ value: String) -> String {
+        guard let data = try? JSONEncoder().encode(value),
+              let json = String(data: data, encoding: .utf8) else {
+            return "\"\""
+        }
+        return json
+    }
+
+    /// Samples the page background after load and reports its color to the
     /// `chorusDarkProbe` handler, which decides whether the site lacks a dark
     /// theme. The service id is baked in. Reads `<body>` first, falling back to
     /// `<html>` when the body background is transparent.
+    ///
+    /// A single fixed timeout misreads slow single-page apps: they paint a
+    /// transparent/light frame first and only settle into their own dark theme a
+    /// second or two later, so a one-shot early sample reports "light" and Dark
+    /// Reader wrongly themes an already-dark app. So this polls on a widening
+    /// schedule and reports once the reading has settled: as soon as an opaque
+    /// *dark* background appears it reports immediately (the app themed itself),
+    /// otherwise it keeps the latest opaque sample and reports that at the end
+    /// (falling back to white if the page never painted an opaque background).
+    /// The verdict is cached after the first report, so this cost is paid once.
     nonisolated static func makeDarkProbeScript(serviceID: String) -> String {
         """
         (function() {
-            function sample() {
+            var attempts = [300, 700, 1500, 3000, 5000];
+            var i = 0;
+            var lastOpaque = null;
+            var done = false;
+            function rgba(el) {
+                if (!el) return null;
+                var c = getComputedStyle(el).backgroundColor || "";
+                var m = c.match(/rgba?\\(([^)]+)\\)/);
+                if (!m) return null;
+                var p = m[1].split(',').map(function(x){ return parseFloat(x.trim()); });
+                return { r: p[0]||0, g: p[1]||0, b: p[2]||0, a: (p.length > 3 ? p[3] : 1) };
+            }
+            function relativeLuminance(c) {
+                return (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255.0;
+            }
+            function report(bg) {
+                if (done) return;
+                done = true;
                 try {
-                    function rgba(el) {
-                        if (!el) return null;
-                        var c = getComputedStyle(el).backgroundColor || "";
-                        var m = c.match(/rgba?\\(([^)]+)\\)/);
-                        if (!m) return null;
-                        var p = m[1].split(',').map(function(x){ return parseFloat(x.trim()); });
-                        return { r: p[0]||0, g: p[1]||0, b: p[2]||0, a: (p.length > 3 ? p[3] : 1) };
-                    }
-                    var bg = rgba(document.body);
-                    if (!bg || bg.a < 0.5) { var h = rgba(document.documentElement); if (h) bg = h; }
-                    if (!bg) bg = { r: 255, g: 255, b: 255, a: 1 };
                     window.webkit.messageHandlers.chorusDarkProbe.postMessage(JSON.stringify({
-                        serviceID: "\(serviceID)", r: bg.r, g: bg.g, b: bg.b, a: bg.a
+                        serviceID: \(jsStringLiteral(serviceID)), r: bg.r, g: bg.g, b: bg.b, a: bg.a
                     }));
                 } catch (e) {}
             }
-            setTimeout(sample, 700);
+            function tick() {
+                try {
+                    var bg = rgba(document.body);
+                    if (!bg || bg.a < 0.5) { var h = rgba(document.documentElement); if (h) bg = h; }
+                    if (bg && bg.a >= 0.5) {
+                        lastOpaque = bg;
+                        // An opaque dark background means the app themed itself — settle now.
+                        if (relativeLuminance(bg) <= 0.5) { report(bg); return; }
+                    }
+                } catch (e) {}
+                i++;
+                if (i < attempts.length) {
+                    setTimeout(tick, attempts[i] - attempts[i - 1]);
+                } else {
+                    report(lastOpaque || { r: 255, g: 255, b: 255, a: 1 });
+                }
+            }
+            setTimeout(tick, attempts[0]);
         })();
         """
     }
@@ -330,7 +380,6 @@ final class UserScriptManager {
     }
 
     private func makeNotificationInterceptionScript(serviceID: String) -> String {
-        let escapedID = serviceID.replacingOccurrences(of: "'", with: "\\'")
         return """
         (function() {
             var OrigNotification = window.Notification;
@@ -341,7 +390,7 @@ final class UserScriptManager {
                         body: (options && options.body) || '',
                         icon: (options && options.icon) || '',
                         tag: (options && options.tag) || '',
-                        serviceID: '\(escapedID)'
+                        serviceID: \(Self.jsStringLiteral(serviceID))
                     })
                 );
                 return new OrigNotification(title, options);
@@ -391,9 +440,23 @@ final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unche
         // trusted service (spoofing / phishing).
         let frame = message.frameInfo
         if !frame.isMainFrame {
-            let frameHost = frame.securityOrigin.host
-            let mainHost = message.webView?.url?.host ?? ""
-            guard !frameHost.isEmpty, frameHost == mainHost else { return }
+            // Compare the full origin (scheme + host + port), not just the host:
+            // a same-host subframe on a different scheme/port is a different
+            // origin and must not post a notification attributed to the service.
+            let origin = frame.securityOrigin
+            guard let mainURL = message.webView?.url,
+                  let mainScheme = mainURL.scheme?.lowercased(),
+                  let mainHost = mainURL.host,
+                  !origin.host.isEmpty,
+                  origin.protocol.lowercased() == mainScheme,
+                  origin.host == mainHost
+            else { return }
+            // WKSecurityOrigin reports 0 for the scheme's default port; URL
+            // reports nil. Normalize both before comparing.
+            let defaultPort = mainScheme == "https" ? 443 : 80
+            let originPort = origin.port == 0 ? defaultPort : origin.port
+            let mainPort = mainURL.port ?? defaultPort
+            guard originPort == mainPort else { return }
         }
 
         guard let jsonString = message.body as? String,

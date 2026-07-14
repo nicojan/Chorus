@@ -7,7 +7,11 @@ import UserNotifications
 final class NotificationManager {
     private var pollTasks: [UUID: Task<Void, Never>] = [:]
     private let badgeManager: BadgeManager
-    private var pendingServiceID: UUID?
+    /// Notification taps that arrived before `onServiceRequested` was wired
+    /// (a tap can launch the app). Buffered in order and drained once the
+    /// handler is set, so a burst of cold-launch taps isn't reduced to just the
+    /// last one.
+    private var pendingServiceIDs: [UUID] = []
 
     var onServiceRequested: (@MainActor (UUID) -> Void)?
 
@@ -28,11 +32,13 @@ final class NotificationManager {
         case background
     }
 
-    /// Title poll interval starts at 5s and backs off to 30s after 10 minutes of
-    /// no badge changes. DOM badge poll runs at 2× the title interval. Resets to
-    /// fast polling when badge count changes. `isMuted`/`showBadge` are passed as
-    /// closures so live toggles take effect on the next tick instead of waiting
-    /// for the polling task to be restarted.
+    /// Title poll interval starts at 5s and steps up by 5s (capped at 30s) after
+    /// each run of 120 consecutive unchanged polls, so a quiet service gradually
+    /// slows down — reaching the 30s cap takes well over an hour of no change,
+    /// not 10 minutes — and it snaps back to 5s the moment the count changes. DOM
+    /// badge poll runs at 2× the title interval. `isMuted`/`showBadge` are passed
+    /// as closures so live toggles take effect on the next tick instead of
+    /// waiting for the polling task to be restarted.
     func startPolling(
         for instanceID: UUID,
         webView: WKWebView,
@@ -165,14 +171,15 @@ final class NotificationManager {
         if let handler = onServiceRequested {
             handler(serviceID)
         } else {
-            pendingServiceID = serviceID
+            pendingServiceIDs.append(serviceID)
         }
     }
 
-    func handlePendingNotification() -> UUID? {
-        let id = pendingServiceID
-        pendingServiceID = nil
-        return id
+    /// Returns and clears every buffered cold-launch tap, in arrival order.
+    func drainPendingNotifications() -> [UUID] {
+        let ids = pendingServiceIDs
+        pendingServiceIDs = []
+        return ids
     }
 
     // MARK: - Polling
@@ -185,6 +192,10 @@ final class NotificationManager {
     private func pollTitle(webView: WKWebView, instanceID: UUID, isMuted: Bool, showBadge: Bool, resetToZero: Bool = true) async {
         do {
             let result = try await webView.evaluateJavaScript("document.title")
+            // The JS await is a suspension point: the poll task may have been
+            // cancelled (service switched away / hibernated) while it ran. Drop
+            // the result so a stale tick can't write a badge after cancellation.
+            guard !Task.isCancelled else { return }
             if let title = result as? String {
                 let count = Self.extractBadgeCount(from: title)
                 guard count > 0 || resetToZero else { return }
@@ -199,6 +210,9 @@ final class NotificationManager {
         guard let badgeJS = catalogEntry.badgeJS else { return }
         do {
             let result = try await webView.evaluateJavaScript(badgeJS)
+            // Drop the result if the poll task was cancelled during the JS await,
+            // so a stale tick can't write a badge after cancellation.
+            guard !Task.isCancelled else { return }
             let count: Int
             if let intResult = result as? Int {
                 count = intResult

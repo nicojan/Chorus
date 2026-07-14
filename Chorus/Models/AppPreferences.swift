@@ -96,6 +96,12 @@ final class AppPreferences {
     /// aggressive than domain blocking.
     var annoyanceBlockingEnabled: Bool?
 
+    /// Default camera / microphone permission for services that haven't pinned
+    /// their own. Stored raw for SwiftData lightweight migration; nil resolves to
+    /// `.ask` (see `MediaPermissionResolver.effectivePolicy`).
+    var defaultCameraPolicyRaw: String?
+    var defaultMicrophonePolicyRaw: String?
+
     init(
         id: UUID = UUID(),
         appPresenceMode: AppPresenceMode = .dock,
@@ -116,7 +122,9 @@ final class AppPreferences {
         appearanceModeRaw: String? = nil,
         contentBlockingEnabled: Bool? = nil,
         autoDarkModeEnabled: Bool? = nil,
-        annoyanceBlockingEnabled: Bool? = nil
+        annoyanceBlockingEnabled: Bool? = nil,
+        defaultCameraPolicyRaw: String? = nil,
+        defaultMicrophonePolicyRaw: String? = nil
     ) {
         self.id = id
         self.appPresenceMode = appPresenceMode
@@ -138,6 +146,8 @@ final class AppPreferences {
         self.contentBlockingEnabled = contentBlockingEnabled
         self.autoDarkModeEnabled = autoDarkModeEnabled
         self.annoyanceBlockingEnabled = annoyanceBlockingEnabled
+        self.defaultCameraPolicyRaw = defaultCameraPolicyRaw
+        self.defaultMicrophonePolicyRaw = defaultMicrophonePolicyRaw
     }
 
     /// Materialises the storage-optional default zoom (nil → 1.0).

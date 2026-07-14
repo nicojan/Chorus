@@ -7,6 +7,12 @@ import Network
 @MainActor
 @Observable
 final class NetworkMonitor {
+    /// Defaults to `true` and `onChange` fires only on an actual transition, so
+    /// there is no initial-state callback. That suits the current consumers
+    /// (AppState resumes polling on reconnect; the banner reads `isOnline`
+    /// directly) — a device that launches offline still shows the banner from
+    /// this default. A future consumer that needs an authoritative first value
+    /// should emit the initial path status once at start.
     private(set) var isOnline: Bool = true
 
     private let monitor: NWPathMonitor

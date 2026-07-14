@@ -7,6 +7,91 @@ enum ServiceDarkMode: String, CaseIterable {
     case auto, on, off
 }
 
+/// Per-service camera/microphone permission. `ask` prompts once and remembers
+/// the answer (flipping to allow/deny); `allow` grants silently; `deny` blocks.
+enum MediaPermissionPolicy: String, CaseIterable {
+    case ask, allow, deny
+
+    var displayName: String {
+        switch self {
+        case .ask: return "Ask"
+        case .allow: return "Allow"
+        case .deny: return "Deny"
+        }
+    }
+}
+
+/// Which capture a page requested. Mirrors `WKMediaCaptureType` without pulling
+/// WebKit into the model, so the resolution logic stays pure and unit-testable.
+enum MediaCaptureKind {
+    case camera, microphone, cameraAndMicrophone
+}
+
+/// Pure resolution of camera/microphone permission. No WebKit, no SwiftData —
+/// just the policy math, so the truth table is unit-testable in isolation.
+enum MediaPermissionResolver {
+    /// The outcome for a single capture request.
+    enum Resolution: Equatable {
+        case grant, deny, ask
+    }
+
+    /// The effective policy for one field: an explicit per-service value wins,
+    /// else the global default, else `.ask`. Resolution-time fallback (like page
+    /// zoom), so changing the global default moves every service that hasn't
+    /// pinned its own value.
+    static func effectivePolicy(serviceRaw: String?, globalRaw: String?) -> MediaPermissionPolicy {
+        if let raw = serviceRaw, let policy = MediaPermissionPolicy(rawValue: raw) { return policy }
+        if let raw = globalRaw, let policy = MediaPermissionPolicy(rawValue: raw) { return policy }
+        return .ask
+    }
+
+    /// Combines the camera and microphone policies for a capture request.
+    /// Restrictiveness order is deny > ask > allow: a combined request grants
+    /// only when both fields allow, denies if either denies, otherwise asks.
+    static func resolve(
+        _ kind: MediaCaptureKind,
+        camera: MediaPermissionPolicy,
+        microphone: MediaPermissionPolicy
+    ) -> Resolution {
+        switch kind {
+        case .camera: return resolution(for: camera)
+        case .microphone: return resolution(for: microphone)
+        case .cameraAndMicrophone:
+            if camera == .deny || microphone == .deny { return .deny }
+            if camera == .ask || microphone == .ask { return .ask }
+            return .grant
+        }
+    }
+
+    /// The device(s) a prompt is actually deciding: those the request involves
+    /// AND whose policy is currently `.ask`. Gating by the request kind (not just
+    /// the `.ask` state) is what stops a single-device prompt from persisting its
+    /// answer to the other, un-asked device — and lets the prompt copy name only
+    /// what's in question. Pure, so it's unit-testable.
+    static func askedFields(
+        _ kind: MediaCaptureKind,
+        camera: MediaPermissionPolicy,
+        microphone: MediaPermissionPolicy
+    ) -> (camera: Bool, microphone: Bool) {
+        let cameraInvolved: Bool
+        let microphoneInvolved: Bool
+        switch kind {
+        case .camera: (cameraInvolved, microphoneInvolved) = (true, false)
+        case .microphone: (cameraInvolved, microphoneInvolved) = (false, true)
+        case .cameraAndMicrophone: (cameraInvolved, microphoneInvolved) = (true, true)
+        }
+        return (cameraInvolved && camera == .ask, microphoneInvolved && microphone == .ask)
+    }
+
+    private static func resolution(for policy: MediaPermissionPolicy) -> Resolution {
+        switch policy {
+        case .allow: return .grant
+        case .deny: return .deny
+        case .ask: return .ask
+        }
+    }
+}
+
 @Model
 final class ServiceInstance {
     @Attribute(.unique) var id: UUID
@@ -58,6 +143,14 @@ final class ServiceInstance {
     /// visit. Cleared when the service's URL changes.
     var detectedLacksDarkTheme: Bool?
 
+    /// Per-service camera / microphone permission, stored raw for SwiftData
+    /// lightweight migration. nil means "no per-service value" — resolution falls
+    /// back to the global default, then `.ask` (see `MediaPermissionResolver`).
+    /// Read the raw directly for resolution; the `cameraPolicy`/`microphonePolicy`
+    /// accessors are for the editor UI (nil → `.ask`).
+    var cameraPolicyRaw: String?
+    var microphonePolicyRaw: String?
+
     /// Whether the one-time "Passkeys aren't available for sign-in" notice has
     /// been shown for this service. Optional for SwiftData lightweight
     /// migration; nil is treated as "not yet seen" (see `needsPasskeyNotice`).
@@ -95,6 +188,19 @@ final class ServiceInstance {
     /// services created before this flag existed keep forwarding notifications.
     var notifiesOSEffective: Bool { osNotificationsEnabled ?? true }
 
+    /// The service's own camera policy (nil → `.ask`). For in-hand reads and the
+    /// editor; runtime resolution uses `cameraPolicyRaw` + the global default.
+    var cameraPolicy: MediaPermissionPolicy {
+        get { cameraPolicyRaw.flatMap(MediaPermissionPolicy.init(rawValue:)) ?? .ask }
+        set { cameraPolicyRaw = newValue.rawValue }
+    }
+
+    /// The service's own microphone policy (nil → `.ask`). See `cameraPolicy`.
+    var microphonePolicy: MediaPermissionPolicy {
+        get { microphonePolicyRaw.flatMap(MediaPermissionPolicy.init(rawValue:)) ?? .ask }
+        set { microphonePolicyRaw = newValue.rawValue }
+    }
+
     /// True if this service is muted directly, or via any space it belongs to
     /// (muting a space cascades to its members). Use this when the model object
     /// is already in hand — it avoids AppState's fetch-all-then-scan lookup.
@@ -125,7 +231,9 @@ final class ServiceInstance {
         forceDarkMode: Bool? = nil,
         darkModeRaw: String? = nil,
         detectedLacksDarkTheme: Bool? = nil,
-        hasSeenPasskeyNotice: Bool? = nil
+        hasSeenPasskeyNotice: Bool? = nil,
+        cameraPolicyRaw: String? = nil,
+        microphonePolicyRaw: String? = nil
     ) {
         self.id = id
         self.label = label
@@ -146,6 +254,8 @@ final class ServiceInstance {
         self.darkModeRaw = darkModeRaw
         self.detectedLacksDarkTheme = detectedLacksDarkTheme
         self.hasSeenPasskeyNotice = hasSeenPasskeyNotice
+        self.cameraPolicyRaw = cameraPolicyRaw
+        self.microphonePolicyRaw = microphonePolicyRaw
         self.spaceLinks = []
         self.createdAt = Date()
         self.lastAccessedAt = Date()

@@ -33,6 +33,11 @@ and Franz, built for Apple Silicon.
 - **Ad & tracker blocking.** Blocks known ad and tracking domains across your
   services with the HaGezi blocklist, on by default. It won't remove ads a site
   serves from its own domain, like YouTube.
+- **Camera and microphone.** Video calls and voice work in the services that need
+  them, from Google Meet to Microsoft Teams. Each service asks the first time it
+  wants your camera or mic. You can set Allow, Ask, or Deny for a single service
+  or as the default for all of them, mute every microphone at once with `⇧⌘M`, and
+  see a dot on a service while its camera or mic is live.
 - **Resilient.** Pauses polling when offline or asleep, recovers from WebContent
   crashes with backoff, and never deletes your data without consent.
 
@@ -52,7 +57,7 @@ with the source open under the MIT license.
 | Open source | Yes (MIT) | No | No |
 | Engine | Native WebKit | Electron | Electron |
 | Platforms | macOS 14+ | Windows, macOS, Linux | Windows, macOS, Linux |
-| Preset services | ~50, plus any URL | 700+ | 70+ |
+| Preset services | ~70, plus any URL | 700+ | 70+ |
 | Isolated session per service | Yes | Yes | Yes |
 | Spaces / workspaces | Unlimited | Yes | Free tier: 1 |
 | Custom CSS per service | Yes, with presets | Yes | No |
@@ -62,7 +67,7 @@ with the source open under the MIT license.
 | Cross-device sync | No | Yes | Yes |
 
 Chorus makes two trades for staying native and free. It runs only on macOS, and
-it ships with about fifty preset services where Rambox lists several hundred,
+it ships with more than seventy preset services where Rambox lists several hundred,
 though you can add any site by its URL. It also keeps your data on your Mac rather
 than syncing across devices.
 

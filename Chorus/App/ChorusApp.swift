@@ -49,6 +49,11 @@ struct ChorusApp: App {
                     appState.showAddService = true
                 }
                 .keyboardShortcut("n", modifiers: .command)
+                // With no space selected the sheet has nowhere to add the
+                // service and renders empty and un-dismissable, so disable ⌘N
+                // until a space exists (the seeded app always has one; this
+                // covers the transient no-space state).
+                .disabled(appState.selectedSpaceID == nil)
 
                 Button("Quick Switcher") {
                     appState.showQuickSwitcher.toggle()
@@ -68,6 +73,11 @@ struct ChorusApp: App {
                 }
                 .keyboardShortcut("l", modifiers: [.command, .shift])
                 .disabled(!appState.appLockEnabled)
+
+                Button("Mute All Microphones") {
+                    appState.muteAllMicrophones()
+                }
+                .keyboardShortcut("m", modifiers: [.command, .shift])
             }
 
             KeyboardShortcutCommands(
@@ -121,6 +131,7 @@ struct ChorusApp: App {
 
         MenuBarExtra("Chorus", systemImage: "square.grid.2x2") {
             MenuBarView()
+                .environment(appState)
                 .modelContainer(appState.modelContainer)
         }
 
@@ -171,6 +182,7 @@ struct ChorusApp: App {
             try appState.modelContainer.mainContext.save()
         } catch {
             AppLogger.dataStore.error("Failed to save window state: \(error.localizedDescription)")
+            appState.modelContainer.mainContext.rollback()
         }
     }
 }

@@ -3,6 +3,29 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.5.3] - 2026-07-14
+
+### Added
+
+- **Camera and microphone.** Chorus can now use your camera and microphone, so
+  video calls and voice work in the services that need them, from Google Meet to
+  Microsoft Teams. Each service asks the first time it wants your camera or mic.
+  You can set Allow, Ask, or Deny for a single service or as the default for all
+  of them, mute every microphone at once with ⇧⌘M, and see a dot on a service
+  while its camera or mic is live.
+- **More services.** Twenty-four services were added to the picker, bringing the
+  built-in list to more than seventy.
+
+### Changed
+
+- Services that already switch to a dark theme on their own are no longer
+  darkened a second time, so they look the way their makers intended.
+
+### Fixed
+
+- Reliability and security fixes across saved data, downloads, and network
+  handling.
+
 ## [1.5.2] - 2026-07-13
 
 ### Fixed

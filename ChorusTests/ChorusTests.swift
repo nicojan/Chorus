@@ -925,8 +925,8 @@ final class ChorusTests: XCTestCase {
 
     func testDarkInjectionTruthTable() {
         typealias I = DarkReaderSupport.DarkInjection
-        func inj(_ m: ServiceDarkMode, _ auto: Bool, _ dark: Bool, _ detected: Bool?) -> I {
-            DarkReaderSupport.injection(mode: m, globalAuto: auto, appDark: dark, detectedLacksDark: detected)
+        func inj(_ m: ServiceDarkMode, _ auto: Bool, _ dark: Bool, _ detected: Bool?, _ native: Bool = false) -> I {
+            DarkReaderSupport.injection(mode: m, globalAuto: auto, appDark: dark, detectedLacksDark: detected, nativeDark: native)
         }
         // App light → never themes, whatever the mode.
         XCTAssertEqual(inj(.on, true, false, true), I.none)
@@ -939,6 +939,45 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(inj(.auto, true, true, nil), I.probe)
         XCTAssertEqual(inj(.auto, true, true, true), I.themed)
         XCTAssertEqual(inj(.auto, true, true, false), I.none)
+    }
+
+    func testDarkInjectionNativeDarkService() {
+        typealias I = DarkReaderSupport.DarkInjection
+        func inj(_ m: ServiceDarkMode, _ auto: Bool, _ dark: Bool, _ detected: Bool?, _ native: Bool) -> I {
+            DarkReaderSupport.injection(mode: m, globalAuto: auto, appDark: dark, detectedLacksDark: detected, nativeDark: native)
+        }
+        // A native-dark service in Auto never themes and never even probes — its
+        // own dark theme is trusted, so Dark Reader stays out of the way. This
+        // holds regardless of any stale detection verdict.
+        XCTAssertEqual(inj(.auto, true, true, nil, true), I.none)
+        XCTAssertEqual(inj(.auto, true, true, true, true), I.none)
+        XCTAssertEqual(inj(.auto, true, true, false, true), I.none)
+        // The user's explicit On still wins over the native-dark flag.
+        XCTAssertEqual(inj(.on, true, true, nil, true), I.themed)
+        // With the flag off, Auto behaves exactly as before (regression guard).
+        XCTAssertEqual(inj(.auto, true, true, nil, false), I.probe)
+    }
+
+    func testCatalogMarksNativeDarkServices() {
+        let catalog = ServiceCatalog.shared
+        // Sample of the researched always-dark / follows-system services.
+        for id in ["discord", "spotify", "youtube-music", "linear", "icloud-mail",
+                   "github", "jira", "confluence", "gitlab", "chatgpt", "claude"] {
+            XCTAssertEqual(catalog.entry(for: id)?.nativeDark, true, "\(id) should be marked nativeDark")
+        }
+        // Services that need Dark Reader (no native dark, or manual-only) must not be marked.
+        for id in ["gmail", "slack", "notion", "hackernews", "zoom", "reddit"] {
+            XCTAssertNotEqual(catalog.entry(for: id)?.nativeDark, true, "\(id) should not be nativeDark")
+        }
+    }
+
+    func testDarkProbeScriptPollsUntilSettled() {
+        let js = UserScriptManager.makeDarkProbeScript(serviceID: "abc")
+        // The hardened probe samples repeatedly (not a single fixed timeout) so a
+        // slow SPA that paints its dark theme late isn't misread as a light page.
+        XCTAssertTrue(js.contains("chorusDarkProbe"))
+        XCTAssertTrue(js.contains("relativeLuminance") || js.contains("luminance"))
+        XCTAssertTrue(js.contains("attempts") || js.contains("schedule"))
     }
 
     func testClassifyLacksDark() {
@@ -1049,20 +1088,36 @@ final class ChorusTests: XCTestCase {
 
     // MARK: - Notification grouping by space
 
-    /// Wires a service into a space on both relationship sides, mirroring what a
-    /// live model context would maintain, so `NotificationGrouping` sees it.
+    /// A fresh in-memory store. `NotificationGrouping.grouped` now skips links
+    /// whose service has no `modelContext` (a dangling or never-inserted model),
+    /// so these tests must use live, inserted models rather than detached ones.
+    /// Returns the container — the caller must hold it for the test's duration;
+    /// using only its `mainContext` after the container deallocates crashes.
+    private func makeGroupingContainer() throws -> ModelContainer {
+        try ModelContainer(
+            for: Space.self, ServiceInstance.self, SpaceServiceLink.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+    }
+
+    /// Links an already-inserted service to an already-inserted space by
+    /// inserting a join row; SwiftData maintains both relationship sides.
     @discardableResult
-    private func link(_ service: ServiceInstance, to space: Space, sortOrder: Int) -> SpaceServiceLink {
+    private func link(_ service: ServiceInstance, to space: Space, sortOrder: Int, in ctx: ModelContext) -> SpaceServiceLink {
         let link = SpaceServiceLink(sortOrder: sortOrder, space: space, service: service)
-        space.serviceLinks.append(link)
-        service.spaceLinks.append(link)
+        ctx.insert(link)
         return link
     }
 
-    func testNotificationGroupingIsFlatAndHeaderlessWhenNoSpacesHaveMembers() {
+    func testNotificationGroupingIsFlatAndHeaderlessWhenNoSpacesHaveMembers() throws {
+        let container = try makeGroupingContainer()
+        let ctx = container.mainContext
         let a = ServiceInstance(label: "Zulip", url: "https://z.example")
         let b = ServiceInstance(label: "Asana", url: "https://a.example")
         let empty = Space(name: "Empty", emoji: "📭", sortOrder: 0)
+        [a, b].forEach(ctx.insert)
+        ctx.insert(empty)
+        try ctx.save()
 
         let result = NotificationGrouping.grouped(spaces: [empty], services: [a, b])
 
@@ -1073,16 +1128,21 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(result.groups[0].services.map(\.label), ["Asana", "Zulip"])
     }
 
-    func testNotificationGroupingFollowsSpaceOrderThenLinkOrder() {
+    func testNotificationGroupingFollowsSpaceOrderThenLinkOrder() throws {
+        let container = try makeGroupingContainer()
+        let ctx = container.mainContext
         let work = Space(name: "Work", emoji: "🏢", sortOrder: 0)
         let play = Space(name: "Play", emoji: "🎮", sortOrder: 1)
         let slack = ServiceInstance(label: "Slack", url: "https://s.example")
         let gmail = ServiceInstance(label: "Gmail", url: "https://g.example")
         let discord = ServiceInstance(label: "Discord", url: "https://d.example")
+        [work, play].forEach(ctx.insert)
+        [slack, gmail, discord].forEach(ctx.insert)
         // Add gmail first but at a higher sortOrder to prove link order wins.
-        link(gmail, to: work, sortOrder: 1)
-        link(slack, to: work, sortOrder: 0)
-        link(discord, to: play, sortOrder: 0)
+        link(gmail, to: work, sortOrder: 1, in: ctx)
+        link(slack, to: work, sortOrder: 0, in: ctx)
+        link(discord, to: play, sortOrder: 0, in: ctx)
+        try ctx.save()
 
         let result = NotificationGrouping.grouped(spaces: [work, play], services: [slack, gmail, discord])
 
@@ -1092,12 +1152,17 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(result.groups[1].services.map(\.label), ["Discord"])
     }
 
-    func testNotificationGroupingPutsUngroupedServicesInTrailingBucket() {
+    func testNotificationGroupingPutsUngroupedServicesInTrailingBucket() throws {
+        let container = try makeGroupingContainer()
+        let ctx = container.mainContext
         let work = Space(name: "Work", emoji: "🏢", sortOrder: 0)
         let slack = ServiceInstance(label: "Slack", url: "https://s.example")
         let loose2 = ServiceInstance(label: "Notion", url: "https://n.example")
         let loose1 = ServiceInstance(label: "Figma", url: "https://f.example")
-        link(slack, to: work, sortOrder: 0)
+        ctx.insert(work)
+        [slack, loose2, loose1].forEach(ctx.insert)
+        link(slack, to: work, sortOrder: 0, in: ctx)
+        try ctx.save()
 
         let result = NotificationGrouping.grouped(spaces: [work], services: [slack, loose2, loose1])
 
@@ -1108,23 +1173,33 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(result.groups[1].services.map(\.label), ["Figma", "Notion"])
     }
 
-    func testNotificationGroupingSkipsSpacesWithNoServices() {
+    func testNotificationGroupingSkipsSpacesWithNoServices() throws {
+        let container = try makeGroupingContainer()
+        let ctx = container.mainContext
         let full = Space(name: "Full", emoji: "📥", sortOrder: 0)
         let empty = Space(name: "Empty", emoji: "📭", sortOrder: 1)
         let slack = ServiceInstance(label: "Slack", url: "https://s.example")
-        link(slack, to: full, sortOrder: 0)
+        [full, empty].forEach(ctx.insert)
+        ctx.insert(slack)
+        link(slack, to: full, sortOrder: 0, in: ctx)
+        try ctx.save()
 
         let result = NotificationGrouping.grouped(spaces: [full, empty], services: [slack])
 
         XCTAssertEqual(result.groups.map { $0.space?.name }, ["Full"])
     }
 
-    func testNotificationGroupingRepeatsServiceInEachSpace() {
+    func testNotificationGroupingRepeatsServiceInEachSpace() throws {
+        let container = try makeGroupingContainer()
+        let ctx = container.mainContext
         let home = Space(name: "Home", emoji: "🏠", sortOrder: 0)
         let design = Space(name: "Design", emoji: "🎨", sortOrder: 1)
         let slack = ServiceInstance(label: "Slack", url: "https://s.example")
-        link(slack, to: home, sortOrder: 0)
-        link(slack, to: design, sortOrder: 0)
+        [home, design].forEach(ctx.insert)
+        ctx.insert(slack)
+        link(slack, to: home, sortOrder: 0, in: ctx)
+        link(slack, to: design, sortOrder: 0, in: ctx)
+        try ctx.save()
 
         let result = NotificationGrouping.grouped(spaces: [home, design], services: [slack])
 
@@ -1135,6 +1210,40 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(result.groups[0].services[0] === result.groups[1].services[0])
         // No ungrouped bucket when every service belongs to a space.
         XCTAssertFalse(result.groups.contains { $0.space == nil })
+    }
+
+    /// Exercises the dangling-link guard: a link whose service has no
+    /// `modelContext` (a deleted or never-inserted model — the crash class the
+    /// guard exists for) must be skipped, not grouped or trapped on.
+    func testNotificationGroupingSkipsLinkWhoseServiceIsDetached() throws {
+        // A live space with a real, inserted, linked service.
+        let container = try makeGroupingContainer()
+        let ctx = container.mainContext
+        let live = Space(name: "Live", emoji: "✅", sortOrder: 0)
+        let alpha = ServiceInstance(label: "Alpha", url: "https://a.example")
+        ctx.insert(live)
+        ctx.insert(alpha)
+        link(alpha, to: live, sortOrder: 0, in: ctx)
+        try ctx.save()
+
+        // A detached space whose link points at a never-inserted service — the
+        // stand-in for a dangling link. Its service has a nil modelContext, so
+        // the guard must skip it rather than group it.
+        let ghost = Space(name: "Ghost", emoji: "👻", sortOrder: 1)
+        let beta = ServiceInstance(label: "Beta", url: "https://b.example")
+        let danglingLink = SpaceServiceLink(sortOrder: 0, space: ghost, service: beta)
+        ghost.serviceLinks.append(danglingLink)
+        beta.spaceLinks.append(danglingLink)
+
+        let result = NotificationGrouping.grouped(spaces: [live, ghost], services: [alpha, beta])
+
+        // Only the live space is grouped; the ghost's dangling link is skipped
+        // and Beta appears nowhere. Without the guard, Ghost/Beta would show.
+        XCTAssertEqual(result.groups.map { $0.space?.name }, ["Live"])
+        XCTAssertEqual(result.groups.first?.services.map(\.label), ["Alpha"])
+        XCTAssertFalse(result.groups.contains { group in
+            group.services.contains { $0.label == "Beta" }
+        })
     }
 
     // MARK: - Move service to space
@@ -1208,6 +1317,171 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(inB.last?.sortOrder, 1)
         // The service keeps exactly one link: no orphan, no double-link.
         XCTAssertEqual(after.filter { $0.service.id == moving.id }.count, 1)
+    }
+
+    // MARK: - Media permission resolution
+
+    func testMediaEffectivePolicyPrefersServiceThenGlobalThenAsk() {
+        // Explicit service value wins over the global default.
+        XCTAssertEqual(MediaPermissionResolver.effectivePolicy(serviceRaw: "allow", globalRaw: "deny"), .allow)
+        // Falls back to the global default when the service has no value.
+        XCTAssertEqual(MediaPermissionResolver.effectivePolicy(serviceRaw: nil, globalRaw: "deny"), .deny)
+        // Falls back to .ask when neither is set, or either is unparseable.
+        XCTAssertEqual(MediaPermissionResolver.effectivePolicy(serviceRaw: nil, globalRaw: nil), .ask)
+        XCTAssertEqual(MediaPermissionResolver.effectivePolicy(serviceRaw: "garbage", globalRaw: nil), .ask)
+    }
+
+    func testMediaResolveSingleTypeReadsTheMatchingField() {
+        // .camera reads only the camera field.
+        XCTAssertEqual(MediaPermissionResolver.resolve(.camera, camera: .allow, microphone: .deny), .grant)
+        XCTAssertEqual(MediaPermissionResolver.resolve(.camera, camera: .deny, microphone: .allow), .deny)
+        XCTAssertEqual(MediaPermissionResolver.resolve(.camera, camera: .ask, microphone: .allow), .ask)
+        // .microphone reads only the microphone field.
+        XCTAssertEqual(MediaPermissionResolver.resolve(.microphone, camera: .allow, microphone: .deny), .deny)
+        XCTAssertEqual(MediaPermissionResolver.resolve(.microphone, camera: .deny, microphone: .allow), .grant)
+        XCTAssertEqual(MediaPermissionResolver.resolve(.microphone, camera: .allow, microphone: .ask), .ask)
+    }
+
+    func testMediaResolveCameraAndMicrophoneIsMostRestrictive() {
+        // Grant only when BOTH allow.
+        XCTAssertEqual(MediaPermissionResolver.resolve(.cameraAndMicrophone, camera: .allow, microphone: .allow), .grant)
+        // Deny if EITHER denies (deny beats ask and allow).
+        XCTAssertEqual(MediaPermissionResolver.resolve(.cameraAndMicrophone, camera: .deny, microphone: .allow), .deny)
+        XCTAssertEqual(MediaPermissionResolver.resolve(.cameraAndMicrophone, camera: .ask, microphone: .deny), .deny)
+        // Ask if EITHER asks and neither denies.
+        XCTAssertEqual(MediaPermissionResolver.resolve(.cameraAndMicrophone, camera: .ask, microphone: .allow), .ask)
+        XCTAssertEqual(MediaPermissionResolver.resolve(.cameraAndMicrophone, camera: .allow, microphone: .ask), .ask)
+    }
+
+    func testMediaPolicyAccessorsDefaultToAskAndRoundTrip() {
+        let service = ServiceInstance(label: "S", url: "https://s.example")
+        // Unset → .ask, and the raw stays nil so resolution can fall back to global.
+        XCTAssertEqual(service.cameraPolicy, .ask)
+        XCTAssertEqual(service.microphonePolicy, .ask)
+        XCTAssertNil(service.cameraPolicyRaw)
+        XCTAssertNil(service.microphonePolicyRaw)
+        // Setting pins the raw string.
+        service.cameraPolicy = .allow
+        service.microphonePolicy = .deny
+        XCTAssertEqual(service.cameraPolicyRaw, "allow")
+        XCTAssertEqual(service.microphonePolicyRaw, "deny")
+        XCTAssertEqual(service.cameraPolicy, .allow)
+        XCTAssertEqual(service.microphonePolicy, .deny)
+    }
+
+    func testMediaAskedFieldsGatesByRequestKind() {
+        // A mic-only request with BOTH fields unset (.ask) marks ONLY the mic as
+        // asked — so answering the prompt can never silently pin the camera to
+        // Allow (the cross-device over-grant this guards).
+        var asked = MediaPermissionResolver.askedFields(.microphone, camera: .ask, microphone: .ask)
+        XCTAssertFalse(asked.camera)
+        XCTAssertTrue(asked.microphone)
+        // Camera-only request → only the camera.
+        asked = MediaPermissionResolver.askedFields(.camera, camera: .ask, microphone: .ask)
+        XCTAssertTrue(asked.camera)
+        XCTAssertFalse(asked.microphone)
+        // Combined request marks a field only when it's actually .ask; an
+        // already-explicit field is left out so it isn't overwritten.
+        asked = MediaPermissionResolver.askedFields(.cameraAndMicrophone, camera: .ask, microphone: .allow)
+        XCTAssertTrue(asked.camera)
+        XCTAssertFalse(asked.microphone)
+        asked = MediaPermissionResolver.askedFields(.cameraAndMicrophone, camera: .ask, microphone: .ask)
+        XCTAssertTrue(asked.camera)
+        XCTAssertTrue(asked.microphone)
+    }
+
+    func testCaptureOriginTrustSeparatesSharedHostingSuffixes() {
+        typealias C = WebViewCoordinator
+        // Exact host, and same registrable domain for a normal domain — trusted
+        // (e.g. Slack workspace subdomains).
+        XCTAssertTrue(C.captureOriginBelongsToService("app.slack.com", serviceHost: "app.slack.com"))
+        XCTAssertTrue(C.captureOriginBelongsToService("huddle.slack.com", serviceHost: "app.slack.com"))
+        // Different owners sharing a multi-tenant hosting suffix — NOT trusted
+        // (this is the grant-leak the fix closes).
+        XCTAssertFalse(C.captureOriginBelongsToService("attacker.web.app", serviceHost: "alice.web.app"))
+        XCTAssertFalse(C.captureOriginBelongsToService("evil.github.io", serviceHost: "myapp.github.io"))
+        // Same tenant under a shared suffix (its own subdomain) — trusted.
+        XCTAssertTrue(C.captureOriginBelongsToService("sub.alice.web.app", serviceHost: "alice.web.app"))
+        // Cross registrable domain — not trusted (fails safe; pre-existing).
+        XCTAssertFalse(C.captureOriginBelongsToService("messenger.com", serviceHost: "facebook.com"))
+        // Shared-umbrella domains keep the exact-host rule.
+        XCTAssertFalse(C.captureOriginBelongsToService("docs.google.com", serviceHost: "mail.google.com"))
+        XCTAssertTrue(C.captureOriginBelongsToService("mail.google.com", serviceHost: "mail.google.com"))
+        // Empty host — not trusted.
+        XCTAssertFalse(C.captureOriginBelongsToService("", serviceHost: "alice.web.app"))
+    }
+
+    func testMediaPromptCopyNamesTheRealRequester() {
+        // The service's own origin — the prompt names the service.
+        let own = AppState.MediaPermissionRequest(
+            id: UUID(), serviceLabel: "Slack", originHost: nil, camAsked: false, micAsked: true)
+        XCTAssertEqual(own.title, "Allow Slack to use your microphone?")
+        XCTAssertTrue(own.message.hasPrefix("Slack wants to use your microphone"))
+        // A cross-domain origin — the prompt names the ORIGIN (not the service),
+        // and the body says which service opened it, so it can't spoof the service.
+        let foreign = AppState.MediaPermissionRequest(
+            id: UUID(), serviceLabel: "Messenger", originHost: "messenger.com", camAsked: true, micAsked: true)
+        XCTAssertEqual(foreign.title, "Allow messenger.com to use your camera and microphone?")
+        XCTAssertTrue(foreign.message.hasPrefix("messenger.com, opened by Messenger"))
+    }
+
+    func testForeignCaptureOutcomeGrantsSilentlyOnlyForFirstPartyAllow() {
+        // A first-party vendor pinned to Allow, calling from a foreign MAIN-frame
+        // origin (Messenger: facebook.com → messenger.com): silent grant, the
+        // seamless-call case the flag exists for.
+        XCTAssertEqual(
+            AppState.foreignCaptureOutcome(
+                isMainFrame: true, originHost: "messenger.com", isFirstParty: true, resolution: .grant),
+            .grantSilently)
+
+        // A first-party vendor still on Ask does NOT silently grant a foreign
+        // origin — it prompts, and the prompt names the real origin.
+        XCTAssertEqual(
+            AppState.foreignCaptureOutcome(
+                isMainFrame: true, originHost: "messenger.com", isFirstParty: true, resolution: .ask),
+            .promptNamingOrigin)
+
+        // A non-first-party service, even pinned Allow, never silently grants a
+        // foreign origin (this was the shared-suffix leak) — it prompts.
+        XCTAssertEqual(
+            AppState.foreignCaptureOutcome(
+                isMainFrame: true, originHost: "evil.example.com", isFirstParty: false, resolution: .grant),
+            .promptNamingOrigin)
+
+        // A third-party SUBFRAME fails closed even for a first-party Allow vendor.
+        XCTAssertEqual(
+            AppState.foreignCaptureOutcome(
+                isMainFrame: false, originHost: "messenger.com", isFirstParty: true, resolution: .grant),
+            .deny)
+
+        // An empty origin fails closed.
+        XCTAssertEqual(
+            AppState.foreignCaptureOutcome(
+                isMainFrame: true, originHost: "", isFirstParty: true, resolution: .grant),
+            .deny)
+    }
+
+    func testCatalogFlagsFirstPartyCallVendors() {
+        let entries = ServiceCatalog.shared.entries
+        func firstParty(_ id: String) -> Bool? { entries.first { $0.id == id }?.firstParty }
+        // The curated cross-domain / named call vendors are flagged.
+        for id in ["messenger", "teams", "facebook", "whatsapp", "google-meet", "google-chat"] {
+            XCTAssertEqual(firstParty(id), true, "\(id) should be flagged firstParty")
+        }
+        // Single-domain services are not (no benefit, keep the trust surface small).
+        XCTAssertNotEqual(firstParty("discord"), true)
+        XCTAssertNotEqual(firstParty("slack"), true)
+    }
+
+    func testShouldBustCachesOnlyAfterAVersionChange() {
+        // Fresh install (no previous version) — nothing stale to bust.
+        XCTAssertFalse(AppState.shouldBustCachesOnLaunch(previousVersion: nil, currentVersion: "1.5.3"))
+        // Normal relaunch on the same version — no bust.
+        XCTAssertFalse(AppState.shouldBustCachesOnLaunch(previousVersion: "1.5.3", currentVersion: "1.5.3"))
+        // Updated to a new version — bust the icon caches.
+        XCTAssertTrue(AppState.shouldBustCachesOnLaunch(previousVersion: "1.5.2", currentVersion: "1.5.3"))
+        // Unknown current version (missing Info key) — don't bust spuriously.
+        XCTAssertFalse(AppState.shouldBustCachesOnLaunch(previousVersion: "1.5.2", currentVersion: ""))
     }
 
 }

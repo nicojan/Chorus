@@ -47,7 +47,17 @@ enum StoreRepair {
             if let db { sqlite3_close(db) }
             return
         }
-        defer { sqlite3_close(db) }
+        // Wait instead of failing immediately if the file is transiently locked
+        // (e.g. a lingering WAL from the previous run). This runs before the
+        // ModelContainer opens, so contention should be brief.
+        sqlite3_busy_timeout(db, 3000)
+        defer {
+            // All prepared statements are finalized (scalarInt/exec do so), so a
+            // non-OK close is unexpected — log rather than swallow it.
+            if sqlite3_close(db) != SQLITE_OK {
+                AppLogger.dataStore.error("StoreRepair: sqlite3_close did not return OK")
+            }
+        }
 
         // Schema guard — only proceed against the exact tables/columns we know.
         // An unexpected schema (a future rename) is skipped, never guessed at.
@@ -99,8 +109,18 @@ enum StoreRepair {
     }
 
     private static func backupStore(at url: URL) {
-        let stamp = String(Int(Date().timeIntervalSince1970))
         let fm = FileManager.default
+        // If DELETE keeps failing, repair re-runs on every launch; writing a
+        // fresh timestamped triple each time would bloat the store's directory.
+        // Back up only once — skip if any prior `.corrupt-*.bak` already exists.
+        let dir = url.deletingLastPathComponent()
+        let baseName = url.lastPathComponent
+        if let siblings = try? fm.contentsOfDirectory(atPath: dir.path),
+           siblings.contains(where: { $0.hasPrefix(baseName + ".corrupt-") }) {
+            AppLogger.dataStore.info("StoreRepair: a backup already exists; skipping")
+            return
+        }
+        let stamp = String(Int(Date().timeIntervalSince1970))
         for suffix in ["", "-wal", "-shm"] {
             let src = URL(fileURLWithPath: url.path + suffix)
             guard fm.fileExists(atPath: src.path) else { continue }

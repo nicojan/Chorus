@@ -6,8 +6,8 @@ extension Notification.Name {
 }
 
 struct MenuBarView: View {
-    @Query private var services: [ServiceInstance]
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
+    @Environment(AppState.self) private var appState
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
@@ -68,10 +68,11 @@ struct MenuBarView: View {
     }
 
     private func servicesForSpace(_ space: Space) -> [ServiceInstance] {
-        space.serviceLinks
-            .filter { $0.modelContext != nil && $0.service.modelContext != nil }
-            .sorted { $0.sortOrder < $1.sortOrder }
-            .map(\.service)
+        // Route through AppState's fetch — the same reliable, dangling-link-
+        // guarded path every other view uses — rather than reading
+        // `space.serviceLinks` directly, which can lag a just-added/removed
+        // service until SwiftData reconciles the relationship.
+        appState.servicesForSpace(space.id)
     }
 
     private func activateService(_ serviceID: UUID, inSpace spaceID: UUID) {

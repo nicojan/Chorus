@@ -46,7 +46,21 @@ final class HibernatedBadgePoller {
         configuration.httpCookieStorage = nil
         configuration.httpShouldSetCookies = false
         configuration.httpCookieAcceptPolicy = .never
-        self.session = URLSession(configuration: configuration)
+        // A delegate that refuses cross-host redirects: we inject one service's
+        // cookies for a specific host, so following a 302 to another host would
+        // forward those cookies off-origin (an isolation leak). Same-host
+        // redirects are still followed; the poll only needs the service's own title.
+        self.session = URLSession(
+            configuration: configuration,
+            delegate: SameHostRedirectDelegate(),
+            delegateQueue: nil
+        )
+    }
+
+    deinit {
+        // Release the session and its retained redirect delegate. A no-op in
+        // practice (the poller lives for the app's lifetime), kept for symmetry.
+        session.invalidateAndCancel()
     }
 
     /// Start tracking a hibernated service for badge polling.
@@ -246,8 +260,14 @@ final class HibernatedBadgePoller {
 
         return cookies.filter { cookie in
             let raw = cookie.domain.lowercased()
-            let domain = raw.hasPrefix(".") ? String(raw.dropFirst()) : raw
-            let domainMatches = host == domain || host.hasSuffix("." + domain)
+            // A leading dot marks a domain cookie (matches the host and any
+            // subdomain); without it the cookie is host-only and must match the
+            // exact host, mirroring how URLSession itself would attach it.
+            let isDomainCookie = raw.hasPrefix(".")
+            let domain = isDomainCookie ? String(raw.dropFirst()) : raw
+            let domainMatches = isDomainCookie
+                ? (host == domain || host.hasSuffix("." + domain))
+                : (host == domain)
             let pathMatches = Self.pathMatches(requestPath: path, cookiePath: cookie.path)
             let secureOK = !cookie.isSecure || isSecure
             let notExpired = (cookie.expiresDate ?? .distantFuture) > now
@@ -274,5 +294,29 @@ final class HibernatedBadgePoller {
         guard let match = html.firstMatch(of: titlePattern) else { return 0 }
         let title = String(match.1)
         return NotificationManager.extractBadgeCount(from: title)
+    }
+}
+
+/// Refuses cross-host redirects on the badge-poll session. Because the poller
+/// injects a specific service's cookies for a specific host, following a
+/// redirect to a different host would forward those cookies off-origin — the one
+/// leak the whole cookie-isolation setup exists to prevent. Same-host redirects
+/// are followed; a refused cross-host redirect just yields no title, which the
+/// "never reset to 0" rule handles gracefully. Stateless, hence Sendable.
+private final class SameHostRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        let originalHost = task.originalRequest?.url?.host?.lowercased()
+        let newHost = request.url?.host?.lowercased()
+        if let originalHost, let newHost, originalHost == newHost {
+            completionHandler(request)   // same host — safe to follow
+        } else {
+            completionHandler(nil)       // cross-host — stop, don't forward cookies
+        }
     }
 }
