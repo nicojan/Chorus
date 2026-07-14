@@ -432,7 +432,8 @@ final class WebViewPool {
             mode: instance.darkMode,
             globalAuto: autoDarkModeEnabled,
             appDark: effectiveAppearanceDark,
-            detectedLacksDark: instance.detectedLacksDarkTheme
+            detectedLacksDark: instance.detectedLacksDarkTheme,
+            nativeDark: nativeDark(for: instance)
         )
         userScriptManager.configureScripts(
             for: instance,
@@ -482,6 +483,14 @@ final class WebViewPool {
         return css
     }
 
+    /// Whether a service is a catalog entry known to render dark on its own (see
+    /// `ServiceCatalogEntry.nativeDark`). Custom (non-catalog) services and
+    /// unmarked ones return false, so they keep the auto/probe behavior.
+    private func nativeDark(for instance: ServiceInstance) -> Bool {
+        guard let id = instance.catalogEntryID else { return false }
+        return ServiceCatalog.shared.entry(for: id)?.nativeDark ?? false
+    }
+
     /// Applies a Light/Dark appearance and global-auto change to every live web
     /// view: recomputes each service's dark injection and applies it on the
     /// current document at once, re-baking the view's user scripts so its next
@@ -499,7 +508,8 @@ final class WebViewPool {
                 mode: instance.darkMode,
                 globalAuto: autoEnabled,
                 appDark: isDark,
-                detectedLacksDark: instance.detectedLacksDarkTheme
+                detectedLacksDark: instance.detectedLacksDarkTheme,
+                nativeDark: nativeDark(for: instance)
             )
             applyInjectionLive(inj, to: webView, instance: instance)
         }
@@ -514,7 +524,8 @@ final class WebViewPool {
             mode: instance.darkMode,
             globalAuto: autoDarkModeEnabled,
             appDark: effectiveAppearanceDark,
-            detectedLacksDark: instance.detectedLacksDarkTheme
+            detectedLacksDark: instance.detectedLacksDarkTheme,
+            nativeDark: nativeDark(for: instance)
         )
         applyInjectionLive(inj, to: webView, instance: instance)
     }

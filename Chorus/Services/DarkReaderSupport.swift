@@ -31,14 +31,23 @@ enum DarkReaderSupport {
     }
 
     /// The single source of truth for what a service needs, given its mode, the
-    /// global auto setting, the app's effective appearance, and any cached
-    /// detection verdict. Pure; unit-tested. Because it guards on `appDark`,
+    /// global auto setting, the app's effective appearance, any cached detection
+    /// verdict, and whether the service is known to ship its own dark theme
+    /// (`nativeDark`). Pure; unit-tested. Because it guards on `appDark`,
     /// `.themed` always implies the app is dark.
+    ///
+    /// `nativeDark` marks services that already render dark on their own when the
+    /// app is dark — either always-dark web apps (Spotify), dark-by-default ones
+    /// (Discord), or ones that follow `prefers-color-scheme` by default (GitHub,
+    /// iCloud Mail). Theming those with Dark Reader double-darkens and breaks
+    /// them, so in `.auto` they are left alone (no theme, and no probe). The
+    /// user's explicit `.on` still wins — it is a deliberate override.
     static func injection(
         mode: ServiceDarkMode,
         globalAuto: Bool,
         appDark: Bool,
-        detectedLacksDark: Bool?
+        detectedLacksDark: Bool?,
+        nativeDark: Bool = false
     ) -> DarkInjection {
         guard appDark else { return .none }
         switch mode {
@@ -46,6 +55,7 @@ enum DarkReaderSupport {
         case .on: return .themed
         case .auto:
             guard globalAuto else { return .none }
+            if nativeDark { return .none }
             switch detectedLacksDark {
             case .some(true): return .themed
             case .some(false): return .none
@@ -59,9 +69,10 @@ enum DarkReaderSupport {
         mode: ServiceDarkMode,
         globalAuto: Bool,
         appDark: Bool,
-        detectedLacksDark: Bool?
+        detectedLacksDark: Bool?,
+        nativeDark: Bool = false
     ) -> Bool {
-        injection(mode: mode, globalAuto: globalAuto, appDark: appDark, detectedLacksDark: detectedLacksDark) == .themed
+        injection(mode: mode, globalAuto: globalAuto, appDark: appDark, detectedLacksDark: detectedLacksDark, nativeDark: nativeDark) == .themed
     }
 
     /// Relative luminance (0…1) of an sRGB color, ignoring gamma (good enough to

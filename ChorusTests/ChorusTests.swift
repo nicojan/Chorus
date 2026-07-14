@@ -925,8 +925,8 @@ final class ChorusTests: XCTestCase {
 
     func testDarkInjectionTruthTable() {
         typealias I = DarkReaderSupport.DarkInjection
-        func inj(_ m: ServiceDarkMode, _ auto: Bool, _ dark: Bool, _ detected: Bool?) -> I {
-            DarkReaderSupport.injection(mode: m, globalAuto: auto, appDark: dark, detectedLacksDark: detected)
+        func inj(_ m: ServiceDarkMode, _ auto: Bool, _ dark: Bool, _ detected: Bool?, _ native: Bool = false) -> I {
+            DarkReaderSupport.injection(mode: m, globalAuto: auto, appDark: dark, detectedLacksDark: detected, nativeDark: native)
         }
         // App light → never themes, whatever the mode.
         XCTAssertEqual(inj(.on, true, false, true), I.none)
@@ -939,6 +939,45 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(inj(.auto, true, true, nil), I.probe)
         XCTAssertEqual(inj(.auto, true, true, true), I.themed)
         XCTAssertEqual(inj(.auto, true, true, false), I.none)
+    }
+
+    func testDarkInjectionNativeDarkService() {
+        typealias I = DarkReaderSupport.DarkInjection
+        func inj(_ m: ServiceDarkMode, _ auto: Bool, _ dark: Bool, _ detected: Bool?, _ native: Bool) -> I {
+            DarkReaderSupport.injection(mode: m, globalAuto: auto, appDark: dark, detectedLacksDark: detected, nativeDark: native)
+        }
+        // A native-dark service in Auto never themes and never even probes — its
+        // own dark theme is trusted, so Dark Reader stays out of the way. This
+        // holds regardless of any stale detection verdict.
+        XCTAssertEqual(inj(.auto, true, true, nil, true), I.none)
+        XCTAssertEqual(inj(.auto, true, true, true, true), I.none)
+        XCTAssertEqual(inj(.auto, true, true, false, true), I.none)
+        // The user's explicit On still wins over the native-dark flag.
+        XCTAssertEqual(inj(.on, true, true, nil, true), I.themed)
+        // With the flag off, Auto behaves exactly as before (regression guard).
+        XCTAssertEqual(inj(.auto, true, true, nil, false), I.probe)
+    }
+
+    func testCatalogMarksNativeDarkServices() {
+        let catalog = ServiceCatalog.shared
+        // Sample of the researched always-dark / follows-system services.
+        for id in ["discord", "spotify", "youtube-music", "linear", "icloud-mail",
+                   "github", "jira", "confluence", "gitlab", "chatgpt", "claude"] {
+            XCTAssertEqual(catalog.entry(for: id)?.nativeDark, true, "\(id) should be marked nativeDark")
+        }
+        // Services that need Dark Reader (no native dark, or manual-only) must not be marked.
+        for id in ["gmail", "slack", "notion", "hackernews", "zoom", "reddit"] {
+            XCTAssertNotEqual(catalog.entry(for: id)?.nativeDark, true, "\(id) should not be nativeDark")
+        }
+    }
+
+    func testDarkProbeScriptPollsUntilSettled() {
+        let js = UserScriptManager.makeDarkProbeScript(serviceID: "abc")
+        // The hardened probe samples repeatedly (not a single fixed timeout) so a
+        // slow SPA that paints its dark theme late isn't misread as a light page.
+        XCTAssertTrue(js.contains("chorusDarkProbe"))
+        XCTAssertTrue(js.contains("relativeLuminance") || js.contains("luminance"))
+        XCTAssertTrue(js.contains("attempts") || js.contains("schedule"))
     }
 
     func testClassifyLacksDark() {

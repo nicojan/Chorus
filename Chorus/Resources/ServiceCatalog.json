@@ -67,7 +67,8 @@
         "category": "Messaging",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Voice, video, and text chat"
+        "description": "Voice, video, and text chat",
+        "nativeDark": true
     },
     {
         "id": "whatsapp",
@@ -127,7 +128,8 @@
         "category": "Social",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Social media and direct messages"
+        "description": "Social media and direct messages",
+        "nativeDark": true
     },
     {
         "id": "instagram",
@@ -137,7 +139,8 @@
         "category": "Social",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Photo sharing and direct messages"
+        "description": "Photo sharing and direct messages",
+        "nativeDark": true
     },
     {
         "id": "facebook",
@@ -187,7 +190,8 @@
         "category": "Productivity",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Work management platform"
+        "description": "Work management platform",
+        "nativeDark": true
     },
     {
         "id": "linear",
@@ -197,7 +201,8 @@
         "category": "Productivity",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Issue tracking for software teams"
+        "description": "Issue tracking for software teams",
+        "nativeDark": true
     },
     {
         "id": "google-calendar",
@@ -237,7 +242,8 @@
         "category": "Developer",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Code hosting and collaboration"
+        "description": "Code hosting and collaboration",
+        "nativeDark": true
     },
     {
         "id": "chatgpt",
@@ -247,7 +253,8 @@
         "category": "AI",
         "badgeJS": null,
         "userAgent": null,
-        "description": "AI assistant by OpenAI"
+        "description": "AI assistant by OpenAI",
+        "nativeDark": true
     },
     {
         "id": "claude",
@@ -257,7 +264,8 @@
         "category": "AI",
         "badgeJS": null,
         "userAgent": null,
-        "description": "AI assistant by Anthropic"
+        "description": "AI assistant by Anthropic",
+        "nativeDark": true
     },
     {
         "id": "gemini",
@@ -267,7 +275,8 @@
         "category": "AI",
         "badgeJS": null,
         "userAgent": null,
-        "description": "AI assistant by Google"
+        "description": "AI assistant by Google",
+        "nativeDark": true
     },
     {
         "id": "perplexity",
@@ -277,7 +286,8 @@
         "category": "AI",
         "badgeJS": null,
         "userAgent": null,
-        "description": "AI-powered search engine"
+        "description": "AI-powered search engine",
+        "nativeDark": true
     },
     {
         "id": "fastmail",
@@ -297,7 +307,8 @@
         "category": "Email",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Apple iCloud webmail"
+        "description": "Apple iCloud webmail",
+        "nativeDark": true
     },
     {
         "id": "zoom",
@@ -327,7 +338,8 @@
         "category": "Social",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Music streaming"
+        "description": "Music streaming",
+        "nativeDark": true
     },
     {
         "id": "youtube",
@@ -337,7 +349,8 @@
         "category": "Social",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Video sharing"
+        "description": "Video sharing",
+        "nativeDark": true
     },
     {
         "id": "youtube-music",
@@ -347,7 +360,8 @@
         "category": "Social",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Music by YouTube"
+        "description": "Music by YouTube",
+        "nativeDark": true
     },
     {
         "id": "twitch",
@@ -387,7 +401,8 @@
         "category": "Productivity",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Microsoft cloud storage"
+        "description": "Microsoft cloud storage",
+        "nativeDark": true
     },
     {
         "id": "airtable",
@@ -417,7 +432,8 @@
         "category": "Productivity",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Design and templates"
+        "description": "Design and templates",
+        "nativeDark": true
     },
     {
         "id": "jira",
@@ -427,7 +443,8 @@
         "category": "Productivity",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Issue tracking by Atlassian"
+        "description": "Issue tracking by Atlassian",
+        "nativeDark": true
     },
     {
         "id": "confluence",
@@ -437,7 +454,8 @@
         "category": "Productivity",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Team docs by Atlassian"
+        "description": "Team docs by Atlassian",
+        "nativeDark": true
     },
     {
         "id": "todoist",
@@ -457,7 +475,8 @@
         "category": "Developer",
         "badgeJS": null,
         "userAgent": null,
-        "description": "DevOps platform"
+        "description": "DevOps platform",
+        "nativeDark": true
     },
     {
         "id": "stackoverflow",
