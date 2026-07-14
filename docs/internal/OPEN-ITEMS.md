@@ -27,15 +27,34 @@ so a service pinned to Allow can no longer hand its grant to another site there.
 Same registrable domain still matches, so `*.slack.com` workspaces keep working. A
 test covers it.
 
-Open: trust is still anchored to a service's home host, so a call service whose
-live capture host differs by registrable domain is denied. It fails safe, but the
-call breaks. Messenger (`facebook.com` then `messenger.com`) and Teams
-(`*.cloud.microsoft`) are the likely cases. Closing this needs data: for each call
-service, note the host it actually calls `getUserMedia` from (the
-`Media capture denied: request origin ...` line in the Console names it), then add
-a per-service allowlist of its capture hosts, with a catalog field as the natural
-home. The curated suffix list above is also not the full Public Suffix List;
-adopting a real one would generalise the fix.
+Open: trust is anchored to a service's home host, so a call service whose live
+capture host differs by registrable domain is denied. It fails safe, but the call
+breaks. Messenger (`facebook.com` then `messenger.com`) and Teams
+(`*.cloud.microsoft`) are the likely cases, still unverified.
+
+The mechanism to build once it's confirmed is a per-origin prompt. A static
+allowlist is the weaker alternative. When a capture request comes from the
+service's own web view on a host that is not the service's origin, and it comes
+from the main frame rather than a third-party subframe, show a prompt that names
+the real origin ("Allow messenger.com to use your microphone?") instead of
+denying. A service set to Deny still denies, and a matching Allow is never
+extended silently to the foreign origin, so the shared-suffix protection holds.
+Don't persist the foreign-origin answer; our policy store is keyed per service, so
+there is nowhere to record a per-origin choice, and we ask again as needed, the
+way a browser does. This needs no per-service data and no host list to maintain.
+First confirm a Teams, Messenger, or WhatsApp call actually hits this path (the
+`Media capture denied: request origin ...` line names the host). A full Public
+Suffix List would still generalise the suffix handling above.
+
+## Humanizer-check the in-app strings
+
+The public-writing rules now cover in-app strings and error messages (main commit
+`7f55ab8`). Before shipping, run the media feature's user-facing text through the
+humanizer check and Orwell's rules. Cover:
+
+- the permission alert title and message in `ContentView`;
+- the Camera and microphone labels and help in the Edit sheet and Privacy settings;
+- any capture message a user can see.
 
 ## Close the test gaps
 
