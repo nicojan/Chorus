@@ -54,6 +54,7 @@
 		CA61596A934F91544BD926E0 /* ServiceCatalog.json in Resources */ = {isa = PBXBuildFile; fileRef = 0F2F565F064A603E639DC26E /* ServiceCatalog.json */; };
 		CAD06ACCA8483CC80764D8C8 /* hagezi-light.json in Resources */ = {isa = PBXBuildFile; fileRef = D9E64C2450C98941A48AC7BD /* hagezi-light.json */; };
 		CF6CC3C4CC580F7733D24212 /* SpaceServiceLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 312995FF05808961FD519D76 /* SpaceServiceLink.swift */; };
+		D19CD58F64D002620BE6850C /* StoreRepair.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DC16234E82B88C1DB338A49 /* StoreRepair.swift */; };
 		D341B327E1C20FA11DEC2C2B /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D533B667501DF0913FF62B9A /* AppState.swift */; };
 		DB9B6FD9265D63DCA11B6CFC /* AppCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E0D298EDEBDC1F1EB614912 /* AppCapabilities.swift */; };
 		DF712EA56B5AE10C7BF77176 /* WebViewCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438D78C9503E732B7792FA10 /* WebViewCoordinator.swift */; };
@@ -79,6 +80,7 @@
 		0693A705E1552F5809BA3399 /* CatalogIconCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogIconCache.swift; sourceTree = "<group>"; };
 		09D9F34755F65BE5A3C76C88 /* WebViewContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewContainer.swift; sourceTree = "<group>"; };
 		0D9CBE47687FB4FF2EF6BED5 /* fanboy-annoyance.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "fanboy-annoyance.json"; sourceTree = "<group>"; };
+		0DC16234E82B88C1DB338A49 /* StoreRepair.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreRepair.swift; sourceTree = "<group>"; };
 		0F2F565F064A603E639DC26E /* ServiceCatalog.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = ServiceCatalog.json; sourceTree = "<group>"; };
 		192C907C2215D62E02FF8408 /* WebViewState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewState.swift; sourceTree = "<group>"; };
 		1ACFB877AD2138035F9E3EAE /* FaviconFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaviconFetcher.swift; sourceTree = "<group>"; };
@@ -335,6 +337,7 @@
 				7E0D298EDEBDC1F1EB614912 /* AppCapabilities.swift */,
 				D533B667501DF0913FF62B9A /* AppState.swift */,
 				E143D686890F381C5B42761F /* ChorusApp.swift */,
+				0DC16234E82B88C1DB338A49 /* StoreRepair.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -482,6 +485,7 @@
 				C87E607C9406DB3117992594 /* SpaceEditorSheet.swift in Sources */,
 				CF6CC3C4CC580F7733D24212 /* SpaceServiceLink.swift in Sources */,
 				C1E4CE7879BB117DBA721C35 /* SpaceStripView.swift in Sources */,
+				D19CD58F64D002620BE6850C /* StoreRepair.swift in Sources */,
 				4129642FB0AD19AC83F01A30 /* UserAgentProvider.swift in Sources */,
 				75C395B384D9E21AF94FBC4F /* UserScriptManager.swift in Sources */,
 				8F6E2C62BD277E5577FBE480 /* WebContentView.swift in Sources */,

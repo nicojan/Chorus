@@ -349,6 +349,121 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(spaces.first?.name, "Personal")
     }
 
+    // MARK: - Repair of a store ALREADY corrupted by a pre-1.5.1 build
+
+    /// The 1.5.1 fix has two halves: the inverse declaration (prevents NEW
+    /// corruption — covered by the test above) and `reapDanglingLinks` (repairs
+    /// a store a pre-fix build already corrupted). The reporter is in the second
+    /// case: they deleted a space on 1.4.0/1.5.0, so their store holds a
+    /// `SpaceServiceLink` whose `space` points at a deleted row. This test
+    /// reproduces exactly that on-disk state — by deleting the space's row
+    /// directly, the way the pre-fix build effectively did when its cascade
+    /// never fired — then runs the shipped repair sequence and the launch badge
+    /// read that used to trap. If deleting a dangling link faults its dead space,
+    /// or the read still traps, this test crashes (SIGTRAP), matching the report.
+    func testReapRepairsPreFixDanglingLinkWithoutCrashing() throws {
+        let schema = Schema([
+            ServiceInstance.self,
+            Space.self,
+            SpaceServiceLink.self,
+            AppPreferences.self,
+        ])
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-danglerepair-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // --- Session 1: seed two spaces with linked services, clean ---
+        do {
+            let config = ModelConfiguration(schema: schema, url: storeURL)
+            let container = try ModelContainer(for: schema, configurations: [config])
+            let context = container.mainContext
+            let personal = Space(name: "Personal", emoji: "🏠", sortOrder: 0)
+            let work = Space(name: "Work", emoji: "💼", sortOrder: 1)
+            context.insert(personal)
+            context.insert(work)
+            func link(_ label: String, to space: Space, order: Int) {
+                let svc = ServiceInstance(label: label, url: "https://\(label).example", catalogEntryID: label)
+                context.insert(svc)
+                context.insert(SpaceServiceLink(sortOrder: order, space: space, service: svc))
+            }
+            link("gmail-personal", to: personal, order: 0)
+            link("claude", to: personal, order: 1)
+            link("gmail-work", to: work, order: 0)
+            link("slack", to: work, order: 1)
+            try context.save()
+        }
+
+        // --- Corrupt like a pre-fix build: delete the Work space ROW,
+        //     leaving its two links with a dangling ZSPACE foreign key. ---
+        try Self.runSQLite(storeURL, "DELETE FROM ZSPACE WHERE ZNAME='Work';")
+        func danglingRows() throws -> Int {
+            Int(try Self.runSQLite(
+                storeURL,
+                "SELECT count(*) FROM ZSPACESERVICELINK WHERE ZSPACE NOT IN (SELECT Z_PK FROM ZSPACE);"
+            ).trimmingCharacters(in: .whitespacesAndNewlines)) ?? -1
+        }
+        XCTAssertEqual(try danglingRows(), 2, "repro must leave two dangling links")
+
+        // --- Run the SHIPPED pre-open repair against the raw file. ---
+        StoreRepair.repairDanglingLinks(at: storeURL)
+        XCTAssertEqual(try danglingRows(), 0, "repair must remove the dangling links")
+
+        // Idempotency: a second pass is a no-op.
+        StoreRepair.repairDanglingLinks(at: storeURL)
+        XCTAssertEqual(try danglingRows(), 0, "second repair pass must stay clean")
+
+        // A backup of the corrupted store must have been written.
+        let backups = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .filter { $0.contains(".corrupt-") }
+        XCTAssertFalse(backups.isEmpty, "repair must back up the store before mutating")
+
+        // --- Session 2: open the repaired store and run the launch queries
+        //     that used to trap, then confirm good data survived. ---
+        let config = ModelConfiguration(schema: schema, url: storeURL)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+
+        let links = try context.fetch(FetchDescriptor<SpaceServiceLink>())
+        XCTAssertEqual(links.count, 2, "only Personal's two links should survive")
+        for l in links {
+            _ = l.space.id     // the badge-sweep read that crashed pre-fix
+            _ = l.service.id
+        }
+        let spaces = try context.fetch(FetchDescriptor<Space>())
+        XCTAssertEqual(spaces.map(\.name), ["Personal"], "the live space must be intact")
+        let services = try context.fetch(FetchDescriptor<ServiceInstance>())
+        XCTAssertEqual(services.count, 4, "no service rows should be lost by the repair")
+
+        // The store must remain writable (bookkeeping/history survived): create
+        // and remove a link, then save with no error.
+        let probeSpace = spaces[0]
+        let probeSvc = ServiceInstance(label: "probe", url: "https://probe.example", catalogEntryID: "probe")
+        context.insert(probeSvc)
+        let probeLink = SpaceServiceLink(sortOrder: 9, space: probeSpace, service: probeSvc)
+        context.insert(probeLink)
+        try context.save()
+        context.delete(probeLink)
+        context.delete(probeSvc)
+        try context.save()
+    }
+
+    /// Runs one SQL statement against a SwiftData store via the sqlite3 CLI and
+    /// returns stdout. Used to manufacture on-disk corruption a fixed schema
+    /// can't produce through the normal delete path.
+    private static func runSQLite(_ url: URL, _ sql: String) throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = [url.path, sql]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        try process.run()
+        process.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
     // MARK: - WebContent crash backoff
 
     func testCrashBackoffStopsAfterRepeatedCrashes() {

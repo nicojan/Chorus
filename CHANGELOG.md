@@ -10,6 +10,13 @@ All notable changes to Chorus are documented here. Format loosely follows
 - You can now upload files to your services. Clicking a file-picker button, such
   as Slack's "Upload file" for a profile photo, used to do nothing because Chorus
   never opened the file browser. It now opens.
+- Chorus no longer crashes at launch after you deleted a space on an earlier
+  version. Deleting a space could leave a broken reference in your saved data;
+  the next launch tried to read it and crashed before the window appeared, with
+  no way back except deleting your data by hand. Chorus now finds and clears
+  those broken references as it starts, and backs up your data file first.
+  Version 1.5.1 stopped new deletions from causing this but could not repair a
+  store already affected. This does.
 
 ## [1.5.1] - 2026-07-13
 
