@@ -7,8 +7,9 @@ with Sparkle auto-updates. Not sandboxed, not on the App Store.
 ## Public-facing writing
 
 Everything a user or the public reads — `README.md`, GitHub release notes, the
-appcast and any website copy, `release/DISTRIBUTION.md`, and every other doc in this
-public repo — must meet two standards:
+appcast and any website copy, in-app strings and error messages,
+`release/DISTRIBUTION.md`, and every other doc in this public repo — must meet
+two standards:
 
 1. **Pass the mcp-humanizer check.** Draft the text, run `humanizer_check_text`
    on it, fix every finding, and re-run until `prohibitions_clear` is true. Then
