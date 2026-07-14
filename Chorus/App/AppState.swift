@@ -350,8 +350,9 @@ final class AppState {
         backfillPasskeyNoticeIfNeeded(freshInstall: didSeedDefaults)
         reapOrphanedServices()
         restoreWindowState()
-        fetchMissingAndStaleFavicons()
-        fetchCatalogIcons()
+        let didUpdate = Self.recordLaunchVersionAndCheckUpdate()
+        fetchMissingAndStaleFavicons(force: didUpdate)
+        fetchCatalogIcons(force: didUpdate)
         preloadActiveSpaceServices()
         fetchInitialBadgesForBackgroundServices()
         cleanUpOrphanedDataStores()
@@ -1455,11 +1456,34 @@ final class AppState {
         }
     }
 
-    private func fetchCatalogIcons() {
+    private func fetchCatalogIcons(force: Bool = false) {
         let entries = ServiceCatalog.shared.entries
         Task.detached(priority: .utility) {
-            await CatalogIconCache.shared.fetchAllIfNeeded(entries: entries)
+            await CatalogIconCache.shared.fetchAllIfNeeded(entries: entries, force: force)
         }
+    }
+
+    private static let lastRunVersionKey = "chorus.lastRunAppVersion"
+
+    /// Records the current app version and reports whether this launch follows an
+    /// update (a different version ran last time). Used to refresh the icon caches
+    /// so a release that adds or changes icons shows them at once, instead of
+    /// waiting out the weekly staleness timer.
+    private static func recordLaunchVersionAndCheckUpdate() -> Bool {
+        let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        let previous = UserDefaults.standard.string(forKey: lastRunVersionKey)
+        if !current.isEmpty {
+            UserDefaults.standard.set(current, forKey: lastRunVersionKey)
+        }
+        return shouldBustCachesOnLaunch(previousVersion: previous, currentVersion: current)
+    }
+
+    /// Pure launch-vs-update decision: bust caches only when a real, different
+    /// prior version is known. A fresh install (no previous) has no stale cache,
+    /// and an unknown current version can't be compared, so both leave caches be.
+    static func shouldBustCachesOnLaunch(previousVersion: String?, currentVersion: String) -> Bool {
+        guard !currentVersion.isEmpty, let previousVersion, !previousVersion.isEmpty else { return false }
+        return previousVersion != currentVersion
     }
 
     /// The single AppPreferences row, created (and inserted) once if missing.
@@ -1809,7 +1833,7 @@ final class AppState {
     /// Fetches favicons for services that have none cached, and refreshes
     /// stale favicons (older than 7 days). Runs in a background Task to avoid
     /// blocking app launch.
-    private func fetchMissingAndStaleFavicons() {
+    private func fetchMissingAndStaleFavicons(force: Bool = false) {
         let context = modelContainer.mainContext
         let descriptor = FetchDescriptor<ServiceInstance>()
         let services: [ServiceInstance]
@@ -1824,9 +1848,11 @@ final class AppState {
 
         let needsFetch = services.filter { service in
             guard service.customIconData == nil else { return false }
-            // Back off on the timestamp for both "never fetched" and "stale":
-            // a service whose favicon keeps failing gets stamped on failure
-            // (below), so it retries at most weekly instead of every launch.
+            // After an app update, refresh every service's favicon regardless of
+            // age. Otherwise back off on the timestamp for both "never fetched"
+            // and "stale": a service whose favicon keeps failing gets stamped on
+            // failure (below), so it retries at most weekly instead of every launch.
+            if force { return true }
             guard let fetchedAt = service.faviconFetchedAt else { return true }
             return fetchedAt < staleThreshold
         }

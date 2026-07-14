@@ -43,12 +43,14 @@ actor CatalogIconCache {
         return try? Data(contentsOf: fileURL)
     }
 
-    /// Fetches icons for all catalog entries that are missing or stale.
-    /// Call this once on app launch — it runs entirely in the background.
-    func fetchAllIfNeeded(entries: [ServiceCatalogEntry]) async {
+    /// Fetches icons for catalog entries that are missing or stale. Called once at
+    /// launch, in the background. `force` (set after an app update) re-fetches
+    /// every entry, so a release that changes an icon isn't stuck showing the
+    /// cached one until the weekly staleness timer lapses.
+    func fetchAllIfNeeded(entries: [ServiceCatalogEntry], force: Bool = false) async {
         let fileManager = FileManager.default
 
-        let needsFetch = entries.filter { entry in
+        let needsFetch = force ? entries : entries.filter { entry in
             let fileURL = cacheDirectory.appendingPathComponent(entry.id)
             guard fileManager.fileExists(atPath: fileURL.path) else { return true }
             guard let attrs = try? fileManager.attributesOfItem(atPath: fileURL.path),

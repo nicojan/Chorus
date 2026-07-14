@@ -1425,4 +1425,15 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(foreign.message.hasPrefix("messenger.com, opened by Messenger"))
     }
 
+    func testShouldBustCachesOnlyAfterAVersionChange() {
+        // Fresh install (no previous version) — nothing stale to bust.
+        XCTAssertFalse(AppState.shouldBustCachesOnLaunch(previousVersion: nil, currentVersion: "1.5.3"))
+        // Normal relaunch on the same version — no bust.
+        XCTAssertFalse(AppState.shouldBustCachesOnLaunch(previousVersion: "1.5.3", currentVersion: "1.5.3"))
+        // Updated to a new version — bust the icon caches.
+        XCTAssertTrue(AppState.shouldBustCachesOnLaunch(previousVersion: "1.5.2", currentVersion: "1.5.3"))
+        // Unknown current version (missing Info key) — don't bust spuriously.
+        XCTAssertFalse(AppState.shouldBustCachesOnLaunch(previousVersion: "1.5.2", currentVersion: ""))
+    }
+
 }

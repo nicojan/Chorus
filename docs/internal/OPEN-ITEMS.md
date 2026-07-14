@@ -40,6 +40,12 @@ unverified. Confirm by hand that such a call now prompts rather than failing
 silently. A full Public Suffix List would still generalise the suffix handling
 above.
 
+Decided against: a per-service capture-host allowlist (curated hosts trusted per
+catalog entry). The per-origin prompt already makes cross-domain calls work, so an
+allowlist would only remove one prompt for a couple of known vendors, and it isn't
+worth a hand-maintained, security-sensitive host list that mis-trusts if it goes
+stale.
+
 ## Close the test gaps
 
 Unit tests cover the policy resolver, the asked-field gating, and the capture
