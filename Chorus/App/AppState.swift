@@ -440,29 +440,30 @@ final class AppState {
             return allowed ? .grant : .deny
         }
 
-        // A cross-domain origin inside the service's own web view (e.g. a call
-        // service whose media host differs from its home host). Only the MAIN
-        // frame may prompt — a third-party subframe can't meaningfully consent and
-        // is the spoofiest case, so it fails closed. Prompt naming the REAL origin,
-        // never auto-grant it even when the service is Allow (that would be the
-        // shared-suffix leak), and don't persist (policy is keyed per service, not
-        // per origin — ask again as needed, like a browser).
-        guard frame.isMainFrame else {
-            logMediaDenyUntrusted(frame, service: service)
-            return .deny
-        }
+        // A foreign origin inside the service's own web view (e.g. a call service
+        // whose media host differs from its home host). Decide per the
+        // foreign-origin rules.
         let originHost = frame.securityOrigin.host
-        guard !originHost.isEmpty else {
+        switch Self.foreignCaptureOutcome(
+            isMainFrame: frame.isMainFrame,
+            originHost: originHost,
+            isFirstParty: isFirstPartyService(service),
+            resolution: resolution
+        ) {
+        case .deny:
             logMediaDenyUntrusted(frame, service: service)
             return .deny
+        case .grantSilently:
+            return .grant
+        case .promptNamingOrigin:
+            let asked = MediaPermissionResolver.askedFields(kind, camera: .ask, microphone: .ask)
+            let allowed = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                enqueueMediaRequest(
+                    serviceID: serviceID, serviceLabel: service.label, originHost: originHost,
+                    camAsked: asked.camera, micAsked: asked.microphone, continuation: continuation)
+            }
+            return allowed ? .grant : .deny
         }
-        let asked = MediaPermissionResolver.askedFields(kind, camera: .ask, microphone: .ask)
-        let allowed = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-            enqueueMediaRequest(
-                serviceID: serviceID, serviceLabel: service.label, originHost: originHost,
-                camAsked: asked.camera, micAsked: asked.microphone, continuation: continuation)
-        }
-        return allowed ? .grant : .deny
     }
 
     /// Appends a prompt to the queue and shows it if none is currently up.
@@ -581,13 +582,6 @@ final class AppState {
         AppLogger.general.info("Muted \(count) live microphone(s)")
     }
 
-    /// Whether a capture request from `frame` should be attributed to `service`:
-    /// the requesting origin — main frame OR subframe — must belong to the
-    /// service's own site. Checking the MAIN frame too (rather than trusting
-    /// `isMainFrame`) closes two escalations: a service that navigates its top
-    /// frame to another origin, and an OAuth popup that shares this coordinator —
-    /// either would otherwise inherit the service's persisted grant. A request
-    /// from an origin that doesn't belong to the service fails closed (deny).
     /// Logs a capture denial caused by the requesting origin not belonging to the
     /// service, naming both hosts — so a cross-domain call that's being wrongly
     /// blocked is diagnosable in Console rather than a silent nothing.
@@ -602,11 +596,54 @@ final class AppState {
         guard let serviceHost = URL(string: service.url)?.host else { return false }
         let frameHost = frame.securityOrigin.host
         guard !frameHost.isEmpty else { return false }
-        // Use the stricter capture-specific same-site test, not the link-routing
-        // one: it won't treat two owners on a shared hosting suffix (*.web.app,
-        // *.github.io, …) as the same site, so an Allow-pinned service can't leak
-        // its grant to another site there.
+        // Stricter capture-specific same-site test (not the link-routing one): two
+        // owners on a shared hosting suffix (*.web.app, *.github.io, …) are NOT the
+        // same site, so an Allow-pinned service can't leak its grant to another site
+        // there. First-party cross-domain trust is handled separately, on the
+        // foreign-origin path in resolveMediaPermission.
         return WebViewCoordinator.captureOriginBelongsToService(frameHost, serviceHost: serviceHost)
+    }
+
+    /// What to do with a capture request whose origin is NOT the service's own site
+    /// — a foreign origin inside the service's own web view. Pure, so it's
+    /// unit-testable without a live `WKFrameInfo`. `resolution` is already known to
+    /// be `.grant` or `.ask` here (an explicit `.deny` is short-circuited earlier).
+    /// - A third-party SUBFRAME (can't meaningfully consent, the spoofiest case) or
+    ///   an empty origin fails closed.
+    /// - A first-party vendor pinned to Allow grants silently. This is the ONE
+    ///   cross-domain silent grant — the seamless-call case the flag exists for —
+    ///   and its accepted risk: the vendor's own main frame, navigated to a foreign
+    ///   origin, gets the grant.
+    /// - Everything else prompts NAMING THE REAL ORIGIN and does not persist: a
+    ///   non-first-party service, or a first-party vendor still on Ask. Naming the
+    ///   real origin (not the service) stops a hijacked main frame from borrowing
+    ///   the vendor's name; not persisting keeps a one-off foreign answer from
+    ///   pinning a blanket service Allow.
+    enum ForeignCaptureOutcome: Equatable { case grantSilently, promptNamingOrigin, deny }
+
+    static func foreignCaptureOutcome(
+        isMainFrame: Bool,
+        originHost: String,
+        isFirstParty: Bool,
+        resolution: MediaPermissionResolver.Resolution
+    ) -> ForeignCaptureOutcome {
+        guard isMainFrame, !originHost.isEmpty else { return .deny }
+        if isFirstParty, resolution == .grant { return .grantSilently }
+        return .promptNamingOrigin
+    }
+
+    /// Whether `service` is a curated first-party vendor: the catalog entry carries
+    /// the `firstParty` flag AND the service still points at that vendor's own site.
+    /// The second check means a user who edits the service's URL elsewhere doesn't
+    /// carry the vendor's cross-domain trust to the new site. Custom, non-catalog
+    /// services are never first-party.
+    private func isFirstPartyService(_ service: ServiceInstance) -> Bool {
+        guard let id = service.catalogEntryID,
+              let entry = ServiceCatalog.shared.entry(for: id),
+              entry.firstParty == true,
+              let serviceHost = URL(string: service.url)?.host,
+              let entryHost = URL(string: entry.url)?.host else { return false }
+        return WebViewCoordinator.captureOriginBelongsToService(serviceHost, serviceHost: entryHost)
     }
 
     private static func captureKind(from type: WKMediaCaptureType) -> MediaCaptureKind {

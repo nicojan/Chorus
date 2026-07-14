@@ -37,7 +37,8 @@
         "category": "Messaging",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Facebook Messenger"
+        "description": "Facebook Messenger",
+        "firstParty": true
     },
     {
         "id": "slack",
@@ -57,7 +58,8 @@
         "category": "Messaging",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Microsoft's collaboration platform"
+        "description": "Microsoft's collaboration platform",
+        "firstParty": true
     },
     {
         "id": "discord",
@@ -78,7 +80,8 @@
         "category": "Messaging",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Messaging by Meta — requires QR pairing"
+        "description": "Messaging by Meta — requires QR pairing",
+        "firstParty": true
     },
     {
         "id": "telegram",
@@ -98,7 +101,8 @@
         "category": "Messaging",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Google Workspace messaging"
+        "description": "Google Workspace messaging",
+        "firstParty": true
     },
     {
         "id": "linkedin",
@@ -140,7 +144,8 @@
         "category": "Social",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Social network by Meta"
+        "description": "Social network by Meta",
+        "firstParty": true
     },
     {
         "id": "reddit",
@@ -516,7 +521,8 @@
         "category": "Messaging",
         "badgeJS": null,
         "userAgent": null,
-        "description": "Google video meetings"
+        "description": "Google video meetings",
+        "firstParty": true
     },
     {
         "id": "element",

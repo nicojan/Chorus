@@ -15,4 +15,13 @@ struct ServiceCatalogEntry: Codable, Identifiable, Hashable {
     /// `.auto` mode so it doesn't double-darken and break them. Optional so
     /// entries without the key still decode (nil → not native-dark).
     let nativeDark: Bool?
+    /// True for curated, reputable call vendors (Messenger, Teams, Meet, …) whose
+    /// calling runs across their own family of domains — Messenger jumps
+    /// `facebook.com`→`messenger.com`, Teams spans the Microsoft domains. For these
+    /// we trust the service's own MAIN-frame origin wherever it navigates itself,
+    /// so a cross-domain call honors the service's camera/mic policy without a
+    /// per-origin prompt, the way the vendor's native app behaves. Scoped to the
+    /// main frame only — third-party subframes stay untrusted. Optional so entries
+    /// without the key still decode (nil → not first-party).
+    let firstParty: Bool?
 }

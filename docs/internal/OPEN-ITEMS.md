@@ -27,24 +27,27 @@ so a service pinned to Allow can no longer hand its grant to another site there.
 Same registrable domain still matches, so `*.slack.com` workspaces keep working. A
 test covers it.
 
-Cross-domain calls (also handled): trust is anchored to a service's home host, so
-a call service whose live capture host differs by registrable domain used to be
-denied. Now, when a capture request comes from the service's own web view on a
-non-matching host and it comes from the main frame (not a third-party subframe),
-`resolveMediaPermission` prompts naming the real origin ("Allow messenger.com to
-use your microphone?") instead of denying. A service set to Deny still denies, a
-matching Allow is never extended silently to the foreign origin, and the answer is
-not persisted (policy is keyed per service). Messenger (`facebook.com` then
-`messenger.com`) and Teams (`*.cloud.microsoft`) are the suspected cases but stay
-unverified. Confirm by hand that such a call now prompts rather than failing
-silently. A full Public Suffix List would still generalise the suffix handling
-above.
+Cross-domain calls: trust is anchored to a service's home host, so a call service
+whose live capture host differs by registrable domain would be denied. Two things
+now handle this. First, a `firstParty` flag on six curated catalog entries
+(Messenger, Facebook, WhatsApp, Teams, Google Meet, Google Chat). For a flagged
+service pinned to Allow, a capture request from its own main frame is granted even
+on a foreign domain, the way the vendor's native app behaves. The accepted risk is
+bounded: user-clicked foreign links already open in the browser, a subframe never
+qualifies, the service must be pinned to Allow, and the flag drops the moment the
+user edits the service URL off the vendor's site. Second, a vendor still on Ask,
+and every service without the flag, gets a per-origin prompt that names the real
+origin ("Allow messenger.com to use your microphone?") and isn't saved. Confirm by
+hand: on a flagged vendor pinned to Allow the call should just work; on Ask it
+should prompt naming the real origin rather than failing silently.
 
-Decided against: a per-service capture-host allowlist (curated hosts trusted per
-catalog entry). The per-origin prompt already makes cross-domain calls work, so an
-allowlist would only remove one prompt for a couple of known vendors, and it isn't
-worth a hand-maintained, security-sensitive host list that mis-trusts if it goes
-stale.
+WhatsApp is single-host, so the flag never fires for it today. It is kept because
+it was named as a service to trust and because an inert flag costs nothing.
+
+Rejected: a per-service capture-host allowlist, a maintained list of trusted hosts
+per catalog entry. The first-party flag covers the same cases with a boolean
+instead of a hand-kept, security-sensitive host list that mis-trusts if it goes
+stale. A full Public Suffix List would still generalise the suffix handling.
 
 ## Close the test gaps
 
