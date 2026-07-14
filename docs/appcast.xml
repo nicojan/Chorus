@@ -3,6 +3,29 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.3</title>
+            <pubDate>Tue, 14 Jul 2026 11:32:24 -0700</pubDate>
+            <sparkle:version>12</sparkle:version>
+            <sparkle:shortVersionString>1.5.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Added</h3>
+<ul>
+<li><strong>Camera and microphone.</strong> Chorus can now use your camera and microphone, so video calls and voice work in the services that need them, from Google Meet to Microsoft Teams. Each service asks the first time it wants your camera or mic. You can set Allow, Ask, or Deny for a single service or as the default for all of them, mute every microphone at once with ⇧⌘M, and see a dot on a service while its camera or mic is live.</li>
+<li><strong>More services.</strong> Twenty-four services were added to the picker, bringing the built-in list to more than seventy.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Services that already switch to a dark theme on their own are no longer darkened a second time, so they look the way their makers intended.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Reliability and security fixes across saved data, downloads, and network handling.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.3/Chorus-1.5.3.dmg" length="8404840" type="application/octet-stream" sparkle:edSignature="HNms2E9gRXTNpL2SSRszpIjMr17ss2Oi9+5Ce7SkdEbpNSN6qNUezSIp8AeUMbryMH1GWsrwMg8wZvPMhZAXAg=="/>
+        </item>
+        <item>
             <title>1.5.2</title>
             <pubDate>Mon, 13 Jul 2026 18:37:36 -0700</pubDate>
             <sparkle:version>11</sparkle:version>
