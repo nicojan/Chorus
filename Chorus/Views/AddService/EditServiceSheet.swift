@@ -81,6 +81,13 @@ struct EditServiceSheet: View {
                 .pickerStyle(.segmented)
                 .help("Auto follows the app-wide setting and skips services that already have a dark theme. On always applies one while the app is dark; Off never does.")
 
+                if darkMode == .auto {
+                    Button("Re-detect dark theme") {
+                        appState.redetectDarkTheme(for: service.id)
+                    }
+                    .help("Check this service's own theme again and reload it. Use this after switching the service to its own dark theme, so Chorus stops applying Dark Reader on top.")
+                }
+
                 if let errorMessage {
                     Text(errorMessage)
                         .font(.caption)

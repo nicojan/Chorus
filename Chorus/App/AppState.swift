@@ -887,6 +887,30 @@ final class AppState {
         }
     }
 
+    /// Clears a service's cached dark-theme detection verdict and rebuilds its
+    /// web view so the probe runs again on the next load. Backs the "Re-detect
+    /// dark theme" button for Auto-mode services: use it after switching a site
+    /// to its own dark theme, so Chorus re-checks and stops layering Dark Reader
+    /// on top.
+    func redetectDarkTheme(for serviceID: UUID) {
+        guard let service = currentServiceInstance(id: serviceID) else { return }
+        // Clear the sticky verdict so the pool picks the `.probe` injection
+        // again — `onDarkProbeVerdict` only records a result while it's nil.
+        service.detectedLacksDarkTheme = nil
+        do {
+            try modelContainer.mainContext.save()
+        } catch {
+            AppLogger.dataStore.error("Failed to reset dark verdict: \(error.localizedDescription)")
+            // Discard the failed mutation so it can't ride along on a later save.
+            modelContainer.mainContext.rollback()
+            return
+        }
+        // Rebuild the view so it reloads and re-runs detection from the fresh
+        // state (verdict now nil → `.probe` bakes into the next navigation).
+        webViewPool.recreateWebView(for: serviceID, preserveURL: true)
+        webViewRebuildToken &+= 1
+    }
+
     /// Wipes all website data (cookies, local/session storage, caches) for a
     /// service's data store — effectively logging the user out — then reloads
     /// the live web view so the logged-out state is visible immediately. The

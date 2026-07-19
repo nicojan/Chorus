@@ -1026,6 +1026,49 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(s.contains("#1a1a1a"))
     }
 
+    func testDarkReaderLoadCoverRevealsAndSelfRemoves() {
+        let s = DarkReaderSupport.antiFlashScript()
+        // The cover is an opaque overlay on top of everything, not a background
+        // style, so it hides Dark Reader's washed intermediate pass, not just a
+        // white flash.
+        XCTAssertTrue(s.contains("z-index:2147483647"))
+        // It reveals once the page stops mutating and removes itself afterward.
+        XCTAssertTrue(s.contains("MutationObserver"))
+        XCTAssertTrue(s.contains("removeChild"))
+        // An absolute failsafe guarantees it can never trap the view.
+        XCTAssertTrue(s.contains("setTimeout(reveal, FAILSAFE_MS)"))
+        // Interaction is restored the instant the fade begins.
+        XCTAssertTrue(s.contains("pointerEvents = 'none'"))
+        // The cover is visual only, never modal: it's click-through from creation
+        // so a page that settles before the theme verdict lands stays usable
+        // underneath instead of having its input swallowed by the overlay.
+        XCTAssertTrue(s.contains("pointer-events:none"))
+    }
+
+    func testDarkReaderLoadCoverDefersRevealOnProbePath() {
+        // Themed path: theming is baked, so the cover settles immediately.
+        XCTAssertTrue(DarkReaderSupport.antiFlashScript().contains("var DEFER = false"))
+        // Probe path: no Dark Reader baked, so the cover holds until theming is
+        // enabled (beginSettle), not on plain DOM-quiet — otherwise it would
+        // reveal the still-light page and let Dark Reader wash it in view.
+        XCTAssertTrue(DarkReaderSupport.antiFlashScript(deferReveal: true).contains("var DEFER = true"))
+    }
+
+    func testDarkReaderLoadCoverSettleCapIsConfigurable() {
+        XCTAssertTrue(DarkReaderSupport.antiFlashScript(settleCapMs: 6000).contains("SETTLE_CAP_MS = 6000"))
+    }
+
+    func testDarkReaderCoverHooksAreWired() {
+        let cover = DarkReaderSupport.antiFlashScript()
+        // The cover exposes the hooks its live callers reach across the shared
+        // isolated-world globals.
+        XCTAssertTrue(cover.contains("window.__chorusCoverBeginSettle"))
+        XCTAssertTrue(cover.contains("window.__chorusCoverDismiss"))
+        // Enabling theming live releases a deferred cover; disabling tears it down.
+        XCTAssertTrue(DarkReaderSupport.beginCoverSettleJS.contains("__chorusCoverBeginSettle"))
+        XCTAssertTrue(DarkReaderSupport.disableJS.contains("__chorusCoverDismiss"))
+    }
+
     func testContentBlockingEnabledDefaultsTrue() {
         // nil (existing installs / fresh) resolves to enabled.
         XCTAssertTrue(AppPreferences().contentBlockingEnabledEffective)

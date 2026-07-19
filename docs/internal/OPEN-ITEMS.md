@@ -1,5 +1,42 @@
 # Open items
 
+## Shipped: 1.5.4 (2026-07-18)
+
+Fixed the washed, slow load when Gmail opens in dark mode. Gmail runs light, so
+Chorus inverts its whole layout on every fresh load, and the page showed that
+half-themed state for three to five seconds. Shipped:
+
+- A load cover: an opaque dark overlay with a small spinner sits over the view
+  while the theme applies, then reveals the page once it settles. On the probe
+  path no theme is baked in yet. There the cover waits for the theme to turn on
+  before it starts to reveal, so the light page never flashes through. The cover
+  is click-through (`pointer-events:none`), so a page that settles before the
+  probe verdict lands stays usable underneath instead of having its input
+  swallowed.
+- A "Re-detect dark theme" button in a service's settings, for Auto services.
+  The detection verdict was cached for good, so a service you later switched to
+  its own dark theme kept getting darkened on top. The button clears the verdict
+  and reloads, which drops the extra theming once the service runs dark on its
+  own.
+- Notification permission is now requested after launch (from the root view's
+  `.task`) rather than during `App.init`, so the first-run prompt reaches macOS
+  reliably.
+
+Left as follow-ups, on purpose:
+
+- The live app-wide Light-to-Dark toggle still re-themes an open page without a
+  cover. The page is already on screen, so it is lower stakes.
+- If a service never reports a detection verdict, the cover reveals the page
+  after a ten-second failsafe.
+- On the themed path, if Dark Reader's first mutation lags the 400 ms quiet
+  window a brief untinted flash is possible; narrow in practice.
+
+Verify by hand, since screenshots are blocked in this setup: open Gmail in dark
+mode and confirm the screen stays cleanly dark while it loads. The cover timings
+(400 ms quiet, 6 s settle cap, 10 s failsafe) are one-line values in
+`DarkReaderSupport.antiFlashScript`. All 100 tests pass. Background lives in the
+dark-reader-load-cover memory.
+
 ## Shipped: 1.5.3 (2026-07-14)
 
 Camera and microphone support, first-party call-vendor capture trust, 24 more

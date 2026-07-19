@@ -3,6 +3,24 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.5.4] - 2026-07-18
+
+### Added
+
+- A "Re-detect dark theme" button in a service's settings, for services set to
+  Auto. Use it after you switch a service to its own dark theme, so Chorus stops
+  darkening it a second time.
+
+### Fixed
+
+- In dark mode, Gmail no longer shows a washed, low-contrast state for several
+  seconds when it loads. Gmail runs light, so Chorus darkens its whole layout on
+  every fresh load, and you used to see that half-themed state before it settled.
+  Chorus now covers the view while it applies the dark theme and reveals the page
+  once it is ready.
+- Chorus now asks macOS for notification permission after it finishes launching
+  instead of during startup, so the first-run prompt appears reliably.
+
 ## [1.5.3] - 2026-07-14
 
 ### Added

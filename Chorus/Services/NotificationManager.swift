@@ -17,7 +17,6 @@ final class NotificationManager {
 
     init(badgeManager: BadgeManager) {
         self.badgeManager = badgeManager
-        requestNotificationPermission()
         configureNotificationDelegate()
     }
 
@@ -286,7 +285,13 @@ final class NotificationManager {
 
     // MARK: - Notifications
 
-    private nonisolated func requestNotificationPermission() {
+    /// Requests notification authorization from macOS. Call this AFTER the app
+    /// has finished launching (from the root view's `.task`) — never from
+    /// `App.init`/`AppState.init`. Requesting during launch, before the app's
+    /// scene exists, can fail with "Notifications are not allowed for this
+    /// application" and leave the app unregistered, so no banner ever appears.
+    /// Idempotent: macOS ignores repeat calls once the choice has been made.
+    func requestAuthorization() {
         Task {
             do {
                 try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])

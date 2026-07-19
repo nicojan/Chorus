@@ -154,6 +154,16 @@ final class UserScriptManager {
                 in: DarkReaderSupport.world
             ))
         case .probe:
+            // The app is dark (probe is only chosen when appDark), and this load
+            // will end up either themed by Dark Reader or showing the site's own
+            // dark theme — either way cover it so the user doesn't watch the light
+            // page while the probe samples and the verdict comes back.
+            controller.addUserScript(WKUserScript(
+                source: DarkReaderSupport.antiFlashScript(deferReveal: true),
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true,
+                in: DarkReaderSupport.world
+            ))
             controller.addUserScript(WKUserScript(
                 source: Self.makeDarkProbeScript(serviceID: instance.id.uuidString),
                 injectionTime: .atDocumentEnd,

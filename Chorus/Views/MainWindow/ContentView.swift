@@ -67,6 +67,14 @@ struct ContentView: View {
         // WindowDragHandles move the window instead. The sidebar keeps the
         // normal title-bar drag.
         .background(WindowMovableConfigurator(isMovable: appState.railLayout == .sidebar))
+        // Ask for macOS notification permission here, not in AppState.init:
+        // requesting during App.init (before the scene exists) can fail with
+        // "Notifications are not allowed for this application" and leave the app
+        // unregistered. The root view's .task runs after launch, when the
+        // request lands correctly. Idempotent, so re-running is harmless.
+        .task {
+            appState.notificationManager.requestAuthorization()
+        }
         .onChange(of: appState.selectedSpaceID) { _, newSpaceID in
             if let spaceID = newSpaceID {
                 appState.preloadServicesForSpace(spaceID)

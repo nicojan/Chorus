@@ -647,6 +647,10 @@ final class WebViewPool {
         case .themed:
             webView.evaluateJavaScript(DarkReaderSupport.libraryJS, in: nil, in: world, completionHandler: nil)
             webView.evaluateJavaScript(DarkReaderSupport.enableJS, in: nil, in: world, completionHandler: nil)
+            // Release a deferred probe-path cover (if any) now that theming is on,
+            // so it tracks Dark Reader's settle instead of revealing the still-light
+            // page early. A no-op when no cover is present.
+            webView.evaluateJavaScript(DarkReaderSupport.beginCoverSettleJS, in: nil, in: world, completionHandler: nil)
         case .none:
             webView.evaluateJavaScript(DarkReaderSupport.disableJS, in: nil, in: world, completionHandler: nil)
         case .probe:
