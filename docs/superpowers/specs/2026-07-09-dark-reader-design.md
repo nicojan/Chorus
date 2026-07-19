@@ -2,6 +2,11 @@
 
 _2026-07-09_
 
+> Note (1.5.4): the document-start anti-flash style described below was later
+> replaced by a full load cover (an opaque overlay that reveals once theming
+> settles). See the 1.5.4 section in `docs/internal/OPEN-ITEMS.md`. The rest of
+> this spec still holds.
+
 ## Goal
 
 Replace Chorus's crude per-service "Force dark mode" (a CSS `invert(1)
