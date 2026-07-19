@@ -3,6 +3,25 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.4</title>
+            <pubDate>Sat, 18 Jul 2026 19:55:07 -0700</pubDate>
+            <sparkle:version>13</sparkle:version>
+            <sparkle:shortVersionString>1.5.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Added</h3>
+<ul>
+<li>A <strong>Re-detect dark theme</strong> button in a service's settings, for services set to Auto. Use it after you switch a service to its own dark theme, so Chorus stops darkening it a second time.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>In dark mode, Gmail no longer shows a washed, low-contrast state for several seconds as it loads. Gmail runs light, so Chorus darkens its whole layout on every fresh load, and you used to watch that half-themed state before it settled. Chorus now covers the view while it applies the dark theme and reveals the page once it is ready.</li>
+<li>The first-run notification prompt now appears reliably. Chorus asks macOS for permission after it finishes launching instead of during startup.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.4/Chorus-1.5.4.dmg" length="8420866" type="application/octet-stream" sparkle:edSignature="SIgtRek4kfffMaCD6RP0piRl86vSjaUexTeu0wGzs6GSogfVWqnjbvVEmaUm83+CIfRS5YcKp4BpsFPcLOKLDw=="/>
+        </item>
+        <item>
             <title>1.5.3</title>
             <pubDate>Tue, 14 Jul 2026 11:32:24 -0700</pubDate>
             <sparkle:version>12</sparkle:version>
