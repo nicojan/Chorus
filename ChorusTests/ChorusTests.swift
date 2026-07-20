@@ -551,6 +551,42 @@ final class ChorusTests: XCTestCase {
                        "retry must navigate to the real URL, not reload about:blank")
     }
 
+    // MARK: - External-open scheme policy
+
+    func testExternalOpenAllowsWebAndCuratedSchemes() {
+        for allowed in [
+            "https://example.com/a",
+            "http://example.com",
+            "HTTPS://example.com",  // scheme comparison is case-insensitive
+            "mailto:someone@example.com",
+            "tel:+15551234",
+            "maps://?q=test",
+        ] {
+            let url = URL(string: allowed)!
+            XCTAssertTrue(WebViewCoordinator.isSafeForExternalOpen(url),
+                          "\(allowed) should be handed to the system handler")
+        }
+    }
+
+    func testExternalOpenBlocksCredentialAndFileSchemes() {
+        // smb/afp reach a remote share and leak NTLM credentials on click; file
+        // and custom schemes hand a page control over local content and other
+        // apps. A page can offer any of these as a plain link.
+        for blocked in [
+            "smb://attacker.example/share",
+            "afp://attacker.example/vol",
+            "ftp://attacker.example/f",
+            "vnc://attacker.example",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "someapp://do-something",
+        ] {
+            let url = URL(string: blocked)!
+            XCTAssertFalse(WebViewCoordinator.isSafeForExternalOpen(url),
+                           "\(blocked) must not reach NSWorkspace.open")
+        }
+    }
+
     func testErrorPageWithoutRetryURLHasNoButton() {
         let html = WebViewCoordinator.errorPageHTML(
             title: "Page unavailable", message: "Keeps crashing.", retryURLString: nil)

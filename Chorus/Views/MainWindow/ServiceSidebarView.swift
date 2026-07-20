@@ -546,7 +546,7 @@ struct ServiceSidebarView: View {
         let liveURL = appState.webViewPool.liveWebView(for: service.id)?.url
         let target = liveURL ?? URL(string: service.url)
         if let target {
-            NSWorkspace.shared.open(target)
+            WebViewCoordinator.openExternally(target)
         }
     }
 
