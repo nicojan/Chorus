@@ -168,7 +168,7 @@ struct ServiceIconView: View {
 
     private var backgroundColor: AnyShapeStyle {
         if isSelected {
-            return AnyShapeStyle(.tint.opacity(0.12))
+            return AnyShapeStyle(.tint.opacity(0.20))
         } else if isHovering {
             return AnyShapeStyle(Color.primary.opacity(0.06))
         }
