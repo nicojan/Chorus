@@ -293,10 +293,19 @@ final class NotificationManager {
     /// Idempotent: macOS ignores repeat calls once the choice has been made.
     func requestAuthorization() {
         Task {
+            let center = UNUserNotificationCenter.current()
             do {
-                try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+                let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
+                let status = await center.notificationSettings().authorizationStatus
+                AppLogger.notifications.info(
+                    "Notification authorization: granted=\(granted), status=\(status.rawValue)")
             } catch {
-                // Permission denied or error — non-critical
+                // Not fatal, but never silent: swallowing this is what makes "no
+                // banners ever appear" undiagnosable. The common cause is the app
+                // failing to register at all (see the note above), which surfaces
+                // only here.
+                AppLogger.notifications.error(
+                    "Notification authorization failed: \(error.localizedDescription)")
             }
         }
     }
