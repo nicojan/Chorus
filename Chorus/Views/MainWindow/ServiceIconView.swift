@@ -53,9 +53,27 @@ struct ServiceIconSquare: View {
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 
+    /// Decodes icon bytes, resolving to the largest representation available.
+    ///
+    /// `NSImage(data:)` on a multi-size `.ico` reports the size of the FIRST
+    /// directory entry rather than the biggest. Notion's favicon lists its sizes
+    /// smallest-first (16, 32, 48, 64), so the image arrived declaring 16×16 and
+    /// `.resizable()` upscaled that thumbnail — the icon rendered blurry. Picking
+    /// the largest rep and restating the size fixes it; for a single-rep PNG
+    /// (every other bundled and fetched icon) the sizes already agree and this is
+    /// a no-op.
+    private static func iconImage(from data: Data) -> NSImage? {
+        guard let image = NSImage(data: data) else { return nil }
+        guard let largest = image.representations.max(by: {
+            $0.pixelsWide * $0.pixelsHigh < $1.pixelsWide * $1.pixelsHigh
+        }), largest.pixelsWide > Int(image.size.width) else { return image }
+        image.size = NSSize(width: largest.pixelsWide, height: largest.pixelsHigh)
+        return image
+    }
+
     @ViewBuilder
     private var content: some View {
-        if let data = instance.customIconData, let nsImage = NSImage(data: data) {
+        if let data = instance.customIconData, let nsImage = Self.iconImage(from: data) {
             Image(nsImage: nsImage)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
@@ -67,7 +85,7 @@ struct ServiceIconSquare: View {
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .foregroundStyle(.primary)
-        } else if let data = instance.fetchedIconData, let nsImage = NSImage(data: data) {
+        } else if let data = instance.fetchedIconData, let nsImage = Self.iconImage(from: data) {
             Image(nsImage: nsImage)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
