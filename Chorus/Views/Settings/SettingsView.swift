@@ -118,6 +118,28 @@ struct GeneralSettingsView: View {
                         Text(layout.displayName).tag(layout)
                     }
                 }
+
+                Picker("Navigation buttons", selection: Binding(
+                    get: { prefs.toolbarPosition },
+                    set: { position in
+                        appState.setToolbarPosition(position)
+                    }
+                )) {
+                    ForEach(ToolbarPosition.allCases, id: \.self) { position in
+                        Text(position.displayName).tag(position)
+                    }
+                }
+
+                Toggle("Hide the spaces bar", isOn: Binding(
+                    get: { prefs.hideSpacesUIEffective },
+                    set: { value in
+                        appState.setHideSpacesUI(value)
+                    }
+                ))
+
+                Text("Hiding the bar only affects what you see. Switch spaces with ⌘K or Ctrl-Tab, or from the menu bar. Services in a space you aren't viewing stay out of the sidebar, so reach them with ⌘K.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Web Content") {

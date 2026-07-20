@@ -1,6 +1,18 @@
 import SwiftUI
 import SwiftData
 
+/// Fixed metrics of the window's chrome. The title bar is hidden, so these
+/// insets are what keep content clear of the traffic lights — shared rather than
+/// repeated, because a rail and the view beside it drifting apart by a few
+/// points is exactly the kind of misalignment nobody notices until it ships.
+enum WindowChrome {
+    /// Height of the traffic-light strip.
+    static let lightsHeight: CGFloat = 28
+    /// Width the traffic lights occupy, for insetting content that starts at the
+    /// window's leading edge.
+    static let lightsWidth: CGFloat = 72
+}
+
 struct ContentView: View {
     @Environment(AppState.self) private var appState
 
@@ -146,37 +158,58 @@ struct ContentView: View {
     ) -> some View {
         // The title bar is hidden, so content runs to the top edge. Reserve the
         // top-left for the traffic lights: push the leftmost top elements clear.
-        let lightsHeight: CGFloat = 28
-        let lightsWidth: CGFloat = 72
+        let lightsHeight = WindowChrome.lightsHeight
+        let lightsWidth = WindowChrome.lightsWidth
         let railWidth: CGFloat = 52
+
+        // With the spaces rail hidden, whatever sits at the top-left inherits the
+        // job of clearing the traffic lights. In `.sidebar` the services rail
+        // already reserves `lightsHeight`, but the horizontal service tabs in
+        // `.topBars`/`.hybrid` were only inset on the assumption that the spaces
+        // rail was there to their left (or above), so they need the full
+        // `lightsWidth` once it goes away.
+        let spacesHidden = appState.hideSpacesUI
+        let hybridTabInset = spacesHidden ? lightsWidth : lightsWidth - railWidth
 
         switch appState.railLayout {
         case .sidebar:
             HStack(spacing: 0) {
-                spacesRail(axis: .vertical, selection: spaceSelection, contentInset: lightsHeight)
-                Divider()
+                // The vertical rules start below the traffic-light band rather
+                // than running the full height. Otherwise they cut across the
+                // title strip and chop the top of the window into segments; the
+                // rails already leave that band clear, so the rules should too.
+                if !spacesHidden {
+                    spacesRail(axis: .vertical, selection: spaceSelection, contentInset: lightsHeight)
+                    Divider().padding(.top, lightsHeight)
+                }
                 if let spaceID = appState.selectedSpaceID {
                     servicesRail(axis: .vertical, spaceID: spaceID, selection: serviceSelection, contentInset: lightsHeight)
-                    Divider()
+                    Divider().padding(.top, lightsHeight)
                 }
                 webContent
             }
         case .topBars:
             VStack(spacing: 0) {
-                spacesRail(axis: .horizontal, selection: spaceSelection, contentInset: lightsWidth)
-                Divider()
+                if !spacesHidden {
+                    spacesRail(axis: .horizontal, selection: spaceSelection, contentInset: lightsWidth)
+                    Divider()
+                }
                 if let spaceID = appState.selectedSpaceID {
-                    servicesRail(axis: .horizontal, spaceID: spaceID, selection: serviceSelection)
+                    servicesRail(
+                        axis: .horizontal, spaceID: spaceID, selection: serviceSelection,
+                        contentInset: spacesHidden ? lightsWidth : 0)
                 }
                 webContent
             }
         case .hybrid:
             HStack(spacing: 0) {
-                spacesRail(axis: .vertical, selection: spaceSelection, contentInset: lightsHeight)
-                Divider()
+                if !spacesHidden {
+                    spacesRail(axis: .vertical, selection: spaceSelection, contentInset: lightsHeight)
+                    Divider()
+                }
                 VStack(spacing: 0) {
                     if let spaceID = appState.selectedSpaceID {
-                        servicesRail(axis: .horizontal, spaceID: spaceID, selection: serviceSelection, contentInset: lightsWidth - railWidth)
+                        servicesRail(axis: .horizontal, spaceID: spaceID, selection: serviceSelection, contentInset: hybridTabInset)
                     }
                     webContent
                 }
