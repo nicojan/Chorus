@@ -3,6 +3,20 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.7</title>
+            <pubDate>Tue, 21 Jul 2026 11:25:31 -0700</pubDate>
+            <sparkle:version>16</sparkle:version>
+            <sparkle:shortVersionString>1.5.7</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Fixed</h3>
+<ul>
+<li>Sending mail in Gmail now works. Sometimes Gmail asks you a question before it sends: whether you meant to send with no subject, or whether you forgot a file you called "attached." Chorus was not showing that question, so Send and Send & Archive did nothing and gave no reason. Now the question appears, you answer it, and the mail sends. The fix also covers any other service that asks you to confirm something, or to type an answer, in a pop-up.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.7/Chorus-1.5.7.dmg" length="8445144" type="application/octet-stream" sparkle:edSignature="ql1DDu2t180+3vsgy3vO4lJ7HhD2/uSX9NoUg3w0RYOPfQh8D2ixv/3DLcldHZNoJzyMxfzaOBOj5xZA0G5vCw=="/>
+        </item>
+        <item>
             <title>1.5.6</title>
             <pubDate>Tue, 21 Jul 2026 00:19:39 -0700</pubDate>
             <sparkle:version>15</sparkle:version>
