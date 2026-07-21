@@ -3,6 +3,22 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.6</title>
+            <pubDate>Tue, 21 Jul 2026 00:19:39 -0700</pubDate>
+            <sparkle:version>15</sparkle:version>
+            <sparkle:shortVersionString>1.5.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Fixed</h3>
+<ul>
+<li>Notification badges now appear at launch, even for services you have not opened yet. Before, a badge stayed blank until you switched to that service. Chorus reads each unread count in the background a few seconds after launch and refreshes it every few minutes after that.</li>
+<li>The Gmail badge counts the unread mail in the inbox you see. It used to read a running total across every category, so an inbox that looked empty could still show a high count like 99+.</li>
+<li>The LinkedIn badge counts your unread message threads. Before, it showed the site's overall notification number.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.6/Chorus-1.5.6.dmg" length="8430794" type="application/octet-stream" sparkle:edSignature="/XhhS/ekJ0KAmSxwSxRoqHyMvoxVCxfuENTiDIt2n9d2bjG9afmdvHu3xPSy9yNVQjmr0Pbt700azdE0PngQDg=="/>
+        </item>
+        <item>
             <title>1.5.5</title>
             <pubDate>Mon, 20 Jul 2026 20:49:16 -0700</pubDate>
             <sparkle:version>14</sparkle:version>
