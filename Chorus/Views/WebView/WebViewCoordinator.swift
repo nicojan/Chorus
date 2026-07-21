@@ -575,6 +575,104 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         }
     }
 
+    // MARK: - JavaScript Dialogs (alert / confirm / prompt)
+
+    /// Presents a native panel for `window.alert()`. Without this method WebKit
+    /// shows nothing and returns at once — harmless for alert, but the same
+    /// missing-delegate default silently answers `confirm()` with "Cancel" and
+    /// `prompt()` with nil (see below), which strands any page flow gated on a
+    /// dialog. Gmail's Send runs through `confirm()` (the attachment reminder and
+    /// the no-subject prompt), so a signed-in user clicking Send just saw nothing
+    /// happen. Implementing all three restores the expected behaviour.
+    ///
+    /// CRITICAL: `completionHandler` MUST be `@escaping @MainActor`. The WebKit
+    /// header annotates the block `WK_SWIFT_UI_ACTOR` (= `@MainActor`); drop it
+    /// and Swift silently declines to treat this as the protocol witness — the
+    /// method never reaches the Obj-C runtime, WebKit never calls it, and the
+    /// page hangs. Same trap as `runOpenPanelWith` above.
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptAlertPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping @MainActor () -> Void
+    ) {
+        AppLogger.webView.info("JS alert panel")
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.addButton(withTitle: "OK")
+        let session = JSDialogSession(cancelValue: (), completionHandler)
+        present(alert, over: webView, session: session) { _ in () }
+    }
+
+    /// Presents a native OK / Cancel panel for `window.confirm()`. Returns `true`
+    /// only when the user chooses OK; window-close-first resolves to `false`, the
+    /// same as clicking Cancel. See the alert method above for the `@MainActor`
+    /// witness requirement — it applies identically here.
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptConfirmPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping @MainActor (Bool) -> Void
+    ) {
+        AppLogger.webView.info("JS confirm panel")
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+        let session = JSDialogSession(cancelValue: false, completionHandler)
+        present(alert, over: webView, session: session) { $0 == .alertFirstButtonReturn }
+    }
+
+    /// Presents a native text-input panel for `window.prompt()`. Returns the
+    /// entered text on OK, or nil on Cancel / window-close-first (which the page
+    /// reads as a dismissed prompt). See the alert method above for the
+    /// `@MainActor` witness requirement.
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptTextInputPanelWithPrompt prompt: String,
+        defaultText: String?,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping @MainActor (String?) -> Void
+    ) {
+        AppLogger.webView.info("JS text-input panel")
+        let alert = NSAlert()
+        alert.messageText = prompt
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        field.stringValue = defaultText ?? ""
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+
+        let session = JSDialogSession(cancelValue: String?.none, completionHandler)
+        present(alert, over: webView, session: session) { response in
+            response == .alertFirstButtonReturn ? field.stringValue : nil
+        }
+    }
+
+    /// Runs `alert` as a sheet on the web view's window when there is one, falling
+    /// back to an app-modal panel otherwise (e.g. an OAuth popup web view). The
+    /// session guarantees the page's completion handler fires exactly once — on a
+    /// button press or, for a sheet, if the host window closes first — mirroring
+    /// the file-picker path. `map` turns the modal response into the value the
+    /// page's handler expects.
+    private func present<T>(
+        _ alert: NSAlert,
+        over webView: WKWebView,
+        session: JSDialogSession<T>,
+        map: @escaping (NSApplication.ModalResponse) -> T
+    ) {
+        if let window = webView.window {
+            session.observeClose(of: window)
+            alert.beginSheetModal(for: window) { response in
+                session.finish(map(response))
+            }
+        } else {
+            session.finish(map(alert.runModal()))
+        }
+    }
+
     // MARK: - Context Menu
 
     // WKWebView provides native context menus by default on macOS.
@@ -945,5 +1043,48 @@ private final class FilePickerSession {
             self.closeObserver = nil
         }
         completion(urls)
+    }
+}
+
+/// Drives a JavaScript dialog (`alert` / `confirm` / `prompt`) to a single
+/// completion. WebKit blocks the page's script until the handler fires exactly
+/// once, so this guarantees it fires — on a button press or the host window
+/// closing first — and never twice. `cancelValue` is what a window-close-first
+/// resolves to (`()` for alert, `false` for confirm, nil for prompt). `@MainActor`
+/// (hence Sendable) so the close observer can hold it.
+@MainActor
+private final class JSDialogSession<T> {
+    private var completion: (@MainActor (T) -> Void)?
+    private var closeObserver: NSObjectProtocol?
+    private let cancelValue: T
+
+    init(cancelValue: T, _ completion: @escaping @MainActor (T) -> Void) {
+        self.cancelValue = cancelValue
+        self.completion = completion
+    }
+
+    /// Fires the completion with `cancelValue` if `window` closes before the sheet
+    /// resolves, releasing the page's blocked script instead of leaving it hung.
+    func observeClose(of window: NSWindow) {
+        closeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            // The .main queue delivers this on the main thread, so assuming main
+            // isolation to reach the @MainActor method is safe here.
+            MainActor.assumeIsolated { self?.finish(self?.cancelValue) }
+        }
+    }
+
+    /// Idempotent: the first call fires the handler and detaches the observer;
+    /// later calls are no-ops. `value` is nil only on the close path above, where
+    /// it falls back to `cancelValue`.
+    func finish(_ value: T?) {
+        guard let completion else { return }
+        self.completion = nil
+        if let closeObserver {
+            NotificationCenter.default.removeObserver(closeObserver)
+            self.closeObserver = nil
+        }
+        completion(value ?? cancelValue)
     }
 }
