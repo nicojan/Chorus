@@ -1069,6 +1069,85 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(DarkReaderSupport.disableJS.contains("__chorusCoverDismiss"))
     }
 
+    // MARK: - Dark theme cache (fast dark first paint)
+
+    func testDarkThemeCacheRoundTripsCSS() {
+        // A real theme carries the Modified-CSS marker (see isCacheable).
+        let css = "/* Modified CSS */\nbody { background: #111 !important; }"
+        guard let data = DarkThemeCacheStore.encode(css: css) else {
+            return XCTFail("cacheable CSS should encode")
+        }
+        XCTAssertEqual(DarkThemeCacheStore.decode(data), css)
+    }
+
+    func testDarkThemeCacheRejectsVersionMismatch() {
+        // A snapshot from an older Dark Reader generator must read as a miss, not
+        // be applied over a page it no longer matches.
+        let real = "/* Modified CSS */ x{}"
+        let data = DarkThemeCacheStore.encode(css: real, version: DarkThemeCacheStore.cacheVersion + 1)!
+        XCTAssertNil(DarkThemeCacheStore.decode(data))
+        // Same version decodes.
+        let ok = DarkThemeCacheStore.encode(css: real, version: DarkThemeCacheStore.cacheVersion)!
+        XCTAssertEqual(DarkThemeCacheStore.decode(ok), real)
+    }
+
+    func testDarkThemeCacheDecodeRejectsGarbage() {
+        XCTAssertNil(DarkThemeCacheStore.decode(Data("not json".utf8)))
+    }
+
+    func testDarkThemeCacheStableHashIsDeterministicAndContentSensitive() {
+        // Stable across calls (unlike String.hashValue, which is per-process
+        // seeded) so the derived cacheVersion doesn't churn every launch...
+        XCTAssertEqual(DarkThemeCacheStore.stableHash("darkreader-vX"),
+                       DarkThemeCacheStore.stableHash("darkreader-vX"))
+        // ...but changes when the library content changes, so a darkreader.js
+        // update auto-invalidates old snapshots.
+        XCTAssertNotEqual(DarkThemeCacheStore.stableHash("darkreader-vX"),
+                          DarkThemeCacheStore.stableHash("darkreader-vY"))
+        // The effective version folds that hash in.
+        XCTAssertNotEqual(DarkThemeCacheStore.cacheVersion, DarkThemeCacheStore.formatVersion)
+    }
+
+    func testDarkThemeCacheSkipsEmptyOversizedAndFallbackOnlyCSS() {
+        // Empty and oversized are rejected.
+        XCTAssertFalse(DarkThemeCacheStore.isCacheable(""))
+        XCTAssertNil(DarkThemeCacheStore.encode(css: ""))
+        let huge = "/* Modified CSS */" + String(repeating: "a", count: DarkThemeCacheStore.maxCSSBytes + 1)
+        XCTAssertFalse(DarkThemeCacheStore.isCacheable(huge))
+        XCTAssertNil(DarkThemeCacheStore.encode(css: huge))
+        // Fallback-only output (no per-element Modified CSS) is rejected — it
+        // would be a false cache hit that paints nothing useful. This is the
+        // ~2.8KB login/under-rendered case seen live.
+        let fallbackOnly = "/* Fallback Style */\nhtml { background: #1a1a1a; }"
+        XCTAssertFalse(DarkThemeCacheStore.isCacheable(fallbackOnly))
+        // A real theme with the Modified-CSS section is cacheable.
+        XCTAssertTrue(DarkThemeCacheStore.isCacheable("/* Modified CSS */ a{}"))
+    }
+
+    func testCachedDarkStyleScriptTagsAndEscapesCSS() {
+        // Uses the shared cache-style id (so disable/export can remove it) and
+        // JSON-encodes the CSS so quotes/newlines can't break out of the script.
+        let js = UserScriptManager.makeCachedDarkStyleScript(css: "a[title=\"x\"]{color:red}\n")
+        XCTAssertTrue(js.contains(DarkReaderSupport.cacheStyleID))
+        XCTAssertTrue(js.contains("createElement('style')"))
+        XCTAssertFalse(js.contains("a[title=\"x\"]{color:red}\n"), "raw CSS must be JSON-escaped, not inlined verbatim")
+        XCTAssertTrue(js.contains("\\n"))
+    }
+
+    func testDarkCSSExportScriptExportsAndPostsForService() {
+        let id = "ABC-123"
+        let js = UserScriptManager.makeDarkCSSExportScript(serviceID: id)
+        XCTAssertTrue(js.contains("exportGeneratedCSS"))
+        XCTAssertTrue(js.contains("chorusDarkCSSCache"))
+        XCTAssertTrue(js.contains("\"ABC-123\""))
+        // It drops the static cached style once live theming has taken over.
+        XCTAssertTrue(js.contains(DarkReaderSupport.cacheStyleID))
+    }
+
+    func testDisableJSDropsCachedThemeStyle() {
+        XCTAssertTrue(DarkReaderSupport.disableJS.contains(DarkReaderSupport.cacheStyleID))
+    }
+
     func testContentBlockingEnabledDefaultsTrue() {
         // nil (existing installs / fresh) resolves to enabled.
         XCTAssertTrue(AppPreferences().contentBlockingEnabledEffective)

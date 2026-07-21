@@ -24,6 +24,11 @@ enum DarkReaderSupport {
     /// off.
     private static let antiFlashID = "chorus-dr-antiflash"
 
+    /// Element id for the cached-theme `<style>` injected at document-start on a
+    /// cache hit, so it can be removed when theming is turned off and once the
+    /// live Dark Reader pass has taken over. See `DarkThemeCacheStore`.
+    static let cacheStyleID = "chorus-dr-cache"
+
     /// What to inject for a service: nothing, the theme (library + enable), or the
     /// detection probe.
     enum DarkInjection {
@@ -255,12 +260,15 @@ enum DarkReaderSupport {
     """
 
     /// Snippet to disable theming on an already-loaded document and drop the load
-    /// cover. Calls the cover's own teardown so its observer and timers stop (not
-    /// just the element removed), then falls back to removing the element by id.
+    /// cover and any cached-theme style. Calls the cover's own teardown so its
+    /// observer and timers stop (not just the element removed), then falls back to
+    /// removing the elements by id.
     static let disableJS = """
     if (window.DarkReader) { DarkReader.disable(); }
     if (window.__chorusCoverDismiss) { window.__chorusCoverDismiss(); }
     var af = document.getElementById('\(antiFlashID)');
     if (af) af.remove();
+    var drc = document.getElementById('\(cacheStyleID)');
+    if (drc) drc.remove();
     """
 }

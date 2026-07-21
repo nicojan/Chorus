@@ -28,6 +28,11 @@ final class WebViewPool {
     private let userScriptManager: UserScriptManager
     private let contentBlocker: ContentBlockerManager
 
+    /// Persistent per-service cache of Dark Reader's generated theme CSS. Baked
+    /// into a themed view at build time for a fast dark first paint, and
+    /// refreshed after each themed load's live pass settles.
+    private let darkThemeCache = DarkThemeCacheStore()
+
     /// The app's current effective Light/Dark appearance, pushed by AppState.
     /// Baked into each web view's Dark Reader scripts at build time so a service
     /// opted into dark theming starts in the right state.
@@ -261,6 +266,7 @@ final class WebViewPool {
         neverHibernateIDs.remove(instanceID)
         evictionInFlight.remove(instanceID)
         userScriptManager.removeHandler(for: instanceID)
+        darkThemeCache.remove(for: instanceID)
         onServiceRemoved?(instanceID)
         snapshots.removeValue(forKey: instanceID)
     }
@@ -542,6 +548,7 @@ final class WebViewPool {
             for: instance,
             customCSS: effectiveCSS(for: instance),
             darkInjection: injection,
+            cachedDarkCSS: darkThemeCache.cachedCSS(for: instance.id),
             on: controller
         )
         // Attach the compiled content-blocking rule lists (ad/tracker domains)
@@ -651,6 +658,16 @@ final class WebViewPool {
             // so it tracks Dark Reader's settle instead of revealing the still-light
             // page early. A no-op when no cover is present.
             webView.evaluateJavaScript(DarkReaderSupport.beginCoverSettleJS, in: nil, in: world, completionHandler: nil)
+            // Export + cache the generated theme from THIS live document too. A
+            // service themed live — by a probe verdict, an appearance toggle, or
+            // (at launch) the dark state being pushed after it already preloaded
+            // light — would otherwise never bake the document-start export script,
+            // so its cache would never populate. Running the export here covers
+            // every live-theming path, not just fresh navigations.
+            webView.evaluateJavaScript(
+                UserScriptManager.makeDarkCSSExportScript(serviceID: instance.id.uuidString),
+                in: nil, in: world, completionHandler: nil
+            )
         case .none:
             webView.evaluateJavaScript(DarkReaderSupport.disableJS, in: nil, in: world, completionHandler: nil)
         case .probe:
@@ -667,8 +684,22 @@ final class WebViewPool {
             for: instance,
             customCSS: effectiveCSS(for: instance),
             darkInjection: injection,
+            cachedDarkCSS: darkThemeCache.cachedCSS(for: instance.id),
             on: controller
         )
+    }
+
+    /// Persists a themed service's exported Dark Reader CSS for a fast dark first
+    /// paint on the next load. Called from the `chorusDarkCSSCache` handler.
+    func cacheDarkTheme(_ css: String, for id: UUID) {
+        darkThemeCache.store(css: css, for: id)
+    }
+
+    /// Drops a service's cached theme without touching a web view. Used by
+    /// delete paths that don't go through `removeWebView` (e.g. the launch-time
+    /// orphan reaper), so a deleted service never leaks its cache file.
+    func dropDarkThemeCache(for id: UUID) {
+        darkThemeCache.remove(for: id)
     }
 
     /// When exceeding maxLoaded web views, fully hibernate the least recently used ones.

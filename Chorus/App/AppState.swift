@@ -337,6 +337,16 @@ final class AppState {
             }
         }
 
+        // A themed service exports its generated Dark Reader CSS after its live
+        // pass settles; cache it for a fast dark first paint next load. The
+        // handler fires on the main thread, so hop onto the main actor for the
+        // pool.
+        self.userScriptManager.onDarkCSSExport = { @Sendable serviceID, css in
+            MainActor.assumeIsolated {
+                pool.cacheDarkTheme(css, for: serviceID)
+            }
+        }
+
         loadAppPreferences()
         startContentBlocker()
         setupNotificationNavigation()
@@ -1294,6 +1304,7 @@ final class AppState {
         // stores is irreversible, so defer it until the delete actually commits
         // (matches deleteSpace). A failed save rolls back so nothing is wiped.
         let orphanedIDs = orphans.map(\.dataStoreIdentifier)
+        let orphanedInstanceIDs = orphans.map(\.id)
         for service in orphans {
             context.delete(service)
         }
@@ -1306,6 +1317,10 @@ final class AppState {
             return
         }
         for id in orphanedIDs { markDataStoreOrphaned(id) }
+        // This delete path doesn't go through removeWebView (orphans have no live
+        // web view at launch), so drop each reaped service's theme cache here so
+        // its snapshot file doesn't linger.
+        for id in orphanedInstanceIDs { webViewPool.dropDarkThemeCache(for: id) }
         cleanUpOrphanedDataStores()
     }
 

@@ -13,6 +13,7 @@ struct NotificationPayload: Codable {
 final class UserScriptManager {
     private var messageHandlers: [UUID: NotificationMessageHandler] = [:]
     private var darkProbeHandlers: [UUID: DarkProbeMessageHandler] = [:]
+    private var darkCSSCacheHandlers: [UUID: DarkCSSCacheMessageHandler] = [:]
 
     var isServiceMuted: (@Sendable (UUID) -> Bool)?
     /// Per-service "forward notifications to macOS" flag. Defaults to true when
@@ -25,16 +26,27 @@ final class UserScriptManager {
     /// (serviceID, whether the site lacks its own dark theme).
     var onDarkProbeVerdict: (@Sendable (UUID, Bool) -> Void)?
 
+    /// Called when a themed service exports its generated Dark Reader CSS
+    /// (serviceID, the CSS) so it can be cached for a fast first paint next load.
+    var onDarkCSSExport: (@Sendable (UUID, String) -> Void)?
+
     /// Full setup for a freshly built web view: the message handlers (added once)
     /// plus all user scripts.
     func configureScripts(
         for instance: ServiceInstance,
         customCSS: String?,
         darkInjection: DarkReaderSupport.DarkInjection,
+        cachedDarkCSS: String? = nil,
         on controller: WKUserContentController
     ) {
         installHandlers(for: instance, on: controller)
-        installUserScripts(for: instance, customCSS: customCSS, darkInjection: darkInjection, on: controller)
+        installUserScripts(
+            for: instance,
+            customCSS: customCSS,
+            darkInjection: darkInjection,
+            cachedDarkCSS: cachedDarkCSS,
+            on: controller
+        )
     }
 
     /// Registers the message handlers. Called once when the web view is built —
@@ -65,6 +77,19 @@ final class UserScriptManager {
         }
         controller.add(probeHandler, name: "chorusDarkProbe")
         darkProbeHandlers[instance.id] = probeHandler
+
+        // Registered in Dark Reader's ISOLATED world, not the page world:
+        // the export script that posts here runs in that world (it needs
+        // `window.DarkReader`), and `window.webkit.messageHandlers` is scoped
+        // per content world — a page-world registration would be invisible to
+        // it, so the message would silently throw and the cache would never
+        // populate. This also keeps the handler out of the page's own reach.
+        let export = onDarkCSSExport
+        let cacheHandler = DarkCSSCacheMessageHandler(serviceID: instance.id) { id, css in
+            export?(id, css)
+        }
+        controller.add(cacheHandler, contentWorld: DarkReaderSupport.world, name: "chorusDarkCSSCache")
+        darkCSSCacheHandlers[instance.id] = cacheHandler
     }
 
     /// Adds all user scripts. Safe to call again after `removeAllUserScripts()`
@@ -75,6 +100,7 @@ final class UserScriptManager {
         for instance: ServiceInstance,
         customCSS: String?,
         darkInjection: DarkReaderSupport.DarkInjection,
+        cachedDarkCSS: String? = nil,
         on controller: WKUserContentController
     ) {
         let notificationScript = makeNotificationInterceptionScript(serviceID: instance.id.uuidString)
@@ -135,12 +161,29 @@ final class UserScriptManager {
         case .none:
             break
         case .themed:
+            // On a cache hit the cached theme paints the page dark at
+            // document-start, so the cover only needs to bridge Dark Reader
+            // taking over — a short settle, not the multi-second hold a cold,
+            // washed first pass needs.
+            let hasCache = cachedDarkCSS != nil
             controller.addUserScript(WKUserScript(
-                source: DarkReaderSupport.antiFlashScript(),
+                source: DarkReaderSupport.antiFlashScript(settleCapMs: hasCache ? 900 : 6000),
                 injectionTime: .atDocumentStart,
                 forMainFrameOnly: true,
                 in: DarkReaderSupport.world
             ))
+            // Cached generated CSS first: it paints dark immediately so the user
+            // never sees Dark Reader's washed first pass. Dynamic Dark Reader
+            // then runs on top to catch anything the snapshot missed, and the
+            // export script drops this static style once it has taken over.
+            if let cachedDarkCSS {
+                controller.addUserScript(WKUserScript(
+                    source: Self.makeCachedDarkStyleScript(css: cachedDarkCSS),
+                    injectionTime: .atDocumentStart,
+                    forMainFrameOnly: true,
+                    in: DarkReaderSupport.world
+                ))
+            }
             controller.addUserScript(WKUserScript(
                 source: DarkReaderSupport.libraryJS,
                 injectionTime: .atDocumentStart,
@@ -150,6 +193,14 @@ final class UserScriptManager {
             controller.addUserScript(WKUserScript(
                 source: DarkReaderSupport.bootstrapScript(enable: true),
                 injectionTime: .atDocumentStart,
+                forMainFrameOnly: true,
+                in: DarkReaderSupport.world
+            ))
+            // After the live pass settles, export the generated CSS to refresh
+            // the cache (and populate it on the first-ever, cache-miss load).
+            controller.addUserScript(WKUserScript(
+                source: Self.makeDarkCSSExportScript(serviceID: instance.id.uuidString),
+                injectionTime: .atDocumentEnd,
                 forMainFrameOnly: true,
                 in: DarkReaderSupport.world
             ))
@@ -204,6 +255,7 @@ final class UserScriptManager {
     func removeHandler(for instanceID: UUID) {
         messageHandlers.removeValue(forKey: instanceID)
         darkProbeHandlers.removeValue(forKey: instanceID)
+        darkCSSCacheHandlers.removeValue(forKey: instanceID)
     }
 
     /// Encodes a Swift string as a JS string literal (quotes included) so it can
@@ -282,6 +334,72 @@ final class UserScriptManager {
         """
     }
 
+    /// Injects a service's cached Dark Reader theme as a `<style>` at
+    /// document-start, so a themed page paints dark immediately instead of
+    /// flashing light while the live Dark Reader pass computes the theme. The
+    /// CSS is JSON-encoded into a JS string literal so it can't break out of the
+    /// script. The node carries a stable id and is reused if already present, so
+    /// re-injection can't stack; `DarkReaderSupport.disableJS` and the export
+    /// script remove it by that id once live theming owns the page.
+    nonisolated static func makeCachedDarkStyleScript(css: String) -> String {
+        """
+        (function() {
+            var CSS = \(jsStringLiteral(css));
+            var ID = \(jsStringLiteral(DarkReaderSupport.cacheStyleID));
+            var existing = document.getElementById(ID);
+            if (existing) { existing.textContent = CSS; return; }
+            var style = document.createElement('style');
+            style.id = ID;
+            style.textContent = CSS;
+            (document.head || document.documentElement).appendChild(style);
+        })();
+        """
+    }
+
+    /// Runs at document-end in Dark Reader's isolated world. Once the live pass
+    /// has enabled and settled, it exports the generated theme CSS and posts it
+    /// to the `chorusDarkCSSCache` handler so it can be cached for the next load,
+    /// then removes the static cached-theme style (dynamic Dark Reader now owns
+    /// theming, so a stale snapshot must not linger over the live rules). Retries
+    /// a few times because `enable()` finishes its first pass a beat after the
+    /// document is ready.
+    nonisolated static func makeDarkCSSExportScript(serviceID: String) -> String {
+        """
+        (function() {
+            var SID = \(jsStringLiteral(serviceID));
+            function attempt(triesLeft) {
+                var DR = window.DarkReader;
+                if (!DR || typeof DR.exportGeneratedCSS !== 'function' ||
+                    (typeof DR.isEnabled === 'function' && !DR.isEnabled())) {
+                    if (triesLeft > 0) setTimeout(function() { attempt(triesLeft - 1); }, 1000);
+                    return;
+                }
+                Promise.resolve(DR.exportGeneratedCSS()).then(function(css) {
+                    if (!css) return;
+                    try {
+                        window.webkit.messageHandlers.chorusDarkCSSCache.postMessage(
+                            JSON.stringify({ serviceID: SID, css: css }));
+                    } catch (e) {}
+                    // Drop the static snapshot only once Dark Reader's own style
+                    // nodes are in the DOM, so the live pass has actually taken
+                    // over the page — removing it earlier (on `isEnabled()` alone,
+                    // which only means enable() was called) could flash lighter
+                    // areas the live pass hasn't reached yet. If they aren't there
+                    // yet, leave the snapshot in place; `disableJS` and the next
+                    // load clean it up.
+                    if (document.querySelector('.darkreader--sync, .darkreader--fallback, .darkreader--override')) {
+                        var cached = document.getElementById(\(jsStringLiteral(DarkReaderSupport.cacheStyleID)));
+                        if (cached) cached.remove();
+                    }
+                }).catch(function() {});
+            }
+            // The first pass is usually done a couple of seconds after the DOM is
+            // ready; give it time, then retry a few times if not yet enabled.
+            setTimeout(function() { attempt(5); }, 2500);
+        })();
+        """
+    }
+
     /// JavaScript that can be evaluated to check if a WebRTC call is active.
     /// Returns `true` if any RTCPeerConnection is in a connected/active state.
     nonisolated static let callDetectionQueryJS = "window.__chorusActiveCall === true"
@@ -293,7 +411,7 @@ final class UserScriptManager {
     /// Deliberately does NOT fake `document.hasFocus()` — it stays false for a
     /// background view — so apps that gate desktop notifications on *focus* keep
     /// firing them, preserving Chorus's `window.Notification` forwarding.
-    private static func makeVisibilityOverrideScript() -> String {
+    static func makeVisibilityOverrideScript() -> String {
         return """
         (function() {
             try {
@@ -570,6 +688,38 @@ private struct DarkProbePayload: Codable {
     let g: Double
     let b: Double
     let a: Double
+}
+
+private struct DarkCSSCachePayload: Codable {
+    let serviceID: String
+    let css: String
+}
+
+/// Receives a themed service's exported Dark Reader CSS and forwards it for
+/// caching, keyed by the service it came from.
+final class DarkCSSCacheMessageHandler: NSObject, WKScriptMessageHandler, @unchecked Sendable {
+    let serviceID: UUID
+    let onExport: @Sendable (UUID, String) -> Void
+
+    init(serviceID: UUID, onExport: @escaping @Sendable (UUID, String) -> Void) {
+        self.serviceID = serviceID
+        self.onExport = onExport
+        super.init()
+    }
+
+    func userContentController(
+        _ userContentController: WKUserContentController,
+        didReceive message: WKScriptMessage
+    ) {
+        // Main frame only — a subframe must not poison a service's theme cache.
+        guard message.name == "chorusDarkCSSCache", message.frameInfo.isMainFrame else { return }
+        guard let jsonString = message.body as? String,
+              let data = jsonString.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(DarkCSSCachePayload.self, from: data),
+              payload.serviceID == serviceID.uuidString
+        else { return }
+        onExport(serviceID, payload.css)
+    }
 }
 
 /// Receives a service's background-color sample from its detection probe and

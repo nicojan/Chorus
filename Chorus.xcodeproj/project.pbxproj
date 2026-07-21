@@ -27,6 +27,7 @@
 		53C0B5A438EDC6C98FE081AB /* QuickSwitcherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA55A0E026084DC20071FBCE /* QuickSwitcherView.swift */; };
 		542D3E32DA8EA90EC36BB6A0 /* DataStoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD49B64B44CC548574DA2348 /* DataStoreManager.swift */; };
 		5561BE9B6C6D8AA46CD42884 /* WebViewContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D9F34755F65BE5A3C76C88 /* WebViewContainer.swift */; };
+		57951FD83ED4599EA6A8D283 /* DarkThemeCacheStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E07D63775037F8E72866F2C /* DarkThemeCacheStore.swift */; };
 		5E59730D46AE1AED21F82ECA /* AppPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88C307C75776869CE8A82618 /* AppPreferences.swift */; };
 		69FF2932CDD4A1208CA5DA71 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D9D707C0F9A04B5E0744F59 /* SettingsView.swift */; };
 		6EA5537AC54A97170DA92F68 /* ReaderMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99194740C493CCA3EAFC7E18 /* ReaderMode.swift */; };
@@ -94,6 +95,7 @@
 		438D78C9503E732B7792FA10 /* WebViewCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewCoordinator.swift; sourceTree = "<group>"; };
 		4666C49AA129F26D936B0715 /* ServiceInstance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceInstance.swift; sourceTree = "<group>"; };
 		4CC71C78C036E2C4DF3EAF2E /* ServiceTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceTabView.swift; sourceTree = "<group>"; };
+		4E07D63775037F8E72866F2C /* DarkThemeCacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DarkThemeCacheStore.swift; sourceTree = "<group>"; };
 		537DF7ABA3D6DED64273776A /* SpaceStripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceStripView.swift; sourceTree = "<group>"; };
 		538A1641C210F10E3CD43E14 /* WebToolbarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebToolbarView.swift; sourceTree = "<group>"; };
 		54BC620E896A6DD5CB16AF6D /* CookieConsentManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookieConsentManager.swift; sourceTree = "<group>"; };
@@ -187,6 +189,7 @@
 				0693A705E1552F5809BA3399 /* CatalogIconCache.swift */,
 				54BC620E896A6DD5CB16AF6D /* CookieConsentManager.swift */,
 				6935142E75345640B2C4D7F0 /* DarkReaderSupport.swift */,
+				4E07D63775037F8E72866F2C /* DarkThemeCacheStore.swift */,
 				AD49B64B44CC548574DA2348 /* DataStoreManager.swift */,
 				24EE83C0600AFD4A12914883 /* HibernatedBadgePoller.swift */,
 				D2AC7E996360A4BC660FD194 /* KeyboardShortcutManager.swift */,
@@ -461,6 +464,7 @@
 				230144499E6BE9FD41C03338 /* ContentView.swift in Sources */,
 				30CDFCABEDA4328515317A91 /* CookieConsentManager.swift in Sources */,
 				9F0C82A9D1AFDF927EC1A59C /* DarkReaderSupport.swift in Sources */,
+				57951FD83ED4599EA6A8D283 /* DarkThemeCacheStore.swift in Sources */,
 				542D3E32DA8EA90EC36BB6A0 /* DataStoreManager.swift in Sources */,
 				9EDF307D989D199DE994D432 /* EditServiceSheet.swift in Sources */,
 				4B199EBC47BA21CE22ECC893 /* EmojiData.swift in Sources */,
@@ -597,7 +601,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Chorus/Chorus.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 3CY4DX3K45;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -609,7 +613,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.5.4;
+				MARKETING_VERSION = 1.5.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nicojan.Chorus;
 				PRODUCT_NAME = Chorus;
 				SDKROOT = macosx;
@@ -686,7 +690,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Chorus/Chorus.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Chorus/Info.plist;
@@ -697,7 +701,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.5.4;
+				MARKETING_VERSION = 1.5.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nicojan.Chorus;
 				PRODUCT_NAME = Chorus;
 				SDKROOT = macosx;
