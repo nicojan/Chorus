@@ -11,7 +11,7 @@
             <description><![CDATA[
 <h3>Changed</h3>
 <ul>
-<li>Dark themes now load much faster after the first visit. For a service Chorus darkens for you (Gmail is the clearest case), it used to rebuild the dark theme on every load, which took several seconds on heavy pages. Chorus now saves the theme it builds the first time and reuses it, so the next time you open the service the page is dark right away and becomes usable seconds sooner.</li>
+<li>Dark themes now load much faster after the first visit. When Chorus darkens a service for you (Gmail is the clearest case), it used to rebuild the dark theme on every load, which took several seconds on heavy pages. Chorus now saves the theme it builds the first time and reuses it, so the next time you open the service the page is dark right away and becomes usable seconds sooner.</li>
 </ul>
 ]]></description>
             <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.5/Chorus-1.5.5.dmg" length="8432463" type="application/octet-stream" sparkle:edSignature="wQKI9wbp1NIRcvS1/XpN6SE002WMquSz35ZqUsA2yZtzMT9T9ZxpeOths4awMXZMlYtgEVut1tdzoizL3Y3KBQ=="/>

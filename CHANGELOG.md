@@ -7,13 +7,13 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ### Changed
 
-- Dark themes now load much faster after the first visit. For a service Chorus
-  darkens for you (Gmail is the clearest case), it used to rebuild the dark
+- Dark themes now load much faster after the first visit. When Chorus darkens a
+  service for you (Gmail is the clearest case), it used to rebuild the dark
   theme on every load, which took several seconds on heavy pages. Chorus now
   saves the theme it builds the first time and reuses it, so the next time you
   open the service the page is dark right away and becomes usable seconds
-  sooner. The saved theme refreshes itself as the page changes, and Chorus falls
-  back to building it from the page when there is nothing saved yet.
+  sooner. The saved theme refreshes itself as the page changes, and Chorus
+  builds it fresh from the page when nothing is saved yet.
 
 ## [1.5.4] - 2026-07-18
 
