@@ -5,7 +5,7 @@
         "url": "https://mail.google.com/mail/u/0/#inbox",
         "icon": "gmail-icon",
         "category": "Email",
-        "badgeJS": "(() => { const el = document.querySelector('.aim .bsU'); return el ? parseInt(el.textContent) || 0 : 0; })()",
+        "badgeJS": "(()=>document.querySelectorAll('tr.zA.zE').length)()",
         "userAgent": null,
         "description": "Google's webmail"
     },
@@ -110,7 +110,7 @@
         "url": "https://www.linkedin.com/messaging/",
         "icon": "linkedin-icon",
         "category": "Messaging",
-        "badgeJS": null,
+        "badgeJS": "(()=>document.querySelectorAll('.msg-conversation-card__convo-item-container--unread').length)()",
         "userAgent": null,
         "description": "Professional networking and messaging"
     },

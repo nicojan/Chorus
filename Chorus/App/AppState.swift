@@ -25,7 +25,7 @@ final class AppState {
     /// shared so the top tab bar can host the nav buttons.
     let webViewState = WebViewState()
     let notificationManager: NotificationManager
-    let hibernatedBadgePoller: HibernatedBadgePoller
+    let transientBadgeFetcher: TransientBadgeFetcher
     let networkMonitor: NetworkMonitor
 
     var selectedSpaceID: UUID?
@@ -304,7 +304,7 @@ final class AppState {
             MainActor.assumeIsolated { badgeManager.doNotDisturb }
         }
         self.notificationManager = NotificationManager(badgeManager: badgeManager)
-        self.hibernatedBadgePoller = HibernatedBadgePoller(
+        self.transientBadgeFetcher = TransientBadgeFetcher(
             badgeManager: badgeManager,
             dataStoreManager: dataStoreManager
         )
@@ -364,7 +364,7 @@ final class AppState {
         fetchMissingAndStaleFavicons(force: didUpdate)
         fetchCatalogIcons(force: didUpdate)
         preloadActiveSpaceServices()
-        fetchInitialBadgesForBackgroundServices()
+        startTransientBadgeFetcher()
         cleanUpOrphanedDataStores()
     }
 
@@ -780,7 +780,7 @@ final class AppState {
     /// network connectivity — in either case continued polling is wasted work.
     private func suspendPolling(reason: String) {
         notificationManager.stopAllPolling()
-        hibernatedBadgePoller.pause()
+        transientBadgeFetcher.pause()
         AppLogger.general.info("Paused polling — \(reason)")
     }
 
@@ -797,7 +797,7 @@ final class AppState {
         }
         AppLogger.general.info("Resuming polling — \(reason)")
         restartPollingAfterWake()
-        hibernatedBadgePoller.resume()
+        transientBadgeFetcher.resume()
     }
 
     private func restartPollingAfterWake() {
@@ -1099,9 +1099,8 @@ final class AppState {
 
     /// Re-applies mute/show-badge state immediately after settings changes.
     /// Polling tasks read these values on their next tick, but the UI and dock
-    /// badge should update synchronously. Fully hibernated services also need
-    /// their lightweight poller state refreshed so stale polls do not re-add
-    /// badges after a mute/show-badge toggle.
+    /// badge should update synchronously. The transient badge fetcher re-reads
+    /// mute/show-badge at write time, so it needs no per-service state sync here.
     func refreshBadgeState(for serviceID: UUID) {
         guard let service = currentServiceInstance(id: serviceID) else { return }
         let count = badgeManager.rawCount(for: serviceID)
@@ -1110,11 +1109,6 @@ final class AppState {
         badgeManager.updateBadge(
             for: serviceID,
             count: count,
-            isMuted: isMuted,
-            showBadge: showBadge
-        )
-        hibernatedBadgePoller.updateState(
-            serviceID: serviceID,
             isMuted: isMuted,
             showBadge: showBadge
         )
@@ -1470,58 +1464,58 @@ final class AppState {
         }
     }
 
-    /// One-shot launch badge fetch for services that won't get a live web view
-    /// (i.e. outside the active space, which is preloaded). Populates their
-    /// unread badges promptly so per-space aggregate badges are correct at
-    /// launch instead of staying blank until first opened. Skips muted services
-    /// and services with the badge hidden.
-    ///
-    /// Active-space services are excluded here: each preloaded web view starts a
-    /// recurring background poll (via `onServicePreloaded`) and also fires an
-    /// immediate `pollNow` when its page finishes loading (`onNavigationFinished`).
-    private func fetchInitialBadgesForBackgroundServices() {
-        let activeSpaceID = selectedSpaceID
-
-        let context = modelContainer.mainContext
-        let services: [ServiceInstance]
-        do {
-            services = try context.fetch(FetchDescriptor<ServiceInstance>())
-        } catch {
-            AppLogger.badges.error("Launch badge sweep fetch failed: \(error.localizedDescription)")
-            return
-        }
-
-        // Snapshot plain values from the already-fetched objects (no per-entry
-        // re-fetch) before the async loop, so we never touch a possibly-deleted
-        // @Model object across a suspension point. Membership/mute/show-badge
-        // are read directly from the in-hand objects.
-        struct SweepEntry { let id: UUID; let url: String; let dataStoreID: UUID }
-        let entries: [SweepEntry] = services.compactMap { service in
-            let inActiveSpace = activeSpaceID != nil
-                && service.spaceLinks.contains {
-                    $0.modelContext != nil && $0.space.modelContext != nil && $0.space.id == activeSpaceID
-                }
-            guard !inActiveSpace, !service.isEffectivelyMuted, service.showBadge else { return nil }
-            return SweepEntry(id: service.id, url: service.url, dataStoreID: service.dataStoreIdentifier)
-        }
-        guard !entries.isEmpty else { return }
-
-        Task { @MainActor [weak self] in
-            for (index, entry) in entries.enumerated() {
-                guard let self else { return }
-                // Light stagger *between* polls so the sweep doesn't burst
-                // alongside preload, favicon, and catalog-icon fetches at launch.
-                // No trailing sleep after the final poll.
-                if index > 0 { try? await Task.sleep(for: .milliseconds(250)) }
-                await self.hibernatedBadgePoller.pollOnce(
-                    serviceID: entry.id,
-                    url: entry.url,
-                    isMuted: false,
-                    showBadge: true,
-                    dataStoreIdentifier: entry.dataStoreID
+    /// Wires the transient badge fetcher's collaborators and starts its
+    /// launch + slow-periodic sweep. The fetcher renders each service that has no
+    /// live web view (everything outside the active space, plus anything the pool
+    /// evicted) once in a short-lived offscreen view, reads its badge, and tears
+    /// it down — so per-space aggregate badges are correct at launch and stay
+    /// roughly current, instead of staying blank until each service is opened.
+    private func startTransientBadgeFetcher() {
+        // Fresh target list each sweep. Built synchronously on the main actor so
+        // no @Model object is held across a suspension point; the fetcher only
+        // ever sees the plain-value `Target` snapshots.
+        transientBadgeFetcher.targetsProvider = { [weak self] in
+            guard let self else { return [] }
+            let services: [ServiceInstance]
+            do {
+                services = try self.modelContainer.mainContext.fetch(FetchDescriptor<ServiceInstance>())
+            } catch {
+                AppLogger.badges.error("Badge sweep fetch failed: \(error.localizedDescription)")
+                return []
+            }
+            return services.compactMap { service in
+                // A live web view already runs a poll that covers the badge, so
+                // skip it; muted / badge-hidden services never show a count.
+                guard !self.webViewPool.hasWebView(for: service.id),
+                      !service.isEffectivelyMuted,
+                      service.showBadge
+                else { return nil }
+                let badgeJS = service.catalogEntryID
+                    .flatMap { ServiceCatalog.shared.entry(for: $0) }?.badgeJS
+                return TransientBadgeFetcher.Target(
+                    id: service.id,
+                    url: service.url,
+                    dataStoreIdentifier: service.dataStoreIdentifier,
+                    userAgent: service.userAgent,
+                    badgeJS: badgeJS
                 )
             }
         }
+
+        transientBadgeFetcher.hasLiveWebView = { [weak self] id in
+            self?.webViewPool.hasWebView(for: id) ?? false
+        }
+
+        transientBadgeFetcher.currentBadgeParams = { [weak self] id in
+            guard let self, let service = self.currentServiceInstance(id: id) else { return nil }
+            return (self.isServiceEffectivelyMuted(id), service.showBadge)
+        }
+
+        transientBadgeFetcher.enabledContentRuleLists = { [weak self] in
+            self?.contentBlocker.enabledLists() ?? []
+        }
+
+        transientBadgeFetcher.start()
     }
 
     /// Preloads services when the user switches to a different space.
@@ -1739,32 +1733,11 @@ final class AppState {
         }
 
         webViewPool.onServiceHibernated = { [weak self] serviceID in
-            guard let self else { return }
-            self.notificationManager.stopPolling(for: serviceID)
-
-            let context = self.modelContainer.mainContext
-            let descriptor = FetchDescriptor<ServiceInstance>()
-            let services: [ServiceInstance]
-            do {
-                services = try context.fetch(descriptor)
-            } catch {
-                AppLogger.dataStore.error("Failed to fetch services for hibernation: \(error.localizedDescription)")
-                return
-            }
-            guard let service = services.first(where: { $0.id == serviceID })
-            else { return }
-
-            self.hibernatedBadgePoller.track(
-                serviceID: serviceID,
-                url: service.url,
-                isMuted: self.isServiceEffectivelyMuted(serviceID),
-                showBadge: service.showBadge,
-                dataStoreIdentifier: service.dataStoreIdentifier
-            )
-        }
-
-        webViewPool.onServiceWoke = { [weak self] serviceID in
-            self?.hibernatedBadgePoller.untrack(serviceID: serviceID)
+            // The web view is gone, so its live poll can't run. The transient
+            // badge fetcher's periodic sweep now covers this service (it targets
+            // anything without a live web view); the badge holds its last value
+            // until the next sweep.
+            self?.notificationManager.stopPolling(for: serviceID)
         }
 
         webViewPool.onServiceSoftHibernated = { [weak self] serviceID in
@@ -1795,7 +1768,6 @@ final class AppState {
         webViewPool.onServiceRemoved = { [weak self] serviceID in
             guard let self else { return }
             self.notificationManager.stopPolling(for: serviceID)
-            self.hibernatedBadgePoller.untrack(serviceID: serviceID)
             self.badgeManager.removeBadge(for: serviceID)
             self.drainMediaRequests(for: serviceID)
         }

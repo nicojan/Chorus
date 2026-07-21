@@ -1,5 +1,65 @@
 # Open items
 
+## Working tree (uncommitted): launch badges and per-service inbox counts
+
+Notification badges stayed blank at launch for any service the user was not
+looking at. The cause: the old launch fetch pulled each page over URLSession and
+parsed the unread count from the `<title>`, but modern web apps write that count
+with JavaScript after the page loads; the server HTML never carries it. So the
+fetch read zero for everything. Gmail redirected to a login host, WhatsApp
+returned an empty shell, Facebook a "Redirecting..." stub, Slack and Discord
+titles carried no number. Because the services spread across several spaces,
+almost everything fell in this path.
+
+The URLSession poller is gone, replaced by `TransientBadgeFetcher` (still in
+`HibernatedBadgePoller.swift` to keep the file in the build). For each service
+with no live web view it renders a short-lived offscreen web view against the
+service's own logged-in data store, waits for the count to show up in the title
+or a DOM selector, reads it, and tears the view down. It runs one sweep a few
+seconds after launch, then every three minutes, at most three at a time,
+staggered. A hung `evaluateJavaScript` cannot stall the sweep: each fetch is
+bounded by a watchdog. Writes are raise-only, so a transient read of zero never
+clears a badge, since an offscreen view cannot tell an empty inbox from a page
+that did not finish loading. The live poll clears the badge when you open the
+service.
+
+Two badge-source refinements sit on top. First, when a catalog entry defines a
+`badgeJS` selector, that selector is now the only source of its count, and the
+title is never read for it. This stops a title count for the wrong view from
+overriding the intended number. Second, Gmail counts unread conversation rows in
+the current inbox view (`tr.zA.zE`), matching what you see. The earlier version
+read the "Inbox N unread" aria-label, but that sums unread across every inbox
+category and section, so a visibly clean inbox still showed 99+ when Promotions,
+Updates and the like held unread. Counting rows drops those. Gmail renders only the
+current page of conversations into the DOM (10 rows for a "1-10 of 49" inbox), so
+the count reflects unread among the rendered rows, not unread on later pages.
+Like LinkedIn's selector, the row count is proven on the live path but not
+offscreen: the zero-size launch view may read 0 until you open Gmail, and
+raise-only writes keep a launch-time 0 from clearing anything. LinkedIn shows
+unread message threads, by counting unread conversations in the list, rather than
+the tab title's global notification count.
+
+State: on `main`, uncommitted. All 106 tests pass. The Gmail row-count selector
+(`tr.zA.zE`) was verified live: on the reported inbox it read `tr.zA`=10 rendered
+rows, `tr.zA.zE`=0 unread, so the badge cleared to 0 (was 99+). Files touched:
+`HibernatedBadgePoller.swift`, `NotificationManager.swift`,
+`UserScriptManager.swift`, `AppState.swift`, `ServiceCatalog.json`,
+`ChorusTests.swift`.
+
+Left as follow-ups, on purpose:
+
+- Not committed, and no version bump yet.
+- The DOM selectors are fragile. If Gmail or LinkedIn change their markup, the
+  selector returns zero and needs re-deriving. Re-derive with a temporary in-app
+  probe against the logged-in page.
+- The LinkedIn selector is proven on the live path. Only Gmail's is proven on the
+  offscreen launch path. If an out-of-space LinkedIn shows a stale count at
+  launch, check whether its conversation list renders offscreen.
+- Raise-only means an out-of-space badge can sit high until you open the service
+  and the live poll clears it.
+
+Background lives in the transient-badge-fetch memory.
+
 ## Shipped: 1.5.4 (2026-07-18)
 
 Fixed the washed, slow load when Gmail opens in dark mode. Gmail runs light, so

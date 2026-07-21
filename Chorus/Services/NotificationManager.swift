@@ -65,7 +65,8 @@ final class NotificationManager {
                     weakSelf: { [weak self] in self },
                     weakWebView: { [weak webView] in webView },
                     isMuted: isMuted,
-                    showBadge: showBadge
+                    showBadge: showBadge,
+                    catalogEntry: catalogEntry
                 )
             }
         }
@@ -80,7 +81,7 @@ final class NotificationManager {
         showBadge: @Sendable () -> Bool,
         catalogEntry: ServiceCatalogEntry?
     ) async {
-        var titleInterval = 5
+        var interval = 5
         var tick = 0
         var unchangedCycles = 0
 
@@ -90,26 +91,24 @@ final class NotificationManager {
 
             tick += 1
 
-            if tick % titleInterval == 0 {
+            if tick % interval == 0 {
                 let previousCount = manager.badgeManager.rawCount(for: instanceID)
-                await manager.pollTitle(webView: webView, instanceID: instanceID, isMuted: isMuted(), showBadge: showBadge())
+                // Authoritative source (DOM selector if defined, else title).
+                // resetToZero: true — the user is looking, so an empty inbox
+                // clearing to 0 is correct.
+                await manager.pollPrimaryCount(webView: webView, instanceID: instanceID, isMuted: isMuted(), showBadge: showBadge(), catalogEntry: catalogEntry, resetToZero: true)
                 let newCount = manager.badgeManager.rawCount(for: instanceID)
 
                 if newCount == previousCount {
                     unchangedCycles += 1
                     if unchangedCycles >= 120 {
-                        titleInterval = min(titleInterval + 5, 30)
+                        interval = min(interval + 5, 30)
                         unchangedCycles = 0
                     }
                 } else {
-                    titleInterval = 5
+                    interval = 5
                     unchangedCycles = 0
                 }
-            }
-
-            let badgeInterval = titleInterval * 2
-            if tick % badgeInterval == 0, let entry = catalogEntry, entry.badgeJS != nil {
-                await manager.pollBadge(webView: webView, instanceID: instanceID, isMuted: isMuted(), showBadge: showBadge(), catalogEntry: entry)
             }
         }
     }
@@ -119,12 +118,18 @@ final class NotificationManager {
         weakSelf: @MainActor () -> NotificationManager?,
         weakWebView: @MainActor () -> WKWebView?,
         isMuted: @Sendable () -> Bool,
-        showBadge: @Sendable () -> Bool
+        showBadge: @Sendable () -> Bool,
+        catalogEntry: ServiceCatalogEntry?
     ) async {
+        // A DOM selector, when defined, is authoritative — but a hidden view's
+        // selector may not have hydrated, so a background read of 0 stays
+        // raise-only (won't clear). A title-based service reads its (reliable)
+        // title with the normal clearing behavior.
+        let hasSelector = catalogEntry?.badgeJS != nil
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(30))
             guard let manager = weakSelf(), let webView = weakWebView(), !Task.isCancelled else { break }
-            await manager.pollTitle(webView: webView, instanceID: instanceID, isMuted: isMuted(), showBadge: showBadge())
+            await manager.pollPrimaryCount(webView: webView, instanceID: instanceID, isMuted: isMuted(), showBadge: showBadge(), catalogEntry: catalogEntry, resetToZero: !hasSelector)
         }
     }
 
@@ -156,9 +161,19 @@ final class NotificationManager {
         showBadge: Bool,
         catalogEntry: ServiceCatalogEntry?
     ) async {
-        await pollTitle(webView: webView, instanceID: instanceID, isMuted: isMuted, showBadge: showBadge, resetToZero: false)
+        await pollPrimaryCount(webView: webView, instanceID: instanceID, isMuted: isMuted, showBadge: showBadge, catalogEntry: catalogEntry, resetToZero: false)
+    }
+
+    /// Reads the badge from the service's authoritative source: its DOM `badgeJS`
+    /// selector when defined (Gmail Inbox, LinkedIn messaging), otherwise the page
+    /// title. A service WITH a selector never falls back to the title — so a title
+    /// count for a different view (another Gmail label, or LinkedIn's global
+    /// notification count) can't override the intended number.
+    private func pollPrimaryCount(webView: WKWebView, instanceID: UUID, isMuted: Bool, showBadge: Bool, catalogEntry: ServiceCatalogEntry?, resetToZero: Bool) async {
         if let entry = catalogEntry, entry.badgeJS != nil {
-            await pollBadge(webView: webView, instanceID: instanceID, isMuted: isMuted, showBadge: showBadge, catalogEntry: entry, resetToZero: false)
+            await pollBadge(webView: webView, instanceID: instanceID, isMuted: isMuted, showBadge: showBadge, catalogEntry: entry, resetToZero: resetToZero)
+        } else {
+            await pollTitle(webView: webView, instanceID: instanceID, isMuted: isMuted, showBadge: showBadge, resetToZero: resetToZero)
         }
     }
 

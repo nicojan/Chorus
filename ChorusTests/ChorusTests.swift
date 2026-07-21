@@ -42,13 +42,6 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(NotificationManager.extractBadgeCount(from: "No badges here"), 0)
     }
 
-    func testHibernatedBadgeExtraction() {
-        XCTAssertEqual(HibernatedBadgePoller.extractBadgeFromTitle(html: "<title>(3) Slack</title>"), 3)
-        XCTAssertEqual(HibernatedBadgePoller.extractBadgeFromTitle(html: "<title>Gmail</title>"), 0)
-        XCTAssertEqual(HibernatedBadgePoller.extractBadgeFromTitle(html: "<title>Inbox (42) - Gmail</title>"), 42)
-        XCTAssertEqual(HibernatedBadgePoller.extractBadgeFromTitle(html: "no title tag"), 0)
-    }
-
     func testCustomServiceInputValidation() {
         XCTAssertEqual(
             AddServiceSheet.validatedCustomServiceInput(label: "  Docs  ", url: " HTTPS://example.com/app "),
@@ -557,38 +550,6 @@ final class ChorusTests: XCTestCase {
         XCTAssertFalse(html.contains("<button"))
     }
 
-    // MARK: - Cookie matching (hibernated poller)
-
-    private func makeCookie(domain: String, path: String, name: String = "s", secure: Bool = false) -> HTTPCookie {
-        var props: [HTTPCookiePropertyKey: Any] = [
-            .domain: domain, .path: path, .name: name, .value: "v",
-        ]
-        if secure { props[.secure] = "TRUE" }
-        return HTTPCookie(properties: props)!
-    }
-
-    func testCookiePathMatchFollowsRFC6265() {
-        let cookie = makeCookie(domain: "example.com", path: "/foo")
-        // Exact, trailing-slash, and sub-path match.
-        XCTAssertEqual(HibernatedBadgePoller.cookies([cookie], matching: URL(string: "https://example.com/foo")!).count, 1)
-        XCTAssertEqual(HibernatedBadgePoller.cookies([cookie], matching: URL(string: "https://example.com/foo/bar")!).count, 1)
-        // A path that merely shares the prefix but isn't a sub-path must NOT match.
-        XCTAssertEqual(HibernatedBadgePoller.cookies([cookie], matching: URL(string: "https://example.com/foobar")!).count, 0)
-    }
-
-    func testCookieDomainAndSecureMatching() {
-        let dotCookie = makeCookie(domain: ".example.com", path: "/")
-        // Subdomain matches a dot-prefixed domain cookie.
-        XCTAssertEqual(HibernatedBadgePoller.cookies([dotCookie], matching: URL(string: "https://mail.example.com/")!).count, 1)
-        // Unrelated host doesn't.
-        XCTAssertEqual(HibernatedBadgePoller.cookies([dotCookie], matching: URL(string: "https://notexample.com/")!).count, 0)
-
-        // Secure cookies are withheld from http requests.
-        let secure = makeCookie(domain: "example.com", path: "/", secure: true)
-        XCTAssertEqual(HibernatedBadgePoller.cookies([secure], matching: URL(string: "http://example.com/")!).count, 0)
-        XCTAssertEqual(HibernatedBadgePoller.cookies([secure], matching: URL(string: "https://example.com/")!).count, 1)
-    }
-
     // MARK: - OS-notification gate + per-service notify flag
 
     func testOSNotificationGateFiresOnlyWhenEnabledUnmutedAndNotDND() {
@@ -969,6 +930,17 @@ final class ChorusTests: XCTestCase {
         for id in ["gmail", "slack", "notion", "hackernews", "zoom", "reddit"] {
             XCTAssertNotEqual(catalog.entry(for: id)?.nativeDark, true, "\(id) should not be nativeDark")
         }
+    }
+
+    func testGmailBadgeCountsUnreadRowsNotInboxAriaLabel() {
+        // The badge counts unread conversation rows in the current inbox view
+        // (Gmail marks them tr.zA.zE), matching what the user sees. It must no
+        // longer read the "Inbox N unread" aria-label, which sums unread across
+        // every inbox category/section and showed 99+ over a visibly empty view.
+        let js = ServiceCatalog.shared.entry(for: "gmail")?.badgeJS ?? ""
+        XCTAssertTrue(js.contains("tr.zA.zE"), "Gmail badge should count unread conversation rows")
+        XCTAssertFalse(js.contains("unread"), "Gmail badge should not parse the Inbox aria-label unread total")
+        XCTAssertFalse(js.contains("aria-label"), "Gmail badge should not read an aria-label")
     }
 
     func testDarkProbeScriptPollsUntilSettled() {

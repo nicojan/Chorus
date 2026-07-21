@@ -1,322 +1,305 @@
 import Foundation
 import WebKit
 
-/// Polls badge counts for fully hibernated services by fetching their page title
-/// via a lightweight URLSession request (no WKWebView needed).
+// NOTE: The file is still named `HibernatedBadgePoller.swift` for build-inclusion
+// reasons (new .swift files aren't auto-compiled by the checked-in project; see
+// the project notes). The type it holds is `TransientBadgeFetcher` — the URLSession
+// title-fetch poller it replaced could not see unread counts, because modern web
+// apps inject those counts with JavaScript after load, not into the server HTML.
+
+/// Fetches badge counts for services that have no live `WKWebView` (everything
+/// the user isn't currently looking at, plus anything the pool has hibernated or
+/// evicted). It renders each service once in a short-lived, offscreen web view —
+/// using that service's own authenticated `WKWebsiteDataStore` — waits for the
+/// page's JavaScript to write its unread count into the title or a DOM badge,
+/// reads it, then tears the web view down to reclaim memory.
 ///
-/// Most web apps include unread counts in their `<title>` tag, e.g. "(3) Slack".
-/// We seed each request with the service's own `WKWebsiteDataStore` cookies
-/// so the poll sees the authenticated page, not the unauth landing page.
+/// Why render at all: a plain HTTP fetch of the page returns the server HTML,
+/// whose `<title>` has no count (Gmail 302-redirects to a login host, WhatsApp
+/// ships an empty SPA shell, Facebook serves a "Redirecting…" stub, Slack/Discord
+/// titles carry no number). Only a real web view runs the JS that produces the
+/// count. A preloaded, never-displayed web view already hydrates its title in
+/// this app (the visibility override keeps the page reporting "visible"), so an
+/// offscreen frame-zero view is enough — no window attachment needed.
 @MainActor
 @Observable
-final class HibernatedBadgePoller {
-    private var pollTask: Task<Void, Never>?
-    private var trackedServices: [UUID: TrackedService] = [:]
+final class TransientBadgeFetcher {
+    /// Immutable snapshot of everything one fetch needs. Captured from the
+    /// `@Model` object BEFORE any suspension point so a service deleted mid-sweep
+    /// can never be touched across an `await`.
+    struct Target: Sendable {
+        let id: UUID
+        let url: String
+        let dataStoreIdentifier: UUID
+        let userAgent: String?
+        let badgeJS: String?
+    }
 
-    /// When true, no poll timer runs even if services are tracked. Set while
-    /// the network is unreachable or the Mac is asleep so we don't fire doomed
-    /// URLSession requests; tracking is retained so we can resume cleanly.
-    private var isPaused = false
+    // MARK: - Injected collaborators (wired after AppState finishes init)
 
-    /// How often to poll each hibernated service (60 seconds)
-    private let pollInterval: TimeInterval = 60
+    /// Fresh list of services to fetch, built on the main actor each sweep.
+    var targetsProvider: (@MainActor () -> [Target])?
+    /// True when the service already has a live pooled web view — its own poll
+    /// covers the badge, so the transient fetch skips it.
+    var hasLiveWebView: (@MainActor (UUID) -> Bool)?
+    /// Current mute / show-badge flags read at WRITE time (not from the possibly
+    /// 20s-old snapshot), so a toggle during the fetch isn't undone by a late
+    /// write. Returns nil if the service no longer exists — then the write is
+    /// skipped entirely.
+    var currentBadgeParams: (@MainActor (UUID) -> (isMuted: Bool, showBadge: Bool)?)?
+    /// The compiled content-blocking rule lists to attach (ad/tracker blocking
+    /// speeds the headless load and cuts noise). Empty until the lists compile.
+    var enabledContentRuleLists: (@MainActor () -> [WKContentRuleList])?
+
+    // MARK: - Tuning
+
+    private let maxConcurrent = 3
+    private let settleTimeout: TimeInterval = 20
+    private let pollTick: Duration = .seconds(1)
+    /// Once a positive count appears, keep reading only this much longer so a
+    /// count that climbs during hydration stabilizes — then stop early instead of
+    /// holding the web view for the full timeout.
+    private let stabilizeGrace: TimeInterval = 2
+    private let stagger: Duration = .milliseconds(400)
 
     private let badgeManager: BadgeManager
     private let dataStoreManager: DataStoreManager
-    private let session: URLSession
 
-
-    struct TrackedService {
-        let url: String
-        var isMuted: Bool
-        var showBadge: Bool
-        let dataStoreIdentifier: UUID
-    }
+    /// The repeating launch+periodic driver. `nil` when stopped/paused.
+    private var scheduler: Task<Void, Never>?
+    /// The sweep currently in flight, if any — cancelled on pause so in-flight
+    /// fetches tear their web views down promptly.
+    private var currentSweep: Task<Void, Never>?
+    private var isPaused = false
 
     init(badgeManager: BadgeManager, dataStoreManager: DataStoreManager) {
         self.badgeManager = badgeManager
         self.dataStoreManager = dataStoreManager
-        // Stateless session — we attach each service's cookies manually per
-        // request. An ephemeral config still keeps an in-memory cookie jar
-        // shared across every request, so without disabling it, one service's
-        // Set-Cookie response would be replayed onto another service on the
-        // same host (e.g. two Gmail accounts), reading the wrong account's
-        // unread count. Turning the jar off leaves only our per-service header.
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.httpCookieStorage = nil
-        configuration.httpShouldSetCookies = false
-        configuration.httpCookieAcceptPolicy = .never
-        // A delegate that refuses cross-host redirects: we inject one service's
-        // cookies for a specific host, so following a 302 to another host would
-        // forward those cookies off-origin (an isolation leak). Same-host
-        // redirects are still followed; the poll only needs the service's own title.
-        self.session = URLSession(
-            configuration: configuration,
-            delegate: SameHostRedirectDelegate(),
-            delegateQueue: nil
-        )
     }
 
-    deinit {
-        // Release the session and its retained redirect delegate. A no-op in
-        // practice (the poller lives for the app's lifetime), kept for symmetry.
-        session.invalidateAndCancel()
-    }
+    // MARK: - Lifecycle
 
-    /// Start tracking a hibernated service for badge polling.
-    func track(
-        serviceID: UUID,
-        url: String,
-        isMuted: Bool,
-        showBadge: Bool,
-        dataStoreIdentifier: UUID
-    ) {
-        trackedServices[serviceID] = TrackedService(
-            url: url,
-            isMuted: isMuted,
-            showBadge: showBadge,
-            dataStoreIdentifier: dataStoreIdentifier
-        )
-        ensurePolling()
-        // Fire one poll immediately rather than waiting a full interval, so a
-        // just-hibernated service's badge stays current. Guarded by !isPaused
-        // so we don't fire while offline or asleep.
-        if !isPaused, let tracked = trackedServices[serviceID] {
-            Task { [weak self] in await self?.pollService(id: serviceID, tracked: tracked) }
-        }
-        AppLogger.badges.debug("Tracking hibernated service \(serviceID) for badge polling")
-    }
-
-    /// Performs a single badge fetch for a service WITHOUT adding it to the
-    /// recurring poll set. Used for the one-shot launch sweep so services that
-    /// won't have a live web view (e.g. outside the active space) still show a
-    /// startup badge, without entangling with the web-view lifecycle. Respects
-    /// the same "never reset to 0" rule as the recurring poll.
-    func pollOnce(
-        serviceID: UUID,
-        url: String,
-        isMuted: Bool,
-        showBadge: Bool,
-        dataStoreIdentifier: UUID
-    ) async {
-        // Skip muted services: their badge is masked anyway, so a fetch would
-        // just waste a cookie-bearing request to a server the user silenced.
-        guard !isPaused, showBadge, !isMuted else { return }
-        await pollService(id: serviceID, tracked: TrackedService(
-            url: url,
-            isMuted: isMuted,
-            showBadge: showBadge,
-            dataStoreIdentifier: dataStoreIdentifier
-        ), requireTracked: false)
-    }
-
-    /// Refresh mutable notification/badge flags for an already-tracked service.
-    /// Muting and per-service badge toggles can change while a service is fully
-    /// hibernated, so the lightweight poller must not keep using stale values.
-    func updateState(serviceID: UUID, isMuted: Bool, showBadge: Bool) {
-        guard var tracked = trackedServices[serviceID] else { return }
-        tracked.isMuted = isMuted
-        tracked.showBadge = showBadge
-        trackedServices[serviceID] = tracked
-    }
-
-    /// Stop tracking a service (e.g., when it wakes from hibernation).
-    func untrack(serviceID: UUID) {
-        trackedServices.removeValue(forKey: serviceID)
-        if trackedServices.isEmpty {
-            stopPolling()
-        }
-    }
-
-    /// Stop all polling.
-    func stopAll() {
-        trackedServices.removeAll()
-        stopPolling()
-    }
-
-    /// Suspend the poll timer without forgetting tracked services. Use when
-    /// the network goes offline or the Mac sleeps.
-    func pause() {
-        isPaused = true
-        stopPolling()
-    }
-
-    /// Resume polling after `pause()`, restarting the timer if any services
-    /// are still tracked.
-    func resume() {
+    /// Starts the launch sweep (after a short delay so it doesn't pile onto
+    /// preload + favicon + catalog-icon fetches) and a slow periodic refresh.
+    func start(initialDelay: Duration = .seconds(4), interval: Duration = .seconds(180)) {
+        guard scheduler == nil else { return }
         isPaused = false
-        if !trackedServices.isEmpty {
-            ensurePolling()
-        }
-    }
-
-    // MARK: - Private
-
-    private func ensurePolling() {
-        guard !isPaused, pollTask == nil else { return }
-        pollTask = Task { @MainActor [weak self] in
+        scheduler = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: initialDelay)
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(self?.pollInterval ?? 60))
-                guard let self, !Task.isCancelled else { break }
-                await self.pollAllTrackedServices()
+                if let self, !self.isPaused {
+                    await self.runSweep()
+                }
+                try? await Task.sleep(for: interval)
             }
         }
     }
 
-    private func stopPolling() {
-        pollTask?.cancel()
-        pollTask = nil
+    /// Suspend fetching without forgetting configuration. Cancels any in-flight
+    /// sweep (its web views tear down as their tasks unwind) and stops the timer.
+    func pause() {
+        isPaused = true
+        currentSweep?.cancel()
+        currentSweep = nil
+        scheduler?.cancel()
+        scheduler = nil
     }
 
-    private func pollAllTrackedServices() async {
-        let snapshot = trackedServices
+    /// Re-arm after `pause()`. Callers gate this on network reachability.
+    func resume() {
+        guard scheduler == nil else { return }
+        start(initialDelay: .seconds(1))
+    }
+
+    // MARK: - Sweep
+
+    private func runSweep() async {
+        guard currentSweep == nil else { return }
+        guard let targets = targetsProvider?(), !targets.isEmpty else { return }
+
+        let sweep = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.sweep(targets)
+        }
+        currentSweep = sweep
+        await sweep.value
+        // Only clear if we still own the slot. A prior sweep that was cancelled
+        // by pause() may finish unwinding after resume() has already started a new
+        // one; without this check it would wipe the new sweep's handle, letting a
+        // later tick launch a second concurrent sweep and leaving it uncancellable.
+        if currentSweep == sweep {
+            currentSweep = nil
+        }
+    }
+
+    /// Runs `fetchOne` over the targets with at most `maxConcurrent` in flight,
+    /// staggering the initial starts so the web views don't spin up all at once.
+    private func sweep(_ targets: [Target]) async {
+        var index = 0
 
         await withTaskGroup(of: Void.self) { group in
-            for (serviceID, tracked) in snapshot {
-                group.addTask { [weak self] in
-                    await self?.pollService(id: serviceID, tracked: tracked)
+            func addNext() -> Bool {
+                guard index < targets.count else { return false }
+                let target = targets[index]
+                index += 1
+                group.addTask { [weak self] in await self?.fetchOne(target) }
+                return true
+            }
+
+            for _ in 0..<maxConcurrent {
+                guard addNext() else { break }
+                // Stagger the initial burst; skip the wait once we've queued the
+                // last target.
+                if index < targets.count { try? await Task.sleep(for: stagger) }
+            }
+
+            while await group.next() != nil {
+                if Task.isCancelled { break }
+                _ = addNext()
+            }
+        }
+    }
+
+    /// Renders one service offscreen, reads its badge, tears the view down.
+    private func fetchOne(_ target: Target) async {
+        // The user may have opened it since the sweep started — its live poll
+        // covers the badge, so don't spend a web view on it.
+        if hasLiveWebView?(target.id) == true { return }
+        guard !isPaused, !Task.isCancelled else { return }
+        guard let url = URL(string: target.url) else { return }
+
+        let webView = makeTransientWebView(for: target)
+        webView.load(URLRequest(url: url))
+
+        let best = await boundedSettle(for: target, webView: webView)
+
+        // Stop the load unconditionally. On the normal path this reaps the web
+        // content process as the local reference drops; on the watchdog path it
+        // also tends to fail an outstanding evaluateJavaScript, unsticking the
+        // abandoned settle task so its own reference releases too.
+        webView.stopLoading()
+
+        // Raise-only: a transient view torn down after a bounded window can't tell
+        // "authenticated inbox, 0 unread" from "auth wall / didn't hydrate" — both
+        // read 0 — so a 0 is treated as no information and never clears a badge.
+        // Only the live poll (when the user opens the service) clears
+        // authoritatively. This can leave a badge stale-high for one refresh
+        // cycle, which beats hiding a real unread count behind a false 0.
+        guard best > 0 else { return }
+        guard let params = currentBadgeParams?(target.id) else { return }
+        badgeManager.updateBadge(
+            for: target.id,
+            count: best,
+            isMuted: params.isMuted,
+            showBadge: params.showBadge
+        )
+    }
+
+    /// Runs the settle loop but guarantees a return within a hard watchdog window,
+    /// even though `WKWebView.evaluateJavaScript` is not cancellation-aware and can
+    /// park indefinitely on a wedged web-content process. If the watchdog wins, the
+    /// settle task is abandoned (it holds its own web-view reference and is reaped
+    /// when the call finally returns or the process dies) and we return 0 — so one
+    /// hung page can't leak into blocking the whole sweep.
+    private func boundedSettle(for target: Target, webView: WKWebView) async -> Int {
+        let watchdog = Duration.seconds(settleTimeout + 2)
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Int, Never>) in
+            let once = BadgeFetchResumeGate()
+            let work = Task { @MainActor [weak self] in
+                let best = await self?.runSettleLoop(for: target, webView: webView) ?? 0
+                if once.take() { continuation.resume(returning: best) }
+            }
+            Task { @MainActor in
+                try? await Task.sleep(for: watchdog)
+                if once.take() {
+                    work.cancel()
+                    continuation.resume(returning: 0)
                 }
             }
         }
     }
 
-    private func pollService(id: UUID, tracked: TrackedService, requireTracked: Bool = true) async {
-        guard let url = URL(string: tracked.url) else { return }
+    /// Polls title + DOM badge once per tick until a positive count appears (then
+    /// a short grace to let a climbing count stabilize) or the timeout. Returns
+    /// the highest count seen. Bails early — handing back what it has — if paused,
+    /// cancelled, or the service gained a live web view.
+    private func runSettleLoop(for target: Target, webView: WKWebView) async -> Int {
+        var best = 0
+        let hardDeadline = Date().addingTimeInterval(settleTimeout)
+        var deadline = hardDeadline
 
-        let dataStore = dataStoreManager.dataStore(forIdentifier: tracked.dataStoreIdentifier)
-        let allCookies = await Self.allCookies(from: dataStore.httpCookieStore)
-        let matchingCookies = Self.cookies(allCookies, matching: url)
-        let cookieHeaders = HTTPCookie.requestHeaderFields(with: matchingCookies)
+        while true {
+            try? await Task.sleep(for: pollTick)
+            // A cancelled sleep returns immediately; the guard below stops the loop
+            // from spinning delay-free.
+            guard !isPaused, !Task.isCancelled else { return best }
+            // The user opened it — hand the badge to the live poll, don't write.
+            if hasLiveWebView?(target.id) == true { return 0 }
+            if Date() >= deadline { break }
 
-        do {
-            var request = URLRequest(url: url, timeoutInterval: 15)
-            // Some sites return lighter content for bots / non-browser UA,
-            // but we need the real title — use a standard user agent
-            request.setValue(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-                forHTTPHeaderField: "User-Agent"
-            )
-            for (name, value) in cookieHeaders {
-                request.setValue(value, forHTTPHeaderField: name)
+            // Authoritative source: the DOM selector when the service defines one
+            // (Gmail Inbox, LinkedIn messaging), otherwise the title. A service
+            // with a selector never reads the title, so a title count for another
+            // view can't inflate the badge.
+            if let js = target.badgeJS {
+                if let result = try? await webView.evaluateJavaScript(js) {
+                    if let intResult = result as? Int {
+                        best = max(best, intResult)
+                    } else if let stringResult = result as? String, let parsed = Int(stringResult) {
+                        best = max(best, parsed)
+                    }
+                }
+            } else if let title = (try? await webView.evaluateJavaScript("document.title")) as? String {
+                best = max(best, NotificationManager.extractBadgeCount(from: title))
             }
 
-            let (data, response) = try await session.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse,
-                  (200..<300).contains(httpResponse.statusCode)
-            else { return }
-
-            // Only parse the first 16KB — title is always near the top
-            let headChunk = data.prefix(16_384)
-            guard let html = String(data: headChunk, encoding: .utf8)
-                    ?? String(data: headChunk, encoding: .ascii)
-            else { return }
-
-            let count = Self.extractBadgeFromTitle(html: html)
-
-            // Only update when we detect a positive count.
-            // We can't reliably distinguish "0 unread" from "auth wall / redirect page"
-            // so we never reset to 0 from the poller — the live web view handles that.
-            //
-            // For the recurring poll, the service may have woken (and been
-            // untracked) during the seconds-long URLSession await; dropping the
-            // result then avoids overwriting the live web view's fresh badge
-            // with a stale background count. The one-shot `pollOnce` caller
-            // passes `requireTracked: false` and uses its own snapshot.
-            let current: TrackedService
-            if requireTracked {
-                guard let live = trackedServices[id] else { return }
-                current = live
-            } else {
-                current = tracked
-            }
-            if count > 0, current.showBadge {
-                badgeManager.updateBadge(for: id, count: count, isMuted: current.isMuted)
-            }
-        } catch {
-            AppLogger.badges.debug("Failed to poll \(tracked.url): \(error.localizedDescription)")
-        }
-    }
-
-    /// Bridges WKHTTPCookieStore's completion-handler API to async. Main-actor
-    /// isolated because getAllCookies (and its completion) is @MainActor; the
-    /// await suspends rather than blocking, so this doesn't stall the main actor.
-    @MainActor private static func allCookies(from store: WKHTTPCookieStore) async -> [HTTPCookie] {
-        await withCheckedContinuation { (cont: CheckedContinuation<[HTTPCookie], Never>) in
-            store.getAllCookies { cookies in
-                cont.resume(returning: cookies)
+            if best > 0 {
+                deadline = min(Date().addingTimeInterval(stabilizeGrace), hardDeadline)
             }
         }
+        return best
     }
 
-    /// Subset of `cookies` that URLSession would attach for a request to `url`.
-    /// Mirrors the standard cookie-attribute rules (domain match, path prefix,
-    /// secure flag, expiry).
-    nonisolated static func cookies(_ cookies: [HTTPCookie], matching url: URL) -> [HTTPCookie] {
-        guard let host = url.host?.lowercased() else { return [] }
-        let path = url.path.isEmpty ? "/" : url.path
-        let isSecure = (url.scheme?.lowercased() == "https")
-        let now = Date()
+    /// A deliberately minimal configuration: the service's authenticated data
+    /// store, the visibility override (so an offscreen page still writes its
+    /// count), and content blockers. It OMITS the `chorusNotification` handler on
+    /// purpose — a hidden view that spoofs visibility is exactly the state where a
+    /// page fires `window.Notification`, and forwarding those would post OS
+    /// notifications for services the user isn't looking at. It also omits Dark
+    /// Reader, custom CSS, and call detection, none of which a headless read needs.
+    private func makeTransientWebView(for target: Target) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = dataStoreManager.dataStore(forIdentifier: target.dataStoreIdentifier)
+        let prefs = WKWebpagePreferences()
+        prefs.allowsContentJavaScript = true
+        config.defaultWebpagePreferences = prefs
 
-        return cookies.filter { cookie in
-            let raw = cookie.domain.lowercased()
-            // A leading dot marks a domain cookie (matches the host and any
-            // subdomain); without it the cookie is host-only and must match the
-            // exact host, mirroring how URLSession itself would attach it.
-            let isDomainCookie = raw.hasPrefix(".")
-            let domain = isDomainCookie ? String(raw.dropFirst()) : raw
-            let domainMatches = isDomainCookie
-                ? (host == domain || host.hasSuffix("." + domain))
-                : (host == domain)
-            let pathMatches = Self.pathMatches(requestPath: path, cookiePath: cookie.path)
-            let secureOK = !cookie.isSecure || isSecure
-            let notExpired = (cookie.expiresDate ?? .distantFuture) > now
-            return domainMatches && pathMatches && secureOK && notExpired
+        let controller = WKUserContentController()
+        controller.addUserScript(WKUserScript(
+            source: UserScriptManager.makeVisibilityOverrideScript(),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        ))
+        for ruleList in enabledContentRuleLists?() ?? [] {
+            controller.add(ruleList)
         }
-    }
+        config.userContentController = controller
 
-    /// RFC 6265 §5.1.4 path-match: the request path equals the cookie path, or
-    /// the cookie path is a prefix that ends at a path boundary. A plain
-    /// `hasPrefix` is wrong — it would match request `/foobar` against cookie
-    /// `/foo`.
-    nonisolated static func pathMatches(requestPath: String, cookiePath: String) -> Bool {
-        if requestPath == cookiePath { return true }
-        guard requestPath.hasPrefix(cookiePath) else { return false }
-        // Prefix matches; require the boundary to be a "/" (either the cookie
-        // path already ends in "/", or the next char of the request path is "/").
-        return cookiePath.hasSuffix("/") || requestPath.dropFirst(cookiePath.count).first == "/"
-    }
-
-    /// Extracts badge count from HTML by finding the <title> tag and parsing "(N)".
-    nonisolated static func extractBadgeFromTitle(html: String) -> Int {
-        // Find <title>...</title> — most pages emit lowercase but be lenient.
-        let titlePattern = /<title[^>]*>([\s\S]*?)<\/title>/.ignoresCase()
-        guard let match = html.firstMatch(of: titlePattern) else { return 0 }
-        let title = String(match.1)
-        return NotificationManager.extractBadgeCount(from: title)
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.customUserAgent = target.userAgent ?? UserAgentProvider.safariDefault
+        return webView
     }
 }
 
-/// Refuses cross-host redirects on the badge-poll session. Because the poller
-/// injects a specific service's cookies for a specific host, following a
-/// redirect to a different host would forward those cookies off-origin — the one
-/// leak the whole cookie-isolation setup exists to prevent. Same-host redirects
-/// are followed; a refused cross-host redirect just yields no title, which the
-/// "never reset to 0" rule handles gracefully. Stateless, hence Sendable.
-private final class SameHostRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-    func urlSession(
-        _ session: URLSession,
-        task: URLSessionTask,
-        willPerformHTTPRedirection response: HTTPURLResponse,
-        newRequest request: URLRequest,
-        completionHandler: @escaping (URLRequest?) -> Void
-    ) {
-        let originalHost = task.originalRequest?.url?.host?.lowercased()
-        let newHost = request.url?.host?.lowercased()
-        if let originalHost, let newHost, originalHost == newHost {
-            completionHandler(request)   // same host — safe to follow
-        } else {
-            completionHandler(nil)       // cross-host — stop, don't forward cookies
-        }
+/// Ensures a continuation is resumed exactly once when two racers (the settle
+/// task and the watchdog) can each try. Main-actor isolated, so the flag check
+/// and set never interleave.
+@MainActor
+private final class BadgeFetchResumeGate {
+    private var taken = false
+    func take() -> Bool {
+        if taken { return false }
+        taken = true
+        return true
     }
 }
