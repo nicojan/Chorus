@@ -148,6 +148,36 @@ struct GeneralSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Performance") {
+                Toggle("Hibernate idle background services", isOn: Binding(
+                    get: { prefs.autoHibernateIdleEnabledEffective },
+                    set: { value in
+                        appState.setAutoHibernateIdleEnabled(value)
+                    }
+                ))
+
+                if prefs.autoHibernateIdleEnabledEffective {
+                    Picker("After", selection: Binding(
+                        get: { prefs.autoHibernateIdleMinutesEffective },
+                        set: { value in
+                            ensurePrefs().autoHibernateIdleMinutes = value
+                            appState.autoHibernateIdleMinutes = value
+                            save("auto-hibernate interval")
+                        }
+                    )) {
+                        Text("5 minutes").tag(5)
+                        Text("10 minutes").tag(10)
+                        Text("15 minutes").tag(15)
+                        Text("30 minutes").tag(30)
+                        Text("1 hour").tag(60)
+                    }
+                }
+
+                Text("Frees the memory and CPU of a service you haven't opened in a while, releasing its process until you return. Chat apps (Slack, Teams, WhatsApp, and the like) stay live so their notifications still arrive the instant a message lands; a hibernated service still updates its unread badge about once a minute. Mark any service \"Keep Loaded\" to exempt it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Startup") {
                 Toggle("Open at login", isOn: Binding(
                     get: { presenceManager.isLaunchAtLoginEnabled },

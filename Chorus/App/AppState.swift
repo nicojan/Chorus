@@ -177,6 +177,7 @@ final class AppState {
         didSet { if isLaunchComplete { refreshEffectiveDoNotDisturb() } }
     }
     @ObservationIgnored nonisolated(unsafe) private var quietHoursTask: Task<Void, Never>?
+    @ObservationIgnored nonisolated(unsafe) private var idleHibernationTask: Task<Void, Never>?
 
     /// App lock (Touch ID / password), loaded from AppPreferences. `isLocked`
     /// drives an opaque cover over the window content in ContentView.
@@ -197,6 +198,12 @@ final class AppState {
     /// Global "dark-theme services without one" toggle, mirrored from
     /// AppPreferences at launch. Written via `setAutoDarkModeEnabled(_:)`.
     var autoDarkModeEnabled = false
+
+    /// Auto-hibernate idle background services. Loaded from AppPreferences at
+    /// launch; written via `setAutoHibernateIdleEnabled(_:)`.
+    var autoHibernateIdleEnabled = false
+    /// Idle minutes before auto-hibernation fires. Mirrored from AppPreferences.
+    var autoHibernateIdleMinutes = 10
 
     /// Default camera/microphone permission for services that haven't pinned
     /// their own, mirrored from AppPreferences at launch. Written via
@@ -1019,6 +1026,66 @@ final class AppState {
         }
     }
 
+    /// Catalog categories whose services must never auto-hibernate, because a
+    /// hibernated web app can't fire a real-time notification — only refresh its
+    /// badge on the 60s poll. Chat apps are the ones you need to hear from the
+    /// instant a message lands, so they stay fully live. Email tolerates the
+    /// badge delay, so it isn't exempted here; a user who wants instant mail can
+    /// mark that service "Keep Loaded".
+    private static let notificationCriticalCategories: Set<String> = ["Messaging"]
+
+    /// Whether a service must stay live for real-time notifications, by its
+    /// catalog category. Custom (non-catalog) services aren't covered — use
+    /// "Keep Loaded" for those.
+    private func isNotificationCritical(_ serviceID: UUID) -> Bool {
+        guard let service = fetchService(id: serviceID),
+              let catalogID = service.catalogEntryID,
+              let entry = ServiceCatalog.shared.entry(for: catalogID)
+        else { return false }
+        return Self.notificationCriticalCategories.contains(entry.category)
+    }
+
+    /// Runs a periodic idle sweep while the feature is on, fully hibernating
+    /// background services idle past the threshold — except chat apps (kept live
+    /// for instant alerts), "Keep Loaded" services, and any service in a call.
+    private func startIdleHibernationTimer() {
+        idleHibernationTask?.cancel()
+        guard autoHibernateIdleEnabled else { return }
+        idleHibernationTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                await self?.hibernateIdleServices()
+            }
+        }
+    }
+
+    private func hibernateIdleServices() async {
+        guard autoHibernateIdleEnabled, !isLocked else { return }
+        let threshold = TimeInterval(autoHibernateIdleMinutes * 60)
+        let candidates = webViewPool.idleServiceIDs(idleFor: threshold, now: Date())
+        for id in candidates {
+            guard !isNotificationCritical(id) else { continue }
+            // The pool does the call check and re-validates the guards across
+            // that await, so a service the user switches to mid-sweep is never
+            // hibernated out from under them.
+            await webViewPool.hibernateIfStillIdle(id)
+        }
+    }
+
+    /// Turns auto-hibernation on/off, persists it, and starts or stops the sweep.
+    func setAutoHibernateIdleEnabled(_ enabled: Bool) {
+        autoHibernateIdleEnabled = enabled
+        let prefs = ensurePreferences()
+        prefs.autoHibernateIdleEnabled = enabled
+        do {
+            try modelContainer.mainContext.save()
+        } catch {
+            AppLogger.dataStore.error("Failed to save auto-hibernate toggle: \(error.localizedDescription)")
+            modelContainer.mainContext.rollback()
+        }
+        startIdleHibernationTimer()
+    }
+
     // MARK: - App lock
 
     /// Shows the lock screen. No-op unless the lock is enabled, so a stray
@@ -1605,6 +1672,8 @@ final class AppState {
         autoDarkModeEnabled = prefs?.autoDarkModeEnabledEffective ?? false
         let googleFallback = prefs?.googleFaviconFallbackEnabledEffective ?? false
         Task { await FaviconFetcher.shared.setGoogleFallbackEnabled(googleFallback) }
+        autoHibernateIdleEnabled = prefs?.autoHibernateIdleEnabledEffective ?? false
+        autoHibernateIdleMinutes = prefs?.autoHibernateIdleMinutesEffective ?? 10
         defaultCameraPolicy = prefs?.defaultCameraPolicyRaw.flatMap(MediaPermissionPolicy.init(rawValue:)) ?? .ask
         defaultMicrophonePolicy = prefs?.defaultMicrophonePolicyRaw.flatMap(MediaPermissionPolicy.init(rawValue:)) ?? .ask
         // Start locked at launch when opted in; ContentView's lock overlay
@@ -1624,6 +1693,7 @@ final class AppState {
             // Apply any active quiet-hours schedule now, then keep it current.
             self.refreshEffectiveDoNotDisturb()
             self.startQuietHoursTimer()
+            self.startIdleHibernationTimer()
             self.setupLockObservers()
             self.startDarkMode()
         }

@@ -702,11 +702,63 @@ final class WebViewPool {
         darkThemeCache.remove(for: id)
     }
 
+    /// Live services idle for at least `threshold`, eligible for auto-hibernation:
+    /// not the active service, not "Keep Loaded", not pinned, and actually loaded.
+    /// The caller applies the category and active-call exemptions — this only does
+    /// the time-and-flag selection the pool can answer on its own.
+    func idleServiceIDs(idleFor threshold: TimeInterval, now: Date) -> [UUID] {
+        lastAccessTimes.compactMap { id, accessed in
+            guard id != activeServiceID,
+                  !neverHibernateIDs.contains(id),
+                  !pinnedIDs.contains(id),
+                  webViews[id] != nil,
+                  now.timeIntervalSince(accessed) >= threshold
+            else { return nil }
+            return id
+        }
+    }
+
+    /// Fully hibernates `id` iff it is still eligible after the async call check.
+    ///
+    /// `hasActiveCall` is a suspension point (up to its own 2s timeout), and the
+    /// user can switch to this service — or pin it, mark it never-hibernate, or
+    /// close it — while it's suspended. So the guards are re-checked AFTER the
+    /// await, with no further suspension before `hibernate`, so a service the
+    /// user is now viewing is never torn down under them. `evictionInFlight`
+    /// keeps two passes (the cap sweep and the idle sweep) from racing the same
+    /// id. Shared by both callers so the re-validation lives in one place.
+    /// Returns true iff it hibernated.
+    @discardableResult
+    func hibernateIfStillIdle(_ id: UUID) async -> Bool {
+        guard webViews[id] != nil,
+              id != activeServiceID,
+              !pinnedIDs.contains(id),
+              !neverHibernateIDs.contains(id),
+              !evictionInFlight.contains(id)
+        else { return false }
+
+        evictionInFlight.insert(id)
+        let hasCall = await hasActiveCall(for: id)
+        evictionInFlight.remove(id)
+
+        // Re-validate every guard across the suspension.
+        guard webViews[id] != nil,
+              id != activeServiceID,
+              !pinnedIDs.contains(id),
+              !neverHibernateIDs.contains(id)
+        else { return false }
+
+        if hasCall {
+            AppLogger.webView.info("Skipping hibernation of \(id) — active call detected")
+            return false
+        }
+
+        hibernate(id)
+        return true
+    }
+
     /// When exceeding maxLoaded web views, fully hibernate the least recently used ones.
-    /// Skips services that have an active WebRTC call.
-    /// Uses `evictionInFlight` to prevent race conditions between the async JS check
-    /// and the synchronous hibernation — a service won't be hibernated while its call
-    /// state is being queried by another eviction pass.
+    /// Skips services that have an active WebRTC call, via `hibernateIfStillIdle`.
     private func evictIfNeeded() async {
         guard webViews.count > maxLoaded else { return }
 
@@ -719,34 +771,11 @@ final class WebViewPool {
 
         for (id, _) in sorted {
             // Re-check the live count each pass, not a count captured up front:
-            // a concurrent evictIfNeeded (they interleave at the `await` below)
-            // may have already hibernated views, and a stale target would evict
-            // past the cap, dropping the pool below maxLoaded.
+            // a concurrent pass (they interleave at the await inside
+            // hibernateIfStillIdle) may have already hibernated views, and a
+            // stale target would evict past the cap, dropping below maxLoaded.
             guard webViews.count > maxLoaded else { break }
-            guard webViews[id] != nil else { continue }
-
-            evictionInFlight.insert(id)
-            let hasCall = await hasActiveCall(for: id)
-            evictionInFlight.remove(id)
-
-            // Re-check the web view still exists (may have been removed during await)
-            guard webViews[id] != nil else { continue }
-
-            // The await above is a suspension point: the user may have switched
-            // to this service (making it active), or it may have been pinned /
-            // marked never-hibernate in the meantime. Re-validate the eviction
-            // guards so we never hibernate the service the user is now viewing.
-            guard id != activeServiceID,
-                  !pinnedIDs.contains(id),
-                  !neverHibernateIDs.contains(id)
-            else { continue }
-
-            if hasCall {
-                AppLogger.webView.info("Skipping eviction of \(id) — active call detected")
-                continue
-            }
-
-            hibernate(id)
+            await hibernateIfStillIdle(id)
         }
     }
 }

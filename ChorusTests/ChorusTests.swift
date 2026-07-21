@@ -750,6 +750,36 @@ final class ChorusTests: XCTestCase {
             .googleFaviconFallbackEnabledEffective)
     }
 
+    func testAutoHibernateDefaultsToOffAndTenMinutes() {
+        // Off on a legacy row — an upgrade must not start hibernating services
+        // without the user opting in.
+        XCTAssertFalse(AppPreferences().autoHibernateIdleEnabledEffective)
+        XCTAssertTrue(AppPreferences(autoHibernateIdleEnabled: true)
+            .autoHibernateIdleEnabledEffective)
+        XCTAssertEqual(AppPreferences().autoHibernateIdleMinutesEffective, 10)
+    }
+
+    func testAutoHibernateMinutesClampToSaneRange() {
+        // A stored value outside 1...120 is clamped rather than trusted, so a
+        // corrupt or hostile row can't set a zero/negative sweep interval.
+        XCTAssertEqual(AppPreferences(autoHibernateIdleMinutes: 0).autoHibernateIdleMinutesEffective, 1)
+        XCTAssertEqual(AppPreferences(autoHibernateIdleMinutes: -5).autoHibernateIdleMinutesEffective, 1)
+        XCTAssertEqual(AppPreferences(autoHibernateIdleMinutes: 5).autoHibernateIdleMinutesEffective, 5)
+        XCTAssertEqual(AppPreferences(autoHibernateIdleMinutes: 9999).autoHibernateIdleMinutesEffective, 120)
+    }
+
+    func testMessagingServicesAreNotificationCriticalInCatalog() {
+        // The auto-hibernation exemption keys off the catalog category, so guard
+        // that the messaging apps the user relies on carry it and a heavy
+        // non-chat service does not.
+        let catalog = ServiceCatalog.shared
+        for id in ["slack", "teams", "whatsapp", "discord"] {
+            XCTAssertEqual(catalog.entry(for: id)?.category, "Messaging",
+                           "\(id) must stay in the Messaging category")
+        }
+        XCTAssertNotEqual(catalog.entry(for: "spotify")?.category, "Messaging")
+    }
+
     // MARK: - Scheduled DND (quiet hours)
 
     @MainActor
