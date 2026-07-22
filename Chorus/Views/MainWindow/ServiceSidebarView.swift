@@ -377,6 +377,11 @@ struct ServiceSidebarView: View {
             .contextMenu { serviceContextMenu(for: link) }
             .focusable()
             .focused($focusedServiceID, equals: link.service.id)
+            // Suppress the rectangular focus ring. Arrow-key navigation moves
+            // selection and focus together (see handleServiceKey), so the app's
+            // own pill + tint already shows where focus is — the ring only
+            // duplicated it, and boxed the cell on every click.
+            .focusEffectDisabled()
             .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow]) { press in
                 handleServiceKey(press, for: link)
             }
