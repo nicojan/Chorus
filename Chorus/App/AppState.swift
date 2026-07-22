@@ -678,14 +678,14 @@ final class AppState {
     /// crosses spaces when the current space has no match.
     private func handleExternalLink(_ url: URL) {
         guard let host = url.host else {
-            NSWorkspace.shared.open(url)
+            WebViewCoordinator.openExternally(url)
             return
         }
 
         if let match = findServiceMatching(host: host, preferringSpace: selectedSpaceID) {
             switchToService(match, navigateTo: url)
         } else {
-            NSWorkspace.shared.open(url)
+            WebViewCoordinator.openExternally(url)
         }
     }
 

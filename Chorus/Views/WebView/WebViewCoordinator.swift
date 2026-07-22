@@ -51,9 +51,34 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
     /// URL schemes the OS handles natively. We forward to NSWorkspace rather
     /// than letting WebKit fail with an unsupported-scheme error.
-    private static let nonWebSchemes: Set<String> = [
+    nonisolated private static let nonWebSchemes: Set<String> = [
         "mailto", "tel", "sms", "facetime", "facetime-audio", "imessage", "maps"
     ]
+
+    /// Whether a URL may be handed to `NSWorkspace.open`. Only http/https and the
+    /// curated `nonWebSchemes` qualify.
+    ///
+    /// Without this gate a page could offer a link on any scheme the system has a
+    /// handler for and a single click would fire it: `smb://`/`afp://` mounts a
+    /// remote share (leaking the user's NTLM credentials to the attacker's
+    /// server), `file://` opens local content, and an arbitrary custom scheme
+    /// reaches whatever app claims it. The click requirement (`.linkActivated`)
+    /// bounds this to social engineering rather than a drive-by, but the handoff
+    /// itself should never have been unrestricted.
+    nonisolated static func isSafeForExternalOpen(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else { return false }
+        return scheme == "http" || scheme == "https" || nonWebSchemes.contains(scheme)
+    }
+
+    /// Hands `url` to the system handler, but only on a vetted scheme. Anything
+    /// else is dropped with a log line rather than silently ignored.
+    nonisolated static func openExternally(_ url: URL) {
+        guard isSafeForExternalOpen(url) else {
+            AppLogger.webView.info("Blocked external open on disallowed scheme: \(url.scheme ?? "none")")
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
 
     deinit {
         // A backstop for the popup lifecycle, which is normally torn down by
@@ -91,7 +116,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         //    instead of letting WebKit fail with an unsupported-URL error.
         if let scheme = url.scheme?.lowercased(),
            Self.nonWebSchemes.contains(scheme) {
-            NSWorkspace.shared.open(url)
+            Self.openExternally(url)
             return .cancel
         }
 
@@ -110,7 +135,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         //    modifierFlags on the navigation action.
         if navigationAction.navigationType == .linkActivated,
            navigationAction.modifierFlags.contains(.command) {
-            NSWorkspace.shared.open(url)
+            Self.openExternally(url)
             return .cancel
         }
 
@@ -142,7 +167,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             if let handler = externalLinkHandler {
                 handler(url)
             } else {
-                NSWorkspace.shared.open(url)
+                Self.openExternally(url)
             }
             return .cancel
         }
