@@ -44,6 +44,7 @@
 		9F0C82A9D1AFDF927EC1A59C /* DarkReaderSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6935142E75345640B2C4D7F0 /* DarkReaderSupport.swift */; };
 		A22B72681582D92F92938917 /* WebToolbarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 538A1641C210F10E3CD43E14 /* WebToolbarView.swift */; };
 		A33A7902903C731E069B6CD5 /* ChorusApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E143D686890F381C5B42761F /* ChorusApp.swift */; };
+		A98FA6B9454EC0BCEDEED093 /* InAppBrowserWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 690DB6DBF74EAD8B040C1460 /* InAppBrowserWindow.swift */; };
 		AD626D3375822E9E5BC358BE /* FaviconFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ACFB877AD2138035F9E3EAE /* FaviconFetcher.swift */; };
 		B2138F3B8FD4E8960E0E04A6 /* ServiceTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CC71C78C036E2C4DF3EAF2E /* ServiceTabView.swift */; };
 		BAA5421430BDF6F9B918B7B5 /* WebViewPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608B27F538D778C6FC4B1697 /* WebViewPool.swift */; };
@@ -101,6 +102,7 @@
 		54BC620E896A6DD5CB16AF6D /* CookieConsentManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookieConsentManager.swift; sourceTree = "<group>"; };
 		5A1D24379DD182D4A7B6DD11 /* AppPresenceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPresenceManager.swift; sourceTree = "<group>"; };
 		608B27F538D778C6FC4B1697 /* WebViewPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewPool.swift; sourceTree = "<group>"; };
+		690DB6DBF74EAD8B040C1460 /* InAppBrowserWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InAppBrowserWindow.swift; sourceTree = "<group>"; };
 		6935142E75345640B2C4D7F0 /* DarkReaderSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DarkReaderSupport.swift; sourceTree = "<group>"; };
 		706D85D3C09C182826CD4EBA /* BadgeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeManager.swift; sourceTree = "<group>"; };
 		728A9599471A2AB033991157 /* ContentBlockerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentBlockerManager.swift; sourceTree = "<group>"; };
@@ -154,6 +156,7 @@
 		1E8D1445F53AC2640039824D /* WebView */ = {
 			isa = PBXGroup;
 			children = (
+				690DB6DBF74EAD8B040C1460 /* InAppBrowserWindow.swift */,
 				09D9F34755F65BE5A3C76C88 /* WebViewContainer.swift */,
 				438D78C9503E732B7792FA10 /* WebViewCoordinator.swift */,
 				608B27F538D778C6FC4B1697 /* WebViewPool.swift */,
@@ -472,6 +475,7 @@
 				AD626D3375822E9E5BC358BE /* FaviconFetcher.swift in Sources */,
 				3DEA98A98656EE981A29A71D /* FindInPageBar.swift in Sources */,
 				06696BB66C7BAA761E8291C9 /* HibernatedBadgePoller.swift in Sources */,
+				A98FA6B9454EC0BCEDEED093 /* InAppBrowserWindow.swift in Sources */,
 				091825995DF2FD9C4A7BC86F /* KeyboardShortcutManager.swift in Sources */,
 				701984CFE765170D8EAE50EE /* MenuBarView.swift in Sources */,
 				8E4B7701A7A18F51C6109E10 /* NetworkMonitor.swift in Sources */,

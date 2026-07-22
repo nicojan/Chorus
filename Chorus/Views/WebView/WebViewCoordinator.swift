@@ -31,9 +31,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
     /// Routes external/cross-domain navigations through AppState so it can
     /// match the URL against an existing Chorus service before falling back
-    /// to the system browser. When nil the coordinator falls back to
-    /// `NSWorkspace.open` directly.
-    var externalLinkHandler: ((URL) -> Void)?
+    /// to the system browser. The second argument is the source service's id
+    /// (`instanceID`), so AppState can honour that service's "open links in
+    /// Chorus" choice. When nil the coordinator falls back to `NSWorkspace.open`
+    /// directly.
+    var externalLinkHandler: ((URL, UUID?) -> Void)?
 
     /// The service this coordinator drives, set by `WebViewPool` so navigation
     /// callbacks can be attributed to a specific service.
@@ -68,6 +70,17 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     nonisolated static func isSafeForExternalOpen(_ url: URL) -> Bool {
         guard let scheme = url.scheme?.lowercased() else { return false }
         return scheme == "http" || scheme == "https" || nonWebSchemes.contains(scheme)
+    }
+
+    /// Whether a link that leaves a service (and that no other Chorus service
+    /// owns) should open in an in-app Chorus window rather than the system
+    /// browser. True only when the source service opted in AND the target is
+    /// http/https. Other schemes stay on the `openExternally` path so the vetted-
+    /// scheme gate above still decides them (a `mailto:` reaches Mail, an
+    /// `smb://` is dropped) — an in-app web view can't load them anyway.
+    nonisolated static func shouldOpenInAppBrowser(sourceOptedIn: Bool, url: URL) -> Bool {
+        guard sourceOptedIn, let scheme = url.scheme?.lowercased() else { return false }
+        return scheme == "http" || scheme == "https"
     }
 
     /// Hands `url` to the system handler, but only on a vetted scheme. Anything
@@ -165,7 +178,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
            !Self.belongsToService(targetHost, serviceHost: currentHost),
            !Self.isAuthHost(targetHost) {
             if let handler = externalLinkHandler {
-                handler(url)
+                handler(url, instanceID)
             } else {
                 Self.openExternally(url)
             }
