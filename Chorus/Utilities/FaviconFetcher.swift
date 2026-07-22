@@ -3,6 +3,18 @@ import Foundation
 actor FaviconFetcher {
     static let shared = FaviconFetcher()
 
+    /// Whether the Google favicon fallback may run. Off unless the user opts in,
+    /// because that request tells Google which services the user runs — and the
+    /// host can be a private one (a self-hosted Mattermost, an internal mail
+    /// server) typed into "Add service". Every other source in this file is
+    /// fetched from the service's own host, so this is the one third party in
+    /// the path. `AppState` pushes the preference in on load and on change.
+    private var googleFallbackEnabled = false
+
+    func setGoogleFallbackEnabled(_ enabled: Bool) {
+        googleFallbackEnabled = enabled
+    }
+
     func fetchFavicon(for urlString: String) async -> Data? {
         guard let baseURL = URL(string: urlString),
               let host = baseURL.host,
@@ -31,11 +43,13 @@ actor FaviconFetcher {
             return data
         }
 
-        // Google favicon API fallback
-        let googleAPI = "https://www.google.com/s2/favicons?domain=\(host)&sz=128"
-        if let data = await fetchURL(googleAPI), isValidImage(data) {
-            AppLogger.favicon.debug("Favicon from Google API for \(host)")
-            return data
+        // Google favicon API fallback — opt-in only; see googleFallbackEnabled.
+        if googleFallbackEnabled {
+            let googleAPI = "https://www.google.com/s2/favicons?domain=\(host)&sz=128"
+            if let data = await fetchURL(googleAPI), isValidImage(data) {
+                AppLogger.favicon.debug("Favicon from Google API for \(host)")
+                return data
+            }
         }
 
         AppLogger.favicon.debug("No favicon found for \(host)")

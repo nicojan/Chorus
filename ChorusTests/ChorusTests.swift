@@ -739,6 +739,17 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(AppPreferences(defaultZoom: 0.8).defaultZoomEffective, 0.8)
     }
 
+    func testGoogleFaviconFallbackIsOffUnlessOptedIn() {
+        // A legacy row (nil) must resolve to off: the fallback discloses the
+        // service hostname to a third party, so an upgrade shouldn't start
+        // doing that without the user asking.
+        XCTAssertFalse(AppPreferences().googleFaviconFallbackEnabledEffective)
+        XCTAssertTrue(AppPreferences(googleFaviconFallbackEnabled: true)
+            .googleFaviconFallbackEnabledEffective)
+        XCTAssertFalse(AppPreferences(googleFaviconFallbackEnabled: false)
+            .googleFaviconFallbackEnabledEffective)
+    }
+
     // MARK: - Scheduled DND (quiet hours)
 
     @MainActor

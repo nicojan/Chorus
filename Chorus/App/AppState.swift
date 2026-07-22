@@ -1603,6 +1603,8 @@ final class AppState {
         contentBlockingEnabled = prefs?.contentBlockingEnabledEffective ?? true
         annoyanceBlockingEnabled = prefs?.annoyanceBlockingEnabledEffective ?? false
         autoDarkModeEnabled = prefs?.autoDarkModeEnabledEffective ?? false
+        let googleFallback = prefs?.googleFaviconFallbackEnabledEffective ?? false
+        Task { await FaviconFetcher.shared.setGoogleFallbackEnabled(googleFallback) }
         defaultCameraPolicy = prefs?.defaultCameraPolicyRaw.flatMap(MediaPermissionPolicy.init(rawValue:)) ?? .ask
         defaultMicrophonePolicy = prefs?.defaultMicrophonePolicyRaw.flatMap(MediaPermissionPolicy.init(rawValue:)) ?? .ask
         // Start locked at launch when opted in; ContentView's lock overlay
@@ -1697,6 +1699,20 @@ final class AppState {
             modelContainer.mainContext.rollback()
         }
         webViewPool.reattachContentBlocker()
+    }
+
+    /// Opts in or out of the Google favicon fallback and persists the choice.
+    /// Pushes the flag into the fetcher actor so later fetches pick it up.
+    func setGoogleFaviconFallbackEnabled(_ enabled: Bool) {
+        let prefs = ensurePreferences()
+        prefs.googleFaviconFallbackEnabled = enabled
+        do {
+            try modelContainer.mainContext.save()
+        } catch {
+            AppLogger.dataStore.error("Failed to save favicon fallback toggle: \(error.localizedDescription)")
+            modelContainer.mainContext.rollback()
+        }
+        Task { await FaviconFetcher.shared.setGoogleFallbackEnabled(enabled) }
     }
 
     /// Flips annoyance hiding, persists it, and re-attaches lists to live views.

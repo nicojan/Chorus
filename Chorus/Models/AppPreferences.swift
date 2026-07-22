@@ -102,6 +102,13 @@ final class AppPreferences {
     var defaultCameraPolicyRaw: String?
     var defaultMicrophonePolicyRaw: String?
 
+    /// Allow the Google favicon service as a last-resort icon source. Optional
+    /// for SwiftData lightweight migration; nil is treated as off — it's opt-in
+    /// because the request discloses the service's hostname to a third party,
+    /// and a custom service's host can be private. Off just means a service
+    /// whose own host serves no usable icon falls back to its monogram.
+    var googleFaviconFallbackEnabled: Bool?
+
     init(
         id: UUID = UUID(),
         appPresenceMode: AppPresenceMode = .dock,
@@ -124,7 +131,8 @@ final class AppPreferences {
         autoDarkModeEnabled: Bool? = nil,
         annoyanceBlockingEnabled: Bool? = nil,
         defaultCameraPolicyRaw: String? = nil,
-        defaultMicrophonePolicyRaw: String? = nil
+        defaultMicrophonePolicyRaw: String? = nil,
+        googleFaviconFallbackEnabled: Bool? = nil
     ) {
         self.id = id
         self.appPresenceMode = appPresenceMode
@@ -148,6 +156,7 @@ final class AppPreferences {
         self.annoyanceBlockingEnabled = annoyanceBlockingEnabled
         self.defaultCameraPolicyRaw = defaultCameraPolicyRaw
         self.defaultMicrophonePolicyRaw = defaultMicrophonePolicyRaw
+        self.googleFaviconFallbackEnabled = googleFaviconFallbackEnabled
     }
 
     /// Materialises the storage-optional default zoom (nil → 1.0).
@@ -172,4 +181,7 @@ final class AppPreferences {
 
     /// Materialises the storage-optional annoyance-blocking flag (nil → false).
     var annoyanceBlockingEnabledEffective: Bool { annoyanceBlockingEnabled ?? false }
+
+    /// Materialises the storage-optional Google favicon fallback flag (nil → false).
+    var googleFaviconFallbackEnabledEffective: Bool { googleFaviconFallbackEnabled ?? false }
 }
