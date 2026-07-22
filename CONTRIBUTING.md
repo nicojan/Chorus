@@ -21,6 +21,10 @@ You can also open `Chorus.xcodeproj` in Xcode and run the Chorus scheme.
   `ChorusTests/` cover pure logic such as badge parsing, input validation, and
   reordering.
 - Match the surrounding style: small files, immutable data, clear names.
+- A new `AppPreferences` field should be `Optional` with a nil-means-default
+  accessor. Chorus ships to people who already have saved data, and that pattern
+  lets SwiftData migrate an old store in place instead of wiping it. Copy the
+  shape of a field that is already there.
 - The Xcode project comes from `project.yml`. Change a version or a build
   setting in both `project.yml` and the `.pbxproj`, or the next
   `xcodegen generate` will undo it.
@@ -29,6 +33,9 @@ You can also open `Chorus.xcodeproj` in Xcode and run the Chorus scheme.
 ## Pull requests
 
 - Branch off `main` and keep each pull request to a single change.
+- If two pull requests touch the same type or view, they can each look clean
+  against `main` and still collide once the first one lands. Say so in the
+  description when your change edits `AppPreferences` or a settings view.
 - Write commit messages as `type: summary`, for example `fix: ...` or
   `feat: ...`, with a short body that says why.
 - Say what you changed and how you checked it.
