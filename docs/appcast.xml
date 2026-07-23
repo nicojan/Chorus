@@ -3,6 +3,20 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.11</title>
+            <pubDate>Wed, 22 Jul 2026 23:15:26 -0700</pubDate>
+            <sparkle:version>20</sparkle:version>
+            <sparkle:shortVersionString>1.5.11</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Fixed</h3>
+<ul>
+<li>A service's unread badge could be covered by the tab's selection outline or crowded against the top of the window in the top-bar and hybrid layouts. The badge now sits above the outline and clear of the window edge.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.11/Chorus-1.5.11.dmg" length="9094918" type="application/octet-stream" sparkle:edSignature="ong2OGIsGGa0vu6yuQ26fOcEGmAL9OqSb45Op1iIijyHodaMXHyZ1d+nCIOuMQi+YQp1Fj7BRD9gtX9RLro+Dg=="/>
+        </item>
+        <item>
             <title>1.5.10</title>
             <pubDate>Wed, 22 Jul 2026 22:15:16 -0700</pubDate>
             <sparkle:version>19</sparkle:version>
