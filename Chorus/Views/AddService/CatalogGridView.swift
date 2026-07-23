@@ -92,6 +92,14 @@ struct CatalogGridView: View {
         appState.selectedSpaceID = spaceID
         appState.selectedServiceID = service.id
 
+        // Offer "always appear active" for presence services (Teams) so
+        // backgrounding Chorus doesn't flip the user to away. Set before the
+        // sheet dismisses; ContentView hosts the alert and shows it after.
+        appState.offerPresenceActivationIfNeeded(
+            serviceID: service.id,
+            catalogEntryID: entry.id
+        )
+
         // Fetch favicon in background — capture ID before the await
         let serviceID = service.id
         let serviceURL = entry.url

@@ -16,6 +16,7 @@ struct EditServiceSheet: View {
     @State private var keepLoaded: Bool = false
     @State private var mobileView: Bool = false
     @State private var openLinksInApp: Bool = false
+    @State private var stayActive: Bool = false
     @State private var darkMode: ServiceDarkMode = .off
     @State private var notify: Bool = true
     @State private var osNotify: Bool = true
@@ -78,6 +79,9 @@ struct EditServiceSheet: View {
                 Toggle("Open outside links in Chorus", isOn: $openLinksInApp)
                     .help("When a link in this service points somewhere no Chorus service covers, open it in a Chorus window instead of your browser. Links that another service does cover still switch to that service.")
 
+                Toggle("Always appear active", isOn: $stayActive)
+                    .help("Keeps this service from showing you as away or idle while Chorus is in the background, so your status stays active even when you work in other apps. Useful for Microsoft Teams. May hold back some of this service's notifications, since it now thinks you're looking at it.")
+
                 Picker("Dark theme for this service", selection: $darkMode) {
                     Text("On").tag(ServiceDarkMode.on)
                     Text("Off").tag(ServiceDarkMode.off)
@@ -137,6 +141,7 @@ struct EditServiceSheet: View {
             mobileView = service.userAgent == UserAgentProvider.mobileSafari
             initialUserAgent = service.userAgent
             openLinksInApp = service.opensExternalLinksInAppEffective
+            stayActive = service.staysActiveInBackgroundEffective
             darkMode = service.darkMode
             notify = !service.isMuted
             osNotify = service.notifiesOSEffective
@@ -284,6 +289,10 @@ struct EditServiceSheet: View {
             let muteChanged = service.isMuted != muted
             let badgeChanged = service.showBadge != badge
 
+            // The focus override is baked at web-view build time, so a change
+            // needs a rebuild — tracked like the CSS change.
+            let presenceChanged = service.staysActiveInBackgroundEffective != stayActive
+
             service.label = validLabel
             service.url = validURL
             service.neverHibernate = keepLoaded
@@ -298,6 +307,7 @@ struct EditServiceSheet: View {
             service.showBadge = badge
             // Read fresh at each link click, so no rebuild is needed.
             service.openExternalLinksInApp = openLinksInApp
+            service.stayActiveInBackground = stayActive
             // Pin a camera/mic policy only if the user actually changed it, so
             // opening the sheet to edit something else doesn't stop the service
             // from inheriting the global default. No rebuild needed — the value is
@@ -310,7 +320,8 @@ struct EditServiceSheet: View {
                 urlChanged: urlChanged,
                 cssChanged: cssChanged,
                 userAgentChanged: userAgentChanged,
-                darkModeChanged: darkModeChanged
+                darkModeChanged: darkModeChanged,
+                presenceChanged: presenceChanged
             )
             if muteChanged || badgeChanged {
                 appState.refreshBadgeState(for: service.id)

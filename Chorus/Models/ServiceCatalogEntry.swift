@@ -24,4 +24,10 @@ struct ServiceCatalogEntry: Codable, Identifiable, Hashable {
     /// main frame only — third-party subframes stay untrusted. Optional so entries
     /// without the key still decode (nil → not first-party).
     let firstParty: Bool?
+    /// True for services that broadcast a presence/availability status and flip it
+    /// to "away" when their window loses focus (Microsoft Teams). Adding one of
+    /// these offers to turn on "always appear active" so backgrounding Chorus
+    /// doesn't make the user look away. Optional so entries without the key still
+    /// decode (nil → not presence-sensitive).
+    let presenceSensitive: Bool?
 }

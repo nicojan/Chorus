@@ -788,6 +788,58 @@ final class ChorusTests: XCTestCase {
         XCTAssertNil(service.customCSS)
     }
 
+    // MARK: - Stay-active / presence
+
+    func testStayActiveDefaultsOff() {
+        let service = ServiceInstance(label: "X", url: "https://x.test")
+        // Opt-in only: a fresh service never fakes focus.
+        XCTAssertFalse(service.staysActiveInBackgroundEffective)
+        XCTAssertNil(service.stayActiveInBackground)
+    }
+
+    func testStayActiveEffectiveMaterialisesStoredValue() {
+        let on = ServiceInstance(label: "X", url: "https://x.test", stayActiveInBackground: true)
+        XCTAssertTrue(on.staysActiveInBackgroundEffective)
+        let off = ServiceInstance(label: "Y", url: "https://y.test", stayActiveInBackground: false)
+        XCTAssertFalse(off.staysActiveInBackgroundEffective)
+    }
+
+    func testFocusOverrideScriptFakesFocusAndSwallowsBlur() {
+        let script = UserScriptManager.makeFocusOverrideScript()
+        // hasFocus() must report true so a presence check reads active. It's
+        // installed by redefining the property, so the name is a quoted literal.
+        XCTAssertTrue(script.contains("'hasFocus'"))
+        XCTAssertTrue(script.contains("return true"))
+        // Blur is swallowed on both window and document, capture phase, so the
+        // page's own idle timer never starts.
+        XCTAssertTrue(script.contains("stopImmediatePropagation"))
+        XCTAssertTrue(script.contains("window.addEventListener('blur'"))
+        XCTAssertTrue(script.contains("document.addEventListener('blur'"))
+        // Only the top-level window/document blur is swallowed — a form field's
+        // own blur (which captures through the same listener) must still reach
+        // the page, or dropdowns and draft-saving break.
+        XCTAssertTrue(script.contains("e.target === window"))
+        XCTAssertTrue(script.contains("e.target === document"))
+    }
+
+    func testTeamsIsPresenceSensitiveInCatalog() {
+        let catalog = ServiceCatalog.shared
+        // Teams broadcasts a status that goes away on blur, so it carries the flag
+        // that drives the add-time "always appear active" offer.
+        XCTAssertEqual(catalog.entry(for: "teams")?.presenceSensitive, true)
+        // A service with no presence status must not carry it (nil, not false).
+        XCTAssertNil(catalog.entry(for: "gmail")?.presenceSensitive)
+    }
+
+    func testCatalogEntryDecodesWithoutPresenceKey() {
+        // Entries predating the key must still decode, with presenceSensitive nil.
+        let json = """
+        [{"id":"x","name":"X","url":"https://x.test","icon":"x","category":"Other","badgeJS":null,"userAgent":null,"description":"d"}]
+        """.data(using: .utf8)!
+        let entries = try! JSONDecoder().decode([ServiceCatalogEntry].self, from: json)
+        XCTAssertNil(entries[0].presenceSensitive)
+    }
+
     // MARK: - Zoom resolution
 
     @MainActor

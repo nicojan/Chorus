@@ -126,6 +126,19 @@ struct ContentView: View {
         } message: { request in
             Text(request.message)
         }
+        .alert(
+            "Always appear active in \(appState.presencePrompt?.serviceLabel ?? "")?",
+            isPresented: Binding(
+                get: { appState.presencePrompt != nil },
+                set: { _ in }   // dismissal always routes through a button below
+            ),
+            presenting: appState.presencePrompt
+        ) { prompt in
+            Button("Always Appear Active") { appState.answerPresencePrompt(prompt.id, enable: true) }
+            Button("Not Now", role: .cancel) { appState.answerPresencePrompt(prompt.id, enable: false) }
+        } message: { prompt in
+            Text("\(prompt.serviceLabel) shows you as away when its window isn't focused. Turn this on to stay active even while you work in other apps. You can change it later in the service's settings. It may hold back some of its notifications while Chorus is in the background.")
+        }
         .overlay {
             if appState.isLocked {
                 LockView()

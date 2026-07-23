@@ -153,6 +153,15 @@ final class ServiceInstance {
     /// `opensExternalLinksInAppEffective`.
     var openExternalLinksInApp: Bool?
 
+    /// Report the page as focused even while Chorus is in the background, so a
+    /// service that flips your status to "away" or "idle" on window blur
+    /// (Microsoft Teams and the like) keeps showing you as active. Optional for
+    /// SwiftData lightweight migration; nil is treated as off. Read via
+    /// `staysActiveInBackgroundEffective`. Off by default because faking focus
+    /// can make a service think you're already looking at it and hold back the
+    /// desktop notifications Chorus forwards — an opt-in trade.
+    var stayActiveInBackground: Bool?
+
     /// Whether the one-time "Passkeys aren't available for sign-in" notice has
     /// been shown for this service. Optional for SwiftData lightweight
     /// migration; nil is treated as "not yet seen" (see `needsPasskeyNotice`).
@@ -210,6 +219,10 @@ final class ServiceInstance {
     /// existing services keep opening external links in the system browser.
     var opensExternalLinksInAppEffective: Bool { openExternalLinksInApp ?? false }
 
+    /// Materialises the storage-optional stay-active flag (nil → false), so a
+    /// service only fakes focus when the user has explicitly opted in.
+    var staysActiveInBackgroundEffective: Bool { stayActiveInBackground ?? false }
+
     /// True if this service is muted directly, or via any space it belongs to
     /// (muting a space cascades to its members). Use this when the model object
     /// is already in hand — it avoids AppState's fetch-all-then-scan lookup.
@@ -242,7 +255,8 @@ final class ServiceInstance {
         hasSeenPasskeyNotice: Bool? = nil,
         cameraPolicyRaw: String? = nil,
         microphonePolicyRaw: String? = nil,
-        openExternalLinksInApp: Bool? = nil
+        openExternalLinksInApp: Bool? = nil,
+        stayActiveInBackground: Bool? = nil
     ) {
         self.id = id
         self.label = label
@@ -265,6 +279,7 @@ final class ServiceInstance {
         self.cameraPolicyRaw = cameraPolicyRaw
         self.microphonePolicyRaw = microphonePolicyRaw
         self.openExternalLinksInApp = openExternalLinksInApp
+        self.stayActiveInBackground = stayActiveInBackground
         self.spaceLinks = []
         self.createdAt = Date()
         self.lastAccessedAt = Date()

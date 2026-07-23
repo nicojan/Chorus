@@ -560,6 +560,7 @@ final class WebViewPool {
             for: instance,
             customCSS: effectiveCSS(for: instance),
             darkInjection: injection,
+            stayActiveInBackground: instance.staysActiveInBackgroundEffective,
             on: controller
         )
         // Attach the compiled content-blocking rule lists (ad/tracker domains)
@@ -652,6 +653,7 @@ final class WebViewPool {
             for: instance,
             customCSS: effectiveCSS(for: instance),
             darkInjection: injection,
+            stayActiveInBackground: instance.staysActiveInBackgroundEffective,
             on: controller
         )
     }

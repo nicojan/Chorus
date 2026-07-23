@@ -53,6 +53,17 @@ final class AppState {
     /// main actor; answered via `answerMediaRequest(allow:)`.
     private(set) var pendingMediaRequest: MediaPermissionRequest?
 
+    /// A pending "always appear active?" offer, shown once right after the user
+    /// adds a presence-sensitive service (Teams). Drives an alert in ContentView;
+    /// nil when nothing is offered. Answered via `answerPresencePrompt(_:enable:)`.
+    private(set) var presencePrompt: PresencePrompt?
+
+    /// UI-facing shape of the presence offer: the service to act on and its label.
+    struct PresencePrompt: Identifiable, Equatable {
+        let id: UUID           // the service instance id
+        let serviceLabel: String
+    }
+
     /// The public, UI-facing shape of a pending capture prompt (no continuation).
     struct MediaPermissionRequest: Identifiable, Equatable {
         let id: UUID
@@ -499,6 +510,27 @@ final class AppState {
         presentNextMediaRequest()
     }
 
+    /// Offers "always appear active" right after adding a presence-sensitive
+    /// service (per the catalog `presenceSensitive` flag), so backgrounding
+    /// Chorus doesn't make the user look away in Teams. A no-op for every other
+    /// service — the prompt only appears where it's relevant.
+    func offerPresenceActivationIfNeeded(serviceID: UUID, catalogEntryID: String?) {
+        guard let catalogEntryID,
+              ServiceCatalog.shared.entry(for: catalogEntryID)?.presenceSensitive == true,
+              let service = currentServiceInstance(id: serviceID) else { return }
+        presencePrompt = PresencePrompt(id: serviceID, serviceLabel: service.label)
+    }
+
+    /// Answers the presence offer. Enabling turns on the service's focus override
+    /// and rebuilds its web view so it takes effect; either answer clears the
+    /// prompt. Guards the service still exists (it could be deleted mid-prompt).
+    func answerPresencePrompt(_ id: UUID, enable: Bool) {
+        defer { presencePrompt = nil }
+        guard enable, let service = currentServiceInstance(id: id) else { return }
+        service.stayActiveInBackground = true
+        applyServiceEdits(serviceID: id, urlChanged: false, presenceChanged: true)
+    }
+
     /// Resumes (with deny) and clears any prompts queued for a service that's
     /// being removed, so a delete mid-prompt can't strand a continuation.
     private func drainMediaRequests(for serviceID: UUID) {
@@ -863,15 +895,17 @@ final class AppState {
         urlChanged: Bool,
         cssChanged: Bool = false,
         userAgentChanged: Bool = false,
-        darkModeChanged: Bool = false
+        darkModeChanged: Bool = false,
+        presenceChanged: Bool = false
     ) {
         guard let service = currentServiceInstance(id: serviceID) else { return }
         webViewPool.setNeverHibernate(service.neverHibernate, for: serviceID)
 
-        if cssChanged {
-            // Custom CSS is injected when the web view is built, so rebuild it.
-            // The rebuild also re-bakes the dark-mode scripts and picks up any
-            // user-agent change and the new URL, so those are handled here.
+        if cssChanged || presenceChanged {
+            // Custom CSS and the focus override are both injected when the web
+            // view is built, so rebuild it. The rebuild also re-bakes the
+            // dark-mode scripts and picks up any user-agent change and the new
+            // URL, so those are handled here.
             webViewPool.recreateWebView(for: serviceID, preserveURL: !urlChanged)
             webViewRebuildToken &+= 1
         } else {

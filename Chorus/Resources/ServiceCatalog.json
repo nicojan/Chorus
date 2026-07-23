@@ -59,7 +59,8 @@
         "badgeJS": null,
         "userAgent": null,
         "description": "Microsoft's collaboration platform",
-        "firstParty": true
+        "firstParty": true,
+        "presenceSensitive": true
     },
     {
         "id": "discord",

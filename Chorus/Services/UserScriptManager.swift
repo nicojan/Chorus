@@ -26,6 +26,7 @@ final class UserScriptManager {
         for instance: ServiceInstance,
         customCSS: String?,
         darkInjection: DarkReaderSupport.DarkInjection,
+        stayActiveInBackground: Bool,
         on controller: WKUserContentController
     ) {
         installHandlers(for: instance, on: controller)
@@ -33,6 +34,7 @@ final class UserScriptManager {
             for: instance,
             customCSS: customCSS,
             darkInjection: darkInjection,
+            stayActiveInBackground: stayActiveInBackground,
             on: controller
         )
     }
@@ -68,6 +70,7 @@ final class UserScriptManager {
         for instance: ServiceInstance,
         customCSS: String?,
         darkInjection: DarkReaderSupport.DarkInjection,
+        stayActiveInBackground: Bool,
         on controller: WKUserContentController
     ) {
         let notificationScript = makeNotificationInterceptionScript(serviceID: instance.id.uuidString)
@@ -88,6 +91,20 @@ final class UserScriptManager {
             forMainFrameOnly: false
         )
         controller.addUserScript(visibilityScript)
+
+        // Focus override (opt-in per service) — reports the page as focused even
+        // while Chorus is in the background, so a service that flips presence to
+        // "away" on window blur (Microsoft Teams) keeps showing the user active.
+        // Off unless the service opted in, because faking focus can make a site
+        // hold back the notifications Chorus forwards.
+        if stayActiveInBackground {
+            let focusScript = WKUserScript(
+                source: Self.makeFocusOverrideScript(),
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: false
+            )
+            controller.addUserScript(focusScript)
+        }
 
         // WebRTC call detection — hooks RTCPeerConnection to track active calls
         let callDetectionScript = WKUserScript(
@@ -222,6 +239,42 @@ final class UserScriptManager {
                 document.addEventListener('visibilitychange', function(e) {
                     e.stopImmediatePropagation();
                 }, true);
+            } catch (e) {}
+        })();
+        """
+    }
+
+    /// Reports the page as focused even when its web view is in the background,
+    /// so a service that flips your status to "away"/"idle" on window blur
+    /// (Microsoft Teams) keeps showing you active. Opt-in per service — see
+    /// `ServiceInstance.stayActiveInBackground`.
+    ///
+    /// Overrides `document.hasFocus()` to true and swallows real `blur` events on
+    /// both window and document (capture phase, before the page's own handlers)
+    /// so a page can't start its idle timer when Chorus loses focus. Pairs with
+    /// the always-visible override so both halves of the "is the user here?"
+    /// check read active.
+    static func makeFocusOverrideScript() -> String {
+        return """
+        (function() {
+            try {
+                Object.defineProperty(document, 'hasFocus', {
+                    configurable: true,
+                    value: function() { return true; }
+                });
+                // Swallow ONLY the top-level blur that fires when the whole
+                // window/document loses focus (the app going to the background).
+                // A form field losing focus fires its own blur that captures
+                // down through this same window listener; killing those too would
+                // break dropdowns, draft saving, and validation across the page,
+                // so guard on the event target being the window or document.
+                var swallow = function(e) {
+                    if (e.target === window || e.target === document) {
+                        e.stopImmediatePropagation();
+                    }
+                };
+                window.addEventListener('blur', swallow, true);
+                document.addEventListener('blur', swallow, true);
             } catch (e) {}
         })();
         """
