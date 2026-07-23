@@ -3,6 +3,20 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.10</title>
+            <pubDate>Wed, 22 Jul 2026 22:15:16 -0700</pubDate>
+            <sparkle:version>19</sparkle:version>
+            <sparkle:shortVersionString>1.5.10</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Fixed</h3>
+<ul>
+<li>The selected space in the sidebar showed a stray blue box around its icon: a system focus outline drawn on top of the space's own highlight, which the narrow sidebar then clipped. Now only the app's own highlight shows.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.10/Chorus-1.5.10.dmg" length="8457444" type="application/octet-stream" sparkle:edSignature="COzc8RK+kpaFqLjvpn/9s9DBvekFH8x74FNNHp+Fc9EYLsbWbDgHc+uZok1Eqwrdz1dcRCDThR2eB8+BIAGLBw=="/>
+        </item>
+        <item>
             <title>1.5.9</title>
             <pubDate>Wed, 22 Jul 2026 21:10:33 -0700</pubDate>
             <sparkle:version>18</sparkle:version>
