@@ -221,7 +221,25 @@ final class AppState {
             SpaceServiceLink.self,
             AppPreferences.self,
         ])
+        // Debug builds keep their store in a separate directory so a copy run
+        // from Xcode never opens (and never migrates) the installed release
+        // app's data. The release path is left implicit — SwiftData's default,
+        // `Application Support/default.store` — so shipping behavior is
+        // unchanged. The debug path is NOT bundle-scoped by SwiftData, so we
+        // set it explicitly here; the debug *bundle id* (project.yml) already
+        // separates WebKit, Preferences and notifications.
+        #if DEBUG
+        let debugDir = URL.applicationSupportDirectory.appending(path: "Chorus-debug")
+        try? FileManager.default.createDirectory(at: debugDir, withIntermediateDirectories: true)
+        let config = ModelConfiguration(schema: schema, url: debugDir.appending(path: "default.store"))
+        #else
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        #endif
+
+        // Snapshot the store before a newly-installed version opens it, so a
+        // migration that loses or reshapes data is always recoverable. No-op
+        // when the running version is unchanged from the last launch.
+        StoreRepair.backupBeforeMigrationIfNeeded(at: config.url)
 
         // Repair a store corrupted by a pre-inverse build BEFORE opening it.
         // The dangling `SpaceServiceLink` rows such a build leaves cannot be

@@ -1625,4 +1625,90 @@ final class ChorusTests: XCTestCase {
         XCTAssertFalse(AppState.shouldBustCachesOnLaunch(previousVersion: "1.5.2", currentVersion: ""))
     }
 
+    // MARK: - Store pre-migration snapshots
+
+    /// Makes a throwaway directory holding a fake `default.store` triple and
+    /// returns the store URL. The caller removes the directory when done.
+    private func makeFakeStore() throws -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: "chorus-snapshot-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let store = dir.appending(path: "default.store")
+        for suffix in ["", "-wal", "-shm"] {
+            try Data("db\(suffix)".utf8).write(to: URL(fileURLWithPath: store.path + suffix))
+        }
+        return store
+    }
+
+    private func snapshotFiles(besides store: URL) -> [String] {
+        let dir = store.deletingLastPathComponent()
+        let prefix = store.lastPathComponent + StoreRepair.snapshotInfix
+        let all = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        return all.filter { $0.hasPrefix(prefix) }.sorted()
+    }
+
+    func testSnapshotCopiesTheWholeStoreTriple() throws {
+        let store = try makeFakeStore()
+        defer { try? FileManager.default.removeItem(at: store.deletingLastPathComponent()) }
+
+        StoreRepair.snapshot(at: store, stamp: "1000000000")
+
+        let made = snapshotFiles(besides: store)
+        XCTAssertEqual(made, [
+            "default.store.snapshot-1000000000.bak",
+            "default.store.snapshot-1000000000.bak-shm",
+            "default.store.snapshot-1000000000.bak-wal",
+        ])
+    }
+
+    func testPruneKeepsOnlyTheMostRecentSnapshots() throws {
+        let store = try makeFakeStore()
+        defer { try? FileManager.default.removeItem(at: store.deletingLastPathComponent()) }
+
+        // Five snapshots, oldest to newest by their fixed-width stamp.
+        for stamp in ["1000000001", "1000000002", "1000000003", "1000000004", "1000000005"] {
+            StoreRepair.snapshot(at: store, stamp: stamp)
+        }
+        StoreRepair.pruneSnapshots(at: store, keeping: 2)
+
+        // Only the two newest triples survive (3 files each).
+        let survivors = snapshotFiles(besides: store)
+        XCTAssertEqual(survivors.count, 6)
+        XCTAssertTrue(survivors.allSatisfy { $0.contains("1000000004") || $0.contains("1000000005") })
+    }
+
+    func testBackupOnlyRunsWhenTheVersionChanges() throws {
+        let store = try makeFakeStore()
+        defer { try? FileManager.default.removeItem(at: store.deletingLastPathComponent()) }
+        let suite = "chorus-snapshot-test-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        // First launch on 1.5.7 — snapshot taken.
+        StoreRepair.backupBeforeMigrationIfNeeded(at: store, version: "1.5.7", defaults: defaults, keeping: 3)
+        XCTAssertEqual(snapshotFiles(besides: store).count, 3)
+
+        // Relaunch, same version — no new snapshot.
+        StoreRepair.backupBeforeMigrationIfNeeded(at: store, version: "1.5.7", defaults: defaults, keeping: 3)
+        XCTAssertEqual(snapshotFiles(besides: store).count, 3)
+
+        // New version installed — snapshot the pre-migration state again.
+        StoreRepair.backupBeforeMigrationIfNeeded(at: store, version: "1.5.8", defaults: defaults, keeping: 3)
+        XCTAssertEqual(snapshotFiles(besides: store).count, 6)
+    }
+
+    func testBackupIsANoOpWhenNoStoreExistsYet() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: "chorus-snapshot-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = dir.appending(path: "default.store")  // never created
+        let suite = "chorus-snapshot-test-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        StoreRepair.backupBeforeMigrationIfNeeded(at: store, version: "1.5.7", defaults: defaults, keeping: 3)
+        XCTAssertEqual(snapshotFiles(besides: store).count, 0)
+    }
+
 }
