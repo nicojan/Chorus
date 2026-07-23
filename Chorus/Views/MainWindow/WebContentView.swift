@@ -28,14 +28,18 @@ struct WebContentView: View {
                     passkeyNoticeBanner
                 }
 
-                // Horizontal layouts host the nav buttons in the top tab bar; the
-                // sidebar layout shows them in a slim row above the content.
+                // Reserve the traffic-light strip. Rendered for both toolbar
+                // positions so the top of the window reads the same either way.
                 if appState.railLayout == .sidebar {
-                    WebNavButtons(webViewState: webViewState, homeURL: URL(string: service.url))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(nsColor: .windowBackgroundColor))
+                    titleBand
+                }
+
+                // Horizontal layouts host the nav buttons in the top tab bar; the
+                // sidebar layout shows them in a slim row above the content. Both
+                // are suppressed when the buttons have been moved to the bottom
+                // bar below, so they never appear twice.
+                if appState.railLayout == .sidebar, appState.toolbarPosition == .top {
+                    navButtonRow(for: service)
                     Divider()
                 }
 
@@ -69,6 +73,14 @@ struct WebContentView: View {
                 }
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: webViewState.isLoading)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: appState.findInPageVisible)
+
+                // Bottom bar. Applies to every rail layout, which is the point:
+                // at the top the buttons crowd the traffic lights and the badge
+                // cluster, and down here they have the width to themselves.
+                if appState.toolbarPosition == .bottom {
+                    Divider()
+                    navButtonRow(for: service)
+                }
             } else if selectedService != nil {
                 ProgressView("Loading service…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -98,6 +110,26 @@ struct WebContentView: View {
                 if !webViewState.isLoading { transitionSnapshot = nil }
             }
         }
+    }
+
+    /// Reserves the traffic-light strip so the nav row below clears the
+    /// close/minimise/zoom dots. Empty on purpose — AppKit's title bar is drawn
+    /// over this area, so nothing rendered here reaches the screen; it only holds
+    /// vertical space.
+    private var titleBand: some View {
+        Color.clear
+            .frame(height: WindowChrome.lightsHeight)
+            .allowsHitTesting(false)
+    }
+
+    /// The slim navigation row, shared by the top and bottom placements so the
+    /// two can't drift apart.
+    private func navButtonRow(for service: ServiceInstance) -> some View {
+        WebNavButtons(webViewState: webViewState, homeURL: URL(string: service.url))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private func loadWebViewForSelectedService() {

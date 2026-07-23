@@ -25,6 +25,23 @@ enum RailLayout: String, Codable, CaseIterable {
     }
 }
 
+/// Where the back/forward/reload/home buttons sit.
+enum ToolbarPosition: String, Codable, CaseIterable {
+    /// Above the page (the default). In the horizontal rail layouts these live
+    /// in the tab bar rather than a row of their own.
+    case top
+    /// In a bar under the page, clear of the traffic lights and the badge
+    /// cluster at the top-left.
+    case bottom
+
+    var displayName: String {
+        switch self {
+        case .top: return "Top"
+        case .bottom: return "Bottom"
+        }
+    }
+}
+
 /// App-level light/dark appearance override.
 enum AppearanceMode: String, Codable, CaseIterable {
     case system
@@ -116,6 +133,15 @@ final class AppPreferences {
     /// Idle minutes before auto-hibernation kicks in. Optional; nil resolves to 10.
     var autoHibernateIdleMinutes: Int?
 
+    /// Hides the spaces rail. Optional for SwiftData lightweight migration; nil
+    /// is treated as false, so the rail keeps showing on upgrade. Visual only —
+    /// the selected space and every other way to reach one are untouched.
+    var hideSpacesUI: Bool?
+
+    /// Where the navigation buttons sit. Optional for SwiftData lightweight
+    /// migration; nil or unknown resolves to `.top`. Read via `toolbarPosition`.
+    var toolbarPositionRaw: String?
+
     init(
         id: UUID = UUID(),
         appPresenceMode: AppPresenceMode = .dock,
@@ -140,7 +166,9 @@ final class AppPreferences {
         defaultMicrophonePolicyRaw: String? = nil,
         googleFaviconFallbackEnabled: Bool? = nil,
         autoHibernateIdleEnabled: Bool? = nil,
-        autoHibernateIdleMinutes: Int? = nil
+        autoHibernateIdleMinutes: Int? = nil,
+        hideSpacesUI: Bool? = nil,
+        toolbarPositionRaw: String? = nil
     ) {
         self.id = id
         self.appPresenceMode = appPresenceMode
@@ -166,6 +194,8 @@ final class AppPreferences {
         self.googleFaviconFallbackEnabled = googleFaviconFallbackEnabled
         self.autoHibernateIdleEnabled = autoHibernateIdleEnabled
         self.autoHibernateIdleMinutes = autoHibernateIdleMinutes
+        self.hideSpacesUI = hideSpacesUI
+        self.toolbarPositionRaw = toolbarPositionRaw
     }
 
     /// Materialises the storage-optional default zoom (nil → 1.0).
@@ -196,5 +226,14 @@ final class AppPreferences {
     /// Idle minutes before auto-hibernation, clamped to a sane 1...120 (nil → 10).
     var autoHibernateIdleMinutesEffective: Int {
         min(120, max(1, autoHibernateIdleMinutes ?? 10))
+    }
+
+    /// Materialises the storage-optional hide-spaces flag (nil → false, so the
+    /// spaces rail keeps showing for everyone upgrading into the setting).
+    var hideSpacesUIEffective: Bool { hideSpacesUI ?? false }
+
+    /// Resolves the stored toolbar position, defaulting unknown/legacy to `.top`.
+    var toolbarPosition: ToolbarPosition {
+        toolbarPositionRaw.flatMap(ToolbarPosition.init(rawValue:)) ?? .top
     }
 }

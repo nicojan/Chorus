@@ -241,6 +241,7 @@ struct ServiceSidebarView: View {
 
             Divider()
 
+            spacesToggleButton
             addServiceButton
         }
         .frame(width: 52)
@@ -257,9 +258,12 @@ struct ServiceSidebarView: View {
             Spacer(minLength: 40)
 
             // Nav buttons live at the far right of the tab bar (top-right corner
-            // of the window), acting on the active service.
-            WebNavButtons(webViewState: appState.webViewState, homeURL: activeHomeURL)
-                .padding(.trailing, 10)
+            // of the window), acting on the active service — unless the user
+            // moved them to the bottom bar, which owns them for every layout.
+            if appState.toolbarPosition == .top {
+                WebNavButtons(webViewState: appState.webViewState, homeURL: activeHomeURL)
+                    .padding(.trailing, 10)
+            }
         }
         // Headroom above the row. In the hybrid layout this row sits at the very
         // top of the window, and the icon-tab badge pokes ~2pt past its icon's
@@ -318,6 +322,7 @@ struct ServiceSidebarView: View {
                     .id(link.service.id)
             }
             addServiceButton
+            spacesToggleButton
         }
         .padding(.leading, 8 + contentInset)
         .padding(.trailing, 8)
@@ -477,6 +482,29 @@ struct ServiceSidebarView: View {
     private func selectService(_ link: SpaceServiceLink) {
         selectedServiceID = link.service.id
         focusedServiceID = link.service.id
+    }
+
+    /// Show/hide the spaces rail. It lives in the SERVICES rail on purpose: the
+    /// spaces rail is what disappears, so a control hosted there would take
+    /// itself away and leave no way back except the menu.
+    private var spacesToggleButton: some View {
+        Button {
+            appState.setHideSpacesUI(!appState.hideSpacesUI)
+        } label: {
+            Image(systemName: "sidebar.left")
+                .font(.system(size: 12, weight: .medium))
+                .frame(
+                    width: axis == .vertical ? 44 : 36,
+                    height: axis == .vertical ? 32 : ServiceTabView.height
+                )
+                // Dimmed while hidden, so the button reports the current state
+                // instead of just offering the action.
+                .foregroundStyle(appState.hideSpacesUI ? .tertiary : .secondary)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(appState.hideSpacesUI ? "Show spaces" : "Hide spaces")
+        .accessibilityLabel(appState.hideSpacesUI ? "Show spaces" : "Hide spaces")
     }
 
     private var addServiceButton: some View {

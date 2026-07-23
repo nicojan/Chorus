@@ -98,6 +98,15 @@ struct ChorusApp: App {
             )
 
             CommandGroup(after: .toolbar) {
+                // Show/hide on demand, so the bar can come back for the
+                // occasional space switch without a trip through Settings.
+                Button(appState.hideSpacesUI ? "Show Spaces Bar" : "Hide Spaces Bar") {
+                    appState.setHideSpacesUI(!appState.hideSpacesUI)
+                }
+                .keyboardShortcut("s", modifiers: [.control, .command])
+
+                Divider()
+
                 Button("Reload") {
                     appState.reloadActiveService()
                 }

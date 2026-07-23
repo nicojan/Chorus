@@ -845,6 +845,22 @@ final class ChorusTests: XCTestCase {
         XCTAssertNotEqual(catalog.entry(for: "spotify")?.category, "Messaging")
     }
 
+    func testHideSpacesUIEffectiveDefaultsToShowing() {
+        // A legacy row (nil) must keep the rail visible, so upgrading doesn't
+        // silently hide part of the UI.
+        XCTAssertFalse(AppPreferences().hideSpacesUIEffective)
+        XCTAssertTrue(AppPreferences(hideSpacesUI: true).hideSpacesUIEffective)
+        XCTAssertFalse(AppPreferences(hideSpacesUI: false).hideSpacesUIEffective)
+    }
+
+    func testToolbarPositionDefaultsToTopAndRejectsUnknownValues() {
+        XCTAssertEqual(AppPreferences().toolbarPosition, .top)
+        XCTAssertEqual(AppPreferences(toolbarPositionRaw: "bottom").toolbarPosition, .bottom)
+        XCTAssertEqual(AppPreferences(toolbarPositionRaw: "top").toolbarPosition, .top)
+        // An unreadable stored value falls back rather than trapping.
+        XCTAssertEqual(AppPreferences(toolbarPositionRaw: "sideways").toolbarPosition, .top)
+    }
+
     // MARK: - Scheduled DND (quiet hours)
 
     @MainActor

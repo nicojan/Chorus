@@ -115,6 +115,15 @@ final class AppState {
     /// launch; the Settings picker writes both this and the persisted value.
     var railLayout: RailLayout = .sidebar
 
+    /// Hides the spaces rail. Purely visual — every other route to a space
+    /// (⌘K, Ctrl-Tab, the menu bar) keeps working, and the active space is
+    /// unchanged. Written via `setHideSpacesUI(_:)`.
+    var hideSpacesUI = false
+
+    /// Where the navigation buttons sit. Loaded from AppPreferences at launch;
+    /// written via `setToolbarPosition(_:)`.
+    var toolbarPosition: ToolbarPosition = .top
+
     /// App-level appearance override, loaded from AppPreferences.
     var appearanceMode: AppearanceMode = .system
 
@@ -1643,6 +1652,8 @@ final class AppState {
         Task { await FaviconFetcher.shared.setGoogleFallbackEnabled(googleFallback) }
         autoHibernateIdleEnabled = prefs?.autoHibernateIdleEnabledEffective ?? false
         autoHibernateIdleMinutes = prefs?.autoHibernateIdleMinutesEffective ?? 10
+        hideSpacesUI = prefs?.hideSpacesUIEffective ?? false
+        toolbarPosition = prefs?.toolbarPosition ?? .top
         defaultCameraPolicy = prefs?.defaultCameraPolicyRaw.flatMap(MediaPermissionPolicy.init(rawValue:)) ?? .ask
         defaultMicrophonePolicy = prefs?.defaultMicrophonePolicyRaw.flatMap(MediaPermissionPolicy.init(rawValue:)) ?? .ask
         // Start locked at launch when opted in; ContentView's lock overlay
@@ -1745,6 +1756,33 @@ final class AppState {
         }
         Task { await FaviconFetcher.shared.setGoogleFallbackEnabled(enabled) }
     }
+    /// Shows or hides the spaces rail and persists the choice. Visual only: the
+    /// selected space is untouched, so nothing needs re-attaching.
+    func setHideSpacesUI(_ hidden: Bool) {
+        hideSpacesUI = hidden
+        let prefs = ensurePreferences()
+        prefs.hideSpacesUI = hidden
+        do {
+            try modelContainer.mainContext.save()
+        } catch {
+            AppLogger.dataStore.error("Failed to save hide-spaces toggle: \(error.localizedDescription)")
+            modelContainer.mainContext.rollback()
+        }
+    }
+
+    /// Moves the navigation buttons and persists the choice.
+    func setToolbarPosition(_ position: ToolbarPosition) {
+        toolbarPosition = position
+        let prefs = ensurePreferences()
+        prefs.toolbarPositionRaw = position.rawValue
+        do {
+            try modelContainer.mainContext.save()
+        } catch {
+            AppLogger.dataStore.error("Failed to save toolbar position: \(error.localizedDescription)")
+            modelContainer.mainContext.rollback()
+        }
+    }
+
 
     /// Flips annoyance hiding, persists it, and re-attaches lists to live views.
     func setAnnoyanceBlockingEnabled(_ enabled: Bool) {
