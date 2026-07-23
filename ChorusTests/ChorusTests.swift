@@ -83,6 +83,30 @@ final class ChorusTests: XCTestCase {
         )
     }
 
+    func testIsFetchableIconURLRejectsPrivateAndNonWebTargets() {
+        // Public https host is fetchable.
+        XCTAssertTrue(FaviconFetcher.isFetchableIconURL(URL(string: "https://example.com/i.png")!))
+        // Non-web schemes never fetch.
+        XCTAssertFalse(FaviconFetcher.isFetchableIconURL(URL(string: "file:///etc/passwd")!))
+        XCTAssertFalse(FaviconFetcher.isFetchableIconURL(URL(string: "data:image/png;base64,AAAA")!))
+        // Literal private / loopback / link-local IPs are blocked (SSRF).
+        XCTAssertFalse(FaviconFetcher.isFetchableIconURL(URL(string: "http://127.0.0.1/i.png")!))
+        XCTAssertFalse(FaviconFetcher.isFetchableIconURL(URL(string: "http://10.0.0.5/i.png")!))
+        XCTAssertFalse(FaviconFetcher.isFetchableIconURL(URL(string: "http://169.254.169.254/latest")!))
+    }
+
+    func testIsLikelyPrivateHostHeuristic() {
+        // Public FQDNs pass through (may go to Google, may be fetched).
+        XCTAssertFalse(FaviconFetcher.isLikelyPrivateHost("example.com"))
+        XCTAssertFalse(FaviconFetcher.isLikelyPrivateHost("mail.google.com"))
+        // Intranet shapes are treated as private without a DNS lookup.
+        XCTAssertTrue(FaviconFetcher.isLikelyPrivateHost("localhost"))
+        XCTAssertTrue(FaviconFetcher.isLikelyPrivateHost("intranet"))          // single label
+        XCTAssertTrue(FaviconFetcher.isLikelyPrivateHost("mail.corp"))         // private TLD
+        XCTAssertTrue(FaviconFetcher.isLikelyPrivateHost("nas.local"))
+        XCTAssertTrue(FaviconFetcher.isLikelyPrivateHost("192.168.1.10"))      // literal private IP
+    }
+
     func testServiceReorderPlacement() {
         let first = UUID()
         let second = UUID()

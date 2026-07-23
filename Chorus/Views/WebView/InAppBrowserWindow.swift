@@ -35,10 +35,14 @@ final class InAppBrowserWindow: NSObject, WKNavigationDelegate, WKUIDelegate {
     }
 
     private init(url: URL) {
-        // A default configuration, so external browsing uses the app's default
-        // store and stays out of the services' per-service sessions.
+        // An ephemeral (non-persistent) store per window: external browsing stays
+        // out of the services' per-service sessions AND leaves nothing on disk, so
+        // each throwaway link window starts clean and two of them can't be
+        // correlated through a shared cookie jar.
         let size = NSRect(x: 0, y: 0, width: 1100, height: 800)
-        webView = WKWebView(frame: size, configuration: WKWebViewConfiguration())
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = .nonPersistent()
+        webView = WKWebView(frame: size, configuration: config)
         window = NSWindow(
             contentRect: size,
             styleMask: [.titled, .closable, .resizable, .miniaturizable],

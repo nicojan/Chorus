@@ -648,12 +648,44 @@ struct ServiceSidebarView: View {
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            let data = try Data(contentsOf: url)
-            service.customIconData = data
+            let raw = try Data(contentsOf: url)
+            // Guard against a pathologically large source before decoding it.
+            guard raw.count <= 20 * 1024 * 1024 else {
+                AppLogger.ui.error("Icon file too large (\(raw.count) bytes); ignoring")
+                return
+            }
+            // Store a small PNG, not the raw file: the icon renders at ~24pt, so a
+            // full-size source would bloat the SwiftData row and be re-decoded on
+            // every render. Fall back to the raw bytes only if it can't be decoded.
+            service.customIconData = Self.downscaledIconPNG(from: raw) ?? raw
             save("set custom icon")
         } catch {
             AppLogger.ui.error("Failed to read icon file: \(error.localizedDescription)")
         }
+    }
+
+    /// Re-encodes a picked icon to a PNG no larger than `maxDimension` on its long
+    /// edge, preserving aspect ratio. Returns nil if the data isn't a decodable
+    /// image (caller keeps the raw bytes then).
+    private static func downscaledIconPNG(from data: Data, maxDimension: CGFloat = 128) -> Data? {
+        guard let image = NSImage(data: data) else { return nil }
+        let rep = image.representations.max(by: { $0.pixelsWide * $0.pixelsHigh < $1.pixelsWide * $1.pixelsHigh })
+        let srcW = CGFloat(rep?.pixelsWide ?? Int(image.size.width))
+        let srcH = CGFloat(rep?.pixelsHigh ?? Int(image.size.height))
+        guard srcW > 0, srcH > 0 else { return nil }
+        let scale = min(1, maxDimension / max(srcW, srcH))
+        let target = NSSize(width: (srcW * scale).rounded(), height: (srcH * scale).rounded())
+        let out = NSImage(size: target)
+        out.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .high
+        image.draw(in: NSRect(origin: .zero, size: target),
+                   from: NSRect(origin: .zero, size: image.size),
+                   operation: .copy, fraction: 1)
+        out.unlockFocus()
+        guard let tiff = out.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff),
+              let png = bitmap.representation(using: .png, properties: [:]) else { return nil }
+        return png
     }
 
     private func resetIcon(for service: ServiceInstance) {

@@ -33,7 +33,7 @@ actor FaviconFetcher {
 
         for candidate in candidates {
             if let data = await fetchURL(candidate), isValidImage(data) {
-                AppLogger.favicon.debug("Favicon found at \(candidate)")
+                AppLogger.favicon.debug("Favicon found at \(candidate, privacy: .private)")
                 return data
             }
         }
@@ -44,15 +44,18 @@ actor FaviconFetcher {
         }
 
         // Google favicon API fallback — opt-in only; see googleFallbackEnabled.
-        if googleFallbackEnabled {
+        // Never send a likely-private host (self-hosted, intranet, literal
+        // private IP) to Google even when the toggle is on: those hostnames are
+        // the ones a user would least expect to leak off-device.
+        if googleFallbackEnabled, !Self.isLikelyPrivateHost(host) {
             let googleAPI = "https://www.google.com/s2/favicons?domain=\(host)&sz=128"
             if let data = await fetchURL(googleAPI), isValidImage(data) {
-                AppLogger.favicon.debug("Favicon from Google API for \(host)")
+                AppLogger.favicon.debug("Favicon from Google API for \(host, privacy: .private)")
                 return data
             }
         }
 
-        AppLogger.favicon.debug("No favicon found for \(host)")
+        AppLogger.favicon.debug("No favicon found for \(host, privacy: .private)")
         return nil
     }
 
@@ -76,7 +79,7 @@ actor FaviconFetcher {
                 continue
             }
             if let data = await fetchURL(iconInfo.url), isValidImage(data) {
-                AppLogger.favicon.debug("Favicon from HTML link: \(iconInfo.url)")
+                AppLogger.favicon.debug("Favicon from HTML link: \(iconInfo.url, privacy: .private)")
                 return data
             }
         }
@@ -91,8 +94,27 @@ actor FaviconFetcher {
             return false
         }
         guard let host = url.host?.lowercased(), !host.isEmpty else { return false }
-        if host == "localhost" || host.hasSuffix(".localhost") { return false }
-        return !isPrivateOrReservedHost(host)
+        return !isLikelyPrivateHost(host)
+    }
+
+    /// Hosts we never fetch a parsed href from and never send to a third party:
+    /// literal private/reserved IPs, `localhost`, single-label intranet names
+    /// (no dot), and private-use TLDs. A DNS-resolving check is deliberately out
+    /// of scope — this cheap name test catches the common self-hosted/intranet
+    /// shapes without a lookup, and the redirect guard covers the rest at fetch
+    /// time.
+    nonisolated static func isLikelyPrivateHost(_ host: String) -> Bool {
+        let h = host.lowercased()
+        if isPrivateOrReservedHost(h) { return true }
+        if h == "localhost" || h.hasSuffix(".localhost") { return true }
+        if !h.contains(".") { return true }  // single-label intranet name
+        let privateTLDs: Set<String> = [
+            "local", "internal", "lan", "corp", "home", "test", "intranet", "localdomain",
+        ]
+        if let tld = h.split(separator: ".").last, privateTLDs.contains(String(tld)) {
+            return true
+        }
+        return false
     }
 
     /// Recognizes literal loopback / link-local / private / reserved IPs so they
@@ -204,7 +226,7 @@ actor FaviconFetcher {
             }
             return data.isEmpty ? nil : data
         } catch {
-            AppLogger.favicon.debug("Fetch failed for \(urlString): \(error.localizedDescription)")
+            AppLogger.favicon.debug("Fetch failed for \(urlString, privacy: .private): \(error.localizedDescription)")
         }
         return nil
     }

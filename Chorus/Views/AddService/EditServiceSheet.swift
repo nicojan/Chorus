@@ -28,6 +28,7 @@ struct EditServiceSheet: View {
     // (and thus stop inheriting) the global default.
     @State private var initialCameraPolicy: MediaPermissionPolicy = .ask
     @State private var initialMicrophonePolicy: MediaPermissionPolicy = .ask
+    @State private var initialUserAgent: String?
     @State private var errorMessage: String?
     @State private var confirmingClearSession = false
 
@@ -142,6 +143,7 @@ struct EditServiceSheet: View {
             url = service.url
             keepLoaded = service.neverHibernate
             mobileView = service.userAgent == UserAgentProvider.mobileSafari
+            initialUserAgent = service.userAgent
             openLinksInApp = service.opensExternalLinksInAppEffective
             darkMode = service.darkMode
             notify = !service.isMuted
@@ -277,8 +279,12 @@ struct EditServiceSheet: View {
             let darkModeChanged = service.darkMode != darkMode
             let cssChanged = (service.customCSS ?? "") != (newCSS ?? "")
 
-            let newUserAgent: String? = mobileView ? UserAgentProvider.mobileSafari : nil
-            let userAgentChanged = (service.userAgent ?? "") != (newUserAgent ?? "")
+            // Only the Mobile-view toggle drives the UA here. Rewrite it only when
+            // that toggle actually changed, so a custom (non-mobile) user-agent set
+            // elsewhere — e.g. a future catalog default — isn't wiped by an
+            // unrelated edit. Mirrors the camera/mic initial-value guards below.
+            let wasMobile = initialUserAgent == UserAgentProvider.mobileSafari
+            let userAgentChanged = mobileView != wasMobile
 
             // Notification changes: mute and badge affect the dock/rail badge, so
             // they need an explicit refresh below — applyServiceEdits doesn't.
@@ -294,7 +300,9 @@ struct EditServiceSheet: View {
             service.forceDarkMode = nil          // retire the legacy flag
             // A different site may theme differently — drop the stale verdict.
             if urlChanged { service.detectedLacksDarkTheme = nil }
-            service.userAgent = newUserAgent
+            if userAgentChanged {
+                service.userAgent = mobileView ? UserAgentProvider.mobileSafari : nil
+            }
             service.isMuted = muted
             service.osNotificationsEnabled = osNotify
             service.showBadge = badge

@@ -401,6 +401,7 @@ final class AppState {
             DistributedNotificationCenter.default().removeObserver(token)
         }
         quietHoursTask?.cancel()
+        idleHibernationTask?.cancel()
     }
 
     /// Wires the WebViewPool's external-link handler so that cross-domain
@@ -1093,6 +1094,10 @@ final class AppState {
         let threshold = TimeInterval(autoHibernateIdleMinutes * 60)
         let candidates = webViewPool.idleServiceIDs(idleFor: threshold, now: Date())
         for id in candidates {
+            // Re-check across each hibernation's await: the user may have toggled
+            // the feature off (or the app locked) mid-sweep, and we shouldn't keep
+            // tearing down the rest of the candidate list after that.
+            guard autoHibernateIdleEnabled, !isLocked else { return }
             guard !isNotificationCritical(id) else { continue }
             // The pool does the call check and re-validates the guards across
             // that await, so a service the user switches to mid-sweep is never
