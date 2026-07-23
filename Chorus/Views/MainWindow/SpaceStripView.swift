@@ -195,6 +195,12 @@ struct SpaceStripView: View {
         .accessibilityAction(named: "Move down") { moveSpaceDown(space) }
         .focusable()
         .focused($focusedSpaceID, equals: space.id)
+        // Suppress the rectangular system focus ring, matching the service rail
+        // (see ServiceSidebarView). Selection co-locates focus onto the chip, so
+        // the system ring stacked on top of the chip's own accent border and pill
+        // — a doubled box that the narrow strip then clipped. The app's own
+        // indicator already shows where focus is.
+        .focusEffectDisabled()
         .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow]) { press in
             handleSpaceKey(press, for: space)
         }
