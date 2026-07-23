@@ -31,18 +31,24 @@ struct ServiceTabView: View {
             content
                 .frame(height: Self.height)
                 .opacity(isHibernated ? 0.6 : (isMuted ? 0.8 : 1.0))
-                // Fill + clip only the background to the rounded shape — do NOT
-                // wrap `content` in a whole-view clipShape: the icon-only badge
-                // sits at a small top-trailing negative offset and a view clip
-                // would shave its corner. The border is a stroke overlay (no clip).
-                .background(fillStyle, in: RoundedRectangle(cornerRadius: cornerRadius))
-                .overlay(
+                // Draw the fill and the selection border as one BACKGROUND layer
+                // so the badge — which pokes past the tab's top-trailing corner
+                // (see `content`, offset x:2 y:-2) — composites on top of the
+                // border instead of being sliced by it. Keeping the border as an
+                // `.overlay` painted it over the badge's inner corner. Still no
+                // whole-view clipShape: the badge sits at a negative offset and a
+                // clip would shave its corner.
+                .background {
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .strokeBorder(
-                            isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.clear),
-                            lineWidth: 1.5
+                        .fill(fillStyle)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: cornerRadius)
+                                .strokeBorder(
+                                    isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.clear),
+                                    lineWidth: 1.5
+                                )
                         )
-                )
+                }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

@@ -261,7 +261,14 @@ struct ServiceSidebarView: View {
             WebNavButtons(webViewState: appState.webViewState, homeURL: activeHomeURL)
                 .padding(.trailing, 10)
         }
-        .frame(height: ServiceTabView.height + 4)
+        // Headroom above the row. In the hybrid layout this row sits at the very
+        // top of the window, and the icon-tab badge pokes ~2pt past its icon's
+        // top-trailing corner (see ServiceTabView) — with the row flush to the
+        // top edge the badge had no margin and read as shaved. Padding the whole
+        // HStack (tabs + nav buttons together) keeps them aligned while the frame
+        // grows to match; the drag handle and shade fill the added band.
+        .padding(.top, 4)
+        .frame(height: ServiceTabView.height + 8)
         // The OS window drag is off in the top-bar and hybrid layouts, so tab
         // drags reorder instead of moving the window (see
         // WindowMovableConfigurator). A full-width drag handle behind the row
