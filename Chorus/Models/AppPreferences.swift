@@ -108,6 +108,17 @@ final class AppPreferences {
     /// and a custom service's host can be private. Off just means a service
     /// whose own host serves no usable icon falls back to its monogram.
     var googleFaviconFallbackEnabled: Bool?
+    /// Fully hibernate a background service after it has been idle for
+    /// `autoHibernateIdleMinutes`, freeing its WebContent process. Optional for
+    /// SwiftData lightweight migration; nil is treated as off — opt-in because it
+    /// changes runtime behaviour. Notification-critical services (the Messaging
+    /// catalog category) and any service marked "Keep Loaded" are never touched,
+    /// so real-time alerts for chat apps are preserved; a hibernated service still
+    /// updates its unread badge via the 60s poll.
+    var autoHibernateIdleEnabled: Bool?
+
+    /// Idle minutes before auto-hibernation kicks in. Optional; nil resolves to 10.
+    var autoHibernateIdleMinutes: Int?
 
     init(
         id: UUID = UUID(),
@@ -132,7 +143,9 @@ final class AppPreferences {
         annoyanceBlockingEnabled: Bool? = nil,
         defaultCameraPolicyRaw: String? = nil,
         defaultMicrophonePolicyRaw: String? = nil,
-        googleFaviconFallbackEnabled: Bool? = nil
+        googleFaviconFallbackEnabled: Bool? = nil,
+        autoHibernateIdleEnabled: Bool? = nil,
+        autoHibernateIdleMinutes: Int? = nil
     ) {
         self.id = id
         self.appPresenceMode = appPresenceMode
@@ -157,6 +170,8 @@ final class AppPreferences {
         self.defaultCameraPolicyRaw = defaultCameraPolicyRaw
         self.defaultMicrophonePolicyRaw = defaultMicrophonePolicyRaw
         self.googleFaviconFallbackEnabled = googleFaviconFallbackEnabled
+        self.autoHibernateIdleEnabled = autoHibernateIdleEnabled
+        self.autoHibernateIdleMinutes = autoHibernateIdleMinutes
     }
 
     /// Materialises the storage-optional default zoom (nil → 1.0).
@@ -184,4 +199,11 @@ final class AppPreferences {
 
     /// Materialises the storage-optional Google favicon fallback flag (nil → false).
     var googleFaviconFallbackEnabledEffective: Bool { googleFaviconFallbackEnabled ?? false }
+    /// Materialises the storage-optional auto-hibernate flag (nil → false).
+    var autoHibernateIdleEnabledEffective: Bool { autoHibernateIdleEnabled ?? false }
+
+    /// Idle minutes before auto-hibernation, clamped to a sane 1...120 (nil → 10).
+    var autoHibernateIdleMinutesEffective: Int {
+        min(120, max(1, autoHibernateIdleMinutes ?? 10))
+    }
 }
