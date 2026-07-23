@@ -3,6 +3,14 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.5.11] - 2026-07-22
+
+### Fixed
+
+- A service's unread badge could be covered by the tab's selection outline or
+  crowded against the top of the window in the top-bar and hybrid layouts. The
+  badge now sits above the outline and clear of the window edge.
+
 ## [1.5.10] - 2026-07-22
 
 ### Fixed
