@@ -3,6 +3,38 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.5.9] - 2026-07-22
+
+### Added
+
+- Chorus can hibernate a service you have not opened in a while, freeing its
+  memory and CPU until you go back to it. It stays off until you turn it on in
+  Settings under General. Chat apps stay live, so their notifications still
+  arrive the moment a message lands.
+- You can open an outside link in a Chorus window instead of your browser. Turn
+  it on for a service in that service's settings. It is off to start with.
+
+### Changed
+
+- Dark theming is now something you set for each service by hand. Chorus no
+  longer guesses whether a site needs a dark theme. If a service used to go dark
+  on its own, open its settings and turn its dark mode On to keep that. As
+  before, a service is themed only while the app itself is dark.
+
+### Removed
+
+- Reader mode.
+
+### Fixed
+
+- Tightened how Chorus decides where a clicked link goes. A page can no longer
+  pass itself off as one of your services by sharing a hosting domain with it,
+  and a link that leaves the app through a scheme like mailto now needs a real
+  click.
+- Favicon lookups no longer follow a redirect to a private or local address.
+- Reliability fixes in hibernation, in moving a service to another space, and in
+  setting a custom icon.
+
 ## [1.5.8] - 2026-07-22
 
 ### Added

@@ -7,7 +7,7 @@ and Franz, built for Apple Silicon.
 
 **[Download the latest release](https://github.com/nicojan/Chorus/releases/latest)** (macOS 14 or later). The build is signed, notarized, and updates itself via Sparkle.
 
-> Status: 1.5.4 is the current release. See [CHANGELOG.md](CHANGELOG.md) for
+> Status: 1.5.9 is the current release. See [CHANGELOG.md](CHANGELOG.md) for
 > what changed.
 
 ![Chorus running several web services in one window](assets/screenshot.png)
@@ -24,12 +24,15 @@ and Franz, built for Apple Silicon.
   immediately on launch and after sign-in. Per-service control over badges and
   macOS notifications, per-service and per-space mute, plus global Do Not Disturb.
 - **Memory-aware hibernation.** Least-recently-used services hibernate to
-  reclaim memory and wake instantly where you left off; pin "Keep loaded"
-  services that should never sleep.
+  reclaim memory and wake instantly where you left off. You can also have Chorus
+  hibernate a service after it sits idle for a while; chat apps stay live so
+  their alerts still arrive. Pin "Keep loaded" for services that should never
+  sleep.
 - **Quick switcher** (`⌘K`), **find in page** (`⌘F`), **zoom** (`⌘+`/`⌘-`/`⌘0`),
   reload (`⌘R`), and drag-to-reorder services and spaces.
 - **Smart link routing.** Cross-service links open in a matching Chorus service
-  when one exists, otherwise in your default browser.
+  when one exists, otherwise in your default browser. Per service, you can
+  instead have outside links open in a Chorus window.
 - **Ad & tracker blocking.** Blocks known ad and tracking domains across your
   services with the HaGezi blocklist, on by default. It won't remove ads a site
   serves from its own domain, like YouTube.

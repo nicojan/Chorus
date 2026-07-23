@@ -1,6 +1,26 @@
 # Open items
 
-## Working tree (uncommitted): launch badges and per-service inbox counts
+## Current status — through 1.5.9 (2026-07-22)
+
+Everything below has shipped. **Chorus 1.5.9 is the current release**: opt-in
+auto-hibernation of idle services, a per-service option to open outside links in
+a Chorus window, Dark Reader narrowed to a manual per-service On/Off (all
+auto-detection, the probe, the theme cache, and the global toggle removed),
+reader mode removed entirely, and a round of security and reliability fixes
+(link-routing host matching, the favicon-redirect SSRF guard, the chat-stays-live
+cap-eviction gap, a Move-to-Space crash guard).
+
+The one genuinely open item is **PR #10** (opt-in spaces hiding, a bottom nav
+bar, and a window title), tabled pending a UX pass on the rail/title/service-name
+story — the window title does not render on macOS 26 and duplicates the
+highlighted rail icon.
+
+The **1.5.4** section below still describes the old auto-detection dark path (the
+probe, an "Auto" mode, and the "Re-detect dark theme" button). **1.5.9 removed
+all of that** — dark theming is now a per-service On/Off you set by hand. Kept
+here as history.
+
+## Shipped in 1.5.6: launch badges and per-service inbox counts
 
 Notification badges stayed blank at launch for any service the user was not
 looking at. The cause: the old launch fetch pulled each page over URLSession and
@@ -39,7 +59,7 @@ raise-only writes keep a launch-time 0 from clearing anything. LinkedIn shows
 unread message threads, by counting unread conversations in the list, rather than
 the tab title's global notification count.
 
-State: on `main`, uncommitted. All 106 tests pass. The Gmail row-count selector
+State: shipped in 1.5.6. The Gmail row-count selector
 (`tr.zA.zE`) was verified live: on the reported inbox it read `tr.zA`=10 rendered
 rows, `tr.zA.zE`=0 unread, so the badge cleared to 0 (was 99+). Files touched:
 `HibernatedBadgePoller.swift`, `NotificationManager.swift`,
