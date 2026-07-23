@@ -1,13 +1,22 @@
 # Open items
 
-## Current status — through 1.5.11 (2026-07-22)
+## Current status — through 1.5.12 (2026-07-23)
 
-Everything below has shipped. **Chorus 1.5.11 is the current release**, a
-one-fix patch: on the top-bar and hybrid layouts, a service's unread badge no
-longer hides under the tab's selection outline or presses against the top edge
-of the window. It sits on **1.5.10** (the sidebar space chip no longer draws a
-stray system focus outline on top of its own highlight — a doubled box the
-narrow strip clipped) and **1.5.9**: opt-in
+Everything below has shipped. **Chorus 1.5.12 is the current release.** It adds
+a per-service "Always appear active" setting: turn it on for Microsoft Teams and
+Chorus reports the page as focused while it sits in the background, so Teams
+stops marking you away when you work in other apps. Chorus offers to turn it on
+when you add Teams, and it is off by default because faking focus can make a
+service hold back some notifications. This answers issue #14. The reporter is
+testing whether the status holds over a full away timer, which can only be
+confirmed against a live Teams account; if it still goes away, the fallback is a
+periodic synthetic-activity ping.
+
+It sits on **1.5.11**, a one-fix patch: on the top-bar and hybrid layouts, a
+service's unread badge no longer hides under the tab's selection outline or
+presses against the top edge of the window. That sits on **1.5.10** (the sidebar
+space chip no longer draws a stray system focus outline on top of its own
+highlight — a doubled box the narrow strip clipped) and **1.5.9**: opt-in
 auto-hibernation of idle services, a per-service option to open outside links in
 a Chorus window, Dark Reader narrowed to a manual per-service On/Off (all
 auto-detection, the probe, the theme cache, and the global toggle removed),

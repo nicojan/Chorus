@@ -3,6 +3,17 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.5.12] - 2026-07-23
+
+### Added
+
+- A per-service "Always appear active" setting. Turn it on for Microsoft Teams
+  and Chorus reports the page as focused while it sits in the background, so
+  Teams keeps showing you as active instead of away. Chorus offers to switch it
+  on when you add Teams from the catalog, and you can change it any time by
+  editing the service. It is off by default, because faking focus can make a
+  service hold back some of the notifications Chorus forwards.
+
 ## [1.5.11] - 2026-07-22
 
 ### Fixed
