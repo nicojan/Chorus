@@ -3,6 +3,31 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.8</title>
+            <pubDate>Wed, 22 Jul 2026 17:37:04 -0700</pubDate>
+            <sparkle:version>17</sparkle:version>
+            <sparkle:shortVersionString>1.5.8</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Added</h3>
+<ul>
+<li>Chorus now copies your saved data aside before a new version opens it, so if an update ever fails to load your spaces and services, the earlier copy is still on disk and recoverable.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>The Google favicon fallback is off by default now. When a service has no icon of its own, Chorus no longer asks Google for one unless you turn it on in settings.</li>
+<li>Selected services now use Chorus's own highlight instead of the system focus ring.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Two-color service icons no longer render as solid blocks.</li>
+<li>Chorus opens external links only when they use a known, safe scheme.</li>
+<li>Notification permission failures now go to the log instead of being dropped, so problems granting access are easier to track down later.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.8/Chorus-1.5.8.dmg" length="8527410" type="application/octet-stream" sparkle:edSignature="//AkmLx4zVdEQmAprZ07Gv6p1X51GAbRP3vAv7Uc64Z0uf14g4kd2DOiI7VW1b+H/ceKavOS1Qg494rAf4hUDQ=="/>
+        </item>
+        <item>
             <title>1.5.7</title>
             <pubDate>Tue, 21 Jul 2026 11:25:31 -0700</pubDate>
             <sparkle:version>16</sparkle:version>
