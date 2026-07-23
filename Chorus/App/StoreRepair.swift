@@ -93,6 +93,86 @@ enum StoreRepair {
         AppLogger.dataStore.info("StoreRepair: dangling links before=\(before) after=\(after)")
     }
 
+    // MARK: - Pre-migration snapshots
+
+    /// Filename infix marking a pre-migration snapshot of the store.
+    static let snapshotInfix = ".snapshot-"
+
+    /// The running app version, as `short+build` (e.g. `1.5.7+16`). Used to
+    /// decide whether a migration might be about to run.
+    static var currentVersion: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "\(short)+\(build)"
+    }
+
+    /// Copies the store aside before a build with a *new* version opens it, so a
+    /// migration that loses or reshapes data can always be recovered. A no-op
+    /// when the running version matches the last launch (no migration expected)
+    /// or when no store exists yet. Keeps the most recent `keep` snapshots.
+    ///
+    /// `version`/`defaults` are injectable for tests; production passes the
+    /// defaults. The version tag lives in the build's own `UserDefaults`, so the
+    /// debug and release apps track their versions independently.
+    static func backupBeforeMigrationIfNeeded(
+        at url: URL,
+        version: String = StoreRepair.currentVersion,
+        defaults: UserDefaults = .standard,
+        keeping keep: Int = 3
+    ) {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        let key = "chorus.storeSnapshotVersion"
+        guard defaults.string(forKey: key) != version else { return }
+
+        // Stamp with the fixed-width Unix second (so names sort by age) followed
+        // by the version, which both documents what each snapshot preceded and
+        // keeps two versions taken in the same second from colliding.
+        let safeVersion = version.replacingOccurrences(of: "/", with: "_")
+        snapshot(at: url, stamp: "\(Int(Date().timeIntervalSince1970))-\(safeVersion)")
+        pruneSnapshots(at: url, keeping: keep)
+        defaults.set(version, forKey: key)
+    }
+
+    /// Copies `store`(+`-wal`/`-shm`) to `store.snapshot-<stamp>.bak` siblings.
+    static func snapshot(at url: URL, stamp: String) {
+        let fm = FileManager.default
+        for suffix in ["", "-wal", "-shm"] {
+            let src = URL(fileURLWithPath: url.path + suffix)
+            guard fm.fileExists(atPath: src.path) else { continue }
+            let dst = URL(fileURLWithPath: url.path + "\(snapshotInfix)\(stamp).bak" + suffix)
+            do {
+                try fm.copyItem(at: src, to: dst)
+            } catch {
+                AppLogger.dataStore.error("StoreRepair: snapshot of \(src.lastPathComponent) failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Deletes all but the `keep` most recent snapshot triples for this store.
+    /// Snapshot names sort newest-last by their fixed-width Unix-second stamp, so
+    /// a lexical sort orders them by age.
+    static func pruneSnapshots(at url: URL, keeping keep: Int) {
+        let fm = FileManager.default
+        let dir = url.deletingLastPathComponent()
+        let prefix = url.lastPathComponent + snapshotInfix
+        guard let all = try? fm.contentsOfDirectory(atPath: dir.path) else { return }
+
+        let primaries = all
+            .filter { $0.hasPrefix(prefix) && $0.hasSuffix(".bak") }
+            .sorted()
+        guard primaries.count > keep else { return }
+
+        for name in primaries.dropLast(keep) {
+            for suffix in ["", "-wal", "-shm"] {
+                let victim = dir.appending(path: name + suffix)
+                if fm.fileExists(atPath: victim.path) {
+                    try? fm.removeItem(at: victim)
+                }
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     private static func schemaMatches(_ db: OpaquePointer) -> Bool {

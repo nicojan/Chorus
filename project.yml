@@ -46,6 +46,13 @@ targets:
         INFOPLIST_KEY_NSUserNotificationsUsageDescription: "Chorus forwards notifications from your web services to macOS."
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.social-networking"
       configs:
+        # Debug builds run under a separate bundle id so a copy launched from
+        # Xcode can never share the installed release app's data. The bundle id
+        # keys WebKit storage, Preferences, Caches and notifications; the
+        # SwiftData store is moved separately in AppState.init (its default path
+        # is not bundle-scoped). See fix/isolate-debug-data.
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.nicojan.Chorus.debug
         # Only the Release build (used by Archive) needs the Developer ID team.
         # Keeping it out of Debug lets the app sign ad-hoc so it and the ad-hoc
         # xctest bundle share a Team ID; a real team on only the host trips
