@@ -3,6 +3,43 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.5.8] - 2026-07-22
+
+### Added
+
+- Chorus now copies your saved data aside before a new version opens it, so if
+  an update ever fails to load your spaces and services, the earlier copy is
+  still on disk and recoverable.
+
+### Changed
+
+- The Google favicon fallback is off by default now. When a service has no icon
+  of its own, Chorus no longer asks Google for one unless you turn it on in
+  settings.
+- Selected services now use Chorus's own highlight instead of the system focus
+  ring.
+
+### Fixed
+
+- Two-color service icons no longer render as solid blocks.
+- Chorus opens external links only when they use a known, safe scheme.
+- Notification permission failures now go to the log instead of being dropped,
+  so problems granting access are easier to track down later.
+
+## [1.5.7] - 2026-07-21
+
+### Fixed
+
+- Gmail's Send button works again. Chorus now shows the JavaScript dialog panels
+  Gmail uses to confirm and send a message.
+
+## [1.5.6] - 2026-07-21
+
+### Fixed
+
+- Launch badges show unread counts again. Gmail and LinkedIn now count only the
+  messages shown as unread, so the number matches what you see.
+
 ## [1.5.5] - 2026-07-20
 
 ### Changed
