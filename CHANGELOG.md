@@ -3,6 +3,14 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.5.10] - 2026-07-22
+
+### Fixed
+
+- The selected space in the sidebar showed a stray blue box around its icon: a
+  system focus outline drawn on top of the space's own highlight, which the
+  narrow sidebar then clipped. Now only the app's own highlight shows.
+
 ## [1.5.9] - 2026-07-22
 
 ### Added
