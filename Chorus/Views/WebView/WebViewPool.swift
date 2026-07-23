@@ -36,19 +36,10 @@ final class WebViewPool {
     private let userScriptManager: UserScriptManager
     private let contentBlocker: ContentBlockerManager
 
-    /// Persistent per-service cache of Dark Reader's generated theme CSS. Baked
-    /// into a themed view at build time for a fast dark first paint, and
-    /// refreshed after each themed load's live pass settles.
-    private let darkThemeCache = DarkThemeCacheStore()
-
     /// The app's current effective Light/Dark appearance, pushed by AppState.
     /// Baked into each web view's Dark Reader scripts at build time so a service
     /// opted into dark theming starts in the right state.
     private(set) var effectiveAppearanceDark = false
-
-    /// Whether the global "dark-theme services without one" setting is on, pushed
-    /// by AppState. Drives detection for services in `.auto` mode.
-    private(set) var autoDarkModeEnabled = false
 
     /// The currently active/displayed service
     private(set) var activeServiceID: UUID?
@@ -291,7 +282,6 @@ final class WebViewPool {
         notificationCriticalIDs.remove(instanceID)
         evictionInFlight.remove(instanceID)
         userScriptManager.removeHandler(for: instanceID)
-        darkThemeCache.remove(for: instanceID)
         onServiceRemoved?(instanceID)
         snapshots.removeValue(forKey: instanceID)
     }
@@ -564,16 +554,12 @@ final class WebViewPool {
         let controller = WKUserContentController()
         let injection = DarkReaderSupport.injection(
             mode: instance.darkMode,
-            globalAuto: autoDarkModeEnabled,
-            appDark: effectiveAppearanceDark,
-            detectedLacksDark: instance.detectedLacksDarkTheme,
-            nativeDark: nativeDark(for: instance)
+            appDark: effectiveAppearanceDark
         )
         userScriptManager.configureScripts(
             for: instance,
             customCSS: effectiveCSS(for: instance),
             darkInjection: injection,
-            cachedDarkCSS: darkThemeCache.cachedCSS(for: instance.id),
             on: controller
         )
         // Attach the compiled content-blocking rule lists (ad/tracker domains)
@@ -618,55 +604,33 @@ final class WebViewPool {
         return css
     }
 
-    /// Whether a service is a catalog entry known to render dark on its own (see
-    /// `ServiceCatalogEntry.nativeDark`). Custom (non-catalog) services and
-    /// unmarked ones return false, so they keep the auto/probe behavior.
-    private func nativeDark(for instance: ServiceInstance) -> Bool {
-        guard let id = instance.catalogEntryID else { return false }
-        return ServiceCatalog.shared.entry(for: id)?.nativeDark ?? false
-    }
-
-    /// Applies a Light/Dark appearance and global-auto change to every live web
-    /// view: recomputes each service's dark injection and applies it on the
-    /// current document at once, re-baking the view's user scripts so its next
-    /// full navigation starts in the right state (and without a flash). Mirrors
+    /// Applies a Light/Dark appearance change to every live web view: recomputes
+    /// each service's dark injection and applies it on the current document at
+    /// once, re-baking the view's user scripts so its next full navigation
+    /// starts in the right state (and without a flash). Mirrors
     /// `reattachContentBlocker`: live views only, in place, no teardown. Views
-    /// rebuilt later read the new state via `makeConfiguration`. Pass every
-    /// service (not just marked ones) — `.auto` services need re-evaluating too.
-    func applyDarkState(isDark: Bool, autoEnabled: Bool, services: [ServiceInstance]) {
+    /// rebuilt later read the new state via `makeConfiguration`.
+    func applyDarkState(isDark: Bool, services: [ServiceInstance]) {
         effectiveAppearanceDark = isDark
-        autoDarkModeEnabled = autoEnabled
         let byID = Dictionary(services.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         for (id, webView) in webViews {
             guard let instance = byID[id] else { continue }
-            let inj = DarkReaderSupport.injection(
-                mode: instance.darkMode,
-                globalAuto: autoEnabled,
-                appDark: isDark,
-                detectedLacksDark: instance.detectedLacksDarkTheme,
-                nativeDark: nativeDark(for: instance)
-            )
+            let inj = DarkReaderSupport.injection(mode: instance.darkMode, appDark: isDark)
             applyInjectionLive(inj, to: webView, instance: instance)
         }
     }
 
     /// Recomputes and applies a single live service's dark injection — used after
-    /// a per-service Auto/On/Off edit and after a detection verdict is cached.
-    /// A no-op if the view isn't live (it rebuilds via `makeConfiguration`).
+    /// a per-service On/Off edit. A no-op if the view isn't live (it rebuilds via
+    /// `makeConfiguration`).
     func refreshDarkMode(for instance: ServiceInstance) {
         guard let webView = webViews[instance.id] else { return }
-        let inj = DarkReaderSupport.injection(
-            mode: instance.darkMode,
-            globalAuto: autoDarkModeEnabled,
-            appDark: effectiveAppearanceDark,
-            detectedLacksDark: instance.detectedLacksDarkTheme,
-            nativeDark: nativeDark(for: instance)
-        )
+        let inj = DarkReaderSupport.injection(mode: instance.darkMode, appDark: effectiveAppearanceDark)
         applyInjectionLive(inj, to: webView, instance: instance)
     }
 
-    /// Applies an injection to a live web view in place: enable/disable/probe on
-    /// the current document, then re-bake the view's user scripts so the next
+    /// Applies an injection to a live web view in place: enable/disable theming
+    /// on the current document, then re-bake the view's user scripts so the next
     /// navigation matches. `.themed` injects the library before enabling because
     /// the current document's isolated world may not have it yet.
     private func applyInjectionLive(
@@ -679,29 +643,8 @@ final class WebViewPool {
         case .themed:
             webView.evaluateJavaScript(DarkReaderSupport.libraryJS, in: nil, in: world, completionHandler: nil)
             webView.evaluateJavaScript(DarkReaderSupport.enableJS, in: nil, in: world, completionHandler: nil)
-            // Release a deferred probe-path cover (if any) now that theming is on,
-            // so it tracks Dark Reader's settle instead of revealing the still-light
-            // page early. A no-op when no cover is present.
-            webView.evaluateJavaScript(DarkReaderSupport.beginCoverSettleJS, in: nil, in: world, completionHandler: nil)
-            // Export + cache the generated theme from THIS live document too. A
-            // service themed live — by a probe verdict, an appearance toggle, or
-            // (at launch) the dark state being pushed after it already preloaded
-            // light — would otherwise never bake the document-start export script,
-            // so its cache would never populate. Running the export here covers
-            // every live-theming path, not just fresh navigations.
-            webView.evaluateJavaScript(
-                UserScriptManager.makeDarkCSSExportScript(serviceID: instance.id.uuidString),
-                in: nil, in: world, completionHandler: nil
-            )
         case .none:
             webView.evaluateJavaScript(DarkReaderSupport.disableJS, in: nil, in: world, completionHandler: nil)
-        case .probe:
-            webView.evaluateJavaScript(
-                UserScriptManager.makeDarkProbeScript(serviceID: instance.id.uuidString),
-                in: nil,
-                in: .page,
-                completionHandler: nil
-            )
         }
         let controller = webView.configuration.userContentController
         controller.removeAllUserScripts()
@@ -709,22 +652,8 @@ final class WebViewPool {
             for: instance,
             customCSS: effectiveCSS(for: instance),
             darkInjection: injection,
-            cachedDarkCSS: darkThemeCache.cachedCSS(for: instance.id),
             on: controller
         )
-    }
-
-    /// Persists a themed service's exported Dark Reader CSS for a fast dark first
-    /// paint on the next load. Called from the `chorusDarkCSSCache` handler.
-    func cacheDarkTheme(_ css: String, for id: UUID) {
-        darkThemeCache.store(css: css, for: id)
-    }
-
-    /// Drops a service's cached theme without touching a web view. Used by
-    /// delete paths that don't go through `removeWebView` (e.g. the launch-time
-    /// orphan reaper), so a deleted service never leaks its cache file.
-    func dropDarkThemeCache(for id: UUID) {
-        darkThemeCache.remove(for: id)
     }
 
     /// Live services idle for at least `threshold`, eligible for auto-hibernation:

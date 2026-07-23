@@ -1,10 +1,10 @@
 import Foundation
 import SwiftData
 
-/// Per-service dark-theming choice. `auto` follows the global auto-dark setting
-/// plus detection; `on` always themes (when the app is Dark); `off` never does.
+/// Per-service dark-theming choice. `on` always themes while the app is Dark;
+/// `off` never does. Off is the default.
 enum ServiceDarkMode: String, CaseIterable {
-    case auto, on, off
+    case on, off
 }
 
 /// Per-service camera/microphone permission. `ask` prompts once and remembers
@@ -137,12 +137,6 @@ final class ServiceInstance {
     /// `forceDarkMode` flag. Only `darkModeRaw` is written from now on.
     var darkModeRaw: String?
 
-    /// Cached detection verdict for `auto` mode: true if the service was found to
-    /// lack its own dark theme (a light background under a dark app). nil until
-    /// probed once; kept so the site only flashes into dark theming on the first
-    /// visit. Cleared when the service's URL changes.
-    var detectedLacksDarkTheme: Bool?
-
     /// Per-service camera / microphone permission, stored raw for SwiftData
     /// lightweight migration. nil means "no per-service value" — resolution falls
     /// back to the global default, then `.ask` (see `MediaPermissionResolver`).
@@ -179,13 +173,16 @@ final class ServiceInstance {
     /// Materialises the storage-optional force-dark flag (nil → false).
     var isForceDarkModeEnabled: Bool { forceDarkMode ?? false }
 
-    /// The effective dark-theming mode. An explicit `darkModeRaw` wins; otherwise
-    /// a legacy `forceDarkMode == true` service maps to `.on` (preserving its
-    /// behavior), and everything else defaults to `.auto`.
+    /// The effective dark-theming mode. An explicit `darkModeRaw` of `"on"` or
+    /// `"off"` wins; otherwise a legacy `forceDarkMode == true` service maps to
+    /// `.on` (preserving its behavior). A stored `"auto"`, an unknown value, or
+    /// nothing set all default to `.off` — manual theming is opt-in, so any
+    /// service that rode the old auto mode stops theming until the user turns it
+    /// back on for that service.
     var darkMode: ServiceDarkMode {
         if let raw = darkModeRaw, let mode = ServiceDarkMode(rawValue: raw) { return mode }
         if forceDarkMode == true { return .on }
-        return .auto
+        return .off
     }
 
     /// Whether the passkey-limitation notice still needs to be shown for this
@@ -242,7 +239,6 @@ final class ServiceInstance {
         customCSS: String? = nil,
         forceDarkMode: Bool? = nil,
         darkModeRaw: String? = nil,
-        detectedLacksDarkTheme: Bool? = nil,
         hasSeenPasskeyNotice: Bool? = nil,
         cameraPolicyRaw: String? = nil,
         microphonePolicyRaw: String? = nil,
@@ -265,7 +261,6 @@ final class ServiceInstance {
         self.customCSS = customCSS
         self.forceDarkMode = forceDarkMode
         self.darkModeRaw = darkModeRaw
-        self.detectedLacksDarkTheme = detectedLacksDarkTheme
         self.hasSeenPasskeyNotice = hasSeenPasskeyNotice
         self.cameraPolicyRaw = cameraPolicyRaw
         self.microphonePolicyRaw = microphonePolicyRaw

@@ -1043,50 +1043,12 @@ final class ChorusTests: XCTestCase {
 
     func testDarkInjectionTruthTable() {
         typealias I = DarkReaderSupport.DarkInjection
-        func inj(_ m: ServiceDarkMode, _ auto: Bool, _ dark: Bool, _ detected: Bool?, _ native: Bool = false) -> I {
-            DarkReaderSupport.injection(mode: m, globalAuto: auto, appDark: dark, detectedLacksDark: detected, nativeDark: native)
-        }
-        // App light → never themes, whatever the mode.
-        XCTAssertEqual(inj(.on, true, false, true), I.none)
-        // Explicit On themes even with the global toggle off; Off never themes.
-        XCTAssertEqual(inj(.on, false, true, nil), I.themed)
-        XCTAssertEqual(inj(.off, true, true, true), I.none)
-        // Auto needs the global toggle on.
-        XCTAssertEqual(inj(.auto, false, true, true), I.none)
-        // Auto + global: no verdict → probe; lacks-dark → themed; has-dark → none.
-        XCTAssertEqual(inj(.auto, true, true, nil), I.probe)
-        XCTAssertEqual(inj(.auto, true, true, true), I.themed)
-        XCTAssertEqual(inj(.auto, true, true, false), I.none)
-    }
-
-    func testDarkInjectionNativeDarkService() {
-        typealias I = DarkReaderSupport.DarkInjection
-        func inj(_ m: ServiceDarkMode, _ auto: Bool, _ dark: Bool, _ detected: Bool?, _ native: Bool) -> I {
-            DarkReaderSupport.injection(mode: m, globalAuto: auto, appDark: dark, detectedLacksDark: detected, nativeDark: native)
-        }
-        // A native-dark service in Auto never themes and never even probes — its
-        // own dark theme is trusted, so Dark Reader stays out of the way. This
-        // holds regardless of any stale detection verdict.
-        XCTAssertEqual(inj(.auto, true, true, nil, true), I.none)
-        XCTAssertEqual(inj(.auto, true, true, true, true), I.none)
-        XCTAssertEqual(inj(.auto, true, true, false, true), I.none)
-        // The user's explicit On still wins over the native-dark flag.
-        XCTAssertEqual(inj(.on, true, true, nil, true), I.themed)
-        // With the flag off, Auto behaves exactly as before (regression guard).
-        XCTAssertEqual(inj(.auto, true, true, nil, false), I.probe)
-    }
-
-    func testCatalogMarksNativeDarkServices() {
-        let catalog = ServiceCatalog.shared
-        // Sample of the researched always-dark / follows-system services.
-        for id in ["discord", "spotify", "youtube-music", "linear", "icloud-mail",
-                   "github", "jira", "confluence", "gitlab", "chatgpt", "claude"] {
-            XCTAssertEqual(catalog.entry(for: id)?.nativeDark, true, "\(id) should be marked nativeDark")
-        }
-        // Services that need Dark Reader (no native dark, or manual-only) must not be marked.
-        for id in ["gmail", "slack", "notion", "hackernews", "zoom", "reddit"] {
-            XCTAssertNotEqual(catalog.entry(for: id)?.nativeDark, true, "\(id) should not be nativeDark")
-        }
+        // `.themed` only when the mode is On AND the app is dark; every other
+        // combination of mode × appDark is `.none`.
+        XCTAssertEqual(DarkReaderSupport.injection(mode: .on, appDark: true), I.themed)
+        XCTAssertEqual(DarkReaderSupport.injection(mode: .on, appDark: false), I.none)
+        XCTAssertEqual(DarkReaderSupport.injection(mode: .off, appDark: true), I.none)
+        XCTAssertEqual(DarkReaderSupport.injection(mode: .off, appDark: false), I.none)
     }
 
     func testGmailBadgeCountsUnreadRowsNotInboxAriaLabel() {
@@ -1100,43 +1062,22 @@ final class ChorusTests: XCTestCase {
         XCTAssertFalse(js.contains("aria-label"), "Gmail badge should not read an aria-label")
     }
 
-    func testDarkProbeScriptPollsUntilSettled() {
-        let js = UserScriptManager.makeDarkProbeScript(serviceID: "abc")
-        // The hardened probe samples repeatedly (not a single fixed timeout) so a
-        // slow SPA that paints its dark theme late isn't misread as a light page.
-        XCTAssertTrue(js.contains("chorusDarkProbe"))
-        XCTAssertTrue(js.contains("relativeLuminance") || js.contains("luminance"))
-        XCTAssertTrue(js.contains("attempts") || js.contains("schedule"))
-    }
-
-    func testClassifyLacksDark() {
-        XCTAssertTrue(DarkReaderSupport.classifyLacksDark(r: 255, g: 255, b: 255, a: 1))   // white → light
-        XCTAssertFalse(DarkReaderSupport.classifyLacksDark(r: 26, g: 26, b: 26, a: 1))     // #1a1a1a → dark
-        XCTAssertTrue(DarkReaderSupport.classifyLacksDark(r: 0, g: 0, b: 0, a: 0))         // transparent → light
-    }
-
     func testDarkModeMigrationFromLegacyFlag() {
         // Explicit mode wins.
         XCTAssertEqual(ServiceInstance(label: "x", url: "https://e.com", darkModeRaw: "off").darkMode, .off)
+        XCTAssertEqual(ServiceInstance(label: "x", url: "https://e.com", darkModeRaw: "on").darkMode, .on)
         // Legacy force-dark maps to On.
         XCTAssertEqual(ServiceInstance(label: "x", url: "https://e.com", forceDarkMode: true).darkMode, .on)
-        // Nothing set defaults to Auto.
-        XCTAssertEqual(ServiceInstance(label: "x", url: "https://e.com").darkMode, .auto)
-    }
-
-    func testAutoDarkModeDefaultsFalse() {
-        XCTAssertFalse(AppPreferences().autoDarkModeEnabledEffective)
-        XCTAssertTrue(AppPreferences(autoDarkModeEnabled: true).autoDarkModeEnabledEffective)
+        // A stored "auto" (from before manual-only) and nothing set both resolve
+        // to Off — manual theming is opt-in, so a service that rode the old auto
+        // mode stops theming until the user turns it back on.
+        XCTAssertEqual(ServiceInstance(label: "x", url: "https://e.com", darkModeRaw: "auto").darkMode, .off)
+        XCTAssertEqual(ServiceInstance(label: "x", url: "https://e.com").darkMode, .off)
     }
 
     func testAnnoyanceBlockingDefaultsFalse() {
         XCTAssertFalse(AppPreferences().annoyanceBlockingEnabledEffective)
         XCTAssertTrue(AppPreferences(annoyanceBlockingEnabled: true).annoyanceBlockingEnabledEffective)
-    }
-
-    func testReaderModeLibraryLoads() {
-        XCTAssertFalse(ReaderMode.libraryJS.isEmpty)
-        XCTAssertTrue(ReaderMode.libraryJS.contains("Readability"))
     }
 
     func testDarkReaderBootstrapEnablesOnlyWhenDark() {
@@ -1169,18 +1110,12 @@ final class ChorusTests: XCTestCase {
         // Interaction is restored the instant the fade begins.
         XCTAssertTrue(s.contains("pointerEvents = 'none'"))
         // The cover is visual only, never modal: it's click-through from creation
-        // so a page that settles before the theme verdict lands stays usable
-        // underneath instead of having its input swallowed by the overlay.
+        // so a page that settles before it reveals stays usable underneath
+        // instead of having its input swallowed by the overlay.
         XCTAssertTrue(s.contains("pointer-events:none"))
-    }
-
-    func testDarkReaderLoadCoverDefersRevealOnProbePath() {
-        // Themed path: theming is baked, so the cover settles immediately.
-        XCTAssertTrue(DarkReaderSupport.antiFlashScript().contains("var DEFER = false"))
-        // Probe path: no Dark Reader baked, so the cover holds until theming is
-        // enabled (beginSettle), not on plain DOM-quiet — otherwise it would
-        // reveal the still-light page and let Dark Reader wash it in view.
-        XCTAssertTrue(DarkReaderSupport.antiFlashScript(deferReveal: true).contains("var DEFER = true"))
+        // Theming is always baked at document-start now (no detection verdict to
+        // wait for), so the cover begins settling immediately.
+        XCTAssertTrue(s.contains("beginSettle();"))
     }
 
     func testDarkReaderLoadCoverSettleCapIsConfigurable() {
@@ -1189,92 +1124,10 @@ final class ChorusTests: XCTestCase {
 
     func testDarkReaderCoverHooksAreWired() {
         let cover = DarkReaderSupport.antiFlashScript()
-        // The cover exposes the hooks its live callers reach across the shared
-        // isolated-world globals.
-        XCTAssertTrue(cover.contains("window.__chorusCoverBeginSettle"))
+        // The cover exposes the dismiss hook its live caller reaches across the
+        // shared isolated-world globals; disabling theming tears it down.
         XCTAssertTrue(cover.contains("window.__chorusCoverDismiss"))
-        // Enabling theming live releases a deferred cover; disabling tears it down.
-        XCTAssertTrue(DarkReaderSupport.beginCoverSettleJS.contains("__chorusCoverBeginSettle"))
         XCTAssertTrue(DarkReaderSupport.disableJS.contains("__chorusCoverDismiss"))
-    }
-
-    // MARK: - Dark theme cache (fast dark first paint)
-
-    func testDarkThemeCacheRoundTripsCSS() {
-        // A real theme carries the Modified-CSS marker (see isCacheable).
-        let css = "/* Modified CSS */\nbody { background: #111 !important; }"
-        guard let data = DarkThemeCacheStore.encode(css: css) else {
-            return XCTFail("cacheable CSS should encode")
-        }
-        XCTAssertEqual(DarkThemeCacheStore.decode(data), css)
-    }
-
-    func testDarkThemeCacheRejectsVersionMismatch() {
-        // A snapshot from an older Dark Reader generator must read as a miss, not
-        // be applied over a page it no longer matches.
-        let real = "/* Modified CSS */ x{}"
-        let data = DarkThemeCacheStore.encode(css: real, version: DarkThemeCacheStore.cacheVersion + 1)!
-        XCTAssertNil(DarkThemeCacheStore.decode(data))
-        // Same version decodes.
-        let ok = DarkThemeCacheStore.encode(css: real, version: DarkThemeCacheStore.cacheVersion)!
-        XCTAssertEqual(DarkThemeCacheStore.decode(ok), real)
-    }
-
-    func testDarkThemeCacheDecodeRejectsGarbage() {
-        XCTAssertNil(DarkThemeCacheStore.decode(Data("not json".utf8)))
-    }
-
-    func testDarkThemeCacheStableHashIsDeterministicAndContentSensitive() {
-        // Stable across calls (unlike String.hashValue, which is per-process
-        // seeded) so the derived cacheVersion doesn't churn every launch...
-        XCTAssertEqual(DarkThemeCacheStore.stableHash("darkreader-vX"),
-                       DarkThemeCacheStore.stableHash("darkreader-vX"))
-        // ...but changes when the library content changes, so a darkreader.js
-        // update auto-invalidates old snapshots.
-        XCTAssertNotEqual(DarkThemeCacheStore.stableHash("darkreader-vX"),
-                          DarkThemeCacheStore.stableHash("darkreader-vY"))
-        // The effective version folds that hash in.
-        XCTAssertNotEqual(DarkThemeCacheStore.cacheVersion, DarkThemeCacheStore.formatVersion)
-    }
-
-    func testDarkThemeCacheSkipsEmptyOversizedAndFallbackOnlyCSS() {
-        // Empty and oversized are rejected.
-        XCTAssertFalse(DarkThemeCacheStore.isCacheable(""))
-        XCTAssertNil(DarkThemeCacheStore.encode(css: ""))
-        let huge = "/* Modified CSS */" + String(repeating: "a", count: DarkThemeCacheStore.maxCSSBytes + 1)
-        XCTAssertFalse(DarkThemeCacheStore.isCacheable(huge))
-        XCTAssertNil(DarkThemeCacheStore.encode(css: huge))
-        // Fallback-only output (no per-element Modified CSS) is rejected — it
-        // would be a false cache hit that paints nothing useful. This is the
-        // ~2.8KB login/under-rendered case seen live.
-        let fallbackOnly = "/* Fallback Style */\nhtml { background: #1a1a1a; }"
-        XCTAssertFalse(DarkThemeCacheStore.isCacheable(fallbackOnly))
-        // A real theme with the Modified-CSS section is cacheable.
-        XCTAssertTrue(DarkThemeCacheStore.isCacheable("/* Modified CSS */ a{}"))
-    }
-
-    func testCachedDarkStyleScriptTagsAndEscapesCSS() {
-        // Uses the shared cache-style id (so disable/export can remove it) and
-        // JSON-encodes the CSS so quotes/newlines can't break out of the script.
-        let js = UserScriptManager.makeCachedDarkStyleScript(css: "a[title=\"x\"]{color:red}\n")
-        XCTAssertTrue(js.contains(DarkReaderSupport.cacheStyleID))
-        XCTAssertTrue(js.contains("createElement('style')"))
-        XCTAssertFalse(js.contains("a[title=\"x\"]{color:red}\n"), "raw CSS must be JSON-escaped, not inlined verbatim")
-        XCTAssertTrue(js.contains("\\n"))
-    }
-
-    func testDarkCSSExportScriptExportsAndPostsForService() {
-        let id = "ABC-123"
-        let js = UserScriptManager.makeDarkCSSExportScript(serviceID: id)
-        XCTAssertTrue(js.contains("exportGeneratedCSS"))
-        XCTAssertTrue(js.contains("chorusDarkCSSCache"))
-        XCTAssertTrue(js.contains("\"ABC-123\""))
-        // It drops the static cached style once live theming has taken over.
-        XCTAssertTrue(js.contains(DarkReaderSupport.cacheStyleID))
-    }
-
-    func testDisableJSDropsCachedThemeStyle() {
-        XCTAssertTrue(DarkReaderSupport.disableJS.contains(DarkReaderSupport.cacheStyleID))
     }
 
     func testContentBlockingEnabledDefaultsTrue() {

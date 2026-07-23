@@ -85,11 +85,6 @@ final class AppPreferences {
     /// get blocking on by default.
     var contentBlockingEnabled: Bool?
 
-    /// Global "give services without a dark theme a dark one" switch. Optional for
-    /// SwiftData lightweight migration; nil is treated as off
-    /// (`autoDarkModeEnabledEffective`), so it's opt-in and upgrades unchanged.
-    var autoDarkModeEnabled: Bool?
-
     /// "Hide annoyances" (cookie notices, newsletter pop-ups, floating bars) on
     /// top of ad/tracker blocking. Optional for SwiftData lightweight migration;
     /// nil is treated as off — it's opt-in because cosmetic hiding is more
@@ -140,7 +135,6 @@ final class AppPreferences {
         railLayoutRaw: String? = nil,
         appearanceModeRaw: String? = nil,
         contentBlockingEnabled: Bool? = nil,
-        autoDarkModeEnabled: Bool? = nil,
         annoyanceBlockingEnabled: Bool? = nil,
         defaultCameraPolicyRaw: String? = nil,
         defaultMicrophonePolicyRaw: String? = nil,
@@ -166,7 +160,6 @@ final class AppPreferences {
         self.railLayoutRaw = railLayoutRaw
         self.appearanceModeRaw = appearanceModeRaw
         self.contentBlockingEnabled = contentBlockingEnabled
-        self.autoDarkModeEnabled = autoDarkModeEnabled
         self.annoyanceBlockingEnabled = annoyanceBlockingEnabled
         self.defaultCameraPolicyRaw = defaultCameraPolicyRaw
         self.defaultMicrophonePolicyRaw = defaultMicrophonePolicyRaw
@@ -191,9 +184,6 @@ final class AppPreferences {
 
     /// Materialises the storage-optional content-blocking flag (nil → true).
     var contentBlockingEnabledEffective: Bool { contentBlockingEnabled ?? true }
-
-    /// Materialises the storage-optional auto-dark flag (nil → false).
-    var autoDarkModeEnabledEffective: Bool { autoDarkModeEnabled ?? false }
 
     /// Materialises the storage-optional annoyance-blocking flag (nil → false).
     var annoyanceBlockingEnabledEffective: Bool { annoyanceBlockingEnabled ?? false }

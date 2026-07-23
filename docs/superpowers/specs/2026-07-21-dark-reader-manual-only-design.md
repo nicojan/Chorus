@@ -1,7 +1,7 @@
 # Dark Reader → manual-only; remove Readability
 
 Date: 2026-07-21
-Status: approved for planning
+Status: implemented (2026-07-22)
 
 ## Goal
 

@@ -16,7 +16,7 @@ struct EditServiceSheet: View {
     @State private var keepLoaded: Bool = false
     @State private var mobileView: Bool = false
     @State private var openLinksInApp: Bool = false
-    @State private var darkMode: ServiceDarkMode = .auto
+    @State private var darkMode: ServiceDarkMode = .off
     @State private var notify: Bool = true
     @State private var osNotify: Bool = true
     @State private var badge: Bool = true
@@ -79,19 +79,11 @@ struct EditServiceSheet: View {
                     .help("When a link in this service points somewhere no Chorus service covers, open it in a Chorus window instead of your browser. Links that another service does cover still switch to that service.")
 
                 Picker("Dark theme for this service", selection: $darkMode) {
-                    Text("Auto").tag(ServiceDarkMode.auto)
                     Text("On").tag(ServiceDarkMode.on)
                     Text("Off").tag(ServiceDarkMode.off)
                 }
                 .pickerStyle(.segmented)
-                .help("Auto follows the app-wide setting and skips services that already have a dark theme. On always applies one while the app is dark; Off never does.")
-
-                if darkMode == .auto {
-                    Button("Re-detect dark theme") {
-                        appState.redetectDarkTheme(for: service.id)
-                    }
-                    .help("Check this service's own theme again and reload it. Use this after switching the service to its own dark theme, so Chorus stops applying Dark Reader on top.")
-                }
+                .help("On applies a dark theme to this service while the app is dark. Off never does.")
 
                 if let errorMessage {
                     Text(errorMessage)
@@ -298,8 +290,6 @@ struct EditServiceSheet: View {
             service.customCSS = newCSS
             service.darkModeRaw = darkMode.rawValue
             service.forceDarkMode = nil          // retire the legacy flag
-            // A different site may theme differently — drop the stale verdict.
-            if urlChanged { service.detectedLacksDarkTheme = nil }
             if userAgentChanged {
                 service.userAgent = mobileView ? UserAgentProvider.mobileSafari : nil
             }

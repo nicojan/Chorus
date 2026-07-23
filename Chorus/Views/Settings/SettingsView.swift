@@ -106,20 +106,6 @@ struct GeneralSettingsView: View {
                     }
                 }
 
-                Toggle("Give services a dark theme when they lack one", isOn: Binding(
-                    get: { prefs.autoDarkModeEnabledEffective },
-                    set: { value in
-                        ensurePrefs().autoDarkModeEnabled = value
-                        save("auto dark mode")
-                        appState.setAutoDarkModeEnabled(value)
-                    }
-                ))
-                .disabled(prefs.appearanceMode == .light)
-
-                Text("While the app is dark, Chorus applies a dark theme to services that don't have their own. It can't always tell which sites already have one, so set a service to On or Off in its settings if the guess is wrong.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
                 Picker("Layout", selection: Binding(
                     get: { prefs.railLayout },
                     set: { layout in
@@ -580,7 +566,6 @@ struct AboutSettingsView: View {
     private let blocklistURL = URL(string: "https://github.com/hagezi/dns-blocklists")!
     private let annoyanceListURL = URL(string: "https://easylist.to/")!
     private let darkReaderURL = URL(string: "https://github.com/darkreader/darkreader")!
-    private let readabilityURL = URL(string: "https://github.com/mozilla/readability")!
 
     var body: some View {
         Form {
@@ -619,13 +604,6 @@ struct AboutSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Link("Dark Reader (MIT)", destination: darkReaderURL)
-            }
-
-            Section("Reader mode") {
-                Text("Reader mode uses Mozilla's Readability.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Link("Readability (Apache-2.0)", destination: readabilityURL)
             }
 
             Section {

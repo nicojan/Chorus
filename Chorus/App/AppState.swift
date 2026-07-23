@@ -195,10 +195,6 @@ final class AppState {
     /// via `setAnnoyanceBlockingEnabled(_:)`.
     var annoyanceBlockingEnabled = false
 
-    /// Global "dark-theme services without one" toggle, mirrored from
-    /// AppPreferences at launch. Written via `setAutoDarkModeEnabled(_:)`.
-    var autoDarkModeEnabled = false
-
     /// Auto-hibernate idle background services. Loaded from AppPreferences at
     /// launch; written via `setAutoHibernateIdleEnabled(_:)`.
     var autoHibernateIdleEnabled = false
@@ -340,37 +336,6 @@ final class AppState {
             contentBlocker: contentBlocker
         )
         self.networkMonitor = NetworkMonitor()
-
-        // Self is fully initialized here, so the pool (a Sendable @MainActor
-        // class) can be captured. A dark-detection probe caches its verdict once
-        // and applies it live. didReceive runs on the main thread, so hop onto
-        // the main actor for SwiftData + the pool.
-        let container2 = self.modelContainer
-        let pool = self.webViewPool
-        self.userScriptManager.onDarkProbeVerdict = { @Sendable serviceID, lacksDark in
-            MainActor.assumeIsolated {
-                let context = container2.mainContext
-                var descriptor = FetchDescriptor<ServiceInstance>(
-                    predicate: #Predicate { $0.id == serviceID }
-                )
-                descriptor.fetchLimit = 1
-                guard let service = try? context.fetch(descriptor).first,
-                      service.detectedLacksDarkTheme == nil else { return }
-                service.detectedLacksDarkTheme = lacksDark
-                try? context.save()
-                pool.refreshDarkMode(for: service)
-            }
-        }
-
-        // A themed service exports its generated Dark Reader CSS after its live
-        // pass settles; cache it for a fast dark first paint next load. The
-        // handler fires on the main thread, so hop onto the main actor for the
-        // pool.
-        self.userScriptManager.onDarkCSSExport = { @Sendable serviceID, css in
-            MainActor.assumeIsolated {
-                pool.cacheDarkTheme(css, for: serviceID)
-            }
-        }
 
         loadAppPreferences()
         startContentBlocker()
@@ -933,30 +898,6 @@ final class AppState {
         }
     }
 
-    /// Clears a service's cached dark-theme detection verdict and rebuilds its
-    /// web view so the probe runs again on the next load. Backs the "Re-detect
-    /// dark theme" button for Auto-mode services: use it after switching a site
-    /// to its own dark theme, so Chorus re-checks and stops layering Dark Reader
-    /// on top.
-    func redetectDarkTheme(for serviceID: UUID) {
-        guard let service = currentServiceInstance(id: serviceID) else { return }
-        // Clear the sticky verdict so the pool picks the `.probe` injection
-        // again — `onDarkProbeVerdict` only records a result while it's nil.
-        service.detectedLacksDarkTheme = nil
-        do {
-            try modelContainer.mainContext.save()
-        } catch {
-            AppLogger.dataStore.error("Failed to reset dark verdict: \(error.localizedDescription)")
-            // Discard the failed mutation so it can't ride along on a later save.
-            modelContainer.mainContext.rollback()
-            return
-        }
-        // Rebuild the view so it reloads and re-runs detection from the fresh
-        // state (verdict now nil → `.probe` bakes into the next navigation).
-        webViewPool.recreateWebView(for: serviceID, preserveURL: true)
-        webViewRebuildToken &+= 1
-    }
-
     /// Wipes all website data (cookies, local/session storage, caches) for a
     /// service's data store — effectively logging the user out — then reloads
     /// the live web view so the logged-out state is visible immediately. The
@@ -1399,7 +1340,6 @@ final class AppState {
         // stores is irreversible, so defer it until the delete actually commits
         // (matches deleteSpace). A failed save rolls back so nothing is wiped.
         let orphanedIDs = orphans.map(\.dataStoreIdentifier)
-        let orphanedInstanceIDs = orphans.map(\.id)
         for service in orphans {
             context.delete(service)
         }
@@ -1412,10 +1352,6 @@ final class AppState {
             return
         }
         for id in orphanedIDs { markDataStoreOrphaned(id) }
-        // This delete path doesn't go through removeWebView (orphans have no live
-        // web view at launch), so drop each reaped service's theme cache here so
-        // its snapshot file doesn't linger.
-        for id in orphanedInstanceIDs { webViewPool.dropDarkThemeCache(for: id) }
         cleanUpOrphanedDataStores()
     }
 
@@ -1703,7 +1639,6 @@ final class AppState {
         lockOnSleep = prefs?.lockOnSleep ?? true
         contentBlockingEnabled = prefs?.contentBlockingEnabledEffective ?? true
         annoyanceBlockingEnabled = prefs?.annoyanceBlockingEnabledEffective ?? false
-        autoDarkModeEnabled = prefs?.autoDarkModeEnabledEffective ?? false
         let googleFallback = prefs?.googleFaviconFallbackEnabledEffective ?? false
         Task { await FaviconFetcher.shared.setGoogleFallbackEnabled(googleFallback) }
         autoHibernateIdleEnabled = prefs?.autoHibernateIdleEnabledEffective ?? false
@@ -1755,20 +1690,12 @@ final class AppState {
         let dark = isEffectiveAppearanceDark
         guard dark != lastKnownAppearanceDark else { return }
         lastKnownAppearanceDark = dark
-        webViewPool.applyDarkState(isDark: dark, autoEnabled: autoDarkModeEnabled, services: allServices())
+        webViewPool.applyDarkState(isDark: dark, services: allServices())
     }
 
-    /// Flips the global auto-dark setting and re-applies dark theming live. The
-    /// Settings binding persists the value; this drives the in-memory state and
-    /// the web views.
-    func setAutoDarkModeEnabled(_ enabled: Bool) {
-        autoDarkModeEnabled = enabled
-        webViewPool.applyDarkState(isDark: isEffectiveAppearanceDark, autoEnabled: enabled, services: allServices())
-    }
-
-    /// All services (the pool skips those without a live web view). `.auto`
-    /// services need re-evaluating on an appearance/global change, so this can't
-    /// pre-filter to only the explicitly-marked ones.
+    /// All services (the pool skips those without a live web view). Every
+    /// On-mode service needs re-evaluating on an appearance change, so this
+    /// can't pre-filter to only the currently-live ones.
     private func allServices() -> [ServiceInstance] {
         let context = modelContainer.mainContext
         return (try? context.fetch(FetchDescriptor<ServiceInstance>())) ?? []
