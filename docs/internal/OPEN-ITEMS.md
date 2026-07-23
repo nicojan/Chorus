@@ -1,8 +1,11 @@
 # Open items
 
-## Current status — through 1.5.9 (2026-07-22)
+## Current status — through 1.5.10 (2026-07-22)
 
-Everything below has shipped. **Chorus 1.5.9 is the current release**: opt-in
+Everything below has shipped. **Chorus 1.5.10 is the current release**, a
+one-fix patch: the selected space in the sidebar no longer draws a stray system
+focus outline on top of its own highlight (a doubled box the narrow strip
+clipped). It sits on **1.5.9**: opt-in
 auto-hibernation of idle services, a per-service option to open outside links in
 a Chorus window, Dark Reader narrowed to a manual per-service On/Off (all
 auto-detection, the probe, the theme cache, and the global toggle removed),
