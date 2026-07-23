@@ -86,8 +86,10 @@ final class WebViewPool {
 
     /// Wired up at AppState init and applied to every coordinator the pool
     /// creates. Routes cross-domain target=_blank links + Cmd-clicks through
-    /// service-aware matching before falling back to the system browser.
-    var externalLinkHandler: ((URL) -> Void)?
+    /// service-aware matching before falling back to the system browser. The
+    /// second argument is the source service's id, so AppState can honour that
+    /// service's "open links in Chorus" choice.
+    var externalLinkHandler: ((URL, UUID?) -> Void)?
 
     /// Wired up at AppState init and applied to every coordinator. Resolves a
     /// camera/microphone capture request to a WebKit decision from the persisted

@@ -15,6 +15,7 @@ struct EditServiceSheet: View {
     @State private var url: String = ""
     @State private var keepLoaded: Bool = false
     @State private var mobileView: Bool = false
+    @State private var openLinksInApp: Bool = false
     @State private var darkMode: ServiceDarkMode = .auto
     @State private var notify: Bool = true
     @State private var osNotify: Bool = true
@@ -72,6 +73,9 @@ struct EditServiceSheet: View {
 
                 Toggle("Mobile view", isOn: $mobileView)
                     .help("Loads this service as if on an iPhone, so it serves its mobile web layout. Applied on save.")
+
+                Toggle("Open outside links in Chorus", isOn: $openLinksInApp)
+                    .help("When a link in this service points somewhere no Chorus service covers, open it in a Chorus window instead of your browser. Links that another service does cover still switch to that service.")
 
                 Picker("Dark theme for this service", selection: $darkMode) {
                     Text("Auto").tag(ServiceDarkMode.auto)
@@ -138,6 +142,7 @@ struct EditServiceSheet: View {
             url = service.url
             keepLoaded = service.neverHibernate
             mobileView = service.userAgent == UserAgentProvider.mobileSafari
+            openLinksInApp = service.opensExternalLinksInAppEffective
             darkMode = service.darkMode
             notify = !service.isMuted
             osNotify = service.notifiesOSEffective
@@ -293,6 +298,8 @@ struct EditServiceSheet: View {
             service.isMuted = muted
             service.osNotificationsEnabled = osNotify
             service.showBadge = badge
+            // Read fresh at each link click, so no rebuild is needed.
+            service.openExternalLinksInApp = openLinksInApp
             // Pin a camera/mic policy only if the user actually changed it, so
             // opening the sheet to edit something else doesn't stop the service
             // from inheriting the global default. No rebuild needed — the value is

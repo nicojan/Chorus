@@ -408,8 +408,8 @@ final class AppState {
     /// which prefers switching to a matching Chorus service over opening
     /// Safari, but falls back to NSWorkspace when no service matches.
     private func setupExternalLinkRouting() {
-        webViewPool.externalLinkHandler = { [weak self] url in
-            self?.handleExternalLink(url)
+        webViewPool.externalLinkHandler = { [weak self] url, sourceServiceID in
+            self?.handleExternalLink(url, from: sourceServiceID)
         }
     }
 
@@ -701,7 +701,7 @@ final class AppState {
     /// personal + work Notion), we prefer the match in the current space so
     /// "click a Notion link from Work Slack" lands in Work Notion. Only
     /// crosses spaces when the current space has no match.
-    private func handleExternalLink(_ url: URL) {
+    private func handleExternalLink(_ url: URL, from sourceServiceID: UUID?) {
         guard let host = url.host else {
             WebViewCoordinator.openExternally(url)
             return
@@ -709,6 +709,16 @@ final class AppState {
 
         if let match = findServiceMatching(host: host, preferringSpace: selectedSpaceID) {
             switchToService(match, navigateTo: url)
+            return
+        }
+
+        // No Chorus service owns this link. Open it in an in-app window when the
+        // source service opted into that; otherwise hand it to the browser.
+        let optedIn = sourceServiceID
+            .flatMap { fetchService(id: $0) }?
+            .opensExternalLinksInAppEffective ?? false
+        if WebViewCoordinator.shouldOpenInAppBrowser(sourceOptedIn: optedIn, url: url) {
+            InAppBrowserWindow.open(url)
         } else {
             WebViewCoordinator.openExternally(url)
         }

@@ -151,6 +151,14 @@ final class ServiceInstance {
     var cameraPolicyRaw: String?
     var microphonePolicyRaw: String?
 
+    /// Open a link that leaves this service in an in-app Chorus window instead of
+    /// the system browser. Only affects links that no other Chorus service owns —
+    /// a link matching another service still switches to it. Optional for
+    /// SwiftData lightweight migration; nil is treated as off (today's behaviour:
+    /// external links open in the default browser). Read via
+    /// `opensExternalLinksInAppEffective`.
+    var openExternalLinksInApp: Bool?
+
     /// Whether the one-time "Passkeys aren't available for sign-in" notice has
     /// been shown for this service. Optional for SwiftData lightweight
     /// migration; nil is treated as "not yet seen" (see `needsPasskeyNotice`).
@@ -201,6 +209,10 @@ final class ServiceInstance {
         set { microphonePolicyRaw = newValue.rawValue }
     }
 
+    /// Materialises the storage-optional in-app-links flag (nil → false), so
+    /// existing services keep opening external links in the system browser.
+    var opensExternalLinksInAppEffective: Bool { openExternalLinksInApp ?? false }
+
     /// True if this service is muted directly, or via any space it belongs to
     /// (muting a space cascades to its members). Use this when the model object
     /// is already in hand — it avoids AppState's fetch-all-then-scan lookup.
@@ -233,7 +245,8 @@ final class ServiceInstance {
         detectedLacksDarkTheme: Bool? = nil,
         hasSeenPasskeyNotice: Bool? = nil,
         cameraPolicyRaw: String? = nil,
-        microphonePolicyRaw: String? = nil
+        microphonePolicyRaw: String? = nil,
+        openExternalLinksInApp: Bool? = nil
     ) {
         self.id = id
         self.label = label
@@ -256,6 +269,7 @@ final class ServiceInstance {
         self.hasSeenPasskeyNotice = hasSeenPasskeyNotice
         self.cameraPolicyRaw = cameraPolicyRaw
         self.microphonePolicyRaw = microphonePolicyRaw
+        self.openExternalLinksInApp = openExternalLinksInApp
         self.spaceLinks = []
         self.createdAt = Date()
         self.lastAccessedAt = Date()

@@ -586,6 +586,47 @@ final class ChorusTests: XCTestCase {
         XCTAssertFalse(html.contains("<button"))
     }
 
+    // MARK: - Open-external-links-in-app routing
+
+    func testInAppBrowserNeedsOptInAndWebScheme() {
+        let web = URL(string: "https://news.example/article")!
+        // Opted in, web scheme → in-app window.
+        XCTAssertTrue(WebViewCoordinator.shouldOpenInAppBrowser(sourceOptedIn: true, url: web))
+        XCTAssertTrue(WebViewCoordinator.shouldOpenInAppBrowser(
+            sourceOptedIn: true, url: URL(string: "http://news.example")!))
+        XCTAssertTrue(WebViewCoordinator.shouldOpenInAppBrowser(
+            sourceOptedIn: true, url: URL(string: "HTTPS://news.example")!))
+        // Not opted in → browser, even for a web link.
+        XCTAssertFalse(WebViewCoordinator.shouldOpenInAppBrowser(sourceOptedIn: false, url: web))
+    }
+
+    func testInAppBrowserNeverTakesNonWebSchemes() {
+        // Even opted in, a non-web scheme must not load in an in-app web view: it
+        // stays on the openExternally path (mailto reaches Mail, smb/file are
+        // dropped by the vetted-scheme gate).
+        for other in [
+            "mailto:a@example.com",
+            "tel:+15551234",
+            "smb://attacker.example/share",
+            "file:///etc/passwd",
+            "someapp://do-something",
+        ] {
+            XCTAssertFalse(
+                WebViewCoordinator.shouldOpenInAppBrowser(sourceOptedIn: true, url: URL(string: other)!),
+                "\(other) must not open in an in-app web view")
+        }
+    }
+
+    func testOpensExternalLinksInAppDefaultsToOff() {
+        // A legacy row (nil) keeps opening external links in the system browser.
+        XCTAssertFalse(ServiceInstance(label: "S", url: "https://s.example")
+            .opensExternalLinksInAppEffective)
+        XCTAssertTrue(ServiceInstance(label: "S", url: "https://s.example", openExternalLinksInApp: true)
+            .opensExternalLinksInAppEffective)
+        XCTAssertFalse(ServiceInstance(label: "S", url: "https://s.example", openExternalLinksInApp: false)
+            .opensExternalLinksInAppEffective)
+    }
+
     // MARK: - OS-notification gate + per-service notify flag
 
     func testOSNotificationGateFiresOnlyWhenEnabledUnmutedAndNotDND() {
