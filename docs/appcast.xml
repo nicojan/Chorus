@@ -3,6 +3,20 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.12</title>
+            <pubDate>Thu, 23 Jul 2026 10:04:38 -0700</pubDate>
+            <sparkle:version>21</sparkle:version>
+            <sparkle:shortVersionString>1.5.12</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Added</h3>
+<ul>
+<li>A per-service "Always appear active" setting. Turn it on for Microsoft Teams and Chorus reports the page as focused while it sits in the background, so Teams keeps showing you as active instead of away. Chorus offers to switch it on when you add Teams from the catalog, and you can change it any time by editing the service. It is off by default, because faking focus can make a service hold back some of the notifications Chorus forwards.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.12/Chorus-1.5.12.dmg" length="9112186" type="application/octet-stream" sparkle:edSignature="1BIoi7936Rx7EJPZgbTFccVjgSOmxkzDqdl1qRf+AZpa4okIGoIZ30+1eD4Q+SKfdUjmxx8GyQFV3aaKAlOTDg=="/>
+        </item>
+        <item>
             <title>1.5.11</title>
             <pubDate>Wed, 22 Jul 2026 23:15:26 -0700</pubDate>
             <sparkle:version>20</sparkle:version>
