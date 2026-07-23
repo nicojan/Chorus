@@ -1055,8 +1055,9 @@ final class AppState {
     }
 
     /// Catalog categories whose services must never auto-hibernate, because a
-    /// hibernated web app can't fire a real-time notification — only refresh its
-    /// badge on the 60s poll. Chat apps are the ones you need to hear from the
+    /// hibernated web app can't fire a real-time notification, only refresh its
+    /// badge on the periodic background sweep (every few minutes). Chat apps are
+    /// the ones you need to hear from the
     /// instant a message lands, so they stay fully live. Email tolerates the
     /// badge delay, so it isn't exempted here; a user who wants instant mail can
     /// mark that service "Keep Loaded".
@@ -1829,6 +1830,13 @@ final class AppState {
     }
 
     private func setupHibernationCallbacks() {
+        // Let the pool classify chat services (which it can't, since the category
+        // lives in the catalog) so BOTH its sweeps — the idle timer and the LRU
+        // cap sweep — keep them live for instant notifications.
+        webViewPool.isNotificationCritical = { [weak self] serviceID in
+            self?.isNotificationCritical(serviceID) ?? false
+        }
+
         // When a service's page finishes loading (startup or login redirect),
         // poll its badge immediately instead of waiting for the next tick.
         webViewPool.onNavigationFinished = { [weak self] serviceID in

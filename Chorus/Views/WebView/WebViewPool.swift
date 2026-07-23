@@ -19,6 +19,14 @@ final class WebViewPool {
     /// soft hibernation (media pause) and full eviction.
     private var neverHibernateIDs: Set<UUID> = []
 
+    /// Services that must stay live for real-time notifications (the Messaging
+    /// catalog category). Exempt from FULL hibernation in both sweeps — the idle
+    /// timer and the LRU cap sweep — so a chat app is never torn down and can
+    /// keep firing instant alerts. The category lives in the catalog, which the
+    /// pool doesn't own, so `AppState` classifies via the `isNotificationCritical`
+    /// closure and the pool caches the result here at load time.
+    private var notificationCriticalIDs: Set<UUID> = []
+
     /// Services pinned by external callers (e.g. the selected service
     /// during initial preload, before WebContentView attaches and sets
     /// `activeServiceID`). Exempt from eviction.
@@ -76,6 +84,12 @@ final class WebViewPool {
 
     /// Called when a service's web view is permanently removed (deletion, not hibernation)
     var onServiceRemoved: ((UUID) -> Void)?
+
+    /// Classifies whether a service must stay live for real-time notifications
+    /// (Messaging category). Set by `AppState`, which owns the catalog. Read at
+    /// load time to populate `notificationCriticalIDs`. Defaults to "not
+    /// critical" when unset, so the pool never over-exempts.
+    var isNotificationCritical: ((UUID) -> Bool)?
 
     /// Called whenever a service's web view is torn down for ANY reason — full
     /// hibernation, rebuild (recreateWebView), LRU eviction, or removal — i.e. the
@@ -138,6 +152,14 @@ final class WebViewPool {
             neverHibernateIDs.insert(instance.id)
         } else {
             neverHibernateIDs.remove(instance.id)
+        }
+
+        // Cache whether this service is notification-critical (chat), so both
+        // hibernation sweeps can exempt it without consulting the catalog.
+        if isNotificationCritical?(instance.id) == true {
+            notificationCriticalIDs.insert(instance.id)
+        } else {
+            notificationCriticalIDs.remove(instance.id)
         }
 
         // Soft-hibernate the previously active service (suspend media, take snapshot)
@@ -266,6 +288,7 @@ final class WebViewPool {
         }
         pinnedIDs.remove(instanceID)
         neverHibernateIDs.remove(instanceID)
+        notificationCriticalIDs.remove(instanceID)
         evictionInFlight.remove(instanceID)
         userScriptManager.removeHandler(for: instanceID)
         darkThemeCache.remove(for: instanceID)
@@ -712,6 +735,7 @@ final class WebViewPool {
         lastAccessTimes.compactMap { id, accessed in
             guard id != activeServiceID,
                   !neverHibernateIDs.contains(id),
+                  !notificationCriticalIDs.contains(id),
                   !pinnedIDs.contains(id),
                   webViews[id] != nil,
                   now.timeIntervalSince(accessed) >= threshold
@@ -736,6 +760,7 @@ final class WebViewPool {
               id != activeServiceID,
               !pinnedIDs.contains(id),
               !neverHibernateIDs.contains(id),
+              !notificationCriticalIDs.contains(id),
               !evictionInFlight.contains(id)
         else { return false }
 
@@ -747,7 +772,8 @@ final class WebViewPool {
         guard webViews[id] != nil,
               id != activeServiceID,
               !pinnedIDs.contains(id),
-              !neverHibernateIDs.contains(id)
+              !neverHibernateIDs.contains(id),
+              !notificationCriticalIDs.contains(id)
         else { return false }
 
         if hasCall {
@@ -768,6 +794,7 @@ final class WebViewPool {
             .filter { $0.key != activeServiceID
                    && !evictionInFlight.contains($0.key)
                    && !neverHibernateIDs.contains($0.key)
+                   && !notificationCriticalIDs.contains($0.key)
                    && !pinnedIDs.contains($0.key) }
             .sorted { $0.value < $1.value }
 

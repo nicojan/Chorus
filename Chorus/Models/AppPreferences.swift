@@ -114,7 +114,8 @@ final class AppPreferences {
     /// changes runtime behaviour. Notification-critical services (the Messaging
     /// catalog category) and any service marked "Keep Loaded" are never touched,
     /// so real-time alerts for chat apps are preserved; a hibernated service still
-    /// updates its unread badge via the 60s poll.
+    /// refreshes its unread badge on a periodic background sweep (every few
+    /// minutes), and that count only climbs until the service is reopened.
     var autoHibernateIdleEnabled: Bool?
 
     /// Idle minutes before auto-hibernation kicks in. Optional; nil resolves to 10.

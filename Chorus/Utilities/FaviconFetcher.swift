@@ -173,6 +173,13 @@ actor FaviconFetcher {
     /// streaming a huge body into memory.
     private static let maxFetchBytes = 5 * 1024 * 1024  // 5 MB
 
+    /// Re-validates every redirect hop with the same rule as the initial href
+    /// check. Without it a public-host icon href could 302 to a loopback /
+    /// link-local / private / non-http target and this non-sandboxed app would
+    /// follow it (SSRF via redirect), since the initial `isFetchableIconURL`
+    /// guard only ever sees the first URL. Stateless, so one shared instance.
+    private static let redirectGuard = FaviconRedirectGuard()
+
     private func fetchURL(_ urlString: String) async -> Data? {
         guard let url = URL(string: urlString) else { return nil }
         do {
@@ -180,7 +187,8 @@ actor FaviconFetcher {
             request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
             // Stream so we can stop at the cap instead of buffering an unbounded
             // response all at once (memory DoS via an oversized favicon/HTML body).
-            let (bytes, response) = try await URLSession.shared.bytes(for: request)
+            // The per-task delegate re-checks each redirect target (SSRF guard).
+            let (bytes, response) = try await URLSession.shared.bytes(for: request, delegate: Self.redirectGuard)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 return nil
             }
@@ -246,5 +254,22 @@ actor FaviconFetcher {
         }
         let lower = text.lowercased()
         return lower.hasPrefix("<svg") || lower.hasPrefix("<!doctype svg")
+    }
+}
+
+/// Task delegate that cancels a redirect aimed at a host the favicon fetcher's
+/// initial `isFetchableIconURL` check would have rejected. Returning `nil` stops
+/// URLSession from following the 3xx, so the fetch sees the redirect response
+/// (not the internal target) and its `statusCode == 200` guard discards it.
+/// Stateless, so safe to share across tasks.
+private final class FaviconRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest
+    ) async -> URLRequest? {
+        guard let url = request.url, FaviconFetcher.isFetchableIconURL(url) else { return nil }
+        return request
     }
 }

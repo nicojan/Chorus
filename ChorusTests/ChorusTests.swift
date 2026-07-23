@@ -888,6 +888,21 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(WebViewCoordinator.belongsToService("APP.SLACK.COM", serviceHost: "app.slack.com"))
     }
 
+    func testBelongsToServiceSeparatesSharedHostingTenants() {
+        // Multi-tenant hosting suffixes: each label under the suffix is a
+        // DIFFERENT owner, so an attacker sibling must NOT be treated as part of
+        // a user's service (which would load its page in the service's
+        // authenticated web view). The naive registrable-domain reduction
+        // collapsed both to the bare suffix (e.g. "vercel.app") and returned true.
+        XCTAssertFalse(WebViewCoordinator.belongsToService("evil.vercel.app", serviceHost: "team.vercel.app"))
+        XCTAssertFalse(WebViewCoordinator.belongsToService("attacker.github.io", serviceHost: "myproject.github.io"))
+        XCTAssertFalse(WebViewCoordinator.belongsToService("evil.pages.dev", serviceHost: "app.pages.dev"))
+        XCTAssertFalse(WebViewCoordinator.belongsToService("evil.workers.dev", serviceHost: "api.workers.dev"))
+        // A window.open target on the same tenant is still the same service.
+        XCTAssertTrue(WebViewCoordinator.belongsToService("team.vercel.app", serviceHost: "team.vercel.app"))
+        XCTAssertTrue(WebViewCoordinator.belongsToService("app.team.vercel.app", serviceHost: "team.vercel.app"))
+    }
+
     func testAuthHostsAreRecognized() {
         // Identity gateways stay in-app so sign-in completes (the reported
         // "Gmail login kicked to the default browser" bug).

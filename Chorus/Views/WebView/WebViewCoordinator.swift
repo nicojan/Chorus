@@ -127,9 +127,17 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         // 1. Non-web schemes (mailto:, tel:, sms:, facetime:, maps:, etc.)
         //    Hand off to the system handler so Mail/Phone/Messages opens,
         //    instead of letting WebKit fail with an unsupported-URL error.
+        //    Only on a real click: a page that runs
+        //    `location.href = "facetime-audio://attacker"` (navigationType
+        //    `.other`) could otherwise spawn Mail/Messages/call prompts with no
+        //    user gesture, on repeat. Cancel either way so WebKit doesn't then
+        //    try to load the unsupported scheme; only a `.linkActivated`
+        //    navigation actually reaches the system handler.
         if let scheme = url.scheme?.lowercased(),
            Self.nonWebSchemes.contains(scheme) {
-            Self.openExternally(url)
+            if navigationAction.navigationType == .linkActivated {
+                Self.openExternally(url)
+            }
             return .cancel
         }
 
@@ -953,8 +961,16 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         let service = normalizedHost(serviceHost)
         guard !target.isEmpty, !service.isEmpty else { return false }
 
-        let targetDomain = effectiveDomain(target)
-        guard targetDomain == effectiveDomain(service) else { return false }
+        // Reduce with the public-suffix-aware registrable-domain function, the
+        // same one the capture trust check uses. The naive `effectiveDomain`
+        // collapsed a shared multi-tenant hosting suffix to its bare form, so
+        // `evil.vercel.app` and `team.vercel.app` both became `vercel.app` and
+        // an attacker sibling on that suffix was treated as owning a user's
+        // service — its page then loaded in place inside the service's
+        // authenticated web view. `captureRegistrableDomain` keeps the tenant
+        // label (`team.vercel.app`), so distinct owners no longer collide.
+        let targetDomain = captureRegistrableDomain(target)
+        guard targetDomain == captureRegistrableDomain(service) else { return false }
 
         if sharedUmbrellaDomains.contains(targetDomain) {
             return target == service

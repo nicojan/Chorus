@@ -591,7 +591,7 @@ struct ServiceSidebarView: View {
         // Compute the tail order before repointing, so the link's old order in
         // its current space doesn't count toward the target's max.
         let targetOrders = allLinks
-            .filter { $0.modelContext != nil && $0.space.id == targetSpace.id }
+            .filter { $0.modelContext != nil && $0.space.modelContext != nil && $0.space.id == targetSpace.id }
             .map(\.sortOrder)
         link.sortOrder = (targetOrders.max() ?? -1) + 1
         link.space = targetSpace
