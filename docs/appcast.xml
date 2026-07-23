@@ -3,6 +3,35 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.9</title>
+            <pubDate>Wed, 22 Jul 2026 21:10:33 -0700</pubDate>
+            <sparkle:version>18</sparkle:version>
+            <sparkle:shortVersionString>1.5.9</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Added</h3>
+<ul>
+<li>Chorus can now hibernate a service you have not opened in a while, freeing its memory and CPU until you go back to it. It stays off until you turn it on in Settings under General. Chat apps stay live, so their notifications still arrive the moment a message lands.</li>
+<li>You can open an outside link in a Chorus window instead of your browser. Turn it on for a service in that service's settings. It is off to start with.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Dark theming is now something you set for each service by hand. Chorus no longer guesses whether a site needs a dark theme. If a service used to go dark on its own, open its settings and turn its dark mode On to keep that. As before, a service is themed only while the app itself is dark.</li>
+</ul>
+<h3>Removed</h3>
+<ul>
+<li>Reader mode is gone.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Tightened how Chorus decides where a clicked link goes. A page can no longer pass itself off as one of your services by sharing a hosting domain with it, and a link that leaves the app through a scheme like mailto now needs a real click.</li>
+<li>Favicon lookups no longer follow a redirect to a private or local address.</li>
+<li>Fixed reliability problems in hibernation, in moving a service to another space, and in setting a custom icon.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.9/Chorus-1.5.9.dmg" length="8458372" type="application/octet-stream" sparkle:edSignature="J/wj2lhNhOpNb9vjX++zk3OFMat8ELc7+XEGGMyOZ2mjZ5LN7pM9ls+lux+sAVZ/9wxt+8A1WYCCsAWJyM7NAQ=="/>
+        </item>
+        <item>
             <title>1.5.8</title>
             <pubDate>Wed, 22 Jul 2026 17:37:04 -0700</pubDate>
             <sparkle:version>17</sparkle:version>
