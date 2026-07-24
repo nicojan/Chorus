@@ -561,9 +561,11 @@ final class ChorusTests: XCTestCase {
 
     // MARK: - Auto-restore of an emptied store
 
-    /// The store schema, shared by the restore tests.
+    /// The store schema, shared by the restore tests. Uses the versioned current
+    /// schema so it matches `ChorusMigrationPlan`'s latest, the same shape
+    /// `loadContainer` opens in production.
     private static var storeSchema: Schema {
-        Schema([ServiceInstance.self, Space.self, SpaceServiceLink.self, AppPreferences.self])
+        Schema(versionedSchema: ChorusSchemaVCurrent.self)
     }
 
     /// Creates a store at `url` with `spaces` populated spaces, then releases the
@@ -2136,6 +2138,298 @@ final class ChorusTests: XCTestCase {
 
         StoreRepair.backupBeforeMigrationIfNeeded(at: store, version: "1.5.7", defaults: defaults, keeping: 3)
         XCTAssertEqual(snapshotFiles(besides: store).count, 0)
+    }
+
+    // MARK: - VersionedSchema migration
+
+    /// Go/no-go for the enum-nested layout: SwiftData must resolve each nested
+    /// `@Model` to its bare class name, else a real store won't match the
+    /// declared version. (Verified here on this machine's macOS; the 14.0 target
+    /// still needs a real-device pass per the plan — entity naming is a
+    /// compile-time behavior so this is a fair proxy, the migration race is not.)
+    func testVersionedSchemaEntityNamesAreBare() {
+        let schemas: [(String, Schema)] = [
+            ("V1_5_11", Schema(versionedSchema: ChorusSchemaV1_5_11.self)),
+            ("V1_5_12", Schema(versionedSchema: ChorusSchemaV1_5_12.self)),
+            ("VCurrent", Schema(versionedSchema: ChorusSchemaVCurrent.self)),
+        ]
+        for (label, schema) in schemas {
+            let names = Set(schema.entities.map(\.name))
+            for expected in ["ServiceInstance", "Space", "SpaceServiceLink", "AppPreferences"] {
+                XCTAssertTrue(names.contains(expected), "\(label) entity names not bare: \(names)")
+            }
+        }
+    }
+
+    /// The plan's versions strictly increase and its stages connect every
+    /// consecutive pair with no gap.
+    func testMigrationPlanShapeIsContiguousAndIncreasing() {
+        let versions = ChorusMigrationPlan.schemas.map { $0.versionIdentifier }
+        XCTAssertEqual(versions, versions.sorted(), "versionIdentifiers must be in increasing order")
+        XCTAssertEqual(Set(versions).count, versions.count, "versionIdentifiers must be unique")
+        XCTAssertEqual(
+            ChorusMigrationPlan.stages.count,
+            ChorusMigrationPlan.schemas.count - 1,
+            "need exactly one stage between each consecutive version"
+        )
+    }
+
+    /// Drift guard: the current stored shape is pinned here. If this fails, a
+    /// stored property changed on a model — freeze the prior shape as a new
+    /// `ChorusSchemaV…`, bump `ChorusSchemaVCurrent`, add a stage + fixture, then
+    /// update these sets. Turns "forgot to version a schema change" into a red
+    /// test. `AppPreferences` is covered because the historical versioned schemas
+    /// share a FROZEN copy of it — this catches drift between that frozen copy and
+    /// the live model.
+    func testCurrentStoredShapeIsPinned() throws {
+        let schema = Schema(versionedSchema: ChorusSchemaVCurrent.self)
+        func entity(_ name: String) throws -> Schema.Entity {
+            try XCTUnwrap(schema.entities.first { $0.name == name }, "no entity \(name)")
+        }
+
+        let service = try entity("ServiceInstance")
+        XCTAssertEqual(
+            Set(service.attributes.map(\.name)),
+            [
+                "id", "label", "url", "customIconData", "fetchedIconData", "faviconFetchedAt",
+                "catalogEntryID", "isMuted", "showBadge", "neverHibernate", "userAgent",
+                "dataStoreIdentifier", "pageZoom", "osNotificationsEnabled", "customCSS",
+                "forceDarkMode", "darkModeRaw", "cameraPolicyRaw", "microphonePolicyRaw",
+                "openExternalLinksInApp", "stayActiveInBackground", "hasSeenPasskeyNotice",
+                "hibernationPolicyRaw", "hibernateAfterMinutes", "createdAt", "lastAccessedAt",
+            ],
+            "ServiceInstance stored attributes changed without a new schema version"
+        )
+        XCTAssertEqual(
+            Set(service.relationships.map(\.name)), ["spaceLinks"],
+            "ServiceInstance relationships changed without a new schema version"
+        )
+
+        XCTAssertEqual(
+            Set(try entity("Space").attributes.map(\.name)),
+            ["id", "name", "emoji", "sortOrder", "isMuted", "createdAt"],
+            "Space stored attributes changed without a new schema version"
+        )
+        XCTAssertEqual(
+            Set(try entity("SpaceServiceLink").attributes.map(\.name)),
+            ["id", "sortOrder"],
+            "SpaceServiceLink stored attributes changed without a new schema version"
+        )
+        XCTAssertEqual(
+            Set(try entity("AppPreferences").attributes.map(\.name)),
+            [
+                "id", "appPresenceMode", "launchAtLogin", "globalKeyboardShortcutsEnabled",
+                "showBadgeCountInDock", "autoDismissCookieBanners", "selectedSpaceID",
+                "selectedServiceID", "defaultZoom", "scheduledDNDEnabled", "dndStartMinutes",
+                "dndEndMinutes", "appLockEnabled", "lockOnLaunch", "lockOnSleep", "railLayoutRaw",
+                "appearanceModeRaw", "contentBlockingEnabled", "annoyanceBlockingEnabled",
+                "defaultCameraPolicyRaw", "defaultMicrophonePolicyRaw", "googleFaviconFallbackEnabled",
+                "autoHibernateIdleEnabled", "autoHibernateIdleMinutes",
+            ],
+            "AppPreferences stored attributes changed — freeze its historical shape before editing (see ChorusSchema.swift)"
+        )
+    }
+
+    /// Guards that the shared frozen `AppPreferences` still matches the live model,
+    /// the specific drift the review flagged: the historical versioned schemas
+    /// reference the frozen copy, so if the live `AppPreferences` gains a field
+    /// and the frozen copy isn't updated with a new version, a real old store
+    /// stops matching its declared version. Compare their attribute sets directly.
+    func testFrozenAppPreferencesMatchesLiveModel() {
+        let frozen = Schema([ChorusSchemaV1_5_11.AppPreferences.self])
+        let live = Schema([AppPreferences.self])
+        let frozenAttrs = Set((frozen.entities.first?.attributes ?? []).map(\.name))
+        let liveAttrs = Set((live.entities.first?.attributes ?? []).map(\.name))
+        XCTAssertEqual(
+            frozenAttrs, liveAttrs,
+            "frozen AppPreferences drifted from live — if you added a settings field, freeze the prior shape and add a new schema version"
+        )
+    }
+
+    /// The incident path. Write a store at the 1.5.11 shape, reopen it at the
+    /// current shape through the plan, and assert every row and field survives —
+    /// with the fields added after 1.5.11 defaulting correctly. Proves the stage
+    /// mapping is lossless (not that the field race is gone — see the plan).
+    func testMigratesFrom1_5_11PreservingAllData() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: "chorus-migr-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appending(path: "default.store")
+
+        let serviceID = UUID(), spaceID = UUID(), linkID = UUID()
+
+        // 1) Seed a store at the 1.5.11 shape (no migration plan).
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ChorusSchemaV1_5_11.self)
+            let config = ModelConfiguration(schema: schema, url: url)
+            let container = try ModelContainer(for: schema, configurations: [config])
+            let ctx = container.mainContext
+            let space = ChorusSchemaV1_5_11.Space(id: spaceID, name: "Work", emoji: "🏢", sortOrder: 3)
+            space.isMuted = true
+            let service = ChorusSchemaV1_5_11.ServiceInstance(id: serviceID, label: "Gmail", url: "https://mail.google.com")
+            // Set EVERY 1.5.11 stored field to a distinct non-default value, so a
+            // stage that silently dropped a pre-existing column would fail below.
+            service.customIconData = Data([1, 2, 3])
+            service.fetchedIconData = Data([4, 5, 6])
+            service.faviconFetchedAt = Date(timeIntervalSince1970: 1_000_000)
+            service.catalogEntryID = "gmail"
+            service.isMuted = true
+            service.showBadge = false
+            service.neverHibernate = true
+            service.userAgent = "CustomUA/1.0"
+            service.pageZoom = 1.25
+            service.osNotificationsEnabled = false
+            service.customCSS = "body { color: red; }"
+            service.forceDarkMode = true
+            service.darkModeRaw = "on"
+            service.cameraPolicyRaw = "deny"
+            service.microphonePolicyRaw = "allow"
+            service.openExternalLinksInApp = true
+            service.hasSeenPasskeyNotice = true
+            let link = ChorusSchemaV1_5_11.SpaceServiceLink(id: linkID, sortOrder: 5, space: space, service: service)
+            ctx.insert(space); ctx.insert(service); ctx.insert(link)
+            try ctx.save()
+        }
+
+        // 2) Reopen at the current shape through the plan.
+        let schema = Schema(versionedSchema: ChorusSchemaVCurrent.self)
+        let config = ModelConfiguration(schema: schema, url: url)
+        let container = try ModelContainer(for: schema, migrationPlan: ChorusMigrationPlan.self, configurations: [config])
+        let ctx = container.mainContext
+
+        let services = try ctx.fetch(FetchDescriptor<ServiceInstance>())
+        XCTAssertEqual(services.count, 1)
+        let s = try XCTUnwrap(services.first)
+        XCTAssertEqual(s.id, serviceID)
+        XCTAssertEqual(s.label, "Gmail")
+        XCTAssertEqual(s.url, "https://mail.google.com")
+        XCTAssertEqual(s.customIconData, Data([1, 2, 3]))
+        XCTAssertEqual(s.fetchedIconData, Data([4, 5, 6]))
+        XCTAssertEqual(s.faviconFetchedAt, Date(timeIntervalSince1970: 1_000_000))
+        XCTAssertEqual(s.catalogEntryID, "gmail")
+        XCTAssertTrue(s.isMuted)
+        XCTAssertFalse(s.showBadge)
+        XCTAssertTrue(s.neverHibernate)
+        XCTAssertEqual(s.userAgent, "CustomUA/1.0")
+        XCTAssertEqual(s.pageZoom, 1.25)
+        XCTAssertEqual(s.osNotificationsEnabled, false)
+        XCTAssertEqual(s.customCSS, "body { color: red; }")
+        XCTAssertEqual(s.forceDarkMode, true)
+        XCTAssertEqual(s.darkModeRaw, "on")
+        XCTAssertEqual(s.cameraPolicyRaw, "deny")
+        XCTAssertEqual(s.microphonePolicyRaw, "allow")
+        XCTAssertEqual(s.openExternalLinksInApp, true)
+        XCTAssertEqual(s.hasSeenPasskeyNotice, true)
+        // Added after 1.5.11 → nil on disk, resolving to their documented defaults.
+        XCTAssertNil(s.stayActiveInBackground)
+        XCTAssertNil(s.hibernationPolicyRaw)
+        XCTAssertNil(s.hibernateAfterMinutes)
+        XCTAssertFalse(s.staysActiveInBackgroundEffective)
+        XCTAssertEqual(s.hibernationPolicyEffective, .never)  // legacy neverHibernate == true
+
+        let spaces = try ctx.fetch(FetchDescriptor<Space>())
+        XCTAssertEqual(spaces.count, 1)
+        let sp = try XCTUnwrap(spaces.first)
+        XCTAssertEqual(sp.id, spaceID)
+        XCTAssertEqual(sp.name, "Work")
+        XCTAssertEqual(sp.sortOrder, 3)
+        XCTAssertTrue(sp.isMutedEffective)
+
+        let links = try ctx.fetch(FetchDescriptor<SpaceServiceLink>())
+        XCTAssertEqual(links.count, 1)
+        let l = try XCTUnwrap(links.first)
+        XCTAssertEqual(l.sortOrder, 5)
+        XCTAssertEqual(l.space.id, spaceID)
+        XCTAssertEqual(l.service.id, serviceID)
+    }
+
+    /// The second stage (1.5.12 → current). A 1.5.12 store already has
+    /// `stayActiveInBackground`; it must survive, and only the hibernation fields
+    /// should arrive as nil.
+    func testMigratesFrom1_5_12PreservingAllData() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: "chorus-migr-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appending(path: "default.store")
+
+        let serviceID = UUID()
+
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ChorusSchemaV1_5_12.self)
+            let config = ModelConfiguration(schema: schema, url: url)
+            let container = try ModelContainer(for: schema, configurations: [config])
+            let ctx = container.mainContext
+            let service = ChorusSchemaV1_5_12.ServiceInstance(id: serviceID, label: "Teams", url: "https://teams.microsoft.com")
+            service.stayActiveInBackground = true
+            ctx.insert(service)
+            try ctx.save()
+        }
+
+        let schema = Schema(versionedSchema: ChorusSchemaVCurrent.self)
+        let config = ModelConfiguration(schema: schema, url: url)
+        let container = try ModelContainer(for: schema, migrationPlan: ChorusMigrationPlan.self, configurations: [config])
+        let ctx = container.mainContext
+
+        let s = try XCTUnwrap(try ctx.fetch(FetchDescriptor<ServiceInstance>()).first)
+        XCTAssertEqual(s.id, serviceID)
+        XCTAssertEqual(s.label, "Teams")
+        XCTAssertEqual(s.stayActiveInBackground, true)
+        XCTAssertTrue(s.staysActiveInBackgroundEffective)
+        XCTAssertNil(s.hibernationPolicyRaw)
+        XCTAssertNil(s.hibernateAfterMinutes)
+    }
+
+    /// The REAL production provenance. Every field store today was written by the
+    /// old `AppState.init`, which used a PLAIN `Schema([...])` (no version), not a
+    /// `VersionedSchema`. This seeds a store exactly that way — a plain `Schema`
+    /// over the 1.5.11-shaped types — then opens it through the versioned plan,
+    /// the way the upgraded app will. It must open with data intact, NOT throw
+    /// (which would strand every existing user in the in-memory fallback). Locks
+    /// in CI what the local real-snapshot check proved by hand. (macOS 14.0 still
+    /// needs its own device pass — the migration race is OS-specific.)
+    func testMigratesFromPlainSchemaProductionStore() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: "chorus-migr-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appending(path: "default.store")
+
+        let serviceID = UUID(), spaceID = UUID()
+
+        // Seed with a PLAIN Schema of the 1.5.11-shaped types — production's exact
+        // write path (plain Schema, older shape), not Schema(versionedSchema:).
+        try autoreleasepool {
+            let schema = Schema([
+                ChorusSchemaV1_5_11.ServiceInstance.self,
+                ChorusSchemaV1_5_11.Space.self,
+                ChorusSchemaV1_5_11.SpaceServiceLink.self,
+                ChorusSchemaV1_5_11.AppPreferences.self,
+            ])
+            let config = ModelConfiguration(schema: schema, url: url)
+            let container = try ModelContainer(for: schema, configurations: [config])
+            let ctx = container.mainContext
+            let space = ChorusSchemaV1_5_11.Space(id: spaceID, name: "Work", emoji: "🏢", sortOrder: 1)
+            let service = ChorusSchemaV1_5_11.ServiceInstance(id: serviceID, label: "Gmail", url: "https://mail.google.com")
+            let link = ChorusSchemaV1_5_11.SpaceServiceLink(id: UUID(), sortOrder: 0, space: space, service: service)
+            let prefs = ChorusSchemaV1_5_11.AppPreferences(id: UUID())
+            ctx.insert(space); ctx.insert(service); ctx.insert(link); ctx.insert(prefs)
+            try ctx.save()
+        }
+
+        // Open through the plan, as the upgraded production app does.
+        let schema = Schema(versionedSchema: ChorusSchemaVCurrent.self)
+        let config = ModelConfiguration(schema: schema, url: url)
+        let container = try ModelContainer(for: schema, migrationPlan: ChorusMigrationPlan.self, configurations: [config])
+        let ctx = container.mainContext
+
+        XCTAssertEqual(try ctx.fetchCount(FetchDescriptor<Space>()), 1, "plain-Schema store must not migrate to empty")
+        XCTAssertEqual(try ctx.fetchCount(FetchDescriptor<ServiceInstance>()), 1)
+        XCTAssertEqual(try ctx.fetchCount(FetchDescriptor<SpaceServiceLink>()), 1)
+        let s = try XCTUnwrap(try ctx.fetch(FetchDescriptor<ServiceInstance>()).first)
+        XCTAssertEqual(s.id, serviceID)
+        XCTAssertEqual(s.label, "Gmail")
     }
 
 }

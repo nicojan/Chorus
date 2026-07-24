@@ -1,6 +1,8 @@
 # Follow-up: make SwiftData migration deterministic (VersionedSchema)
 
-Status: open. Filed 2026-07-24, after shipping 1.5.14.
+Status: implemented 2026-07-24, pending a macOS 14.0 validation pass before it
+ships. See the implementation plan and results in
+`docs/superpowers/specs/2026-07-24-versioned-schema-migration-plan.md`.
 
 ## Why this exists
 

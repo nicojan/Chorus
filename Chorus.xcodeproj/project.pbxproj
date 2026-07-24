@@ -43,6 +43,7 @@
 		A33A7902903C731E069B6CD5 /* ChorusApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E143D686890F381C5B42761F /* ChorusApp.swift */; };
 		A98FA6B9454EC0BCEDEED093 /* InAppBrowserWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 690DB6DBF74EAD8B040C1460 /* InAppBrowserWindow.swift */; };
 		AD626D3375822E9E5BC358BE /* FaviconFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ACFB877AD2138035F9E3EAE /* FaviconFetcher.swift */; };
+		B095E6333D67F97829F12E97 /* ChorusSchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = 311EEF2D99711EA929371A79 /* ChorusSchema.swift */; };
 		B2138F3B8FD4E8960E0E04A6 /* ServiceTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CC71C78C036E2C4DF3EAF2E /* ServiceTabView.swift */; };
 		BAA5421430BDF6F9B918B7B5 /* WebViewPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608B27F538D778C6FC4B1697 /* WebViewPool.swift */; };
 		C14E7A689411E8DCCC20ED74 /* fanboy-annoyance.json in Resources */ = {isa = PBXBuildFile; fileRef = 0D9CBE47687FB4FF2EF6BED5 /* fanboy-annoyance.json */; };
@@ -85,6 +86,7 @@
 		1ACFB877AD2138035F9E3EAE /* FaviconFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaviconFetcher.swift; sourceTree = "<group>"; };
 		1D9D707C0F9A04B5E0744F59 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		24EE83C0600AFD4A12914883 /* HibernatedBadgePoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HibernatedBadgePoller.swift; sourceTree = "<group>"; };
+		311EEF2D99711EA929371A79 /* ChorusSchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChorusSchema.swift; sourceTree = "<group>"; };
 		312995FF05808961FD519D76 /* SpaceServiceLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceServiceLink.swift; sourceTree = "<group>"; };
 		31B99E22D6D2E2F8EBDE7A31 /* darkreader.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = darkreader.js; sourceTree = "<group>"; };
 		3A3640458AF427BC8D3C8F2A /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
@@ -268,6 +270,14 @@
 			path = MenuBar;
 			sourceTree = "<group>";
 		};
+		A7270CB283A200B169C5CB97 /* Schema */ = {
+			isa = PBXGroup;
+			children = (
+				311EEF2D99711EA929371A79 /* ChorusSchema.swift */,
+			);
+			path = Schema;
+			sourceTree = "<group>";
+		};
 		A85A2DE22EC0FC06376105BE /* MainWindow */ = {
 			isa = PBXGroup;
 			children = (
@@ -300,6 +310,7 @@
 				4666C49AA129F26D936B0715 /* ServiceInstance.swift */,
 				FEC9767949C165F7DCD9A281 /* Space.swift */,
 				312995FF05808961FD519D76 /* SpaceServiceLink.swift */,
+				A7270CB283A200B169C5CB97 /* Schema */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -453,6 +464,7 @@
 				03162EF33AE4EEB6E524E5B1 /* CatalogGridView.swift in Sources */,
 				817A70A10923352BBAC3F63E /* CatalogIconCache.swift in Sources */,
 				A33A7902903C731E069B6CD5 /* ChorusApp.swift in Sources */,
+				B095E6333D67F97829F12E97 /* ChorusSchema.swift in Sources */,
 				E28F6C4DD1E61484CEA773F0 /* ContentBlockerManager.swift in Sources */,
 				230144499E6BE9FD41C03338 /* ContentView.swift in Sources */,
 				30CDFCABEDA4328515317A91 /* CookieConsentManager.swift in Sources */,

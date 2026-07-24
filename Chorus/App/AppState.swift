@@ -252,12 +252,11 @@ final class AppState {
     static let hasEverHadDataKey = "chorus.hasEverHadData"
 
     init() {
-        let schema = Schema([
-            ServiceInstance.self,
-            Space.self,
-            SpaceServiceLink.self,
-            AppPreferences.self,
-        ])
+        // The current shipping shape, pinned as an explicit `VersionedSchema`.
+        // `loadContainer` opens it through `ChorusMigrationPlan`, so an older
+        // store migrates through named, tested stages instead of inference. See
+        // `Chorus/Models/Schema/ChorusSchema.swift`.
+        let schema = Schema(versionedSchema: ChorusSchemaVCurrent.self)
         // Debug builds keep their store in a separate directory so a copy run
         // from Xcode never opens (and never migrates) the installed release
         // app's data. The release path is left implicit — SwiftData's default,
@@ -1563,7 +1562,14 @@ final class AppState {
         StoreRepair.repairDanglingLinks(at: config.url)
         return autoreleasepool {
             do {
-                let opened = try ModelContainer(for: schema, configurations: [config])
+                // Open through the explicit migration plan: SwiftData matches the
+                // store to a declared version and walks the named stages, rather
+                // than inferring the mapping fresh at open time.
+                let opened = try ModelContainer(
+                    for: schema,
+                    migrationPlan: ChorusMigrationPlan.self,
+                    configurations: [config]
+                )
                 // If any dangling link slipped through repair, a later unguarded
                 // `.space`/`.service` read would fault a deleted model and brick
                 // the app — treat as unusable.
