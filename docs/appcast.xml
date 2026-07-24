@@ -3,6 +3,20 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.13</title>
+            <pubDate>Thu, 23 Jul 2026 18:51:04 -0700</pubDate>
+            <sparkle:version>22</sparkle:version>
+            <sparkle:shortVersionString>1.5.13</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Changed</h3>
+<ul>
+<li>A per-service hibernation setting. Each service can now follow the global hibernate setting, hibernate when you switch to another service, hibernate after a set idle time you choose, or never hibernate. This replaces the old "Keep loaded" toggle, which is now the "Never" choice. Chat services stay loaded whatever you pick, so their messages still reach you the moment they arrive.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.13/Chorus-1.5.13.dmg" length="8495023" type="application/octet-stream" sparkle:edSignature="fIkJxOcgOzEitSMaYxrTgJ7sJl71SNUIVorZ7mGOuXkuDDQCDM3Yz7Rd2MCBs/BFpyKtpOfA30Kv6Ns2vDYOCA=="/>
+        </item>
+        <item>
             <title>1.5.12</title>
             <pubDate>Thu, 23 Jul 2026 10:04:38 -0700</pubDate>
             <sparkle:version>21</sparkle:version>
