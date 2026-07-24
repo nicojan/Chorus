@@ -3,6 +3,20 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.14</title>
+            <pubDate>Fri, 24 Jul 2026 09:45:19 -0700</pubDate>
+            <sparkle:version>23</sparkle:version>
+            <sparkle:shortVersionString>1.5.14</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Fixed</h3>
+<ul>
+<li>Chorus no longer replaces your spaces and services with the default set when an update leaves your saved data unreadable. Now it catches that at startup and restores your data from the backup it takes before every update, then tells you it did. If it can't restore, it stays on temporary storage and points you to the backups. It never writes over your data.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.14/Chorus-1.5.14.dmg" length="8494867" type="application/octet-stream" sparkle:edSignature="RVcAB0Gmwnd3ZZ/Bh5rsX4vXuW+iEI7DEY7dVhFK89wODSiKjogOxQrXHJJIKrM6SUTD0H4Z85/FO+rmY/bbCQ=="/>
+        </item>
+        <item>
             <title>1.5.13</title>
             <pubDate>Thu, 23 Jul 2026 18:51:04 -0700</pubDate>
             <sparkle:version>22</sparkle:version>
