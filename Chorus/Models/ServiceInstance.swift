@@ -7,6 +7,51 @@ enum ServiceDarkMode: String, CaseIterable {
     case on, off
 }
 
+/// Per-service hibernation policy — when Chorus frees this service's WebContent
+/// process while it runs in the background. The service you're viewing always
+/// stays loaded, so every policy acts only while the service is not on screen.
+/// - `followGlobal`: obey the app-wide auto-hibernate setting (the prior default).
+/// - `never`: keep the service loaded (the legacy "Keep Loaded" flag).
+/// - `immediate`: hibernate a few seconds after you switch to another service.
+/// - `after`: hibernate once idle for `hibernateAfterMinutes`.
+enum HibernationPolicy: String, CaseIterable {
+    case followGlobal, never, immediate, after
+}
+
+/// Pure policy → idle-threshold math for auto-hibernation, kept free of AppState
+/// and WebKit so the truth table is unit-testable in isolation. Mirrors
+/// `MediaPermissionResolver`.
+enum HibernationResolver {
+    /// The idle sweep's backstop for `.immediate` services: short, because their
+    /// real teardown is the switch-away grace timer — this only catches one that
+    /// somehow escaped it. Also the grace period itself, kept in one place.
+    static let immediateBackstopSeconds: TimeInterval = 5
+
+    /// The idle seconds after which a service should hibernate on a sweep, or nil
+    /// if it shouldn't hibernate on this sweep at all.
+    /// - `never`: never hibernates.
+    /// - `followGlobal`: the global interval, but only while the global toggle is on.
+    /// - `after`: the service's own idle minutes.
+    /// - `immediate`: the short backstop above.
+    static func idleThreshold(
+        policy: HibernationPolicy,
+        globalEnabled: Bool,
+        globalIdleMinutes: Int,
+        afterMinutes: Int
+    ) -> TimeInterval? {
+        switch policy {
+        case .never:
+            return nil
+        case .followGlobal:
+            return globalEnabled ? TimeInterval(globalIdleMinutes * 60) : nil
+        case .after:
+            return TimeInterval(afterMinutes * 60)
+        case .immediate:
+            return immediateBackstopSeconds
+        }
+    }
+}
+
 /// Per-service camera/microphone permission. `ask` prompts once and remembers
 /// the answer (flipping to allow/deny); `allow` grants silently; `deny` blocks.
 enum MediaPermissionPolicy: String, CaseIterable {
@@ -170,6 +215,17 @@ final class ServiceInstance {
     /// shipped — not retroactively for every service the user already had.
     var hasSeenPasskeyNotice: Bool?
 
+    /// Per-service hibernation policy, stored raw for SwiftData lightweight
+    /// migration. nil means "no per-service value set" — read via
+    /// `hibernationPolicyEffective`, which migrates the legacy `neverHibernate`
+    /// flag (true → `.never`) so existing "Keep Loaded" services are preserved.
+    var hibernationPolicyRaw: String?
+
+    /// Idle minutes before hibernation when the policy is `.after`. Optional for
+    /// SwiftData lightweight migration; read via `hibernateAfterMinutesEffective`,
+    /// which clamps to 1...120 (nil → 10). Ignored for the other policies.
+    var hibernateAfterMinutes: Int?
+
     @Relationship(deleteRule: .cascade, inverse: \SpaceServiceLink.service)
     var spaceLinks: [SpaceServiceLink]
 
@@ -223,6 +279,39 @@ final class ServiceInstance {
     /// service only fakes focus when the user has explicitly opted in.
     var staysActiveInBackgroundEffective: Bool { stayActiveInBackground ?? false }
 
+    /// Catalog categories whose services must never auto-hibernate (chat apps).
+    /// A hibernated web app can only refresh its badge on the periodic sweep, not
+    /// fire an instant alert, so chat apps stay live even when a per-service timer
+    /// is set — you need to hear from them the moment a message lands.
+    static let notificationCriticalCategories: Set<String> = ["Messaging"]
+
+    /// True when this service must stay live for real-time notifications, decided
+    /// by its catalog category. Custom (non-catalog) services aren't covered —
+    /// use the `.never` hibernation policy for those.
+    var isNotificationCritical: Bool {
+        guard let catalogEntryID,
+              let entry = ServiceCatalog.shared.entry(for: catalogEntryID)
+        else { return false }
+        return Self.notificationCriticalCategories.contains(entry.category)
+    }
+
+    /// The effective hibernation policy. An explicit `hibernationPolicyRaw` wins;
+    /// otherwise a legacy `neverHibernate == true` service maps to `.never`
+    /// (preserving "Keep Loaded"), and everything else — including an unknown
+    /// stored value — defaults to `.followGlobal`.
+    var hibernationPolicyEffective: HibernationPolicy {
+        if let raw = hibernationPolicyRaw, let policy = HibernationPolicy(rawValue: raw) {
+            return policy
+        }
+        return neverHibernate ? .never : .followGlobal
+    }
+
+    /// Idle minutes before hibernation for the `.after` policy, clamped to a sane
+    /// 1...120 (nil → 10). Mirrors the global `autoHibernateIdleMinutesEffective`.
+    var hibernateAfterMinutesEffective: Int {
+        min(120, max(1, hibernateAfterMinutes ?? 10))
+    }
+
     /// True if this service is muted directly, or via any space it belongs to
     /// (muting a space cascades to its members). Use this when the model object
     /// is already in hand — it avoids AppState's fetch-all-then-scan lookup.
@@ -256,7 +345,9 @@ final class ServiceInstance {
         cameraPolicyRaw: String? = nil,
         microphonePolicyRaw: String? = nil,
         openExternalLinksInApp: Bool? = nil,
-        stayActiveInBackground: Bool? = nil
+        stayActiveInBackground: Bool? = nil,
+        hibernationPolicyRaw: String? = nil,
+        hibernateAfterMinutes: Int? = nil
     ) {
         self.id = id
         self.label = label
@@ -280,6 +371,8 @@ final class ServiceInstance {
         self.microphonePolicyRaw = microphonePolicyRaw
         self.openExternalLinksInApp = openExternalLinksInApp
         self.stayActiveInBackground = stayActiveInBackground
+        self.hibernationPolicyRaw = hibernationPolicyRaw
+        self.hibernateAfterMinutes = hibernateAfterMinutes
         self.spaceLinks = []
         self.createdAt = Date()
         self.lastAccessedAt = Date()

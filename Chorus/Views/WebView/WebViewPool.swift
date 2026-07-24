@@ -138,8 +138,10 @@ final class WebViewPool {
     }
 
     func webView(for instance: ServiceInstance) -> WKWebView {
-        // Track the never-hibernate preference
-        if instance.neverHibernate {
+        // Track the never-hibernate preference. Read the effective policy, not the
+        // legacy `neverHibernate` flag, so the exemption can't diverge from what
+        // the rest of the app treats as `.never`.
+        if instance.hibernationPolicyEffective == .never {
             neverHibernateIDs.insert(instance.id)
         } else {
             neverHibernateIDs.remove(instance.id)
@@ -226,6 +228,22 @@ final class WebViewPool {
         webViews[instance.id] = webView
         lastAccessTimes[instance.id] = Date()
         observeCaptureState(webView, id: instance.id)
+
+        // Register the hibernation-exemption flags now, not just on first
+        // activation. A service preloaded but never clicked would otherwise be
+        // missing from these sets, so the idle sweep and the LRU cap could
+        // hibernate or evict a "Keep Loaded" or chat service the user was
+        // promised would stay live. Mirrors the same block in `webView(for:)`.
+        if instance.hibernationPolicyEffective == .never {
+            neverHibernateIDs.insert(instance.id)
+        } else {
+            neverHibernateIDs.remove(instance.id)
+        }
+        if isNotificationCritical?(instance.id) == true {
+            notificationCriticalIDs.insert(instance.id)
+        } else {
+            notificationCriticalIDs.remove(instance.id)
+        }
 
         if let url = URL(string: instance.url) {
             webView.load(URLRequest(url: url))
@@ -658,20 +676,21 @@ final class WebViewPool {
         )
     }
 
-    /// Live services idle for at least `threshold`, eligible for auto-hibernation:
-    /// not the active service, not "Keep Loaded", not pinned, and actually loaded.
-    /// The caller applies the category and active-call exemptions — this only does
-    /// the time-and-flag selection the pool can answer on its own.
-    func idleServiceIDs(idleFor threshold: TimeInterval, now: Date) -> [UUID] {
+    /// Live services eligible for auto-hibernation, each paired with how long it
+    /// has been idle: not the active service, not "Keep Loaded", not chat, not
+    /// pinned, and actually loaded. The caller resolves each service's own idle
+    /// threshold (its per-service policy, or the global one) and the active-call
+    /// exemption — this only does the flag-and-liveness selection the pool can
+    /// answer on its own.
+    func idleCandidates(now: Date) -> [(id: UUID, idle: TimeInterval)] {
         lastAccessTimes.compactMap { id, accessed in
             guard id != activeServiceID,
                   !neverHibernateIDs.contains(id),
                   !notificationCriticalIDs.contains(id),
                   !pinnedIDs.contains(id),
-                  webViews[id] != nil,
-                  now.timeIntervalSince(accessed) >= threshold
+                  webViews[id] != nil
             else { return nil }
-            return id
+            return (id, now.timeIntervalSince(accessed))
         }
     }
 

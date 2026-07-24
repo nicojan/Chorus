@@ -189,6 +189,10 @@ final class AppState {
     }
     @ObservationIgnored nonisolated(unsafe) private var quietHoursTask: Task<Void, Never>?
     @ObservationIgnored nonisolated(unsafe) private var idleHibernationTask: Task<Void, Never>?
+    /// Per-service grace timers for the `.immediate` hibernation policy: a service
+    /// switched away from is torn down a few seconds later unless switched back to.
+    /// Keyed by service id so switching back can cancel the pending teardown.
+    @ObservationIgnored private var pendingImmediateHibernation: [UUID: Task<Void, Never>] = [:]
 
     /// App lock (Touch ID / password), loaded from AppPreferences. `isLocked`
     /// drives an opaque cover over the window content in ContentView.
@@ -899,7 +903,12 @@ final class AppState {
         presenceChanged: Bool = false
     ) {
         guard let service = currentServiceInstance(id: serviceID) else { return }
-        webViewPool.setNeverHibernate(service.neverHibernate, for: serviceID)
+        webViewPool.setNeverHibernate(service.hibernationPolicyEffective == .never, for: serviceID)
+        // A policy change may add or drop the only per-service timer, so re-gate
+        // the sweep; drop any pending grace teardown so a switch away from
+        // `.immediate` doesn't fire under a service the user just made sticky.
+        cancelImmediateHibernation(serviceID)
+        startIdleHibernationTimer()
 
         if cssChanged || presenceChanged {
             // Custom CSS and the focus override are both injected when the web
@@ -1030,32 +1039,34 @@ final class AppState {
         }
     }
 
-    /// Catalog categories whose services must never auto-hibernate, because a
-    /// hibernated web app can't fire a real-time notification, only refresh its
-    /// badge on the periodic background sweep (every few minutes). Chat apps are
-    /// the ones you need to hear from the
-    /// instant a message lands, so they stay fully live. Email tolerates the
-    /// badge delay, so it isn't exempted here; a user who wants instant mail can
-    /// mark that service "Keep Loaded".
-    private static let notificationCriticalCategories: Set<String> = ["Messaging"]
-
     /// Whether a service must stay live for real-time notifications, by its
-    /// catalog category. Custom (non-catalog) services aren't covered — use
-    /// "Keep Loaded" for those.
+    /// catalog category. Delegates to the model so the edit sheet and the sweep
+    /// share one definition. Custom (non-catalog) services aren't covered — use
+    /// the `.never` hibernation policy for those.
     private func isNotificationCritical(_ serviceID: UUID) -> Bool {
-        guard let service = fetchService(id: serviceID),
-              let catalogID = service.catalogEntryID,
-              let entry = ServiceCatalog.shared.entry(for: catalogID)
-        else { return false }
-        return Self.notificationCriticalCategories.contains(entry.category)
+        fetchService(id: serviceID)?.isNotificationCritical ?? false
     }
 
-    /// Runs a periodic idle sweep while the feature is on, fully hibernating
-    /// background services idle past the threshold — except chat apps (kept live
-    /// for instant alerts), "Keep Loaded" services, and any service in a call.
+    /// True if any service opts into its own hibernation timing (`.after` or
+    /// `.immediate`), so the idle sweep must run even with the global toggle off.
+    private func hasExplicitHibernationPolicy() -> Bool {
+        let services = (try? modelContainer.mainContext.fetch(FetchDescriptor<ServiceInstance>())) ?? []
+        return services.contains {
+            switch $0.hibernationPolicyEffective {
+            case .after, .immediate: return true
+            case .followGlobal, .never: return false
+            }
+        }
+    }
+
+    /// Runs a periodic idle sweep, fully hibernating background services idle
+    /// past their own threshold — except chat apps (kept live for instant
+    /// alerts), "Keep Loaded" services, and any service in a call. The sweep
+    /// runs while the global toggle is on OR any service sets its own timer, so a
+    /// per-service policy still fires when the global switch is off.
     private func startIdleHibernationTimer() {
         idleHibernationTask?.cancel()
-        guard autoHibernateIdleEnabled else { return }
+        guard autoHibernateIdleEnabled || hasExplicitHibernationPolicy() else { return }
         idleHibernationTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(60))
@@ -1065,20 +1076,87 @@ final class AppState {
     }
 
     private func hibernateIdleServices() async {
-        guard autoHibernateIdleEnabled, !isLocked else { return }
-        let threshold = TimeInterval(autoHibernateIdleMinutes * 60)
-        let candidates = webViewPool.idleServiceIDs(idleFor: threshold, now: Date())
-        for id in candidates {
-            // Re-check across each hibernation's await: the user may have toggled
-            // the feature off (or the app locked) mid-sweep, and we shouldn't keep
-            // tearing down the rest of the candidate list after that.
-            guard autoHibernateIdleEnabled, !isLocked else { return }
-            guard !isNotificationCritical(id) else { continue }
+        guard !isLocked else { return }
+        // Wind the sweep down once nothing needs it — e.g. the only service with
+        // its own timer was deleted, or the global toggle went off. This is the
+        // catch-all for every path that can drop the last reason to run (deleting
+        // a service from a space, deleting a space) without each having to re-gate
+        // the timer. `||` short-circuits, so the fetch only runs with global off.
+        guard autoHibernateIdleEnabled || hasExplicitHibernationPolicy() else {
+            idleHibernationTask?.cancel()
+            return
+        }
+        let now = Date()
+        // The pool has already filtered out active / chat / Keep-Loaded / pinned
+        // services, so every candidate is a live background service the sweep may
+        // consider against its own idle threshold.
+        for candidate in webViewPool.idleCandidates(now: now) {
+            // Re-check across each hibernation's await: the app may have locked
+            // mid-sweep, and we shouldn't keep tearing down the rest after that.
+            guard !isLocked else { return }
+            guard let service = fetchService(id: candidate.id),
+                  // Belt-and-suspenders: the pool already excludes chat services
+                  // via its cache, but read the model too so a cache miss can't
+                  // hibernate a service the user needs live for instant alerts.
+                  !service.isNotificationCritical,
+                  let threshold = idleThreshold(for: service),
+                  candidate.idle >= threshold
+            else { continue }
             // The pool does the call check and re-validates the guards across
             // that await, so a service the user switches to mid-sweep is never
             // hibernated out from under them.
-            await webViewPool.hibernateIfStillIdle(id)
+            await webViewPool.hibernateIfStillIdle(candidate.id)
         }
+    }
+
+    /// The idle seconds after which a service should hibernate, or nil if it
+    /// shouldn't on this sweep. `.never` never fires; `.followGlobal` fires only
+    /// while the global toggle is on; `.after` uses the service's own minutes;
+    /// `.immediate` uses a short backstop here — its real teardown is the
+    /// switch-away grace timer (`scheduleImmediateHibernationIfNeeded`).
+    private func idleThreshold(for service: ServiceInstance) -> TimeInterval? {
+        HibernationResolver.idleThreshold(
+            policy: service.hibernationPolicyEffective,
+            globalEnabled: autoHibernateIdleEnabled,
+            globalIdleMinutes: autoHibernateIdleMinutes,
+            afterMinutes: service.hibernateAfterMinutesEffective
+        )
+    }
+
+    /// Schedule a full hibernation a few seconds after the user switches away
+    /// from an `.immediate`-policy service, cancelled if they switch back. The
+    /// teardown goes through `hibernateIfStillIdle`, which re-checks active/call/
+    /// exempt across its await, so a service you return to — or a chat app — is
+    /// never torn down under you even if this fires first.
+    private func scheduleImmediateHibernationIfNeeded(_ serviceID: UUID) {
+        guard let service = fetchService(id: serviceID),
+              service.hibernationPolicyEffective == .immediate,
+              !service.isNotificationCritical else { return }
+        pendingImmediateHibernation[serviceID]?.cancel()
+        pendingImmediateHibernation[serviceID] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(HibernationResolver.immediateBackstopSeconds))
+            guard !Task.isCancelled, let self else { return }
+            // Skip the teardown while locked — the periodic idle sweep is the
+            // backstop and catches this service once unlocked. Either way, clear
+            // the pending entry below so it can't linger pointing at a finished
+            // task. A non-cancelled task still owns its entry (a replacement is
+            // only scheduled after cancel()), so clearing here is safe.
+            if !self.isLocked {
+                // hibernateIfStillIdle can suspend up to ~2s on its call probe;
+                // the pending entry stays in place across it so a switch-back's
+                // cancel() still lands. Re-check cancellation before clearing.
+                await self.webViewPool.hibernateIfStillIdle(serviceID)
+            }
+            guard !Task.isCancelled else { return }
+            self.pendingImmediateHibernation[serviceID] = nil
+        }
+    }
+
+    /// Cancel a pending `.immediate` teardown — the user switched back, or the
+    /// service was removed or already hibernated.
+    private func cancelImmediateHibernation(_ serviceID: UUID) {
+        pendingImmediateHibernation[serviceID]?.cancel()
+        pendingImmediateHibernation[serviceID] = nil
     }
 
     /// Turns auto-hibernation on/off, persists it, and starts or stops the sweep.
@@ -1826,10 +1904,15 @@ final class AppState {
             // anything without a live web view); the badge holds its last value
             // until the next sweep.
             self?.notificationManager.stopPolling(for: serviceID)
+            // Its grace timer (if any) has done its job; clear the entry.
+            self?.cancelImmediateHibernation(serviceID)
         }
 
         webViewPool.onServiceSoftHibernated = { [weak self] serviceID in
             guard let self else { return }
+            // A service set to hibernate immediately is torn down a few seconds
+            // after you switch away from it, unless you switch back first.
+            self.scheduleImmediateHibernationIfNeeded(serviceID)
             // Downgrade the active 5s-adaptive poll to a flat 30s background
             // poll. We keep the WKWebView around (soft hibernation) so we can
             // still read its `document.title` without waking the service.
@@ -1840,9 +1923,11 @@ final class AppState {
             self.startBackgroundPolling(for: serviceID, webView: webView)
         }
 
-        webViewPool.onServiceSoftWoke = { _ in
+        webViewPool.onServiceSoftWoke = { [weak self] serviceID in
+            // Switched back before the grace timer fired — call off the teardown.
+            self?.cancelImmediateHibernation(serviceID)
             // Polling will restart when WebContentView attaches the web view
-            // No action needed here — startPolling is called from the view layer
+            // No further action here — startPolling is called from the view layer
         }
 
         webViewPool.onServicePreloaded = { [weak self] serviceID, webView in
@@ -1858,6 +1943,7 @@ final class AppState {
             self.notificationManager.stopPolling(for: serviceID)
             self.badgeManager.removeBadge(for: serviceID)
             self.drainMediaRequests(for: serviceID)
+            self.cancelImmediateHibernation(serviceID)
         }
     }
 

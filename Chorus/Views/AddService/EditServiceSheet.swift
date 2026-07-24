@@ -13,7 +13,8 @@ struct EditServiceSheet: View {
 
     @State private var label: String = ""
     @State private var url: String = ""
-    @State private var keepLoaded: Bool = false
+    @State private var hibernationPolicy: HibernationPolicy = .followGlobal
+    @State private var hibernateAfterMinutes: Int = 10
     @State private var mobileView: Bool = false
     @State private var openLinksInApp: Bool = false
     @State private var stayActive: Bool = false
@@ -70,8 +71,29 @@ struct EditServiceSheet: View {
                         .accessibilityLabel("Service address")
                 }
 
-                Toggle("Keep loaded in the background", isOn: $keepLoaded)
-                    .help("Never hibernate this service, so its notifications and calls keep working even when you're viewing something else. Uses more memory.")
+                VStack(alignment: .leading, spacing: 6) {
+                    Picker("Hibernate", selection: $hibernationPolicy) {
+                        Text("Follow global setting").tag(HibernationPolicy.followGlobal)
+                        Text("When I switch to another service").tag(HibernationPolicy.immediate)
+                        Text("After a set idle time").tag(HibernationPolicy.after)
+                        Text("Never (keep loaded)").tag(HibernationPolicy.never)
+                    }
+                    .help("Chorus frees a service's memory and CPU while it runs in the background. The one you're viewing always stays loaded. \"Never\" also keeps calls and notifications working in the background, at the cost of more memory.")
+                    .disabled(service.isNotificationCritical)
+
+                    if hibernationPolicy == .after && !service.isNotificationCritical {
+                        Stepper(value: $hibernateAfterMinutes, in: 1...120) {
+                            Text("Idle for \(hibernateAfterMinutes) minute\(hibernateAfterMinutes == 1 ? "" : "s")")
+                        }
+                        .accessibilityLabel("Hibernate after \(hibernateAfterMinutes) minutes idle")
+                    }
+
+                    if service.isNotificationCritical {
+                        Text("Chat apps stay loaded so their messages reach you the instant they arrive. This setting won't hibernate this one.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
                 Toggle("Mobile view", isOn: $mobileView)
                     .help("Loads this service as if on an iPhone, so it serves its mobile web layout. Applied on save.")
@@ -137,7 +159,8 @@ struct EditServiceSheet: View {
         .onAppear {
             label = service.label
             url = service.url
-            keepLoaded = service.neverHibernate
+            hibernationPolicy = service.hibernationPolicyEffective
+            hibernateAfterMinutes = service.hibernateAfterMinutesEffective
             mobileView = service.userAgent == UserAgentProvider.mobileSafari
             initialUserAgent = service.userAgent
             openLinksInApp = service.opensExternalLinksInAppEffective
@@ -295,7 +318,11 @@ struct EditServiceSheet: View {
 
             service.label = validLabel
             service.url = validURL
-            service.neverHibernate = keepLoaded
+            service.hibernationPolicyRaw = hibernationPolicy.rawValue
+            service.hibernateAfterMinutes = hibernateAfterMinutes
+            // Keep the legacy flag in sync so the pool's never-hibernate fast path
+            // and any older build reading the store still honor "keep loaded".
+            service.neverHibernate = (hibernationPolicy == .never)
             service.customCSS = newCSS
             service.darkModeRaw = darkMode.rawValue
             service.forceDarkMode = nil          // retire the legacy flag
