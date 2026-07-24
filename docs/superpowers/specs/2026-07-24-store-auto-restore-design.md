@@ -179,6 +179,31 @@ All existing (avoids the "new .swift not auto-compiled" project gotcha):
 `Chorus/App/StoreRepair.swift`, `Chorus/App/AppState.swift`,
 `Chorus/Views/MainWindow/ContentView.swift`, `ChorusTests/ChorusTests.swift`.
 
+## Revisions from adversarial review
+
+A QA pass found four data-safety holes in the first design; all are fixed and
+covered by tests:
+
+1. **Never overwrite a store that still has data on disk.** `.failed` (open threw
+   / dangling after repair) is no longer treated like `.emptiedWithHistory`. A
+   pure `recoveryPlan(kind:before:fileExisted:)` gates restore: when the open
+   fails but the raw pre-open count is `> 0`, the data is intact and we run
+   in-memory (preserving the file) instead of rolling back to an older snapshot.
+2. **"No file" ≠ "empty file".** `loadContainer` checks `FileManager.fileExists`
+   separately from the row count. A stale `hasEverHadData` flag with no store
+   file and no snapshot now clears the flag and starts fresh (seeds) rather than
+   bricking into a permanent empty in-memory state.
+3. **Force Core Data teardown before file ops.** `tryOpen` runs inside an
+   `autoreleasepool`, so the coordinator (and its SQLite connection) release
+   before the retry does a file-level restore.
+4. **Prune protects the last good snapshot.** `pruneSnapshots` always retains the
+   newest `snapshotHasUsableData` snapshot in addition to the newest `keep`, so a
+   run of post-loss empty snapshots can't evict the only copy of real data. It
+   also sorts by numeric stamp (consistent with selection).
+5. **Restore validates its result.** `restoreFromSnapshot` returns success only
+   when the store it put in place is actually usable, not merely that the primary
+   file copied.
+
 ## Known limitations
 
 - A snapshot written by a *newer* schema (user downgrades) may fail to reopen;

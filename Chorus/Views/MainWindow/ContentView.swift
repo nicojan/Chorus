@@ -24,6 +24,17 @@ struct ContentView: View {
                         }
                         .font(.caption)
                     }
+                    if appState.storeErrorDismissible {
+                        Button {
+                            appState.dismissStoreBanner()
+                        } label: {
+                            Image(systemName: "xmark")
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                        .help("Dismiss")
+                        .accessibilityLabel("Dismiss")
+                    }
                 }
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)

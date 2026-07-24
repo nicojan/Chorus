@@ -93,6 +93,167 @@ enum StoreRepair {
         AppLogger.dataStore.info("StoreRepair: dangling links before=\(before) after=\(after)")
     }
 
+    /// Counts `Space` rows in the store at `url` by reading the raw SQLite file,
+    /// **before** any `ModelContainer` opens or migrates it. Returns the row
+    /// count, or `nil` when the count can't be established — no file yet (first
+    /// launch), the file can't be opened, or the `ZSPACE` table isn't present
+    /// (unrecognized schema). `nil` therefore means "unknown", never "zero": the
+    /// caller must not treat it as an empty store.
+    ///
+    /// `AppState.loadContainer` uses this to tell a genuine fresh install (no
+    /// file → `nil`) apart from a store that *had* spaces on disk but came up
+    /// empty after opening — the signature of a silent migration failure. The
+    /// caller then auto-restores the newest usable snapshot rather than letting
+    /// the seed overwrite recoverable data. Reads only; never writes.
+    static func spaceCount(at url: URL) -> Int? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
+              let db else {
+            if let db { sqlite3_close(db) }
+            return nil
+        }
+        sqlite3_busy_timeout(db, 3000)
+        defer { sqlite3_close(db) }
+
+        // Only count when the table is actually there; a missing table means an
+        // unrecognized schema, which is "unknown" (nil), not an empty store.
+        let hasTable = scalarInt(db, """
+            SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='\(spaceTable)';
+            """) ?? 0
+        guard hasTable == 1 else { return nil }
+        return scalarInt(db, "SELECT COUNT(*) FROM \(spaceTable);")
+    }
+
+    // MARK: - Restore from snapshot
+
+    /// A pre-migration snapshot judged safe to restore from, plus what the
+    /// filename records about when it was taken and which version it preceded.
+    struct RestoreCandidate: Equatable {
+        /// The snapshot's primary `.bak` file (its `-wal`/`-shm` are siblings).
+        let primaryURL: URL
+        /// The app version stamped into the filename (e.g. `1.5.12+21`), or nil
+        /// if the name didn't parse.
+        let version: String?
+        /// When the snapshot was taken, from the filename's Unix-second stamp.
+        let takenAt: Date?
+    }
+
+    /// True when the snapshot at `url` is safe to restore from: it opens, passes
+    /// `PRAGMA integrity_check`, and holds at least one `Space`. Reads only.
+    static func snapshotHasUsableData(at url: URL) -> Bool {
+        guard (spaceCount(at: url) ?? 0) > 0 else { return false }
+
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
+              let db else {
+            if let db { sqlite3_close(db) }
+            return false
+        }
+        sqlite3_busy_timeout(db, 3000)
+        defer { sqlite3_close(db) }
+        // `(1)` stops at the first error — we only need ok/not-ok, and this
+        // bounds the check's cost at launch on a large store.
+        return scalarText(db, "PRAGMA integrity_check(1);") == "ok"
+    }
+
+    /// The newest pre-migration snapshot of the store at `storeURL` that is safe
+    /// to restore from, or nil if none qualifies. Walks the `.snapshot-*.bak`
+    /// siblings newest-first (by the filename's Unix-second stamp) and returns
+    /// the first that `snapshotHasUsableData` — so an empty or corrupt snapshot
+    /// is skipped in favor of an older good one.
+    static func newestRestorableSnapshot(for storeURL: URL) -> RestoreCandidate? {
+        let fm = FileManager.default
+        let dir = storeURL.deletingLastPathComponent()
+        let prefix = storeURL.lastPathComponent + snapshotInfix
+        guard let names = try? fm.contentsOfDirectory(atPath: dir.path) else { return nil }
+
+        // Primary snapshot files only (skip the -wal/-shm siblings), newest-first
+        // by the numeric stamp parsed from the name.
+        let primaries = names
+            .filter { $0.hasPrefix(prefix) && $0.hasSuffix(".bak") }
+            // Newest-first by the numeric stamp; an unparseable name sorts oldest.
+            .sorted { (stampAndVersion($0, prefix: prefix).stamp ?? .min) > (stampAndVersion($1, prefix: prefix).stamp ?? .min) }
+
+        for name in primaries {
+            let url = dir.appending(path: name)
+            guard snapshotHasUsableData(at: url) else { continue }
+            let parsed = stampAndVersion(name, prefix: prefix)
+            return RestoreCandidate(
+                primaryURL: url,
+                version: parsed.version,
+                takenAt: parsed.stamp.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+            )
+        }
+        return nil
+    }
+
+    /// Restores the snapshot triple at `candidate` over the store at `storeURL`.
+    /// The current (bad) triple is first moved aside to a single
+    /// `<name>.prerestore-<stamp>.bak` — never destroyed — so even a failed
+    /// migration's output is recoverable; a second attempt skips re-backing-up so
+    /// a deterministic-failure loop can't bloat the directory. Returns whether the
+    /// primary file was put in place. Must run while no `ModelContainer` holds the
+    /// store open.
+    static func restoreFromSnapshot(_ candidate: RestoreCandidate, to storeURL: URL) -> Bool {
+        let fm = FileManager.default
+        let dir = storeURL.deletingLastPathComponent()
+        let baseName = storeURL.lastPathComponent
+
+        // Back up the current triple once (skip if a prior prerestore exists).
+        let alreadyBackedUp = (try? fm.contentsOfDirectory(atPath: dir.path))?
+            .contains { $0.hasPrefix(baseName + ".prerestore-") } ?? false
+        if !alreadyBackedUp {
+            let stamp = String(Int(Date().timeIntervalSince1970))
+            for suffix in ["", "-wal", "-shm"] {
+                let src = URL(fileURLWithPath: storeURL.path + suffix)
+                guard fm.fileExists(atPath: src.path) else { continue }
+                let dst = URL(fileURLWithPath: storeURL.path + ".prerestore-\(stamp).bak" + suffix)
+                do { try fm.copyItem(at: src, to: dst) } catch {
+                    AppLogger.dataStore.error("StoreRepair: prerestore backup of \(src.lastPathComponent) failed: \(error.localizedDescription)")
+                }
+            }
+        }
+
+        // Replace the live triple with the snapshot's. The snapshot's primary is
+        // `<...>.bak`; its WAL/SHM are `<...>.bak-wal`/`-shm`.
+        let snapshotPath = candidate.primaryURL.path
+        for suffix in ["", "-wal", "-shm"] {
+            let live = URL(fileURLWithPath: storeURL.path + suffix)
+            try? fm.removeItem(at: live)
+            let snap = URL(fileURLWithPath: snapshotPath + suffix)
+            guard fm.fileExists(atPath: snap.path) else { continue }
+            do {
+                try fm.copyItem(at: snap, to: live)
+            } catch {
+                AppLogger.dataStore.error("StoreRepair: restore copy of \(snap.lastPathComponent) failed: \(error.localizedDescription)")
+            }
+        }
+        // Report success only if the store now in place is actually usable — a
+        // partial copy (e.g. a failed `-wal`) can leave a stale or empty store,
+        // and the caller must not treat that as a real recovery.
+        let usable = snapshotHasUsableData(at: storeURL)
+        if !usable {
+            AppLogger.dataStore.error("StoreRepair: restore left an unusable store at \(storeURL.lastPathComponent)")
+        }
+        return usable
+    }
+
+    /// Parses `<prefix><stamp>-<version>.bak` into its Unix-second stamp and
+    /// version. Either may be nil if the name doesn't match. The stamp drives
+    /// newest-first ordering; the version is shown in the recovery banner.
+    private static func stampAndVersion(_ name: String, prefix: String) -> (stamp: Int?, version: String?) {
+        guard name.hasPrefix(prefix), name.hasSuffix(".bak") else { return (nil, nil) }
+        let core = String(name.dropFirst(prefix.count).dropLast(".bak".count))
+        // `core` is `<stamp>-<version>`; split on the FIRST hyphen only, since the
+        // version itself contains no leading hyphen but the whole thing might.
+        guard let dash = core.firstIndex(of: "-") else { return (Int(core), nil) }
+        let stamp = Int(core[..<dash])
+        let version = String(core[core.index(after: dash)...])
+        return (stamp, version.isEmpty ? nil : version)
+    }
+
     // MARK: - Pre-migration snapshots
 
     /// Filename infix marking a pre-migration snapshot of the store.
@@ -158,12 +319,23 @@ enum StoreRepair {
         let prefix = url.lastPathComponent + snapshotInfix
         guard let all = try? fm.contentsOfDirectory(atPath: dir.path) else { return }
 
+        // Newest-first by numeric stamp — consistent with newestRestorableSnapshot
+        // (a plain lexical sort would misorder a differently-formatted stamp).
         let primaries = all
             .filter { $0.hasPrefix(prefix) && $0.hasSuffix(".bak") }
-            .sorted()
+            .sorted { (stampAndVersion($0, prefix: prefix).stamp ?? .min) > (stampAndVersion($1, prefix: prefix).stamp ?? .min) }
         guard primaries.count > keep else { return }
 
-        for name in primaries.dropLast(keep) {
+        // Retain the newest `keep`, PLUS the newest snapshot that still holds
+        // usable data. Without the second clause a run of post-loss empty
+        // snapshots (each version bump snapshots the emptied store) would push
+        // the last good backup past `keep` and delete the only copy of real data.
+        var retain = Set(primaries.prefix(keep))
+        if let newestGood = primaries.first(where: { snapshotHasUsableData(at: dir.appending(path: $0)) }) {
+            retain.insert(newestGood)
+        }
+
+        for name in primaries where !retain.contains(name) {
             for suffix in ["", "-wal", "-shm"] {
                 let victim = dir.appending(path: name + suffix)
                 if fm.fileExists(atPath: victim.path) {
@@ -225,5 +397,17 @@ enum StoreRepair {
         defer { sqlite3_finalize(stmt) }
         guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
         return Int(sqlite3_column_int64(stmt, 0))
+    }
+
+    /// Runs a query whose first column of its first row is text (e.g.
+    /// `PRAGMA integrity_check`). Returns nil if there's no row or the value is
+    /// null.
+    private static func scalarText(_ db: OpaquePointer, _ sql: String) -> String? {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW,
+              let cString = sqlite3_column_text(stmt, 0) else { return nil }
+        return String(cString: cString)
     }
 }
