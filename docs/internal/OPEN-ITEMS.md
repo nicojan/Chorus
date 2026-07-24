@@ -1,8 +1,16 @@
 # Open items
 
-## Current status — through 1.5.12 (2026-07-23)
+## Current status — through 1.5.13 (2026-07-23)
 
-Everything below has shipped. **Chorus 1.5.12 is the current release.** It adds
+Everything below has shipped. **Chorus 1.5.13 is the current release.** It turns
+per-service hibernation into a setting with four choices, replacing the single
+"Keep loaded" toggle. A service can follow the global hibernate setting,
+hibernate when you switch to another service, hibernate after an idle time you
+set, or never hibernate. Chat services stay loaded whatever you pick, so their
+messages still arrive at once. Services that were set to "Keep loaded" migrate
+to the "Never" choice.
+
+It sits on **1.5.12**, which adds
 a per-service "Always appear active" setting: turn it on for Microsoft Teams and
 Chorus reports the page as focused while it sits in the background, so Teams
 stops marking you away when you work in other apps. Chorus offers to turn it on

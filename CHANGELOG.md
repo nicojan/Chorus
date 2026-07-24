@@ -3,6 +3,17 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.5.13] - 2026-07-23
+
+### Changed
+
+- A per-service hibernation setting. Each service can now follow the global
+  hibernate setting, hibernate when you switch to another service, hibernate
+  after a set idle time you choose, or never hibernate. This replaces the old
+  "Keep loaded" toggle, which is now the "Never" choice. Chat services stay
+  loaded whatever you pick, so their messages still reach you the moment they
+  arrive.
+
 ## [1.5.12] - 2026-07-23
 
 ### Added
