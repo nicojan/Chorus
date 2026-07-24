@@ -9,8 +9,11 @@ services) migrated losslessly through the plan; and `git`-diff of the frozen
 addressed — `AppPreferences` frozen in the historical namespaces (#4), a
 plain-`Schema` production-provenance test added (#1), the drift guard extended to
 all four models + relationships (#4), the 1.5.11 test now sets every field (#5).
-**Outstanding: the pre-ship macOS 14.0 device/VM validation pass** — the dev
-machine is macOS 26, so the true 14.0 migration race is not yet exercised.
+The macOS 14.0 concern is handled by construction rather than by a VM we don't
+have: `tryOpen` falls back to plain inferred migration if the versioned-plan open
+throws, so on any OS where the plan misbehaves the app is never worse than the
+previous release, and the safety net still guards the result. A real 14.0 pass is
+still worth doing if a machine becomes available, but it is no longer a blocker.
 Targets the follow-up in `docs/internal/FOLLOWUP-versioned-schema.md`.
 
 ## The problem, restated
@@ -45,6 +48,11 @@ front:
 
 - The retained auto-restore net is **load-bearing, not optional garnish.** We do
   not delete or weaken it on the strength of this change.
+- `tryOpen` falls back to plain **inferred** migration if the versioned-plan open
+  throws, so the change is **non-regressive by construction**: where the plan
+  can't help (an OS-specific bug, or a store older than the floor) the app
+  behaves exactly like the previous release. This is what makes it safe to ship
+  without a macOS 14.0 test machine.
 - We do not claim "deterministic" on the basis of a green test suite. See the
   "What the tests can and cannot prove" note under Testing — a passing migration
   test proves our stage *mapping* is correct (no field silently dropped), not

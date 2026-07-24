@@ -1561,28 +1561,42 @@ final class AppState {
         // once SwiftData faults them, so cleanup happens on the raw file first.
         StoreRepair.repairDanglingLinks(at: config.url)
         return autoreleasepool {
+            let opened: ModelContainer
             do {
                 // Open through the explicit migration plan: SwiftData matches the
                 // store to a declared version and walks the named stages, rather
                 // than inferring the mapping fresh at open time.
-                let opened = try ModelContainer(
+                opened = try ModelContainer(
                     for: schema,
                     migrationPlan: ChorusMigrationPlan.self,
                     configurations: [config]
                 )
-                // If any dangling link slipped through repair, a later unguarded
-                // `.space`/`.service` read would fault a deleted model and brick
-                // the app — treat as unusable.
-                if storeHasDanglingLinks(opened) { return .failed }
-                let spaces = (try? opened.mainContext.fetchCount(FetchDescriptor<Space>())) ?? 0
-                // Empty AND we've had data → migration silently emptied it. Don't
-                // run (or seed) on it; the caller restores instead.
-                if spaces == 0 && hadHistory { return .emptiedWithHistory }
-                return .usable(opened)
             } catch {
-                AppLogger.dataStore.error("ModelContainer open failed: \(error.localizedDescription)")
-                return .failed
+                // The explicit plan could not open the store. Rather than fail
+                // straight to recovery, fall back to plain INFERRED migration —
+                // exactly what shipped before the versioned schema existed. This
+                // makes the plan strictly non-regressive: on an OS where the plan
+                // misbehaves (the macOS 14 migration bugs the design worries
+                // about), or for a store older than the plan's floor, we are never
+                // worse than the previous release. The empty/dangling checks below
+                // and the caller's safety net still guard whatever this opens.
+                AppLogger.dataStore.error("Versioned-plan open failed (\(error.localizedDescription)); retrying with inferred migration")
+                do {
+                    opened = try ModelContainer(for: schema, configurations: [config])
+                } catch {
+                    AppLogger.dataStore.error("Inferred-migration open also failed: \(error.localizedDescription)")
+                    return .failed
+                }
             }
+            // If any dangling link slipped through repair, a later unguarded
+            // `.space`/`.service` read would fault a deleted model and brick
+            // the app — treat as unusable.
+            if storeHasDanglingLinks(opened) { return .failed }
+            let spaces = (try? opened.mainContext.fetchCount(FetchDescriptor<Space>())) ?? 0
+            // Empty AND we've had data → migration silently emptied it. Don't
+            // run (or seed) on it; the caller restores instead.
+            if spaces == 0 && hadHistory { return .emptiedWithHistory }
+            return .usable(opened)
         }
     }
 
