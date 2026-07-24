@@ -1452,6 +1452,12 @@ final class AppState {
                 // Data on disk we couldn't open — leave it entirely alone.
                 return (false, .preserveInMemory)
             }
+            // before == nil here means the read-only probe couldn't read the file
+            // either (not just "no rows"), so a present-but-unreadable file is
+            // treated as restorable: restoreFromSnapshot copies the current triple
+            // aside to `.prerestore-*` first, so nothing is destroyed even if it
+            // held data. `caller` only clears the flag / seeds when no usable
+            // backup exists.
             return (true, fileExisted ? .preserveInMemory : .freshStart)
         }
     }
@@ -1497,21 +1503,35 @@ final class AppState {
         }
 
         let plan = recoveryPlan(kind: kind, before: before, fileExisted: fileExisted)
-        AppLogger.dataStore.error("Store unusable on open (kind=\(String(describing: kind)), before=\(before.map(String.init) ?? "nil"), fileExisted=\(fileExisted)); attemptRestore=\(plan.attemptRestore)")
+        // Whether a usable backup EXISTS matters more than whether the restore
+        // ultimately succeeds: we must never clear the durable flag and reseed
+        // while a usable backup sits on disk. So look it up up front and branch on
+        // its existence, not just on the restore outcome.
+        let candidate = plan.attemptRestore ? StoreRepair.newestRestorableSnapshot(for: config.url) : nil
+        AppLogger.dataStore.error("Store unusable on open (kind=\(String(describing: kind)), before=\(before.map(String.init) ?? "nil"), fileExisted=\(fileExisted)); attemptRestore=\(plan.attemptRestore), haveBackup=\(candidate != nil)")
 
-        if plan.attemptRestore,
-           let candidate = StoreRepair.newestRestorableSnapshot(for: config.url),
-           StoreRepair.restoreFromSnapshot(candidate, to: config.url),
-           case .usable(let reopened) = tryOpen(schema: schema, config: config, hadHistory: true) {
-            markHasData(defaults)
-            AppLogger.dataStore.info("Automatic restore succeeded from backup \(candidate.version ?? "?")")
-            return (reopened, .restoredFromSnapshot(version: candidate.version, takenAt: candidate.takenAt))
+        if let candidate {
+            if StoreRepair.restoreFromSnapshot(candidate, to: config.url),
+               case .usable(let reopened) = tryOpen(schema: schema, config: config, hadHistory: true) {
+                markHasData(defaults)
+                AppLogger.dataStore.info("Automatic restore succeeded from backup \(candidate.version ?? "?")")
+                return (reopened, .restoredFromSnapshot(version: candidate.version, takenAt: candidate.takenAt))
+            }
+            // A usable backup exists but the restore/reopen didn't take (a partial
+            // copy, or a deterministic migration that re-empties). NEVER seed over
+            // it: keep the flag and the snapshot untouched and run in-memory so the
+            // next launch retries. Skipping this — reseeding while a good backup
+            // is on disk — would reintroduce the original data-loss bug.
+            AppLogger.dataStore.error("Restore did not take though a usable backup exists; preserving it and running in-memory")
+            return (inMemoryContainer(schema: schema), .inMemoryFallback(reason: "restore failed; usable backup preserved"))
         }
 
+        // No usable snapshot exists to restore from.
         switch plan.ifNoRestore {
         case .freshStart:
-            // Genuinely nothing to recover (no file existed, no usable snapshot).
-            // Clear the stale flag so the seed can run, and open a fresh store.
+            // Genuinely nothing to recover: no store file existed AND no usable
+            // backup is on disk. Only here is it safe to clear the stale flag and
+            // let a fresh store seed.
             defaults.set(false, forKey: hasEverHadDataKey)
             if case .usable(let fresh) = tryOpen(schema: schema, config: config, hadHistory: false) {
                 AppLogger.dataStore.info("No file and nothing to restore; starting fresh")

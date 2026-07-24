@@ -731,6 +731,38 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(defaults.bool(forKey: AppState.hasEverHadDataKey), "opening a populated store must record that data exists")
     }
 
+    /// When no store file exists but a usable backup does, Chorus must RESTORE
+    /// the backup — never clear the durable flag and reseed over it. Guards the
+    /// regression where `freshStart` could abandon a recoverable snapshot.
+    func testLoadContainerNoFileButUsableSnapshotRestoresNotReseeds() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-nofile-snap-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let suite = "chorus-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        // Build a usable snapshot, then remove the store file entirely so only the
+        // backup remains (a store-deleted-but-snapshots-kept situation).
+        try makePopulatedStore(at: storeURL, spaces: 3)
+        StoreRepair.snapshot(at: storeURL, stamp: "1700000000-1.0.0")
+        for suffix in ["", "-wal", "-shm"] {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: storeURL.path + suffix))
+        }
+        defaults.set(true, forKey: AppState.hasEverHadDataKey)   // stale flag, no file
+
+        let config = ModelConfiguration(schema: Self.storeSchema, url: storeURL)
+        let (container, outcome) = AppState.loadContainer(schema: Self.storeSchema, config: config, defaults: defaults)
+
+        guard case .restoredFromSnapshot = outcome else {
+            return XCTFail("a usable backup must be restored, not reseeded; got \(outcome)")
+        }
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<Space>()), 3)
+        XCTAssertTrue(defaults.bool(forKey: AppState.hasEverHadDataKey), "the flag must NOT be cleared when a backup was restored")
+    }
+
     /// The pure recovery-decision truth table — the heart of the data-safety
     /// guarantees, testable without provoking a real SwiftData failure.
     func testRecoveryPlanNeverOverwritesLiveDataAndFreshStartsOnlyWhenNoFile() {
