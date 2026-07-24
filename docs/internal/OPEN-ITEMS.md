@@ -1,8 +1,21 @@
 # Open items
 
-## Current status — through 1.5.13 (2026-07-23)
+## Current status — through 1.5.14 (2026-07-24)
 
-Everything below has shipped. **Chorus 1.5.13 is the current release.** It turns
+Everything below has shipped. **Chorus 1.5.14 is the current release.** It fixes
+a data-loss bug. If an update ever left your saved data unreadable, Chorus used
+to treat the empty store as a first launch and write the default spaces and
+services over it, losing what you had. Now it checks at startup whether the
+store came up empty after holding data. When it did, Chorus restores your spaces
+and services from the backup it takes before every update and shows a banner
+saying so. When nothing can be restored, it runs on temporary storage and points
+you to the backup folder rather than overwriting anything. A marker kept outside
+the store records that you have had data, so an empty store is never mistaken for
+a fresh install again. This is a safety net around SwiftData's inferred
+migration; making that migration deterministic with an explicit versioned schema
+is the follow-up.
+
+It sits on **1.5.13**, which turns
 per-service hibernation into a setting with four choices, replacing the single
 "Keep loaded" toggle. A service can follow the global hibernate setting,
 hibernate when you switch to another service, hibernate after an idle time you

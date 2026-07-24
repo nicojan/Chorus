@@ -3,6 +3,16 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.5.14] - 2026-07-24
+
+### Fixed
+
+- Chorus no longer replaces your spaces and services with the default set when
+  an update leaves your saved data unreadable. Now it catches that at startup
+  and restores your data from the backup it takes before every update, then
+  tells you it did. If it can't restore, it stays on temporary storage and
+  points you to the backups. It never writes over your data.
+
 ## [1.5.13] - 2026-07-23
 
 ### Changed
