@@ -11,9 +11,15 @@ and services from the backup it takes before every update and shows a banner
 saying so. When nothing can be restored, it runs on temporary storage and points
 you to the backup folder rather than overwriting anything. A marker kept outside
 the store records that you have had data, so an empty store is never mistaken for
-a fresh install again. This is a safety net around SwiftData's inferred
-migration; making that migration deterministic with an explicit versioned schema
-is the follow-up.
+a fresh install again.
+
+That was a safety net around SwiftData's inferred migration. The follow-up —
+making the migration itself explicit — is now **done on `main` (unreleased,
+ships with the next release)**: an explicit versioned schema and migration plan
+open the store through named, tested stages instead of inference, with a fallback
+to inference so it is never worse than before on any OS. The safety net stays.
+See `docs/internal/FOLLOWUP-versioned-schema.md` and
+`docs/superpowers/specs/2026-07-24-versioned-schema-migration-plan.md`.
 
 It sits on **1.5.13**, which turns
 per-service hibernation into a setting with four choices, replacing the single

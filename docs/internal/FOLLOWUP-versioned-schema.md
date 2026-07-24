@@ -1,8 +1,29 @@
 # Follow-up: make SwiftData migration deterministic (VersionedSchema)
 
-Status: implemented 2026-07-24, pending a macOS 14.0 validation pass before it
-ships. See the implementation plan and results in
+Status: DONE 2026-07-24, on `main`, unreleased — rides with the next release. See
+the implementation plan and results in
 `docs/superpowers/specs/2026-07-24-versioned-schema-migration-plan.md`.
+
+## Outcome
+
+Implemented with an explicit `VersionedSchema` per shipped shape and a
+`SchemaMigrationPlan`, opened in `AppState` (commits `6de8aa4`, `f5535cc`). The
+floor is 1.5.11 — from there only `ServiceInstance` changed and only by adding
+optional fields, so both stages are `.lightweight`. Verified on macOS 26: the
+real 1.5.11 incident store (4 spaces / 13 services) migrated losslessly; the
+frozen 1.5.11 shape is byte-identical to tag `v1.5.11`; 136 tests pass, including
+a plain-`Schema` production-provenance migration and drift guards over all four
+models.
+
+`tryOpen` falls back to plain inferred migration if the versioned-plan open
+throws, so the change is non-regressive on any OS — that is what let it ship
+without a macOS 14.0 test machine (a real 14.0 pass stays a nice-to-have, not a
+blocker). The auto-restore safety net stays as corruption-only defense.
+
+Two things left deliberately open: a real macOS 14.0 device pass (optional), and
+pre-1.5.11 stores, which fall to the net rather than a hand-written reshape (the
+plan doc's "Known limitation"). The sections below are the original filing, kept
+for history.
 
 ## Why this exists
 
