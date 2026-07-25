@@ -5,7 +5,15 @@ Notion, ChatGPT, and more) into one window, each with its own fully isolated
 session. A lightweight, WebKit-based alternative to Chromium apps like Rambox
 and Franz, built for Apple Silicon.
 
-**[Download the latest release](https://github.com/nicojan/Chorus/releases/latest)** (macOS 14 or later). The build is signed, notarized, and updates itself via Sparkle.
+**[Download the latest release](https://github.com/nicojan/Chorus/releases/latest)** (macOS 14 or later), or install it with Homebrew:
+
+```sh
+brew install --cask nicojan/tap/chorus
+```
+
+The build is signed, notarized, and updates itself via Sparkle. Homebrew installs
+from my own tap rather than the main homebrew/cask tap, which takes only projects
+with more stars than Chorus has so far.
 
 > Status: 1.5.14 is the current release. See [CHANGELOG.md](CHANGELOG.md) for
 > what changed.

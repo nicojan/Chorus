@@ -145,6 +145,62 @@ Run from the repo root. Replace `X.Y.Z` with the new version.
    Installed apps pick up the update on their next scheduled check (or via
    Check for Updates…).
 
+9. **Update the Homebrew cask** (see the next section for the tap itself):
+   ```sh
+   shasum -a 256 build/Chorus-X.Y.Z.dmg          # the stapled DMG you uploaded
+
+   # In this repo — release/homebrew/chorus.rb is the source of truth:
+   sed -i '' -E 's/version "[^"]+"/version "X.Y.Z"/; s/sha256 "[^"]+"/sha256 "NEW_SHA"/' \
+     release/homebrew/chorus.rb
+
+   # Copy into the tap clone and check it before pushing:
+   cp release/homebrew/chorus.rb "$(brew --repo nicojan/tap)/Casks/chorus.rb"
+   brew style nicojan/tap
+   brew livecheck --cask nicojan/tap/chorus     # must print the new version
+   brew audit --cask --online nicojan/tap/chorus
+   ```
+   Then commit both: `release/homebrew/chorus.rb` here, `Casks/chorus.rb` in the
+   tap. Hash the **stapled** DMG — the one attached to the release — not the
+   pre-notarization build, since stapling changes the bytes.
+
+---
+
+## Homebrew
+
+Chorus installs with `brew install --cask nicojan/tap/chorus`, served from the
+**`nicojan/homebrew-tap`** repo. The cask lives at `release/homebrew/chorus.rb`
+in this repo and is copied into the tap on each release.
+
+The tap is a repo named `homebrew-tap` with the cask at `Casks/chorus.rb` and
+nothing else required. To recreate it from scratch:
+
+```sh
+brew tap-new nicojan/tap                      # local skeleton
+TAP="$(brew --repo nicojan/tap)"
+rm -rf "$TAP/Formula" "$TAP/.github"          # cask-only tap
+mkdir -p "$TAP/Casks"
+cp release/homebrew/chorus.rb "$TAP/Casks/chorus.rb"
+git -C "$TAP" add -A && git -C "$TAP" commit -m "chorus 1.5.14"
+gh repo create nicojan/homebrew-tap --public --source "$TAP" --push
+```
+
+Two stanzas carry weight. `auto_updates true` tells Homebrew that Sparkle owns
+updates, so `brew upgrade` leaves an app that already updated itself alone —
+without it the two updaters fight and Homebrew reinstalls over Sparkle's work.
+The `livecheck` block reads the same appcast the app does, which is what makes
+`brew livecheck` and `brew bump-cask-pr` work.
+
+### Why not homebrew/cask
+
+The central `homebrew/cask` tap requires notability: 75 stars, 30 forks, or 30
+watchers — and **225 stars for a self-submission by the repo owner**
+(`Package-Acceptance-Policy.md`). `nicojan/Chorus` sits at 24 stars, so a PR from
+you gets closed. `brew audit --cask --online --new` reports this and nothing else,
+so the cask is otherwise ready: the DMG is signed, notarized and stapled, it is
+published by the developer, and the `chorus` token is free. Submit it once the
+stars are there — or leave the tap in place, since the install command is the only
+difference to users.
+
 ---
 
 ## Beta channel (optional)
