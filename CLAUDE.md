@@ -65,3 +65,10 @@ shipping a schema change — this repo's dev machine is newer.
 See `release/DISTRIBUTION.md`. In short: the notarized, stapled `Chorus.app` is placed at
 the repo root; package a DMG with `hdiutil`, cut a `gh release`, then sign and
 regenerate `docs/appcast.xml`.
+
+Every release also needs the Homebrew cask bumped (step 9 there): put the new
+version and the stapled DMG's sha256 into `release/homebrew/chorus.rb`, copy it to
+`Casks/chorus.rb` in the `nicojan/homebrew-tap` repo, and check it with
+`brew style` / `brew livecheck` / `brew audit --cask --online` before pushing both.
+Skipping it leaves `brew` users on the old version; Sparkle still updates them, so
+it's cosmetic, not a break.

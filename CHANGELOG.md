@@ -3,6 +3,14 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+
+- Chorus installs with Homebrew: `brew install --cask nicojan/tap/chorus`. The
+  cask fetches the same signed, notarized DMG as the download link, and Sparkle
+  keeps handling updates once the app is in place.
+
 ## [1.5.14] - 2026-07-24
 
 ### Fixed
