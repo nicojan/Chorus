@@ -72,3 +72,18 @@ version and the stapled DMG's sha256 into `release/homebrew/chorus.rb`, copy it 
 `brew style` / `brew livecheck` / `brew audit --cask --online` before pushing both.
 Skipping it leaves `brew` users on the old version; Sparkle still updates them, so
 it's cosmetic, not a break.
+
+## Ending a session
+
+When I say I am starting a new session, or ask to wrap up, update the docs first:
+
+1. `docs/internal/OPEN-ITEMS.md`: move anything that shipped or got closed out of
+   the open list, and fix any status that has gone stale.
+2. `CHANGELOG.md`: add or amend the entry for the work done this session.
+3. `.remember/remember.md`: the handoff note. Where things stand, what to pick up
+   next, and any gotcha worth carrying over.
+4. `CLAUDE.md` and `release/DISTRIBUTION.md`: only when a rule or a release step
+   actually changed.
+
+Skip a file when nothing about it changed, and say which ones you skipped.
+Public-facing text still goes through the humanizer loop above.
