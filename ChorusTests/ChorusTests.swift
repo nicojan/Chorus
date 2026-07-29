@@ -1,5 +1,6 @@
 import XCTest
 import SwiftData
+import SQLite3
 @testable import Chorus
 
 @MainActor
@@ -2510,9 +2511,9 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(content.looksLikeUntouchedSeed, "a store built from DefaultSeed must fingerprint as the seed")
     }
 
-    /// Reading a store file must report its real counts, count rows sitting in
-    /// the WAL, and return nil (unknown) rather than zero for anything it cannot
-    /// read.
+    /// Reading a store file must report its real counts and return nil
+    /// (unknown) rather than zero for anything it cannot read. WAL visibility
+    /// is covered separately, by `testReadContentSeesCommittedRowsStillInTheWAL`.
     func testReadContentCountsRowsAndDistinguishesUnknown() throws {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("chorus-readcontent-\(UUID().uuidString)", isDirectory: true)
@@ -2538,6 +2539,81 @@ final class ChorusTests: XCTestCase {
         let alien = dir.appendingPathComponent("alien.sqlite")
         _ = try Self.runSQLite(alien, "CREATE TABLE ZOTHER (x INTEGER);")
         XCTAssertNil(StoreInventory.readContent(at: alien))
+    }
+
+    /// Guards the exact regression this reader exists to avoid. The module
+    /// comment on `readContent` says it must stay off `immutable=1` because a
+    /// `.bak` can sit beside a `-wal` holding committed-but-uncheckpointed rows,
+    /// and an immutable open would silently under-count it. `makePopulatedStore`
+    /// alone can't prove that: its container deallocates at the end of the
+    /// call, and SQLite auto-checkpoints (folds the WAL into the main file) on
+    /// the last close, so by the time `readContent` runs the row is very likely
+    /// already in the main file either way. This test holds a second, writable
+    /// connection open for the duration — so nothing checkpoints — commits a
+    /// row through it, and shows `readContent` counts that row while a control
+    /// connection opened with `immutable=1` does not. If `readContent` ever
+    /// grows an `immutable=1` (or any URI) open, this goes red.
+    func testReadContentSeesCommittedRowsStillInTheWAL() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-wal-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        try makePopulatedStore(at: storeURL, spaces: 2)
+
+        // A second, writable connection, held open for the rest of the test.
+        // The last connection to close is what triggers SQLite's
+        // checkpoint-on-close, so keeping this one open is what keeps the row
+        // below in the -wal file rather than folded into the main store.
+        var writer: OpaquePointer?
+        guard sqlite3_open_v2(storeURL.path, &writer, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK,
+              let writer else {
+            XCTFail("could not open a writable connection to the test store")
+            return
+        }
+        defer { sqlite3_close(writer) }
+
+        XCTAssertEqual(Self.execSQL(writer, "PRAGMA journal_mode=WAL;"), SQLITE_OK)
+        XCTAssertEqual(Self.execSQL(writer, """
+            INSERT INTO ZSPACE (Z_ENT, Z_OPT, ZSORTORDER, ZEMOJI, ZNAME)
+            SELECT Z_ENT, 1, 99, '🌊', 'WAL-only' FROM ZSPACE LIMIT 1;
+            """), SQLITE_OK, "the insert this test depends on must commit")
+
+        // The row above is committed but, with `writer` still open, sitting in
+        // the -wal file rather than the main one.
+        let content = try XCTUnwrap(StoreInventory.readContent(at: storeURL))
+        XCTAssertEqual(content.spaces, 3, "readContent must see the row committed to the WAL")
+        XCTAssertTrue(content.spaceNames.contains("WAL-only"))
+
+        // Control: an immutable=1 open of the same file ignores the WAL, so it
+        // must see fewer spaces than readContent did. Without this contrast, a
+        // regression that added immutable=1 to readContent could pass the
+        // assertion above for the wrong reason (an early, coincidental
+        // checkpoint) and this test would not catch it.
+        var immutableDB: OpaquePointer?
+        let uri = "file:\(storeURL.path)?immutable=1"
+        guard sqlite3_open_v2(uri, &immutableDB, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK,
+              let immutableDB else {
+            XCTFail("could not open an immutable connection to the test store")
+            return
+        }
+        defer { sqlite3_close(immutableDB) }
+
+        var stmt: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(immutableDB, "SELECT COUNT(*) FROM ZSPACE;", -1, &stmt, nil), SQLITE_OK)
+        defer { sqlite3_finalize(stmt) }
+        XCTAssertEqual(sqlite3_step(stmt), SQLITE_ROW)
+        let immutableCount = Int(sqlite3_column_int64(stmt, 0))
+        XCTAssertLessThan(immutableCount, content.spaces, "an immutable=1 open must not see the WAL-only row")
+    }
+
+    /// Runs one SQL statement to completion via `sqlite3_exec`, for test setup
+    /// that needs a live, writable connection rather than the one-shot CLI
+    /// `runSQLite` uses. Returns the SQLite result code.
+    @discardableResult
+    private static func execSQL(_ db: OpaquePointer, _ sql: String) -> Int32 {
+        sqlite3_exec(db, sql, nil, nil, nil)
     }
 
 }

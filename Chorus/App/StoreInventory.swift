@@ -83,14 +83,7 @@ enum StoreInventory {
     /// WAL, which would under-count a backup and could cost it the ranking.
     static func readContent(at url: URL) -> StoreContent? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
-              let db else {
-            if let db { sqlite3_close(db) }
-            return nil
-        }
-        sqlite3_busy_timeout(db, 3000)
+        guard let db = openReadOnly(url) else { return nil }
         defer { sqlite3_close(db) }
 
         // Require this app's tables before counting; an unrecognized schema is
@@ -119,18 +112,28 @@ enum StoreInventory {
     /// first error, which bounds the cost when several candidates are checked at
     /// launch.
     static func passesIntegrityCheck(at url: URL) -> Bool {
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
-              let db else {
-            if let db { sqlite3_close(db) }
-            return false
-        }
-        sqlite3_busy_timeout(db, 3000)
+        guard let db = openReadOnly(url) else { return false }
         defer { sqlite3_close(db) }
         return scalarText(db, "PRAGMA integrity_check(1);") == "ok"
     }
 
     // MARK: - SQLite helpers
+
+    /// Opens `url` read-only with a busy timeout, or nil if that fails. Never
+    /// URI-style, never `immutable=1`: a `.bak` can sit beside a `-wal` holding
+    /// committed rows, and an immutable open ignores the WAL. Closes any handle
+    /// SQLite allocates even when `sqlite3_open_v2` itself reports failure;
+    /// callers own closing the handle they get back on success.
+    private static func openReadOnly(_ url: URL) -> OpaquePointer? {
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
+              let db else {
+            if let db { sqlite3_close(db) }
+            return nil
+        }
+        sqlite3_busy_timeout(db, 3000)
+        return db
+    }
 
     private static func scalarInt(_ db: OpaquePointer, _ sql: String) -> Int? {
         var stmt: OpaquePointer?
