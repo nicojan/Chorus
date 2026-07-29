@@ -1,25 +1,12 @@
 # Open items
 
-## Current status — through 1.5.14 (2026-07-24)
+## Current status — through 1.5.15 (2026-07-29)
 
-Everything below has shipped. **Chorus 1.5.14 is the current release.** It fixes
-a data-loss bug. If an update ever left your saved data unreadable, Chorus used
-to treat the empty store as a first launch and write the default spaces and
-services over it, losing what you had. Now it checks at startup whether the
-store came up empty after holding data. When it did, Chorus restores your spaces
-and services from the backup it takes before every update and shows a banner
-saying so. When nothing can be restored, it runs on temporary storage and points
-you to the backup folder rather than overwriting anything. A marker kept outside
-the store records that you have had data, so an empty store is never mistaken for
-a fresh install again.
+Everything below has shipped. **Chorus 1.5.15 is the current release.** It opens the store through an explicit versioned schema and migration plan, so an older store migrates through named, tested stages instead of leaving SwiftData to infer the mapping at open time. Inference was the cause of the data loss 1.5.14 was built to catch. If the versioned plan cannot open a store, Chorus falls back to inference, so no update is worse off than before. The safety net stays. See `docs/internal/FOLLOWUP-versioned-schema.md` and `docs/superpowers/specs/2026-07-24-versioned-schema-migration-plan.md`.
 
-That was a safety net around SwiftData's inferred migration. The follow-up —
-making the migration itself explicit — is now **done on `main` (unreleased,
-ships with the next release)**: an explicit versioned schema and migration plan
-open the store through named, tested stages instead of inference, with a fallback
-to inference so it is never worse than before on any OS. The safety net stays.
-See `docs/internal/FOLLOWUP-versioned-schema.md` and
-`docs/superpowers/specs/2026-07-24-versioned-schema-migration-plan.md`.
+It went out because a user reported losing all their spaces and services while running 1.5.14, which had the net but not this fix.
+
+It sits on **1.5.14**, the safety net itself. If an update ever left your saved data unreadable, Chorus used to treat the empty store as a first launch and write the default spaces and services over it, losing what you had. Now it checks at startup whether the store came up empty after holding data. When it did, Chorus restores your spaces and services from the backup it takes before every update and shows a banner saying so. When nothing can be restored, it runs on temporary storage and points you to the backup folder rather than overwriting anything. A marker kept outside the store records that you have had data, so an empty store is never mistaken for a fresh install again.
 
 It sits on **1.5.13**, which turns
 per-service hibernation into a setting with four choices, replacing the single
@@ -52,10 +39,15 @@ reader mode removed entirely, and a round of security and reliability fixes
 (link-routing host matching, the favicon-redirect SSRF guard, the chat-stays-live
 cap-eviction gap, a Move-to-Space crash guard).
 
-The one genuinely open item is **PR #10** (opt-in spaces hiding, a bottom nav
-bar, and a window title), tabled pending a UX pass on the rail/title/service-name
-story — the window title does not render on macOS 26 and duplicates the
-highlighted rail icon.
+### Open: the store sits on a shared path
+
+The release build passes `ModelConfiguration(schema:isStoredInMemoryOnly:)` with no URL (`AppState.swift`), and SwiftData does not scope that default to the bundle. Verified with `lsof` against the installed 1.5.14: the running app holds `~/Library/Application Support/default.store` — the top level of the shared folder, not `…/Application Support/com.nicojan.Chorus/`. Every non-sandboxed SwiftData app that skips an explicit URL claims the same filename, so another app can open, migrate, or recreate Chorus's store, and anyone tidying Application Support sees a `default.store` belonging to no visible app. The DEBUG path is already scoped (`Chorus-debug`); only the shipping path is exposed.
+
+This is the one mechanism found so far that empties the store with no Chorus update involved, which is why it survives the 1.5.15 migration fix. Fixing it means moving the store into a bundle-scoped directory, and the move has to be a move: open the old path, copy the triple across, and never let the seed run against the new empty location. Snapshot names and the recovery banner path change with it. Not started.
+
+### Open: PR #10
+
+**PR #10** (opt-in spaces hiding, a bottom nav bar, and a window title), tabled pending a UX pass on the rail/title/service-name story — the window title does not render on macOS 26 and duplicates the highlighted rail icon.
 
 The **1.5.4** section below still describes the old auto-detection dark path (the
 probe, an "Auto" mode, and the "Re-detect dark theme" button). **1.5.9 removed

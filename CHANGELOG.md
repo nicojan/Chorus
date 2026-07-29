@@ -5,11 +5,15 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.5.15] - 2026-07-29
+
+### Fixed
+
+- Chorus now opens your saved data through migration steps that are written out per version and covered by tests, instead of letting the system work out for itself what changed. Leaving it to the system was the cause of the data loss 1.5.14 was built to catch: on some updates the store opened empty, and Chorus wrote the default spaces and services over it. The 1.5.14 backup-and-restore net stays in place. If the new path cannot open a store, Chorus falls back to the old way of opening it, so no update is worse off than before.
+
 ### Added
 
-- Chorus installs with Homebrew: `brew install --cask nicojan/tap/chorus`. The
-  cask fetches the same signed, notarized DMG as the download link, and Sparkle
-  keeps handling updates once the app is in place.
+- Chorus installs with Homebrew: `brew install --cask nicojan/tap/chorus`. The cask fetches the same signed, notarized DMG as the download link, and Sparkle keeps handling updates once the app is in place.
 
 ## [1.5.14] - 2026-07-24
 

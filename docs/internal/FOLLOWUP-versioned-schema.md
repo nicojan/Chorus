@@ -1,8 +1,8 @@
 # Follow-up: make SwiftData migration deterministic (VersionedSchema)
 
-Status: DONE 2026-07-24, on `main`, unreleased — rides with the next release. See
-the implementation plan and results in
-`docs/superpowers/specs/2026-07-24-versioned-schema-migration-plan.md`.
+Status: DONE 2026-07-24, **shipped in 1.5.15 on 2026-07-29**. See the implementation plan and results in `docs/superpowers/specs/2026-07-24-versioned-schema-migration-plan.md`.
+
+Released because a user reported losing all their spaces and services again while running 1.5.14, which carried the safety net but not this fix.
 
 ## Outcome
 

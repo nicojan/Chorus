@@ -15,7 +15,7 @@ The build is signed, notarized, and updates itself via Sparkle. Homebrew install
 from my own tap rather than the main homebrew/cask tap, which takes only projects
 with more stars than Chorus has so far.
 
-> Status: 1.5.14 is the current release. See [CHANGELOG.md](CHANGELOG.md) for
+> Status: 1.5.15 is the current release. See [CHANGELOG.md](CHANGELOG.md) for
 > what changed.
 
 ![Chorus running several web services in one window](assets/screenshot.png)
