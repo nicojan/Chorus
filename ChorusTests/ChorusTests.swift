@@ -2432,4 +2432,82 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(s.label, "Gmail")
     }
 
+    // MARK: - Store content and the default-seed fingerprint
+
+    /// `holdsMore` ranks by services first, then spaces, and is false for equal
+    /// content — the comparison both the ranking and the offer rule depend on.
+    func testHoldsMoreRanksServicesThenSpaces() {
+        let big = StoreContent(spaces: 4, services: 13, links: 13, spaceNames: [], serviceLabels: [])
+        let fewerServices = StoreContent(spaces: 9, services: 12, links: 12, spaceNames: [], serviceLabels: [])
+        let sameServicesFewerSpaces = StoreContent(spaces: 2, services: 13, links: 13, spaceNames: [], serviceLabels: [])
+
+        XCTAssertTrue(big.holdsMore(than: fewerServices), "more services wins even with fewer spaces")
+        XCTAssertTrue(big.holdsMore(than: sameServicesFewerSpaces), "equal services falls through to spaces")
+        XCTAssertFalse(big.holdsMore(than: big), "equal content is not more")
+        XCTAssertFalse(fewerServices.holdsMore(than: big))
+    }
+
+    /// The fingerprint must match the seed exactly and nothing else.
+    func testUntouchedSeedFingerprint() {
+        let seed = StoreContent(
+            spaces: 2,
+            services: 7,
+            links: 7,
+            spaceNames: DefaultSeed.spaces.map(\.name),
+            serviceLabels: DefaultSeed.allServiceLabels
+        )
+        XCTAssertTrue(seed.looksLikeUntouchedSeed, "the exact seed shape must match")
+
+        var labels = DefaultSeed.allServiceLabels
+        labels.append("Notion")
+        let plusOne = StoreContent(spaces: 2, services: 8, links: 8, spaceNames: DefaultSeed.spaces.map(\.name), serviceLabels: labels)
+        XCTAssertFalse(plusOne.looksLikeUntouchedSeed, "one added service means the user has touched it")
+
+        let renamed = StoreContent(spaces: 2, services: 7, links: 7, spaceNames: ["Personal", "Clients"], serviceLabels: DefaultSeed.allServiceLabels)
+        XCTAssertFalse(renamed.looksLikeUntouchedSeed, "a renamed space means the user has touched it")
+
+        let empty = StoreContent(spaces: 0, services: 0, links: 0, spaceNames: [], serviceLabels: [])
+        XCTAssertFalse(empty.looksLikeUntouchedSeed, "an empty store is empty, not seeded")
+        XCTAssertTrue(empty.isEmpty)
+    }
+
+    /// The fingerprint must recognize a store built from the seed lists the
+    /// seeder uses. If someone edits one seed list and not the fingerprint, this
+    /// goes red.
+    func testSeededStoreIsFingerprintedAsSeed() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-seedprint-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let config = ModelConfiguration(schema: Self.storeSchema, url: storeURL)
+        let container = try ModelContainer(for: Self.storeSchema, configurations: [config])
+        let ctx = container.mainContext
+        let spaces = DefaultSeed.spaces.enumerated().map { index, entry in
+            Space(name: entry.name, emoji: entry.emoji, sortOrder: index)
+        }
+        for space in spaces { ctx.insert(space) }
+        for (index, entry) in DefaultSeed.personalServices.enumerated() {
+            let service = ServiceInstance(label: entry.label, url: entry.url, catalogEntryID: entry.catalogID)
+            ctx.insert(service)
+            ctx.insert(SpaceServiceLink(sortOrder: index, space: spaces[0], service: service))
+        }
+        for (index, entry) in DefaultSeed.workServices.enumerated() {
+            let service = ServiceInstance(label: entry.label, url: entry.url, catalogEntryID: entry.catalogID)
+            ctx.insert(service)
+            ctx.insert(SpaceServiceLink(sortOrder: index, space: spaces[1], service: service))
+        }
+        try ctx.save()
+
+        let content = StoreContent(
+            spaces: try ctx.fetchCount(FetchDescriptor<Space>()),
+            services: try ctx.fetchCount(FetchDescriptor<ServiceInstance>()),
+            links: try ctx.fetchCount(FetchDescriptor<SpaceServiceLink>()),
+            spaceNames: try ctx.fetch(FetchDescriptor<Space>()).map(\.name),
+            serviceLabels: try ctx.fetch(FetchDescriptor<ServiceInstance>()).map(\.label)
+        )
+        XCTAssertTrue(content.looksLikeUntouchedSeed, "a store built from DefaultSeed must fingerprint as the seed")
+    }
+
 }

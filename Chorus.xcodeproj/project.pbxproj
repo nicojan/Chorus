@@ -19,6 +19,7 @@
 		3416D37A6D2684D8950E2549 /* BlocklistSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBCB337C1EF863BC5957ABE9 /* BlocklistSupport.swift */; };
 		365FD38EBDA7455F8E86BEEF /* ServiceIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E84C935C8A82FD6B6B969E6B /* ServiceIconView.swift */; };
 		39F97AD8B45E39F8D1F45281 /* darkreader.js in Resources */ = {isa = PBXBuildFile; fileRef = 31B99E22D6D2E2F8EBDE7A31 /* darkreader.js */; };
+		3C5338A54D7C824BCF6C642C /* StoreInventory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67FC16493C168FFB5B6C7385 /* StoreInventory.swift */; };
 		3DEA98A98656EE981A29A71D /* FindInPageBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76865DDEE671C34CC88CF4D8 /* FindInPageBar.swift */; };
 		4129642FB0AD19AC83F01A30 /* UserAgentProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E431CF7CE145D536081A23 /* UserAgentProvider.swift */; };
 		4B199EBC47BA21CE22ECC893 /* EmojiData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EDCAF66B6DD05BA3A244E9E /* EmojiData.swift */; };
@@ -99,6 +100,7 @@
 		54BC620E896A6DD5CB16AF6D /* CookieConsentManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookieConsentManager.swift; sourceTree = "<group>"; };
 		5A1D24379DD182D4A7B6DD11 /* AppPresenceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPresenceManager.swift; sourceTree = "<group>"; };
 		608B27F538D778C6FC4B1697 /* WebViewPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewPool.swift; sourceTree = "<group>"; };
+		67FC16493C168FFB5B6C7385 /* StoreInventory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreInventory.swift; sourceTree = "<group>"; };
 		690DB6DBF74EAD8B040C1460 /* InAppBrowserWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InAppBrowserWindow.swift; sourceTree = "<group>"; };
 		6935142E75345640B2C4D7F0 /* DarkReaderSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DarkReaderSupport.swift; sourceTree = "<group>"; };
 		706D85D3C09C182826CD4EBA /* BadgeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeManager.swift; sourceTree = "<group>"; };
@@ -345,6 +347,7 @@
 				7E0D298EDEBDC1F1EB614912 /* AppCapabilities.swift */,
 				D533B667501DF0913FF62B9A /* AppState.swift */,
 				E143D686890F381C5B42761F /* ChorusApp.swift */,
+				67FC16493C168FFB5B6C7385 /* StoreInventory.swift */,
 				0DC16234E82B88C1DB338A49 /* StoreRepair.swift */,
 			);
 			path = App;
@@ -493,6 +496,7 @@
 				C87E607C9406DB3117992594 /* SpaceEditorSheet.swift in Sources */,
 				CF6CC3C4CC580F7733D24212 /* SpaceServiceLink.swift in Sources */,
 				C1E4CE7879BB117DBA721C35 /* SpaceStripView.swift in Sources */,
+				3C5338A54D7C824BCF6C642C /* StoreInventory.swift in Sources */,
 				D19CD58F64D002620BE6850C /* StoreRepair.swift in Sources */,
 				4129642FB0AD19AC83F01A30 /* UserAgentProvider.swift in Sources */,
 				75C395B384D9E21AF94FBC4F /* UserScriptManager.swift in Sources */,

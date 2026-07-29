@@ -2393,34 +2393,21 @@ final class AppState {
             return false
         }
 
-        let personalSpace = Space(name: "Personal", emoji: "🏠", sortOrder: 0)
-        let workSpace = Space(name: "Work", emoji: "💼", sortOrder: 1)
+        let personalSpace = Space(name: DefaultSeed.spaces[0].name, emoji: DefaultSeed.spaces[0].emoji, sortOrder: 0)
+        let workSpace = Space(name: DefaultSeed.spaces[1].name, emoji: DefaultSeed.spaces[1].emoji, sortOrder: 1)
         context.insert(personalSpace)
         context.insert(workSpace)
 
         // Each space gets its own ServiceInstance — even for the same service URL —
         // so cookies, sessions, and login state are fully isolated between spaces.
-        let personalServices: [(String, String, String)] = [
-            ("Gmail", "https://mail.google.com/mail/u/0/#inbox", "gmail"),
-            ("Discord", "https://discord.com/channels/@me", "discord"),
-            ("ChatGPT", "https://chatgpt.com", "chatgpt"),
-            ("Claude", "https://claude.ai", "claude"),
-        ]
-
-        let workServices: [(String, String, String)] = [
-            ("Gmail", "https://mail.google.com/mail/u/0/#inbox", "gmail"),
-            ("Slack", "https://app.slack.com/client", "slack"),
-            ("Outlook", "https://outlook.cloud.microsoft/mail/", "outlook"),
-        ]
-
-        for (index, (label, url, catalogID)) in personalServices.enumerated() {
-            let service = ServiceInstance(label: label, url: url, catalogEntryID: catalogID)
+        for (index, entry) in DefaultSeed.personalServices.enumerated() {
+            let service = ServiceInstance(label: entry.label, url: entry.url, catalogEntryID: entry.catalogID)
             context.insert(service)
             context.insert(SpaceServiceLink(sortOrder: index, space: personalSpace, service: service))
         }
 
-        for (index, (label, url, catalogID)) in workServices.enumerated() {
-            let service = ServiceInstance(label: label, url: url, catalogEntryID: catalogID)
+        for (index, entry) in DefaultSeed.workServices.enumerated() {
+            let service = ServiceInstance(label: entry.label, url: entry.url, catalogEntryID: entry.catalogID)
             context.insert(service)
             context.insert(SpaceServiceLink(sortOrder: index, space: workSpace, service: service))
         }
