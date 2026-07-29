@@ -477,8 +477,10 @@ under-counted. Unreadable stays unknown rather than reading as empty."
 - Test: `ChorusTests/ChorusTests.swift`
 
 **Interfaces:**
-- Consumes: `StoreInventory.readContent`, `StoreInventory.passesIntegrityCheck`, `StoreContent`.
-- Produces: `StoreCandidate` (with `url`, `kind`, `takenAt`, `content`, `isDamaged`, `isRestorable`, `displayName`), `StoreCandidate.Kind` (`.live`, `.snapshot(version: String?)`, `.prerestore`, `.corrupt`), and `StoreInventory.candidates(for storeURL: URL, liveContent: StoreContent?) -> [StoreCandidate]`.
+- Consumes: `StoreInventory.readContent`, `StoreInventory.passesIntegrityCheck`, `StoreContent`, and `StoreRepair.stampAndVersion(_:prefix:)`.
+- Produces: `StoreCandidate` (with `url`, `kind`, `takenAt`, `content`, `isDamaged`, `isRestorable`), `StoreCandidate.Kind` (`.live`, `.snapshot(version: String?)`, `.prerestore`, `.corrupt`), and `StoreInventory.candidates(for storeURL: URL, liveContent: StoreContent?) -> [StoreCandidate]`.
+
+**Reuse, not duplication:** `StoreRepair` already parses these filenames in a `private static func stampAndVersion(_:prefix:)`. Do NOT write a second copy. Change that one's `private` to internal (drop the `private` keyword, leave everything else alone) and call it from `StoreInventory`. Its existing implementation already returns `(stamp, nil)` for a name with no version segment, which is exactly what `.prerestore-` and `.corrupt-` names need, so nothing has to change in its body.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -632,7 +634,9 @@ extension StoreInventory {
         for name in names.sorted() where name.hasSuffix(".bak") {
             guard let infix = backupInfixes.first(where: { name.hasPrefix(base + $0) }) else { continue }
             let url = dir.appending(path: name)
-            let parsed = stampAndVersion(name, prefix: base + infix)
+            // Shared with StoreRepair rather than reimplemented; see the task's
+            // "Reuse, not duplication" note.
+            let parsed = StoreRepair.stampAndVersion(name, prefix: base + infix)
             let kind: StoreCandidate.Kind
             switch infix {
             case ".snapshot-": kind = .snapshot(version: parsed.version)
@@ -652,15 +656,6 @@ extension StoreInventory {
         return result
     }
 
-    /// Parses `<prefix><stamp>[-<version>].bak`. Either part may be nil when the
-    /// name does not match; `prerestore` and `corrupt` names carry no version.
-    static func stampAndVersion(_ name: String, prefix: String) -> (stamp: Int?, version: String?) {
-        guard name.hasPrefix(prefix), name.hasSuffix(".bak") else { return (nil, nil) }
-        let core = String(name.dropFirst(prefix.count).dropLast(".bak".count))
-        guard let dash = core.firstIndex(of: "-") else { return (Int(core), nil) }
-        let version = String(core[core.index(after: dash)...])
-        return (Int(core[..<dash]), version.isEmpty ? nil : version)
-    }
 }
 ```
 
