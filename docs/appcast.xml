@@ -3,6 +3,24 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.15</title>
+            <pubDate>Wed, 29 Jul 2026 13:08:37 -0700</pubDate>
+            <sparkle:version>24</sparkle:version>
+            <sparkle:shortVersionString>1.5.15</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Fixed</h3>
+<ul>
+<li>Chorus now opens your saved data through migration steps that are written out per version and covered by tests, instead of letting the system work out for itself what changed. Leaving it to the system was the cause of the data loss 1.5.14 was built to catch: on some updates the store opened empty, and Chorus wrote the default spaces and services over it. The 1.5.14 backup-and-restore net stays in place. If the new path cannot open a store, Chorus falls back to the old way of opening it, so no update is worse off than before.</li>
+</ul>
+<h3>Added</h3>
+<ul>
+<li>Chorus installs with Homebrew: <code>brew install --cask nicojan/tap/chorus</code>. The cask fetches the same signed, notarized DMG as the download link, and Sparkle keeps handling updates once the app is in place.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.15/Chorus-1.5.15.dmg" length="8594446" type="application/octet-stream" sparkle:edSignature="6ZkYcWzogZRbNT/apxTGRRaDRvNBww8yM0Hi/zVe4FV8zenyR3g6SwGvCdoR8GE+OsGmBZKpdZU7Ru6qHRBjCg=="/>
+        </item>
+        <item>
             <title>1.5.14</title>
             <pubDate>Fri, 24 Jul 2026 09:45:19 -0700</pubDate>
             <sparkle:version>23</sparkle:version>
