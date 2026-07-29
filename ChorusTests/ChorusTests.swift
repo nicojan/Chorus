@@ -2510,4 +2510,34 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(content.looksLikeUntouchedSeed, "a store built from DefaultSeed must fingerprint as the seed")
     }
 
+    /// Reading a store file must report its real counts, count rows sitting in
+    /// the WAL, and return nil (unknown) rather than zero for anything it cannot
+    /// read.
+    func testReadContentCountsRowsAndDistinguishesUnknown() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-readcontent-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        try makePopulatedStore(at: storeURL, spaces: 3)
+        let content = try XCTUnwrap(StoreInventory.readContent(at: storeURL))
+        XCTAssertEqual(content.spaces, 3)
+        XCTAssertEqual(content.services, 0, "makePopulatedStore inserts spaces only")
+        XCTAssertEqual(Set(content.spaceNames), ["S0", "S1", "S2"], "names come back for the fingerprint")
+
+        // A missing file is unknown, not empty.
+        XCTAssertNil(StoreInventory.readContent(at: dir.appendingPathComponent("nope.sqlite")))
+
+        // A file that is not a database is unknown.
+        let garbage = dir.appendingPathComponent("garbage.sqlite")
+        try "not a database".write(to: garbage, atomically: true, encoding: .utf8)
+        XCTAssertNil(StoreInventory.readContent(at: garbage))
+
+        // A database with an unrecognized schema is unknown, never zero.
+        let alien = dir.appendingPathComponent("alien.sqlite")
+        _ = try Self.runSQLite(alien, "CREATE TABLE ZOTHER (x INTEGER);")
+        XCTAssertNil(StoreInventory.readContent(at: alien))
+    }
+
 }
