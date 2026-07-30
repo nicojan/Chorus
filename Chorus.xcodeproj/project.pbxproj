@@ -28,6 +28,7 @@
 		542D3E32DA8EA90EC36BB6A0 /* DataStoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD49B64B44CC548574DA2348 /* DataStoreManager.swift */; };
 		5561BE9B6C6D8AA46CD42884 /* WebViewContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D9F34755F65BE5A3C76C88 /* WebViewContainer.swift */; };
 		5E59730D46AE1AED21F82ECA /* AppPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88C307C75776869CE8A82618 /* AppPreferences.swift */; };
+		69AC657C2E3D81BFB330050A /* AppRelauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA77C4C73BEB532F6AC1C339 /* AppRelauncher.swift */; };
 		69FF2932CDD4A1208CA5DA71 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D9D707C0F9A04B5E0744F59 /* SettingsView.swift */; };
 		701984CFE765170D8EAE50EE /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D811CC9D75730152E17859C /* MenuBarView.swift */; };
 		71E467BDECC180049BF6708B /* AppPresenceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1D24379DD182D4A7B6DD11 /* AppPresenceManager.swift */; };
@@ -119,6 +120,7 @@
 		B3506A7D95472D8F3E822A39 /* ServiceCatalogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceCatalogEntry.swift; sourceTree = "<group>"; };
 		B84763F63532609A902F453A /* ServiceSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceSidebarView.swift; sourceTree = "<group>"; };
 		CA55A0E026084DC20071FBCE /* QuickSwitcherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickSwitcherView.swift; sourceTree = "<group>"; };
+		CA77C4C73BEB532F6AC1C339 /* AppRelauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRelauncher.swift; sourceTree = "<group>"; };
 		CBBF69E002BB39BB6EFF9BDB /* UserScriptManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserScriptManager.swift; sourceTree = "<group>"; };
 		D2AC7E996360A4BC660FD194 /* KeyboardShortcutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardShortcutManager.swift; sourceTree = "<group>"; };
 		D533B667501DF0913FF62B9A /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -244,6 +246,7 @@
 			isa = PBXGroup;
 			children = (
 				E88CC47CBB66B4749ACDC068 /* AppLogger.swift */,
+				CA77C4C73BEB532F6AC1C339 /* AppRelauncher.swift */,
 				1ACFB877AD2138035F9E3EAE /* FaviconFetcher.swift */,
 				E1E431CF7CE145D536081A23 /* UserAgentProvider.swift */,
 			);
@@ -461,6 +464,7 @@
 				53615BD3734128E5CEE21D0A /* AppLogger.swift in Sources */,
 				5E59730D46AE1AED21F82ECA /* AppPreferences.swift in Sources */,
 				71E467BDECC180049BF6708B /* AppPresenceManager.swift in Sources */,
+				69AC657C2E3D81BFB330050A /* AppRelauncher.swift in Sources */,
 				D341B327E1C20FA11DEC2C2B /* AppState.swift in Sources */,
 				F709F5524B2146C260A0BCB0 /* BadgeManager.swift in Sources */,
 				3416D37A6D2684D8950E2549 /* BlocklistSupport.swift in Sources */,

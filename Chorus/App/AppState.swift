@@ -244,6 +244,11 @@ final class AppState {
     /// the file themselves — we never delete it for them.
     private(set) var storeFileURL: URL?
 
+    /// The live store's filename, used to check a chosen backup belongs to this
+    /// store. Debug and release builds use different store paths, so this cannot
+    /// be a constant.
+    private var storeFileName = "default.store"
+
     /// Whether the store banner is a dismissible notice (an automatic recovery
     /// succeeded) rather than a standing warning (running on temporary storage).
     /// The UI shows a close button only when this is true.
@@ -311,6 +316,7 @@ final class AppState {
         #else
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         #endif
+        self.storeFileName = config.url.lastPathComponent
 
         // A restore the user picked last session, applied before anything opens
         // the store.
@@ -1885,6 +1891,25 @@ final class AppState {
             }
         }
         storeRecoveryOffer = nil
+    }
+
+    /// Records the user's pick and restarts so it can be applied before the
+    /// store opens. Returns false when the pick cannot be used, in which case
+    /// nothing is written and the app keeps running.
+    @discardableResult
+    func chooseStoreRestore(_ candidate: StoreCandidate, defaults: UserDefaults = .standard) -> Bool {
+        guard candidate.isRestorable else { return false }
+        guard let name = StoreRepair.validatedRestoreName(
+            candidate.url.lastPathComponent,
+            storeName: storeFileName
+        ) else {
+            AppLogger.dataStore.error("Refusing to schedule a restore from an unexpected filename")
+            return false
+        }
+        defaults.set(name, forKey: StoreRepair.pendingRestoreKey)
+        AppLogger.dataStore.info("Scheduled a restore from \(name); relaunching")
+        AppRelauncher.relaunchAfterExit()
+        return true
     }
 
     /// Safety net for crash-mid-delete (or stores written by a build that

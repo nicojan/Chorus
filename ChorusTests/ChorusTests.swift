@@ -3354,4 +3354,31 @@ final class ChorusTests: XCTestCase {
         )
     }
 
+    /// The filename a choice writes must be one the launch path will accept.
+    /// This is the seam between the picker and `applyPendingRestore`, and a
+    /// mismatch here would silently do nothing on the next launch.
+    func testChosenCandidateNameSurvivesValidation() {
+        let storeURL = URL(fileURLWithPath: "/tmp/whatever/default.store")
+        let names = [
+            "default.store.snapshot-1700000000-1.5.11+20.bak",
+            "default.store.prerestore-1700000500.bak",
+            "default.store.corrupt-1700000600.bak",
+            "default.store.prepick-1700000700.bak",
+        ]
+        for name in names {
+            let candidate = StoreCandidate(
+                url: storeURL.deletingLastPathComponent().appendingPathComponent(name),
+                kind: .snapshot(version: nil),
+                takenAt: nil,
+                content: StoreContent(spaces: 1, services: 1, links: 1, spaceNames: [], serviceLabels: []),
+                isDamaged: false
+            )
+            XCTAssertEqual(
+                StoreRepair.validatedRestoreName(candidate.url.lastPathComponent, storeName: storeURL.lastPathComponent),
+                name,
+                "a candidate the picker can show must be one the launch path accepts"
+            )
+        }
+    }
+
 }
