@@ -45,7 +45,6 @@ struct StoreRecoveryView: View {
                     .font(.callout)
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityAddTraits(.isStaticText)
             }
 
             HStack {
