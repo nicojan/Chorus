@@ -401,18 +401,30 @@ extension StoreInventory {
     /// Whether `lhs` ranks above `rhs` for display and selection: restorable
     /// candidates always outrank non-restorable ones (unreadable or damaged),
     /// and among restorable candidates, more services wins, then more spaces,
-    /// then more links, then the more recent one.
+    /// then more links, then the more recent one — and finally, when even that
+    /// ties, the path.
     ///
     /// Shared by `best(among:)`, which picks the single winner, and
     /// `candidates(for:liveContent:)`, which orders the whole displayed list —
     /// so "more complete" means the same thing wherever a candidate is ranked,
     /// and a damaged `.corrupt-` backup can never sort above a good
     /// `.snapshot-` the way a plain filename sort did.
+    ///
+    /// The path tiebreak makes this a total order rather than merely a ranking.
+    /// `sorted(by:)` is not stable and `best(among:)` takes the first element of
+    /// a sort, so leaving fully tied candidates "equivalent" handed the outcome
+    /// to whatever order `contentsOfDirectory` returned: the sheet's rows could
+    /// come back in a different order each time it opened, and the preselected
+    /// winner — and with it the decline key — could change between launches.
+    /// Paths are unique per candidate (`id` is the path), so this settles every
+    /// remaining tie. It never overrides a real difference in content; it only
+    /// decides between candidates that are equal on every key that matters.
     static func isRankedAbove(_ lhs: StoreCandidate, _ rhs: StoreCandidate) -> Bool {
         switch (lhs.isRestorable, rhs.isRestorable) {
         case (true, false): return true
         case (false, true): return false
-        case (false, false): return false
+        // Neither can be restored from, so nothing separates them but the path.
+        case (false, false): return lhs.url.path < rhs.url.path
         case (true, true): break
         }
         // Both restorable, so both have non-nil content by definition.
@@ -421,12 +433,17 @@ extension StoreInventory {
         if l.services != r.services { return l.services > r.services }
         if l.spaces != r.spaces { return l.spaces > r.spaces }
         if l.links != r.links { return l.links > r.links }
-        return (lhs.takenAt ?? .distantPast) > (rhs.takenAt ?? .distantPast)
+        let lhsTaken = lhs.takenAt ?? .distantPast
+        let rhsTaken = rhs.takenAt ?? .distantPast
+        if lhsTaken != rhsTaken { return lhsTaken > rhsTaken }
+        return lhs.url.path < rhs.url.path
     }
 
     /// The fullest restorable candidate: most services, then most spaces, then
-    /// most links, then the most recent. Excludes the live store, damaged files,
-    /// and files whose content is unknown.
+    /// most links, then the most recent, and — because `isRankedAbove` is a total
+    /// order — the same one every time even when candidates tie on all of those.
+    /// Excludes the live store, damaged files, and files whose content is
+    /// unknown.
     static func best(among candidates: [StoreCandidate]) -> StoreCandidate? {
         candidates
             .filter(\.isRestorable)

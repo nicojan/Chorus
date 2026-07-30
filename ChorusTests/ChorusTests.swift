@@ -3000,6 +3000,45 @@ final class ChorusTests: XCTestCase {
         XCTAssertNil(StoreInventory.best(among: [live, damaged, unknown]), "nothing restorable means no winner")
     }
 
+    /// Two candidates tying on all four ranking keys must still have one settled
+    /// order. `sorted(by:)` is not stable, and `best(among:)` takes the first of
+    /// a sort, so a comparator that calls tied candidates equivalent hands the
+    /// decision to whatever order `contentsOfDirectory` happened to return: the
+    /// sheet's rows could shuffle between openings, and the preselected winner
+    /// (and with it the decline key) could change launch to launch. The old
+    /// filename sort was at least deterministic; the tiebreak below restores
+    /// that without giving up ranking by completeness.
+    func testRankingBreaksTiesDeterministicallyOnFilename() {
+        let dir = URL(fileURLWithPath: "/tmp/ranking-ties")
+        func candidate(_ name: String, _ kind: StoreCandidate.Kind) -> StoreCandidate {
+            StoreCandidate(
+                url: dir.appendingPathComponent(name),
+                kind: kind,
+                takenAt: Date(timeIntervalSince1970: 1_700_000_000),
+                content: StoreContent(spaces: 2, services: 7, links: 7, spaceNames: [], serviceLabels: []),
+                isDamaged: false
+            )
+        }
+        // Same spaces, same services, same links, same instant — every ranking
+        // key ties, so only the filename can separate them.
+        let a = candidate("store.sqlite.prepick-1700000000.bak", .prepick)
+        let b = candidate("store.sqlite.snapshot-1700000000-1.0.0.bak", .snapshot(version: "1.0.0"))
+
+        XCTAssertNotEqual(
+            StoreInventory.isRankedAbove(a, b), StoreInventory.isRankedAbove(b, a),
+            "candidates tying on every key must still rank one above the other, not compare as equivalent"
+        )
+        XCTAssertEqual(
+            StoreInventory.best(among: [a, b]), StoreInventory.best(among: [b, a]),
+            "the winner must not depend on the order the directory listing happened to produce"
+        )
+        XCTAssertEqual(
+            [a, b].sorted(by: StoreInventory.isRankedAbove).map(\.id),
+            [b, a].sorted(by: StoreInventory.isRankedAbove).map(\.id),
+            "the displayed order must be the same whichever way the list arrives"
+        )
+    }
+
     /// Preselection is narrower than ranking: it only fires when the live store
     /// holds nothing of the user's, and never picks a corrupt-family backup.
     func testPreselectionOnlyWhenLiveStoreHoldsNothingOfTheUsers() {
