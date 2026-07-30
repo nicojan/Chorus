@@ -3,6 +3,24 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.16</title>
+            <pubDate>Thu, 30 Jul 2026 00:22:33 -0700</pubDate>
+            <sparkle:version>25</sparkle:version>
+            <sparkle:shortVersionString>1.5.16</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Added</h3>
+<ul>
+<li>A store recovery picker. Open Settings and choose "Restore from a backup" to see every backup Chorus keeps, what each one holds, and when it was taken, then put back the one you want. Chorus also offers this on its own, the moment it notices your spaces and services are missing. Either way, it sets your current data aside first, so choosing a backup never throws away what you had.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Chorus can now read a backup taken after it was closed cleanly. SQLite removes two side files on a clean close, and a backup missing them could not be opened for reading at all, so the automatic recovery in 1.5.15 could pass over a perfectly good backup and report that it had nothing to restore from.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.16/Chorus-1.5.16.dmg" length="8682241" type="application/octet-stream" sparkle:edSignature="DrC/Gm1rVwr1UxaUmvalFw0+JtcM8YfN1LjWJhwM6k9Dkz3fuOa7p3+jtUplAV1sd8DjZzau6stcrCV5RVkRCw=="/>
+        </item>
+        <item>
             <title>1.5.15</title>
             <pubDate>Wed, 29 Jul 2026 13:08:37 -0700</pubDate>
             <sparkle:version>24</sparkle:version>
