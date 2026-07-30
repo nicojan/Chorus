@@ -337,3 +337,71 @@ extension StoreInventory {
         return winner
     }
 }
+
+/// Why Chorus is offering to restore.
+enum StoreRecoveryOffer: Equatable, Sendable {
+    /// The live store holds less than Chorus recorded for it: some of the
+    /// user's data went missing between launches.
+    case belowRecord
+    /// There is no record to compare against and the live store holds nothing
+    /// of the user's, so there is nothing to weigh against restoring.
+    case nothingToLose
+}
+
+extension StoreInventory {
+    /// Whether to offer a restore, and why.
+    ///
+    /// Two conditions always hold: a backup exists holding more than the live
+    /// store, and the user has not already declined this same pairing. Then one
+    /// of two triggers fires.
+    ///
+    /// Trigger 2 is not redundant. Someone who lost their spaces on 1.5.14 or
+    /// earlier has no record on their first launch of a build that writes one,
+    /// and their store holds the seed, so trigger 1 can never fire for them.
+    /// Without trigger 2 this feature would miss the user who reported the bug.
+    static func offer(
+        liveContent: StoreContent?,
+        best: StoreCandidate?,
+        record: StoreContent?,
+        declinedKeys: Set<String>
+    ) -> StoreRecoveryOffer? {
+        guard let best, let backup = best.content, best.isRestorable else { return nil }
+        // A backup has to actually cover the gap. An unreadable live store
+        // counts as covered: anything readable beats nothing.
+        if let live = liveContent, !backup.holdsMore(than: live) { return nil }
+        if declinedKeys.contains(declineKey(live: liveContent, candidate: best)) { return nil }
+
+        if let record, let live = liveContent, record.holdsMore(than: live) { return .belowRecord }
+        if let record, liveContent == nil, !record.isEmpty { return .belowRecord }
+
+        let liveHoldsUsersData = liveContent.map { !$0.isEmpty && !$0.looksLikeUntouchedSeed } ?? false
+        if !liveHoldsUsersData { return .nothingToLose }
+        return nil
+    }
+
+    /// Identifies one pairing of backup and live state, so declining is
+    /// remembered for that pairing only. When either side changes, Chorus may
+    /// ask again, which is what makes a stale decline self-correcting.
+    static func declineKey(live: StoreContent?, candidate: StoreCandidate) -> String {
+        let liveSignature = live.map { "\($0.spaces)-\($0.services)-\($0.links)" } ?? "unknown"
+        return "\(candidate.url.lastPathComponent)|\(liveSignature)"
+    }
+
+    /// The record's string form, kept readable so `defaults read` shows
+    /// something meaningful during support.
+    static func encodeRecord(_ content: StoreContent) -> String {
+        "\(content.spaces)-\(content.services)-\(content.links)"
+    }
+
+    /// Parses `encodeRecord`'s output. Anything else is treated as no record,
+    /// never as an empty store.
+    static func decodeRecord(_ raw: String?) -> StoreContent? {
+        guard let raw else { return nil }
+        let parts = raw.split(separator: "-").map(String.init)
+        guard parts.count == 3,
+              let spaces = Int(parts[0]),
+              let services = Int(parts[1]),
+              let links = Int(parts[2]) else { return nil }
+        return StoreContent(spaces: spaces, services: services, links: links, spaceNames: [], serviceLabels: [])
+    }
+}

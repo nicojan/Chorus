@@ -2870,4 +2870,79 @@ final class ChorusTests: XCTestCase {
         )
     }
 
+    /// The offer rule: two triggers, and the case that must stay silent.
+    func testOfferRuleTriggersAndSilence() {
+        let dir = URL(fileURLWithPath: "/tmp/offer")
+        let backup = StoreCandidate(
+            url: dir.appendingPathComponent("s.bak"),
+            kind: .snapshot(version: "1.5.11+20"),
+            takenAt: Date(timeIntervalSince1970: 1_000),
+            content: StoreContent(spaces: 4, services: 13, links: 13, spaceNames: [], serviceLabels: []),
+            isDamaged: false
+        )
+        let seeded = StoreContent(
+            spaces: 2, services: 7, links: 7,
+            spaceNames: DefaultSeed.spaces.map(\.name),
+            serviceLabels: DefaultSeed.allServiceLabels
+        )
+        let partial = StoreContent(spaces: 1, services: 4, links: 4, spaceNames: ["Home"], serviceLabels: [])
+        let record = StoreContent(spaces: 4, services: 13, links: 13, spaceNames: [], serviceLabels: [])
+
+        // Trigger 1: below the record, with a backup that covers the gap.
+        XCTAssertEqual(
+            StoreInventory.offer(liveContent: partial, best: backup, record: record, declinedKeys: []),
+            .belowRecord
+        )
+
+        // Trigger 2: no record yet, and the live store is the untouched seed.
+        // This is the already-lost user's first launch on a build that records.
+        XCTAssertEqual(
+            StoreInventory.offer(liveContent: seeded, best: backup, record: nil, declinedKeys: []),
+            .nothingToLose
+        )
+
+        // The case that must stay silent: the user deleted spaces on purpose, so
+        // the record matches what is there, and their store is their own.
+        XCTAssertNil(
+            StoreInventory.offer(liveContent: partial, best: backup, record: partial, declinedKeys: []),
+            "a store matching its record is not loss, even with a fuller backup"
+        )
+
+        // No backup that holds more means nothing to offer.
+        let thin = StoreCandidate(
+            url: dir.appendingPathComponent("t.bak"),
+            kind: .snapshot(version: nil),
+            takenAt: nil,
+            content: StoreContent(spaces: 1, services: 2, links: 2, spaceNames: [], serviceLabels: []),
+            isDamaged: false
+        )
+        XCTAssertNil(StoreInventory.offer(liveContent: partial, best: thin, record: record, declinedKeys: []))
+        XCTAssertNil(StoreInventory.offer(liveContent: partial, best: nil, record: record, declinedKeys: []))
+
+        // A remembered decline silences the same pairing.
+        let key = StoreInventory.declineKey(live: partial, candidate: backup)
+        XCTAssertNil(
+            StoreInventory.offer(liveContent: partial, best: backup, record: record, declinedKeys: [key]),
+            "a declined pairing must not ask again"
+        )
+        // A different live state is a different pairing, so it may ask again.
+        XCTAssertNotNil(
+            StoreInventory.offer(liveContent: seeded, best: backup, record: record, declinedKeys: [key])
+        )
+    }
+
+    /// The record round-trips through the string form kept in UserDefaults.
+    func testContentRecordRoundTrip() throws {
+        let content = StoreContent(spaces: 4, services: 13, links: 13, spaceNames: [], serviceLabels: [])
+        let encoded = StoreInventory.encodeRecord(content)
+        let decoded = try XCTUnwrap(StoreInventory.decodeRecord(encoded))
+        XCTAssertEqual(decoded.spaces, 4)
+        XCTAssertEqual(decoded.services, 13)
+        XCTAssertEqual(decoded.links, 13)
+
+        XCTAssertNil(StoreInventory.decodeRecord("garbage"), "an unparseable record is no record")
+        XCTAssertNil(StoreInventory.decodeRecord("4-13"), "a short record is no record")
+        XCTAssertNil(StoreInventory.decodeRecord(""))
+    }
+
 }
