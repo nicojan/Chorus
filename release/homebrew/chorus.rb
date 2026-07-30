@@ -6,16 +6,16 @@
 # leaves an app that updated itself alone. Livecheck reads the same appcast the
 # app does, which is what makes `brew bump-cask-pr` work.
 cask "chorus" do
-  version "1.5.15"
-  sha256 "7848effe0944344503e9f87f64739608928b0af547ff078d794cfef3b778af1c"
+  version "1.5.16"
+  sha256 "168ffc8b5935008597331a6d208fd02dbff24338168ea691bfb4eec7b45cb91c"
 
   url "https://github.com/nicojan/Chorus/releases/download/v#{version}/Chorus-#{version}.dmg"
   name "Chorus"
   desc "Multi-service web browser with an isolated session per account"
   homepage "https://github.com/nicojan/Chorus"
 
-  # `&:short_version` keeps the cask on `1.5.15` rather than Sparkle's
-  # `1.5.15,24` (shortVersionString plus the build number Sparkle compares), so
+  # `&:short_version` keeps the cask on `1.5.16` rather than Sparkle's
+  # `1.5.16,25` (shortVersionString plus the build number Sparkle compares), so
   # the release step has one number to bump.
   livecheck do
     url "https://nicojan.github.io/Chorus/appcast.xml"
