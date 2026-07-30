@@ -3359,16 +3359,16 @@ final class ChorusTests: XCTestCase {
     /// mismatch here would silently do nothing on the next launch.
     func testChosenCandidateNameSurvivesValidation() {
         let storeURL = URL(fileURLWithPath: "/tmp/whatever/default.store")
-        let names = [
-            "default.store.snapshot-1700000000-1.5.11+20.bak",
-            "default.store.prerestore-1700000500.bak",
-            "default.store.corrupt-1700000600.bak",
-            "default.store.prepick-1700000700.bak",
+        let cases: [(name: String, kind: StoreCandidate.Kind)] = [
+            ("default.store.snapshot-1700000000-1.5.11+20.bak", .snapshot(version: "1.5.11+20")),
+            ("default.store.prerestore-1700000500.bak", .prerestore),
+            ("default.store.corrupt-1700000600.bak", .corrupt),
+            ("default.store.prepick-1700000700.bak", .prepick),
         ]
-        for name in names {
+        for (name, kind) in cases {
             let candidate = StoreCandidate(
                 url: storeURL.deletingLastPathComponent().appendingPathComponent(name),
-                kind: .snapshot(version: nil),
+                kind: kind,
                 takenAt: nil,
                 content: StoreContent(spaces: 1, services: 1, links: 1, spaceNames: [], serviceLabels: []),
                 isDamaged: false
@@ -3378,7 +3378,90 @@ final class ChorusTests: XCTestCase {
                 name,
                 "a candidate the picker can show must be one the launch path accepts"
             )
+            XCTAssertTrue(
+                candidate.isRestorable,
+                "every candidate this test claims the picker can show must actually be restorable"
+            )
         }
+    }
+
+    /// `scheduleRestore` is the guards-plus-write half of `chooseStoreRestore`,
+    /// hoisted out to a `nonisolated static` so it's testable without building
+    /// an `AppState` (the suite deliberately never does). A restorable
+    /// candidate whose filename belongs to this store must write exactly the
+    /// name the launch path (`StoreRepair.applyPendingRestore`) will look for.
+    func testScheduleRestoreWritesValidNameForRestorableCandidate() {
+        let suite = "chorus-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let storeURL = URL(fileURLWithPath: "/tmp/whatever/default.store")
+        let name = "default.store.snapshot-1700000000-1.5.11+20.bak"
+        let candidate = StoreCandidate(
+            url: storeURL.deletingLastPathComponent().appendingPathComponent(name),
+            kind: .snapshot(version: "1.5.11+20"),
+            takenAt: nil,
+            content: StoreContent(spaces: 2, services: 3, links: 3, spaceNames: [], serviceLabels: []),
+            isDamaged: false
+        )
+
+        XCTAssertTrue(AppState.scheduleRestore(candidate, storeName: storeURL.lastPathComponent, defaults: defaults))
+        XCTAssertEqual(
+            defaults.string(forKey: StoreRepair.pendingRestoreKey),
+            name,
+            "the written key must be exactly what applyPendingRestore validates against"
+        )
+    }
+
+    /// A non-restorable candidate (here: damaged) must write nothing at all —
+    /// not merely return false. A partial write that later gets overwritten by
+    /// coincidence would hide this bug, so the key's absence is asserted
+    /// directly rather than inferred from the return value.
+    func testScheduleRestoreWritesNothingForNonRestorableCandidate() {
+        let suite = "chorus-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let storeURL = URL(fileURLWithPath: "/tmp/whatever/default.store")
+        let name = "default.store.corrupt-1700000600.bak"
+        let damagedCandidate = StoreCandidate(
+            url: storeURL.deletingLastPathComponent().appendingPathComponent(name),
+            kind: .corrupt,
+            takenAt: nil,
+            content: StoreContent(spaces: 1, services: 1, links: 1, spaceNames: [], serviceLabels: []),
+            isDamaged: true
+        )
+
+        XCTAssertFalse(AppState.scheduleRestore(damagedCandidate, storeName: storeURL.lastPathComponent, defaults: defaults))
+        XCTAssertNil(
+            defaults.string(forKey: StoreRepair.pendingRestoreKey),
+            "a damaged candidate must not schedule a restore"
+        )
+    }
+
+    /// A candidate whose filename `validatedRestoreName` rejects (wrong store
+    /// prefix here) must also write nothing, even though `isRestorable` itself
+    /// only looks at damage/content/liveness and would pass it.
+    func testScheduleRestoreWritesNothingForFilenameValidationFailure() {
+        let suite = "chorus-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let storeURL = URL(fileURLWithPath: "/tmp/whatever/default.store")
+        let wrongStoreName = "other.store.snapshot-1700000000-1.5.11+20.bak"
+        let candidate = StoreCandidate(
+            url: storeURL.deletingLastPathComponent().appendingPathComponent(wrongStoreName),
+            kind: .snapshot(version: "1.5.11+20"),
+            takenAt: nil,
+            content: StoreContent(spaces: 2, services: 3, links: 3, spaceNames: [], serviceLabels: []),
+            isDamaged: false
+        )
+
+        XCTAssertFalse(AppState.scheduleRestore(candidate, storeName: storeURL.lastPathComponent, defaults: defaults))
+        XCTAssertNil(
+            defaults.string(forKey: StoreRepair.pendingRestoreKey),
+            "a filename that doesn't belong to this store must not schedule a restore"
+        )
     }
 
 }

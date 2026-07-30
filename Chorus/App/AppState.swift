@@ -245,8 +245,12 @@ final class AppState {
     private(set) var storeFileURL: URL?
 
     /// The live store's filename, used to check a chosen backup belongs to this
-    /// store. Debug and release builds use different store paths, so this cannot
-    /// be a constant.
+    /// store. Both debug and release currently name the file "default.store" —
+    /// it's the *directory* that differs between them (see `init` below), not
+    /// the filename — but this is read from the actual `ModelConfiguration`
+    /// rather than hardcoded, so a future change to either branch's filename
+    /// can't silently drift out of sync with what `chooseStoreRestore` checks
+    /// candidates against.
     private var storeFileName = "default.store"
 
     /// Whether the store banner is a dismissible notice (an automatic recovery
@@ -1893,22 +1897,59 @@ final class AppState {
         storeRecoveryOffer = nil
     }
 
-    /// Records the user's pick and restarts so it can be applied before the
-    /// store opens. Returns false when the pick cannot be used, in which case
-    /// nothing is written and the app keeps running.
+    /// Validates a chosen candidate and writes its pending-restore key —
+    /// everything `chooseStoreRestore` needs done before the process-level
+    /// relaunch, and nothing more. Hoisted out of that instance method (and
+    /// `nonisolated`, since it touches only its arguments, `StoreRepair`, and
+    /// `AppLogger`, none of them main-actor state) so this is directly
+    /// testable without building an `AppState` — the suite deliberately never
+    /// does, and `chooseStoreRestore` itself is unreachable from a test because
+    /// it needs a live instance's `storeFileName`.
+    ///
+    /// Returns whether the key was written. Both guards below leave `defaults`
+    /// completely untouched on failure: a candidate that fails `isRestorable`
+    /// (the live store, a damaged file, or one whose content couldn't be
+    /// read), or one whose filename `validatedRestoreName` rejects.
     @discardableResult
-    func chooseStoreRestore(_ candidate: StoreCandidate, defaults: UserDefaults = .standard) -> Bool {
+    nonisolated static func scheduleRestore(
+        _ candidate: StoreCandidate,
+        storeName: String,
+        defaults: UserDefaults
+    ) -> Bool {
         guard candidate.isRestorable else { return false }
         guard let name = StoreRepair.validatedRestoreName(
             candidate.url.lastPathComponent,
-            storeName: storeFileName
+            storeName: storeName
         ) else {
             AppLogger.dataStore.error("Refusing to schedule a restore from an unexpected filename")
             return false
         }
         defaults.set(name, forKey: StoreRepair.pendingRestoreKey)
-        AppLogger.dataStore.info("Scheduled a restore from \(name); relaunching")
-        AppRelauncher.relaunchAfterExit()
+        AppLogger.dataStore.info("Scheduled a restore from \(name)")
+        return true
+    }
+
+    /// Records the user's pick and restarts so it can be applied before the
+    /// store opens.
+    ///
+    /// Returns false in two different cases, and only the second leaves
+    /// something written: `scheduleRestore` rejecting the pick writes nothing,
+    /// but a written key whose relaunch then fails to spawn is deliberately
+    /// left in place — `StoreRepair.applyPendingRestore` re-checks the key on
+    /// every launch, so the restore still happens the next time the user opens
+    /// Chorus by hand, and throwing the key away here would be strictly worse.
+    /// `storeRecoveryOffer` is cleared only when both steps succeed, so a spawn
+    /// failure leaves the offer (and whatever sheet is bound to it) in place
+    /// for the caller to report rather than silently dismissing it as if the
+    /// restore had actually started.
+    @discardableResult
+    func chooseStoreRestore(_ candidate: StoreCandidate, defaults: UserDefaults = .standard) -> Bool {
+        guard Self.scheduleRestore(candidate, storeName: storeFileName, defaults: defaults) else { return false }
+        guard AppRelauncher.relaunchAfterExit() else {
+            AppLogger.dataStore.error("Restore was scheduled but the relaunch could not be spawned; it will still apply on the next launch")
+            return false
+        }
+        storeRecoveryOffer = nil
         return true
     }
 
