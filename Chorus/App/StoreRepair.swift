@@ -452,13 +452,17 @@ enum StoreRepair {
     ///
     /// Both the aside copy and the apply are gated on their own success rather
     /// than trusting a single read at the end: `copyTriple` reports whether
-    /// every suffix it attempted actually copied, and the aside is additionally
-    /// confirmed readable before the live triple is touched at all — a disk
-    /// full enough to fail the aside copy still lets `try? removeItem` succeed,
-    /// so without this check the next step would remove the live triple, fail
-    /// to replace it, and leave nothing behind (review Finding 1). Bailing here
-    /// is safe: the pending key is already cleared, the live store is
-    /// untouched, and the source backup is untouched.
+    /// every suffix it attempted actually copied, and the aside step keeps that
+    /// result — a disk full enough to fail the aside copy still lets
+    /// `try? removeItem` succeed, so without it the next step would remove the
+    /// live triple, fail to replace it, and leave nothing behind (review
+    /// Finding 1). What the aside has to be is a faithful copy, which is not
+    /// the same as a readable one: an unreadable store is one of the reasons
+    /// someone opens this picker, and a byte-for-byte copy of it is exactly the
+    /// way back they had, so the aside is only required to *read* when what it
+    /// copied read. Bailing on either check is safe: the pending key is already
+    /// cleared, the live store has not been touched, and the chosen `.bak` is
+    /// untouched.
     ///
     /// If the restored store then fails to migrate on a later launch,
     /// `loadContainer`'s own auto-restore may kick in and replace it again —
@@ -484,11 +488,32 @@ enum StoreRepair {
             return false
         }
 
+        // Whether the store about to be replaced can be read at all, taken
+        // *before* the copy. A store that will not open is one of the reasons
+        // someone reaches for this picker, so an unreadable aside is only
+        // evidence of a problem when what it copied was readable.
+        let liveWasReadable = StoreInventory.readContent(at: storeURL) != nil
+
         let stamp = String(Int(Date().timeIntervalSince1970))
         let asidePrefix = storeURL.path + "\(pickAsideInfix)\(stamp).bak"
-        _ = copyTriple(from: storeURL.path, to: asidePrefix, label: "setting the current store aside")
-        guard StoreInventory.readContent(at: URL(fileURLWithPath: asidePrefix)) != nil else {
+        let asideCopied = copyTriple(from: storeURL.path, to: asidePrefix, label: "setting the current store aside")
+        // From here on an aside triple may be on disk — including a partial one,
+        // when the copy failed half-way — and no other reaper matches this
+        // family, so every exit below has to bound it or a repeated failure
+        // writes a fresh full-store copy per launch that nothing ever reaps.
+        // A `defer` makes that structural instead of something each new branch
+        // has to remember.
+        defer { prunePickAsides(at: storeURL, keeping: 3) }
+
+        // Bailing on either check below is safe: the pending key is already
+        // cleared, the live store has not been touched, and the chosen `.bak` is
+        // untouched.
+        guard asideCopied else {
             AppLogger.dataStore.error("Could not set the current store aside; refusing to restore")
+            return false
+        }
+        if liveWasReadable, StoreInventory.readContent(at: URL(fileURLWithPath: asidePrefix)) == nil {
+            AppLogger.dataStore.error("The copy of the current store cannot be read; refusing to restore")
             return false
         }
 
@@ -500,12 +525,10 @@ enum StoreRepair {
             // redundant: if the revert copy itself only partly succeeded (e.g. a
             // failed `-wal`), this aside is the only intact copy of the store as
             // it stood before the attempt. Bound the family by count instead —
-            // prunePickAsides below — never by deleting it on this path.
-            prunePickAsides(at: storeURL, keeping: 3)
+            // the `defer` above — never by deleting it on this path.
             return false
         }
         AppLogger.dataStore.info("Restored the store the user chose: \(name)")
-        prunePickAsides(at: storeURL, keeping: 3)
         return true
     }
 

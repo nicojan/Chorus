@@ -3443,7 +3443,19 @@ final class ChorusTests: XCTestCase {
             .appendingPathComponent("chorus-uchg-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let storeURL = dir.appendingPathComponent("store.sqlite")
-        defer { try? FileManager.default.removeItem(at: dir) }
+        // `copyItem` carries BSD flags across, so the aside copy of the live file
+        // can arrive holding `UF_IMMUTABLE` too — and a directory holding an
+        // immutable file cannot be removed. Clear the flag on every entry, not
+        // just the live file, or this fixture survives the run in the temp
+        // directory and `try?` hides that it did.
+        defer {
+            let fm = FileManager.default
+            for name in (try? fm.contentsOfDirectory(atPath: dir.path)) ?? [] {
+                _ = chflags(dir.appendingPathComponent(name).path, 0)
+            }
+            _ = chflags(dir.path, 0)
+            try? fm.removeItem(at: dir)
+        }
         let suite = "chorus-test-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -3482,6 +3494,203 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(
             StoreRepair.spaceCount(at: storeURL), before,
             "the store must still hold its original content -- the apply must not have silently done nothing while reporting success"
+        )
+    }
+
+    /// A live store that will not open is one of the main situations this picker
+    /// exists to rescue, so a restore over one has to go through. The aside copy
+    /// of an unreadable store is itself unreadable -- a faithful copy of a
+    /// corrupt file is a corrupt file -- so gating the restore on the ASIDE
+    /// being readable refused exactly the case the feature was built for. And it
+    /// refused it on every launch forever, because the pending key is cleared
+    /// before the file work: the user picks a backup, the app restarts, nothing
+    /// happens, and there is nothing left to retry.
+    func testApplyPendingRestoreWorksWhenTheLiveStoreCannotBeRead() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-unreadable-live-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let suite = "chorus-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        try makePopulatedStore(at: storeURL, spaces: 3)
+        for suffix in ["-wal", "-shm"] {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: storeURL.path + suffix))
+        }
+        StoreRepair.snapshot(at: storeURL, stamp: "1700003000-1.0.0")
+        let snapshotName = "store.sqlite.snapshot-1700003000-1.0.0.bak"
+        XCTAssertEqual(
+            StoreInventory.readContent(at: dir.appendingPathComponent(snapshotName))?.spaces, 3,
+            "precondition: the chosen backup must be readable and hold the data"
+        )
+
+        // Now make the live store unopenable, which is what the user reaches for
+        // the picker to escape.
+        try "not a database".write(to: storeURL, atomically: true, encoding: .utf8)
+        XCTAssertNil(
+            StoreInventory.readContent(at: storeURL),
+            "precondition: the live store must not be readable"
+        )
+
+        defaults.set(snapshotName, forKey: StoreRepair.pendingRestoreKey)
+        XCTAssertTrue(
+            StoreRepair.applyPendingRestore(at: storeURL, defaults: defaults),
+            "a restore over an unreadable live store must go through -- refusing it strands the user on the store they asked to escape"
+        )
+        XCTAssertEqual(StoreRepair.spaceCount(at: storeURL), 3, "the chosen backup must be in place")
+        XCTAssertNil(defaults.string(forKey: StoreRepair.pendingRestoreKey), "the key must be cleared")
+
+        // The unreadable store is still kept, byte for byte: a corrupt copy is
+        // exactly the way back to what the user had, so it is worth keeping even
+        // though nothing can read it.
+        let asides = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .filter { $0.hasPrefix("store.sqlite.prepick-") && $0.hasSuffix(".bak") }
+        XCTAssertEqual(asides.count, 1, "the unreadable store must still have been set aside")
+        XCTAssertEqual(
+            try String(contentsOf: dir.appendingPathComponent(asides[0]), encoding: .utf8),
+            "not a database",
+            "the aside must be a byte-for-byte copy of what was replaced"
+        )
+    }
+
+    /// Review Finding 1's own case: the aside copy itself failing. No
+    /// `FileManager` seam is needed to reach it -- a containing directory the
+    /// process cannot write to blocks every copy into it while leaving the store
+    /// perfectly readable (reads need only `r-x`). Nothing may touch the live
+    /// store once the way back could not be written.
+    ///
+    /// Scope, measured rather than assumed: this is a scenario guard, not a
+    /// test of the aside gate in isolation. An unwritable directory also stops
+    /// the apply step's own copy, so the closing "did the result read?" gate
+    /// reaches the same refusal on its own -- removing both aside checks leaves
+    /// this test green. The discriminating case is
+    /// `testApplyPendingRestoreRefusesWhenOnlyTheAsidesWALFailsToCopy` below,
+    /// where the directory stays writable and only the aside is incomplete.
+    func testApplyPendingRestoreRefusesWhenTheAsideCannotBeWritten() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-aside-fail-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer {
+            _ = chmod(dir.path, 0o700)
+            try? FileManager.default.removeItem(at: dir)
+        }
+        let suite = "chorus-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        // A 2-space backup and a 1-space live store, so a restore that wrongly
+        // went ahead would be visible in the count afterward.
+        try makePopulatedStore(at: storeURL, spaces: 2)
+        StoreRepair.snapshot(at: storeURL, stamp: "1700004000-1.0.0")
+        let snapshotName = "store.sqlite.snapshot-1700004000-1.0.0.bak"
+        _ = try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
+        try Self.insertSpaces(storeURL, count: 1)
+        for suffix in ["-wal", "-shm"] {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: storeURL.path + suffix))
+        }
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: storeURL.path + "-wal"),
+            "precondition: no -wal sibling, so the store stays readable through a read-only directory"
+        )
+        XCTAssertEqual(StoreRepair.spaceCount(at: storeURL), 1, "precondition: live store thinned out")
+
+        // Read and traverse, but not write: the aside copy cannot land.
+        XCTAssertEqual(chmod(dir.path, 0o500), 0, "precondition: chmod must succeed on this filesystem")
+        XCTAssertNotEqual(
+            access(dir.path, W_OK), 0,
+            "precondition: the directory must be unwritable, or this test cannot make the aside copy fail"
+        )
+
+        defaults.set(snapshotName, forKey: StoreRepair.pendingRestoreKey)
+        XCTAssertFalse(
+            StoreRepair.applyPendingRestore(at: storeURL, defaults: defaults),
+            "an aside copy that could not be written must stop the restore"
+        )
+        XCTAssertNil(defaults.string(forKey: StoreRepair.pendingRestoreKey), "the key must still be cleared")
+        XCTAssertEqual(
+            StoreRepair.spaceCount(at: storeURL), 1,
+            "with no way back written, the live store must still hold exactly what it held"
+        )
+        XCTAssertTrue(
+            try FileManager.default.contentsOfDirectory(atPath: dir.path)
+                .filter { $0.hasPrefix("store.sqlite.prepick-") }
+                .isEmpty,
+            "nothing could be written, so no aside may be left claiming otherwise"
+        )
+    }
+
+    /// The subtle half of Finding 1, and the reason the aside step must keep
+    /// `copyTriple`'s result instead of only re-reading the aside afterward: a
+    /// copy that fails on the `-wal` alone leaves an aside with no `-wal`
+    /// sibling, and `openReadOnly` applies its `immutable=1` fallback precisely
+    /// BECAUSE no `-wal` is there. So the aside reads fine while missing the
+    /// committed-but-uncheckpointed rows the live `-wal` holds, a readability
+    /// check waves it through, and the apply then deletes that `-wal` -- real
+    /// data loss, of exactly the kind the finding was about.
+    func testApplyPendingRestoreRefusesWhenOnlyTheAsidesWALFailsToCopy() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-aside-partial-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        let walURL = URL(fileURLWithPath: storeURL.path + "-wal")
+        defer {
+            _ = chmod(walURL.path, 0o600)
+            try? FileManager.default.removeItem(at: dir)
+        }
+        let suite = "chorus-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        try makePopulatedStore(at: storeURL, spaces: 2)
+        StoreRepair.snapshot(at: storeURL, stamp: "1700005000-1.0.0")
+        let snapshotName = "store.sqlite.snapshot-1700005000-1.0.0.bak"
+        _ = try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
+        try Self.insertSpaces(storeURL, count: 1)
+        for suffix in ["-wal", "-shm"] {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: storeURL.path + suffix))
+        }
+
+        // Stand in for the partial `ENOSPC`: a `-wal` beside the live store that
+        // the copy will attempt and fail on, while the main file copies fine.
+        try "rows only this -wal knows about".write(to: walURL, atomically: true, encoding: .utf8)
+        XCTAssertEqual(chmod(walURL.path, 0o000), 0, "precondition: chmod must succeed on this filesystem")
+        XCTAssertNotEqual(
+            access(walURL.path, R_OK), 0,
+            "precondition: the -wal must be unreadable, or its copy cannot be made to fail"
+        )
+        let liveBytesBefore = try Data(contentsOf: storeURL)
+
+        defaults.set(snapshotName, forKey: StoreRepair.pendingRestoreKey)
+        XCTAssertFalse(
+            StoreRepair.applyPendingRestore(at: storeURL, defaults: defaults),
+            "an aside missing a suffix that failed to copy is not a way back, so the restore must stop"
+        )
+        XCTAssertNil(defaults.string(forKey: StoreRepair.pendingRestoreKey), "the key must still be cleared")
+        XCTAssertEqual(
+            try Data(contentsOf: storeURL), liveBytesBefore,
+            "the live store must be untouched, byte for byte"
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: walURL.path),
+            "the live -wal must survive: its committed rows were never captured by the aside"
+        )
+
+        // The half-written aside reads fine, which is the whole point: a
+        // readability check on it cannot catch this, only the copy's own result.
+        let asides = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .filter { $0.hasPrefix("store.sqlite.prepick-") && $0.hasSuffix(".bak") }
+        XCTAssertEqual(asides.count, 1, "the main file did copy, so one aside primary exists")
+        let asideURL = dir.appendingPathComponent(asides[0])
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: asideURL.path + "-wal"),
+            "the -wal copy is the one that failed, so the aside has no -wal sibling"
+        )
+        XCTAssertNotNil(
+            StoreInventory.readContent(at: asideURL),
+            "the incomplete aside still READS -- pinning why readability is the wrong predicate here"
         )
     }
 
