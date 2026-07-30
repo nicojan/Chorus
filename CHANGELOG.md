@@ -5,9 +5,15 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.5.16] - 2026-07-30
+
 ### Added
 
 - A store recovery picker. Open Settings and choose "Restore from a backup" to see every backup Chorus keeps, what each one holds, and when it was taken, then put back the one you want. Chorus also offers this on its own, the moment it notices your spaces and services are missing. Either way, it sets your current data aside first, so choosing a backup never throws away what you had.
+
+### Fixed
+
+- Chorus can now read a backup taken after it was closed cleanly. SQLite removes two side files on a clean close, and a backup missing them could not be opened for reading at all, so the automatic recovery in 1.5.15 could pass over a perfectly good backup and report that it had nothing to restore from.
 
 ## [1.5.15] - 2026-07-29
 
