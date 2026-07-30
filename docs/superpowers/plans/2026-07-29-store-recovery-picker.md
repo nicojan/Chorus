@@ -1919,6 +1919,12 @@ struct StoreRecoveryView: View {
 
     @State private var selection: StoreCandidate?
 
+    /// Shown when the restore could not be started. Amended in after Task 9's
+    /// review: `chooseStoreRestore` returns false if spawning the relaunch
+    /// fails, and dismissing the sheet on that path told the user their restore
+    /// had been applied when nothing had happened.
+    @State private var failureMessage: String?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Restore your spaces and services")
@@ -1934,6 +1940,14 @@ struct StoreRecoveryView: View {
             }
             .frame(minHeight: 200)
 
+            if let failureMessage {
+                Text(failureMessage)
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isStaticText)
+            }
+
             HStack {
                 if let folder = appState.storeCandidates.first?.url.deletingLastPathComponent() {
                     Button("Reveal in Finder") {
@@ -1944,8 +1958,9 @@ struct StoreRecoveryView: View {
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button("Restore and Restart") {
-                    if let selection, appState.chooseStoreRestore(selection) { return }
-                    dismiss()
+                    guard let selection else { return }
+                    if appState.chooseStoreRestore(selection) { return }
+                    failureMessage = "Chorus could not restart itself. Quit and open it again to put this backup back."
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(selection?.isRestorable != true)
@@ -1955,6 +1970,12 @@ struct StoreRecoveryView: View {
         .frame(width: 520)
         .onAppear { selection = appState.preselectedCandidate }
     }
+
+Two notes on that failure message.
+
+It is worded for the case that can actually happen: `chooseStoreRestore` returns false when spawning the relaunch fails, and Task 9 keeps the pending choice in that case, so opening Chorus again really does put the backup back. The other false paths — a candidate that is not restorable, or a filename that fails validation — cannot be reached from this button, which stays disabled unless `isRestorable`, and `chooseStoreRestore` checks it again. A filename failing validation would mean the two family lists had drifted apart, which Task 9's test pins.
+
+It went through the humanizer check: `prohibitions_clear`, no hard violations. The one remaining finding is low sentence-length variance, which is justified rather than fixed — a two-sentence error message cannot hit a prose variance target without padding, and Orwell's third rule says cut the word out.
 
     @ViewBuilder
     private func row(for candidate: StoreCandidate) -> some View {
