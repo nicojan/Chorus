@@ -240,7 +240,11 @@ enum StoreRepair {
     /// Parses `<prefix><stamp>-<version>.bak` into its Unix-second stamp and
     /// version. Either may be nil if the name doesn't match. The stamp drives
     /// newest-first ordering; the version is shown in the recovery banner.
-    private static func stampAndVersion(_ name: String, prefix: String) -> (stamp: Int?, version: String?) {
+    /// Internal (not `private`) so `StoreInventory.candidates` can reuse it for
+    /// the `.prerestore-`/`.corrupt-` families rather than reimplementing the
+    /// same parse; a name with no version segment already returns `(stamp, nil)`,
+    /// which is exactly what those two families need.
+    static func stampAndVersion(_ name: String, prefix: String) -> (stamp: Int?, version: String?) {
         guard name.hasPrefix(prefix), name.hasSuffix(".bak") else { return (nil, nil) }
         let core = String(name.dropFirst(prefix.count).dropLast(".bak".count))
         // `core` is `<stamp>-<version>`; split on the FIRST hyphen only, since the

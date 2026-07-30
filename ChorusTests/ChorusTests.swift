@@ -582,6 +582,22 @@ final class ChorusTests: XCTestCase {
         try ctx.save()
     }
 
+    /// Inserts `count` spaces into an existing store by raw SQL, so a fixture can
+    /// be reshaped without reopening a container. `Z_PK` is assigned explicitly
+    /// because Core Data's `Z_PRIMARYKEY` bookkeeping is not maintained here;
+    /// these fixtures are only ever read back by raw SQLite.
+    private static func insertSpaces(_ url: URL, count: Int) throws {
+        let entity = try runSQLite(url, "SELECT Z_ENT FROM ZSPACE LIMIT 1;")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let ent = entity.isEmpty ? "1" : entity
+        for i in 0..<count {
+            _ = try runSQLite(url, """
+                INSERT INTO ZSPACE (Z_PK, Z_ENT, Z_OPT, ZNAME, ZEMOJI, ZSORTORDER)
+                VALUES (\(1000 + i), \(ent), 1, 'S\(i)', '🏠', \(i));
+                """)
+        }
+    }
+
     /// Copies the store triple — main file plus `-wal`/`-shm` when present —
     /// from `source` to `destination`, mirroring what `StoreRepair.snapshot`
     /// does in production. A prerestore/corrupt fixture built from a bare
@@ -2631,6 +2647,53 @@ final class ChorusTests: XCTestCase {
     }
 
     // MARK: - Candidate enumeration
+
+    /// Enumeration must find all three backup families plus the live store,
+    /// parse stamps, and mark an unreadable file as unknown rather than empty.
+    func testCandidateEnumerationCoversAllBackupFamilies() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-inventory-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // Live store with 1 space; a 4-space snapshot; a 2-space prerestore; a
+        // 3-space corrupt-family backup; and one unreadable snapshot.
+        try makePopulatedStore(at: storeURL, spaces: 4)
+        StoreRepair.snapshot(at: storeURL, stamp: "1700000000-1.5.11+20")
+        _ = try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
+        try Self.insertSpaces(storeURL, count: 2)
+        try Self.copyStoreTriple(from: storeURL, to: dir.appendingPathComponent("store.sqlite.prerestore-1700000500.bak"))
+        _ = try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
+        try Self.insertSpaces(storeURL, count: 3)
+        try Self.copyStoreTriple(from: storeURL, to: dir.appendingPathComponent("store.sqlite.corrupt-1700000600.bak"))
+        _ = try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
+        try Self.insertSpaces(storeURL, count: 1)
+        try "not a database".write(
+            to: dir.appendingPathComponent("store.sqlite.snapshot-1700000900-1.5.12+21.bak"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let live = try XCTUnwrap(StoreInventory.readContent(at: storeURL))
+        let found = StoreInventory.candidates(for: storeURL, liveContent: live)
+
+        XCTAssertEqual(found.count, 5, "live + snapshot + prerestore + corrupt + unreadable snapshot")
+        XCTAssertEqual(found.filter { $0.kind == .live }.count, 1)
+        XCTAssertEqual(found.first { $0.kind == .live }?.content?.spaces, 1)
+
+        let snapshot = try XCTUnwrap(found.first { $0.kind == .snapshot(version: "1.5.11+20") })
+        XCTAssertEqual(snapshot.content?.spaces, 4)
+        XCTAssertEqual(snapshot.takenAt, Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertTrue(snapshot.isRestorable)
+
+        XCTAssertEqual(found.first { $0.kind == .prerestore }?.content?.spaces, 2)
+        XCTAssertEqual(found.first { $0.kind == .corrupt }?.content?.spaces, 3)
+
+        let unreadable = try XCTUnwrap(found.first { $0.kind == .snapshot(version: "1.5.12+21") })
+        XCTAssertNil(unreadable.content, "an unreadable candidate is unknown, not empty")
+        XCTAssertFalse(unreadable.isRestorable, "unknown content is never restorable")
+    }
 
     /// A backup whose file header still says WAL-mode but whose `-wal` sibling
     /// is gone (exactly what `StoreRepair.snapshot` produces when it copies a

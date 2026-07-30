@@ -218,3 +218,88 @@ enum StoreInventory {
         return values
     }
 }
+
+/// One store the user could be running on: the live file, or a backup Chorus
+/// kept. `content` is nil when the file could not be read. `Hashable` so the
+/// picker's `List` can bind its selection to a candidate directly.
+struct StoreCandidate: Hashable, Sendable, Identifiable {
+    enum Kind: Hashable, Sendable {
+        /// The store the app is running on now.
+        case live
+        /// A pre-update snapshot. Version is the build it preceded, when the
+        /// filename parses.
+        case snapshot(version: String?)
+        /// The store set aside by an earlier restore.
+        case prerestore
+        /// The store set aside before dangling-link repair. Damaged by
+        /// definition, so never preselected.
+        case corrupt
+    }
+
+    let url: URL
+    let kind: Kind
+    let takenAt: Date?
+    let content: StoreContent?
+    let isDamaged: Bool
+
+    var id: String { url.path }
+
+    /// Whether this can be restored from: a backup (not the live store) whose
+    /// content is known and whose file is intact.
+    var isRestorable: Bool {
+        kind != .live && content != nil && !isDamaged
+    }
+}
+
+extension StoreInventory {
+    /// Filename infixes of the three backup families, all of which are copies of
+    /// the user's own store and so all worth offering.
+    private static let backupInfixes = [".snapshot-", ".prerestore-", ".corrupt-"]
+
+    /// Every candidate for `storeURL`: the live store (whose content the caller
+    /// supplies, since it is already open) plus each backup sibling. Unreadable
+    /// and damaged files are included so the user can see they exist; the
+    /// ranking excludes them.
+    static func candidates(for storeURL: URL, liveContent: StoreContent?) -> [StoreCandidate] {
+        var result: [StoreCandidate] = [
+            StoreCandidate(
+                url: storeURL,
+                kind: .live,
+                takenAt: (try? FileManager.default.attributesOfItem(atPath: storeURL.path)[.modificationDate]) as? Date,
+                content: liveContent,
+                isDamaged: false
+            )
+        ]
+
+        let dir = storeURL.deletingLastPathComponent()
+        let base = storeURL.lastPathComponent
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else {
+            return result
+        }
+
+        for name in names.sorted() where name.hasSuffix(".bak") {
+            guard let infix = backupInfixes.first(where: { name.hasPrefix(base + $0) }) else { continue }
+            let url = dir.appending(path: name)
+            // Shared with StoreRepair rather than reimplemented; see the task's
+            // "Reuse, not duplication" note.
+            let parsed = StoreRepair.stampAndVersion(name, prefix: base + infix)
+            let kind: StoreCandidate.Kind
+            switch infix {
+            case ".snapshot-": kind = .snapshot(version: parsed.version)
+            case ".prerestore-": kind = .prerestore
+            default: kind = .corrupt
+            }
+            let content = readContent(at: url)
+            result.append(StoreCandidate(
+                url: url,
+                kind: kind,
+                takenAt: parsed.stamp.map { Date(timeIntervalSince1970: TimeInterval($0)) },
+                content: content,
+                // Only pay for an integrity check on a file we could read at all.
+                isDamaged: content == nil || !passesIntegrityCheck(at: url)
+            ))
+        }
+        return result
+    }
+
+}
