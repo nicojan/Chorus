@@ -66,8 +66,13 @@ struct ContentView: View {
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.yellow.opacity(0.15))
+                // No .accessibilityLabel override here, unlike the storeError
+                // banner above: an explicit label replaces what `.combine`
+                // would otherwise speak, and on this banner the buttons ARE
+                // the point — overriding would drop "Review backups…" and
+                // "Not now" from VoiceOver's reading, leaving them reachable
+                // only as custom actions.
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("Chorus has a backup with more of your spaces and services than it can see now.")
             }
 
             if !appState.networkMonitor.isOnline {

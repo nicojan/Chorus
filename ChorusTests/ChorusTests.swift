@@ -3464,4 +3464,118 @@ final class ChorusTests: XCTestCase {
         )
     }
 
+    // MARK: - Picker row labels (StoreCandidate.displayTitle / displayDetail)
+
+    private static let labelDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f
+    }()
+
+    private func labelCandidate(
+        kind: StoreCandidate.Kind,
+        takenAt: Date? = Date(timeIntervalSince1970: 1_700_000_000),
+        content: StoreContent?,
+        isDamaged: Bool = false
+    ) -> StoreCandidate {
+        StoreCandidate(
+            url: URL(fileURLWithPath: "/tmp/labels/default.store"),
+            kind: kind,
+            takenAt: takenAt,
+            content: content,
+            isDamaged: isDamaged
+        )
+    }
+
+    /// `displayTitle` is exhaustive over every `Kind`, including both shapes of
+    /// `.snapshot` (a parsed version, and a name that didn't parse one).
+    func testDisplayTitleCoversEveryKind() {
+        let some = StoreContent(spaces: 1, services: 1, links: 1, spaceNames: [], serviceLabels: [])
+        XCTAssertEqual(labelCandidate(kind: .live, content: some).displayTitle, "Your data now")
+        XCTAssertEqual(labelCandidate(kind: .snapshot(version: "1.5.11+20"), content: some).displayTitle, "Backup from before 1.5.11+20")
+        XCTAssertEqual(labelCandidate(kind: .snapshot(version: nil), content: some).displayTitle, "Backup from before an update")
+        XCTAssertEqual(labelCandidate(kind: .prerestore, content: some).displayTitle, "Backup from an earlier restore")
+        XCTAssertEqual(labelCandidate(kind: .corrupt, content: some).displayTitle, "Backup from before a repair")
+        XCTAssertEqual(labelCandidate(kind: .prepick, content: some).displayTitle, "Your data before you restored a backup")
+    }
+
+    /// A backup's detail line pluralizes spaces/services independently and
+    /// leads with the filename-parsed date.
+    func testDisplayDetailPluralizesCountsAndLeadsWithDate() {
+        let stamp = Date(timeIntervalSince1970: 1_700_000_000)
+        let when = Self.labelDateFormatter.string(from: stamp)
+
+        let singular = labelCandidate(
+            kind: .snapshot(version: "1.5.11+20"),
+            takenAt: stamp,
+            content: StoreContent(spaces: 1, services: 1, links: 1, spaceNames: [], serviceLabels: [])
+        )
+        XCTAssertEqual(singular.displayDetail, "\(when) — 1 space, 1 service")
+
+        let plural = labelCandidate(
+            kind: .snapshot(version: "1.5.11+20"),
+            takenAt: stamp,
+            content: StoreContent(spaces: 3, services: 4, links: 4, spaceNames: [], serviceLabels: [])
+        )
+        XCTAssertEqual(plural.displayDetail, "\(when) — 3 spaces, 4 services")
+    }
+
+    /// A backup with no parseable stamp reads "date unknown" rather than
+    /// omitting the date clause outright.
+    func testDisplayDetailUnknownDateFallsBackToDateUnknown() {
+        let candidate = labelCandidate(
+            kind: .prerestore,
+            takenAt: nil,
+            content: StoreContent(spaces: 2, services: 5, links: 5, spaceNames: [], serviceLabels: [])
+        )
+        XCTAssertEqual(candidate.displayDetail, "date unknown — 2 spaces, 5 services")
+    }
+
+    /// An unreadable backup (`content == nil`, which the real candidate
+    /// builder always pairs with `isDamaged == true`) reads "can't be read"
+    /// with no separate damaged marker appended — the marker only applies
+    /// when there IS a count to attach it to, so the two can never double up.
+    func testDisplayDetailNilContentReadsCantBeReadWithoutDoubledDamagedMarker() {
+        let stamp = Date(timeIntervalSince1970: 1_700_000_000)
+        let when = Self.labelDateFormatter.string(from: stamp)
+        let candidate = labelCandidate(kind: .corrupt, takenAt: stamp, content: nil, isDamaged: true)
+        XCTAssertEqual(candidate.displayDetail, "\(when) — can't be read")
+    }
+
+    /// A damaged file that could still be read gets the marker exactly once,
+    /// after the counts.
+    func testDisplayDetailDamagedButReadableAddsMarkerOnce() {
+        let stamp = Date(timeIntervalSince1970: 1_700_000_000)
+        let when = Self.labelDateFormatter.string(from: stamp)
+        let candidate = labelCandidate(
+            kind: .snapshot(version: nil),
+            takenAt: stamp,
+            content: StoreContent(spaces: 1, services: 2, links: 2, spaceNames: [], serviceLabels: []),
+            isDamaged: true
+        )
+        XCTAssertEqual(candidate.displayDetail, "\(when) — 1 space, 2 services — damaged")
+    }
+
+    /// Review Finding 4: the live row's `takenAt` is the store file's mtime,
+    /// not a real snapshot stamp, and under WAL journaling that can trail the
+    /// store's actual last write — showing it invites restoring the wrong
+    /// copy. The live row must omit the date and show counts only, with or
+    /// without a readable `content`.
+    func testDisplayDetailLiveRowOmitsDateRegardlessOfContent() {
+        let withContent = labelCandidate(
+            kind: .live,
+            takenAt: Date(timeIntervalSince1970: 1_700_000_000),
+            content: StoreContent(spaces: 3, services: 10, links: 10, spaceNames: [], serviceLabels: [])
+        )
+        XCTAssertEqual(withContent.displayDetail, "3 spaces, 10 services")
+
+        let unreadable = labelCandidate(
+            kind: .live,
+            takenAt: Date(timeIntervalSince1970: 1_700_000_000),
+            content: nil
+        )
+        XCTAssertEqual(unreadable.displayDetail, "can't be read")
+    }
+
 }

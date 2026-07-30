@@ -242,7 +242,19 @@ final class AppState {
     /// On-disk location of the persistent store that failed to open. Lets the
     /// UI offer a "Reveal in Finder" action so the user can back up or remove
     /// the file themselves — we never delete it for them.
+    ///
+    /// NOT the general-purpose "where is the store" accessor: this is the
+    /// *directory*, not the file, and it is set only on the `.inMemoryFallback`
+    /// path below — it stays nil after `.openedClean`. `refreshStoreCandidates`
+    /// needs the store's file path unconditionally, which is what `storeURL`
+    /// (just below) is for.
     private(set) var storeFileURL: URL?
+
+    /// The live store's full file path, in every launch outcome — unlike
+    /// `storeFileURL` above. Kept so `refreshStoreCandidates` can re-read the
+    /// current store at any later time without needing `config` to still be in
+    /// scope.
+    private let storeURL: URL
 
     /// The live store's filename, used to check a chosen backup belongs to this
     /// store. Both debug and release currently name the file "default.store" —
@@ -321,6 +333,7 @@ final class AppState {
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         #endif
         self.storeFileName = config.url.lastPathComponent
+        self.storeURL = config.url
 
         // A restore the user picked last session, applied before anything opens
         // the store.
@@ -1842,6 +1855,15 @@ final class AppState {
         defaults.set(StoreInventory.encodeRecord(content), forKey: Self.contentRecordKey)
     }
 
+    /// The live store's content right now, accounting for the in-memory
+    /// fallback: `liveStoreContent()` alone would report the throwaway
+    /// container's shape, not what actually sits on disk. Shared by
+    /// `evaluateStoreRecovery` (at launch) and `refreshStoreCandidates` (any
+    /// time after), so the fallback-aware rule can't drift between the two.
+    private func currentLiveContent() -> StoreContent? {
+        isStoreInMemoryFallback ? StoreInventory.readContent(at: storeURL) : liveStoreContent()
+    }
+
     /// Works out whether to offer a restore and prepares the picker's contents.
     ///
     /// While `isStoreInMemoryFallback` is true, `liveStoreContent()` reflects
@@ -1852,7 +1874,7 @@ final class AppState {
     /// actual file instead in that case; an unreadable result is passed
     /// through as unknown (nil), never substituted with zero.
     func evaluateStoreRecovery(storeURL: URL, defaults: UserDefaults = .standard) {
-        let live = isStoreInMemoryFallback ? StoreInventory.readContent(at: storeURL) : liveStoreContent()
+        let live = currentLiveContent()
         let candidates = StoreInventory.candidates(for: storeURL, liveContent: live)
         let best = StoreInventory.best(among: candidates)
         let declined = Set(defaults.stringArray(forKey: Self.declinedRestoresKey) ?? [])
@@ -1872,6 +1894,24 @@ final class AppState {
             // support already watches closely.
             AppLogger.dataStore.notice("Offering a store restore (\(String(describing: offer))); candidates=\(candidates.count)")
         }
+    }
+
+    /// Re-reads the candidates so the sheet never shows launch-time counts.
+    /// `evaluateStoreRecovery` runs once, at the end of `init`; the Settings
+    /// entry point can open the picker hours later, after the live store has
+    /// changed, so its "Your data now" row would otherwise still show what the
+    /// store held at launch — the wrong-comparison mistake this feature exists
+    /// to prevent. Call before reading `storeCandidates`/`preselectedCandidate`.
+    ///
+    /// Deliberately does NOT touch `storeRecoveryOffer`: the banner reflects
+    /// what was true at launch, and recomputing the offer here could raise or
+    /// clear a banner behind the sheet the user did not ask this call to
+    /// change. Decline bookkeeping is untouched for the same reason.
+    func refreshStoreCandidates() {
+        let live = currentLiveContent()
+        let candidates = StoreInventory.candidates(for: storeURL, liveContent: live)
+        storeCandidates = candidates
+        preselectedCandidate = StoreInventory.preselection(among: candidates, liveContent: live)
     }
 
     /// Remembers that the user said no to this pairing, and drops the offer.

@@ -259,6 +259,66 @@ struct StoreCandidate: Hashable, Sendable, Identifiable {
     }
 }
 
+/// The picker row's two display strings. Hoisted out of `StoreRecoveryView` so
+/// the label matrix — five kinds, singular/plural counts, the unknown-date and
+/// nil-content fallbacks, the damaged marker, and the live row's own rule — is
+/// unit-testable without a running `AppState` or any SwiftUI machinery.
+extension StoreCandidate {
+    /// A one-line label naming which store this candidate is. Exhaustive over
+    /// `Kind`, deliberately with no `default:` case: a new backup family added
+    /// there must get its own label rather than silently falling through to
+    /// the wrong text.
+    var displayTitle: String {
+        switch kind {
+        case .live: return "Your data now"
+        case .snapshot(let version): return version.map { "Backup from before \($0)" } ?? "Backup from before an update"
+        case .prerestore: return "Backup from an earlier restore"
+        case .corrupt: return "Backup from before a repair"
+        case .prepick: return "Your data before you restored a backup"
+        }
+    }
+
+    /// The row's secondary line: what the store holds, plus when it was taken
+    /// for a backup.
+    ///
+    /// The live row omits the date entirely. `takenAt` for `.live` is the main
+    /// `.store` file's modification time (see `StoreInventory.candidates`),
+    /// and under WAL journaling that timestamp lags the real last write — the
+    /// live row could show an older date than a backup while actually holding
+    /// the newer data, which argues for restoring the wrong copy. The `Current`
+    /// capsule already marks which row this is, so nothing is lost by leaving
+    /// the date off.
+    var displayDetail: String {
+        let counts: String
+        if let content {
+            let spaces = content.spaces == 1 ? "1 space" : "\(content.spaces) spaces"
+            let services = content.services == 1 ? "1 service" : "\(content.services) services"
+            // `content == nil` is the only unreadable case (see below), so a
+            // damaged-but-readable file is the only place this marker applies;
+            // it can never double up with the nil-content "can't be read" text.
+            let damaged = isDamaged ? " — damaged" : ""
+            counts = "\(spaces), \(services)\(damaged)"
+        } else {
+            counts = "can't be read"
+        }
+        guard kind != .live else { return counts }
+        return "\(dateDescription) — \(counts)"
+    }
+
+    private var dateDescription: String {
+        guard let takenAt else { return "date unknown" }
+        return Self.dateFormatter.string(from: takenAt)
+    }
+
+    /// One formatter, not one per row per redraw.
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+}
+
 extension StoreInventory {
     /// The four backup families, all of which are copies of the user's own
     /// store and so all worth offering. An enum, not bare strings, so the

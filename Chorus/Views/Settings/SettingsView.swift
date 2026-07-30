@@ -57,6 +57,17 @@ struct GeneralSettingsView: View {
     @Query private var preferences: [AppPreferences]
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
+    // Settings is its own scene (`Settings { … }` in ChorusApp), separate from
+    // `Window("Chorus", id: "main")`. The recovery sheet is only attached to
+    // the main window, so setting `isShowingStoreRecovery` from here alone
+    // would attach it behind Settings — or, if the user had closed the main
+    // window (the MenuBarExtra keeps the app alive), attach it to nothing at
+    // all, latching the flag `true` with no sheet visible. `openWindow(id:)`
+    // on a `Window` (a singleton scene, not a `WindowGroup`) brings that
+    // existing window to the front rather than creating a duplicate — or
+    // reopens it if it was closed — per SwiftUI's `OpenWindowAction` docs:
+    // "If the targeted scene is a Window, the system orders it to the front."
+    @Environment(\.openWindow) private var openWindow
 
     private let presenceManager = AppPresenceManager()
 
@@ -181,6 +192,7 @@ struct GeneralSettingsView: View {
                     }
                     Spacer()
                     Button("Restore from a backup…") {
+                        openWindow(id: "main")
                         appState.isShowingStoreRecovery = true
                     }
                 }
