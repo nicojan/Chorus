@@ -119,20 +119,71 @@ enum StoreInventory {
 
     // MARK: - SQLite helpers
 
-    /// Opens `url` read-only with a busy timeout, or nil if that fails. Never
-    /// URI-style, never `immutable=1`: a `.bak` can sit beside a `-wal` holding
-    /// committed rows, and an immutable open ignores the WAL. Closes any handle
-    /// SQLite allocates even when `sqlite3_open_v2` itself reports failure;
-    /// callers own closing the handle they get back on success.
-    private static func openReadOnly(_ url: URL) -> OpaquePointer? {
+    /// Opens `url` read-only with a busy timeout, or nil if that fails. Not
+    /// `private`: `StoreRepair.spaceCount` shares this opener rather than
+    /// keeping its own copy, so the fallback below only has to be written once.
+    ///
+    /// Tries a plain read-only open first — never URI-style, never
+    /// `immutable=1` on this path: a `.bak` can sit beside a `-wal` holding
+    /// committed-but-uncheckpointed rows, and an immutable open ignores the
+    /// WAL, which would silently under-count it.
+    ///
+    /// A WAL-mode SQLite file's header records that fact permanently, even
+    /// after its `-wal`/`-shm` siblings are gone (a clean close checkpoints
+    /// and can remove them, and `StoreRepair.snapshot` only copies the
+    /// suffixes that exist at backup time). On at least this SQLite build,
+    /// such a file's plain `SQLITE_OPEN_READONLY` connection opens without
+    /// error (`sqlite3_open_v2` is lazy) but then fails with `SQLITE_CANTOPEN`
+    /// on the *first real read* — a read-only connection can't create the
+    /// `-shm` it needs. `probeOpens` forces that first read immediately, so
+    /// this can be detected here rather than surfacing later as a mysterious
+    /// nil count. If the probe fails AND no `-wal` sibling exists, retry once
+    /// with `immutable=1`. That retry can never hide committed rows in this
+    /// specific case, because there is no `-wal` for it to ignore — the
+    /// "no -wal" check is what keeps this fallback from ever applying to the
+    /// case the plain-open rule above exists to protect.
+    static func openReadOnly(_ url: URL) -> OpaquePointer? {
+        if let db = rawOpen(url.path, flags: SQLITE_OPEN_READONLY) {
+            if probeOpens(db) { return db }
+            sqlite3_close(db)
+        }
+
+        guard !FileManager.default.fileExists(atPath: url.path + "-wal") else { return nil }
+
+        guard let fallback = rawOpen("file:\(url.path)?immutable=1", flags: SQLITE_OPEN_READONLY | SQLITE_OPEN_URI) else {
+            return nil
+        }
+        guard probeOpens(fallback) else {
+            sqlite3_close(fallback)
+            return nil
+        }
+        return fallback
+    }
+
+    /// Opens `path` with `flags` and a busy timeout, or nil if `sqlite3_open_v2`
+    /// itself reports failure. Closes any handle SQLite allocates even on
+    /// failure; callers own closing the handle they get back on success.
+    private static func rawOpen(_ path: String, flags: Int32) -> OpaquePointer? {
         var db: OpaquePointer?
-        guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
-              let db else {
+        guard sqlite3_open_v2(path, &db, flags, nil) == SQLITE_OK, let opened = db else {
             if let db { sqlite3_close(db) }
             return nil
         }
-        sqlite3_busy_timeout(db, 3000)
-        return db
+        sqlite3_busy_timeout(opened, 3000)
+        return opened
+    }
+
+    /// Forces the lazy `sqlite3_open_v2` to actually touch the file, by
+    /// reading its first page. `sqlite3_open_v2` alone can report success on a
+    /// file it will fail to open once a query actually runs, which is exactly
+    /// the WAL-header/no-`-shm` case this function exists to catch early.
+    private static func probeOpens(_ db: OpaquePointer) -> Bool {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT count(*) FROM sqlite_master;", -1, &stmt, nil) == SQLITE_OK else {
+            return false
+        }
+        defer { sqlite3_finalize(stmt) }
+        return sqlite3_step(stmt) == SQLITE_ROW
     }
 
     private static func scalarInt(_ db: OpaquePointer, _ sql: String) -> Int? {

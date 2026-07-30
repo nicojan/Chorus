@@ -582,6 +582,20 @@ final class ChorusTests: XCTestCase {
         try ctx.save()
     }
 
+    /// Copies the store triple — main file plus `-wal`/`-shm` when present —
+    /// from `source` to `destination`, mirroring what `StoreRepair.snapshot`
+    /// does in production. A prerestore/corrupt fixture built from a bare
+    /// single-file copy would miss a live store's `-wal` sibling and so
+    /// misrepresent what a real backup looks like.
+    private static func copyStoreTriple(from source: URL, to destination: URL) throws {
+        let fm = FileManager.default
+        for suffix in ["", "-wal", "-shm"] {
+            let src = URL(fileURLWithPath: source.path + suffix)
+            guard fm.fileExists(atPath: src.path) else { continue }
+            try fm.copyItem(at: src, to: URL(fileURLWithPath: destination.path + suffix))
+        }
+    }
+
     /// `newestRestorableSnapshot` must skip empty and corrupt snapshots and
     /// return the newest one that actually holds data.
     func testNewestRestorableSnapshotSkipsEmptyAndCorruptPicksNewestGood() throws {
@@ -2614,6 +2628,48 @@ final class ChorusTests: XCTestCase {
     @discardableResult
     private static func execSQL(_ db: OpaquePointer, _ sql: String) -> Int32 {
         sqlite3_exec(db, sql, nil, nil, nil)
+    }
+
+    // MARK: - Candidate enumeration
+
+    /// A backup whose file header still says WAL-mode but whose `-wal` sibling
+    /// is gone (exactly what `StoreRepair.snapshot` produces when it copies a
+    /// store after a clean checkpoint, since it only copies suffixes that
+    /// exist) must still be readable. A bare `SQLITE_OPEN_READONLY` open of
+    /// such a file fails with SQLITE_CANTOPEN on this SQLite build, because a
+    /// read-only connection can't create the `-shm` it needs — the exact bug
+    /// this task found, reachable in production through both readers that
+    /// share `StoreInventory.openReadOnly`. Regression guard: this must fail
+    /// if the fallback is removed.
+    func testMainFileOnlyWALBackupIsReadableThroughBothReaders() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-walonly-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        try makePopulatedStore(at: storeURL, spaces: 3)
+        // Strip any `-wal`/`-shm` siblings explicitly, so the fixture is a
+        // WAL-mode-headed main file with no siblings regardless of exactly
+        // when SQLite's own checkpoint-on-close removed them.
+        for suffix in ["-wal", "-shm"] {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: storeURL.path + suffix))
+        }
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: storeURL.path + "-wal"),
+            "precondition: no -wal sibling present"
+        )
+
+        let content = try XCTUnwrap(
+            StoreInventory.readContent(at: storeURL),
+            "a main-file-only WAL-mode backup must still be readable"
+        )
+        XCTAssertEqual(content.spaces, 3)
+
+        XCTAssertEqual(
+            StoreRepair.spaceCount(at: storeURL), 3,
+            "spaceCount must share the same fallback as StoreInventory.readContent"
+        )
     }
 
 }

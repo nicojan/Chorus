@@ -105,16 +105,13 @@ enum StoreRepair {
     /// empty after opening — the signature of a silent migration failure. The
     /// caller then auto-restores the newest usable snapshot rather than letting
     /// the seed overwrite recoverable data. Reads only; never writes.
+    ///
+    /// Opens via `StoreInventory.openReadOnly` rather than its own connection,
+    /// so the two share one fallback for a WAL-mode file whose `-wal` sibling
+    /// is gone (see that function's doc) instead of carrying two copies of it.
     static func spaceCount(at url: URL) -> Int? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
-              let db else {
-            if let db { sqlite3_close(db) }
-            return nil
-        }
-        sqlite3_busy_timeout(db, 3000)
+        guard let db = StoreInventory.openReadOnly(url) else { return nil }
         defer { sqlite3_close(db) }
 
         // Only count when the table is actually there; a missing table means an
