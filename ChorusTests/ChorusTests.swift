@@ -2970,4 +2970,65 @@ final class ChorusTests: XCTestCase {
         XCTAssertNil(StoreInventory.decodeRecord(""))
     }
 
+    /// The pending filename comes from UserDefaults, which is external input, so
+    /// it must be validated before any file operation uses it.
+    func testValidatedRestoreNameRejectsAnythingUnexpected() {
+        let store = "default.store"
+        XCTAssertEqual(
+            StoreRepair.validatedRestoreName("default.store.snapshot-1700000000-1.5.11+20.bak", storeName: store),
+            "default.store.snapshot-1700000000-1.5.11+20.bak"
+        )
+        XCTAssertEqual(
+            StoreRepair.validatedRestoreName("default.store.prerestore-1700000000.bak", storeName: store),
+            "default.store.prerestore-1700000000.bak"
+        )
+        XCTAssertNil(StoreRepair.validatedRestoreName("../../etc/passwd", storeName: store), "no traversal")
+        XCTAssertNil(StoreRepair.validatedRestoreName("/tmp/default.store.snapshot-1.bak", storeName: store), "no absolute paths")
+        XCTAssertNil(StoreRepair.validatedRestoreName("default.store.snapshot-1/../x.bak", storeName: store), "no separators")
+        XCTAssertNil(StoreRepair.validatedRestoreName("default.store", storeName: store), "the live store is not a backup")
+        XCTAssertNil(StoreRepair.validatedRestoreName("other.store.snapshot-1.bak", storeName: store), "must belong to this store")
+        XCTAssertNil(StoreRepair.validatedRestoreName("default.store.snapshot-1.txt", storeName: store), "must be a .bak")
+        XCTAssertNil(StoreRepair.validatedRestoreName("", storeName: store))
+    }
+
+    /// Applying a pending restore must copy the chosen backup into place, always
+    /// set the current store aside first, and clear the key so a crash cannot
+    /// leave it looping.
+    func testApplyPendingRestoreCopiesAndAlwaysBacksUp() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-pending-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let suite = "chorus-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        try makePopulatedStore(at: storeURL, spaces: 4)
+        StoreRepair.snapshot(at: storeURL, stamp: "1700000000-1.0.0")
+        _ = try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
+        try Self.insertSpaces(storeURL, count: 1)
+        XCTAssertEqual(StoreRepair.spaceCount(at: storeURL), 1, "precondition: live store thinned out")
+
+        defaults.set("store.sqlite.snapshot-1700000000-1.0.0.bak", forKey: StoreRepair.pendingRestoreKey)
+        XCTAssertTrue(StoreRepair.applyPendingRestore(at: storeURL, defaults: defaults))
+
+        XCTAssertEqual(StoreRepair.spaceCount(at: storeURL), 4, "the chosen backup must be in place")
+        XCTAssertNil(defaults.string(forKey: StoreRepair.pendingRestoreKey), "the key must be cleared")
+
+        let asideCount = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .filter { $0.hasPrefix("store.sqlite.prerestore-") && $0.hasSuffix(".bak") }
+            .count
+        XCTAssertEqual(asideCount, 1, "the thinned store must have been set aside")
+
+        // A second apply with no key set is a no-op.
+        XCTAssertFalse(StoreRepair.applyPendingRestore(at: storeURL, defaults: defaults))
+
+        // A rejected filename must clear the key and change nothing.
+        defaults.set("../escape.bak", forKey: StoreRepair.pendingRestoreKey)
+        XCTAssertFalse(StoreRepair.applyPendingRestore(at: storeURL, defaults: defaults))
+        XCTAssertNil(defaults.string(forKey: StoreRepair.pendingRestoreKey))
+        XCTAssertEqual(StoreRepair.spaceCount(at: storeURL), 4, "a rejected name must not touch the store")
+    }
+
 }

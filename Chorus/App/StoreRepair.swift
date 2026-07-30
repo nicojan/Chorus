@@ -346,6 +346,95 @@ enum StoreRepair {
         }
     }
 
+    // MARK: - User-chosen restore
+
+    /// Where the user's pick waits for the next launch. The restore itself runs
+    /// before the container opens, because swapping SQLite files under a live
+    /// container faults deleted models and traps.
+    static let pendingRestoreKey = "chorus.pendingRestore"
+
+    /// Validates a pending restore filename. The value comes from UserDefaults,
+    /// which is outside the app's control, so it is treated as untrusted: it must
+    /// be a plain filename (no separators, no traversal) belonging to this store
+    /// and naming one of the three backup families.
+    static func validatedRestoreName(_ name: String, storeName: String) -> String? {
+        guard !name.isEmpty,
+              !name.contains("/"),
+              !name.contains(".."),
+              name.hasSuffix(".bak") else { return nil }
+        let families = [snapshotInfix, ".prerestore-", ".corrupt-"]
+        guard families.contains(where: { name.hasPrefix(storeName + $0) }) else { return nil }
+        return name
+    }
+
+    /// Puts the user's chosen backup in place, if one is waiting. Returns whether
+    /// a restore actually happened.
+    ///
+    /// The key is cleared before any file work, so a crash part-way through
+    /// cannot make the next launch retry forever. The current store is always
+    /// copied aside first, with a fresh stamp every time: unlike
+    /// `restoreFromSnapshot`, which keeps one copy for an automatic retry loop,
+    /// each deliberate restore is a separate decision and deserves its own way
+    /// back. If the result cannot be read, the copy is put back.
+    @discardableResult
+    static func applyPendingRestore(
+        at storeURL: URL,
+        defaults: UserDefaults = .standard
+    ) -> Bool {
+        guard let raw = defaults.string(forKey: pendingRestoreKey) else { return false }
+        defaults.removeObject(forKey: pendingRestoreKey)
+
+        guard let name = validatedRestoreName(raw, storeName: storeURL.lastPathComponent) else {
+            AppLogger.dataStore.error("Pending restore name rejected; ignoring it")
+            return false
+        }
+        let dir = storeURL.deletingLastPathComponent()
+        let source = dir.appending(path: name)
+        guard FileManager.default.fileExists(atPath: source.path) else {
+            AppLogger.dataStore.error("Pending restore source is gone; ignoring it")
+            return false
+        }
+
+        let stamp = String(Int(Date().timeIntervalSince1970))
+        let asidePrefix = storeURL.path + ".prerestore-\(stamp).bak"
+        copyTriple(from: storeURL.path, to: asidePrefix)
+
+        let fm = FileManager.default
+        for suffix in ["", "-wal", "-shm"] {
+            try? fm.removeItem(at: URL(fileURLWithPath: storeURL.path + suffix))
+            let src = URL(fileURLWithPath: source.path + suffix)
+            guard fm.fileExists(atPath: src.path) else { continue }
+            do {
+                try fm.copyItem(at: src, to: URL(fileURLWithPath: storeURL.path + suffix))
+            } catch {
+                AppLogger.dataStore.error("Restore copy of \(src.lastPathComponent) failed: \(error.localizedDescription)")
+            }
+        }
+
+        guard StoreInventory.readContent(at: storeURL) != nil else {
+            AppLogger.dataStore.error("Chosen restore left an unreadable store; putting the previous one back")
+            copyTriple(from: asidePrefix, to: storeURL.path)
+            return false
+        }
+        AppLogger.dataStore.info("Restored the store the user chose: \(name)")
+        return true
+    }
+
+    /// Copies a store triple, overwriting the destination. Used for both setting
+    /// the current store aside and putting it back.
+    private static func copyTriple(from sourcePath: String, to destinationPath: String) {
+        let fm = FileManager.default
+        for suffix in ["", "-wal", "-shm"] {
+            let src = URL(fileURLWithPath: sourcePath + suffix)
+            guard fm.fileExists(atPath: src.path) else { continue }
+            let dst = URL(fileURLWithPath: destinationPath + suffix)
+            try? fm.removeItem(at: dst)
+            do { try fm.copyItem(at: src, to: dst) } catch {
+                AppLogger.dataStore.error("Copy of \(src.lastPathComponent) failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     private static func schemaMatches(_ db: OpaquePointer) -> Bool {
