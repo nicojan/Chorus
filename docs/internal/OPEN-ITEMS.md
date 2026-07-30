@@ -1,5 +1,17 @@
 # Open items
 
+## In progress: the store recovery picker (branch `worktree-store-recovery-picker`)
+
+Not merged, not released. Design: `docs/superpowers/specs/2026-07-29-store-recovery-picker-design.md`. Plan: `docs/superpowers/plans/2026-07-29-store-recovery-picker.md`. Task-by-task progress, rulings, and deferred findings: `.superpowers/sdd/2026-07-29-store-recovery-picker/progress.md` (git-ignored scratch, so read it before deleting the branch).
+
+What it does: reads the live store and every backup Chorus keeps, works out which holds the most, and offers to restore it. Automatic banner when the live store is below a recorded content count or holds nothing of the user's; a "Restore from a backup" item in Settings at any time. The user picks; the restore applies at the next launch, before the store opens, and the current store is copied aside first. 1.5.14's silent auto-restore stays as-is for the unambiguous case.
+
+Tasks 1 to 6 of 11 are done (150 tests, up from 136): the store-content value type and default-seed fingerprint, a raw-SQLite reader, candidate enumeration across all three backup families, ranking and preselection, the offer rule, and the launch-time restore. Remaining: the prune fix, the `AppState` wiring, relaunch, the picker UI, and docs.
+
+**A bug in shipped code turned up on the way and is fixed on this branch.** A WAL-mode store copied without its `-wal`/`-shm` siblings cannot be opened read-only at all (`SQLITE_CANTOPEN`), and that state is reachable in production: `StoreRepair.snapshot` copies only the suffixes that exist, and SQLite deletes `-wal`/`-shm` on a clean close, so a snapshot taken after a clean shutdown is main-file-only. `spaceCount` and `snapshotHasUsableData` both used a plain read-only open, so `newestRestorableSnapshot` could judge exactly those snapshots unusable — meaning 1.5.15's auto-restore can fail to see a perfectly good backup. All three readers now share one opener that retries with `immutable=1` only when no `-wal` sibling exists, which is the one case where nothing can be hidden. Since this changes released recovery behavior, it wants a real-app pass before shipping, not just green tests.
+
+**One open behavior question for Nico.** When the live store is unreadable *and* there is no recorded count, the offer rule currently treats unknown as "nothing to lose" and offers anyway. The outcome is a banner the user can decline, never an automatic write, so the direction is safe, and the behavior is pinned by an assertion. The alternative is to stay silent on a store Chorus could not assess. Undecided; changing it is one guard plus flipping that assertion.
+
 ## Current status — through 1.5.15 (2026-07-29)
 
 Everything below has shipped. **Chorus 1.5.15 is the current release.** It opens the store through an explicit versioned schema and migration plan, so an older store migrates through named, tested stages instead of leaving SwiftData to infer the mapping at open time. Inference was the cause of the data loss 1.5.14 was built to catch. If the versioned plan cannot open a store, Chorus falls back to inference, so no update is worse off than before. The safety net stays. See `docs/internal/FOLLOWUP-versioned-schema.md` and `docs/superpowers/specs/2026-07-24-versioned-schema-migration-plan.md`.

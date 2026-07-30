@@ -110,10 +110,24 @@ Run from the repo root. Replace `X.Y.Z` with the new version.
    xcrun stapler staple build/Chorus-X.Y.Z.dmg
    ```
 
-6. **Publish the DMG as a GitHub Release** (the DMG host):
+6. **Push `main` first, then publish the DMG as a GitHub Release** (the DMG host):
    ```sh
+   git push origin main                      # do this BEFORE the next command
    gh release create vX.Y.Z build/Chorus-X.Y.Z.dmg \
      --repo nicojan/Chorus --title "Chorus X.Y.Z" --notes "Release notes…"
+   ```
+   **The push has to come first.** `gh release create` tags the *remote*
+   default-branch HEAD, so with the version bump still sitting unpushed the tag
+   lands on the previous release's commit and `vX.Y.Z` then points at source that
+   is not what shipped. This has caught us twice (1.5.11 and 1.5.15).
+
+   To repair it after the fact, move the tag to the bump commit and force-push
+   just the tag; the release asset stays attached. This repo's git config rejects
+   a lightweight `git tag -f`, so the tag must be annotated:
+   ```sh
+   git tag -f -a vX.Y.Z <bump-commit-sha> -m "Chorus X.Y.Z"
+   git push origin vX.Y.Z --force
+   git show vX.Y.Z:project.yml | grep -E "MARKETING_VERSION|CURRENT_PROJECT_VERSION"
    ```
 
 7. **Sign the DMG and add an appcast item by hand.** `generate_appcast` works but
