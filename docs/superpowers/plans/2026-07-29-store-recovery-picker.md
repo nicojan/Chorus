@@ -1247,7 +1247,16 @@ puts the previous store back if the result cannot be read."
 
 **Interfaces:**
 - Consumes: `StoreInventory.readContent`, `StoreContent.looksLikeUntouchedSeed`.
-- Produces: `StoreRepair.snapshotHoldsUsersData(at: URL) -> Bool`.
+- Produces: `StoreRepair.snapshotHoldsUsersData(at: URL) -> Bool`, `StoreRepair.prunePickAsides(at: URL, keeping: Int)`.
+
+**Amendment (2026-07-29, Task 6 review):** Task 6's review found that the user-chosen
+restore's way-back copy was written under the `.prerestore-` prefix, which
+`restoreFromSnapshot` reads as a sentinel for "an aside already exists, skip taking
+one". The ruling moved the deliberate restore's aside to its own `.prepick-` family.
+That family has no reaper — `pruneSnapshots` matches `snapshotInfix` only, and it runs
+only inside `backupBeforeMigrationIfNeeded`, once per version bump — so one full store
+triple accumulates per user-chosen restore, forever. Bounding it is this task's job,
+added as Step 4b below.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1370,6 +1379,96 @@ xcodebuild test -project Chorus.xcodeproj -scheme Chorus -destination 'platform=
 ```
 Expected: PASS.
 
+- [ ] **Step 4b: Bound the `.prepick-` family (plan amendment — see the note above)**
+
+Task 6 gave the user-chosen restore its own aside family. Nothing reaps it. Write this test first:
+
+```swift
+    /// Each user-chosen restore writes a full store triple aside under
+    /// `.prepick-`, and no existing reaper matches that family, so without this
+    /// the directory grows by one copy of the whole store per restore, forever.
+    func testPrunePickAsidesKeepsOnlyTheNewestFew() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-prune-pick-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try makePopulatedStore(at: storeURL, spaces: 2)
+
+        // Five asides, oldest first. Pruning is filename bookkeeping — it never
+        // reads a candidate's contents — so stand-in bytes are the honest
+        // fixture here, and they keep the test fast.
+        let stamps = ["1700000010", "1700000020", "1700000030", "1700000040", "1700000050"]
+        for stamp in stamps {
+            for suffix in ["", "-wal", "-shm"] {
+                let path = storeURL.path + ".prepick-\(stamp).bak" + suffix
+                try Data("aside \(stamp)\(suffix)".utf8).write(to: URL(fileURLWithPath: path))
+            }
+        }
+
+        StoreRepair.prunePickAsides(at: storeURL, keeping: 3)
+
+        let left = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        let primaries = left.filter { $0.hasPrefix("store.sqlite.prepick-") && $0.hasSuffix(".bak") }.sorted()
+        XCTAssertEqual(
+            primaries,
+            ["store.sqlite.prepick-1700000030.bak",
+             "store.sqlite.prepick-1700000040.bak",
+             "store.sqlite.prepick-1700000050.bak"],
+            "the three newest asides must survive, got \(primaries)"
+        )
+        for stamp in ["1700000010", "1700000020"] {
+            for suffix in ["", "-wal", "-shm"] {
+                XCTAssertFalse(
+                    left.contains("store.sqlite.prepick-\(stamp).bak" + suffix),
+                    "a pruned aside must take its whole triple with it, \(stamp)\(suffix) survived"
+                )
+            }
+        }
+        XCTAssertTrue(left.contains("store.sqlite"), "pruning must never touch the live store")
+    }
+```
+
+Run it; expect a build failure (no member `prunePickAsides`). Then implement.
+
+If Task 6's fix left `".prepick-"` as a bare literal, introduce `static let pickAsideInfix = ".prepick-"` beside `snapshotInfix` and replace every literal with it — including the one in `validatedRestoreName`'s `families` and, if it reads well there, `StoreInventory.backupInfixes`. The stamp ordering already exists inline in `pruneSnapshots`; extract it rather than writing a second copy:
+
+```swift
+    /// Backup primaries for one family, newest first by numeric stamp. A plain
+    /// lexical sort would misorder a differently-formatted stamp.
+    private static func primariesNewestFirst(in dir: URL, prefix: String) -> [String] {
+        guard let all = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return [] }
+        return all
+            .filter { $0.hasPrefix(prefix) && $0.hasSuffix(".bak") }
+            .sorted { stampValue($0, prefix: prefix) > stampValue($1, prefix: prefix) }
+    }
+```
+
+Match `pruneSnapshots`' existing stamp-parsing exactly — reuse whatever it already does to turn a filename into a sortable number rather than inventing a second parser, and rewrite `pruneSnapshots` to call this helper so there is one ordering in the file, not two.
+
+```swift
+    /// The user-chosen restore's way-back copies. Each deliberate restore writes one
+    /// full triple, and no other reaper matches the family, so keep the newest few
+    /// and delete the rest.
+    ///
+    /// Recency alone is the right rule here, unlike `pruneSnapshots`: every aside is
+    /// by definition the store as it stood immediately before a restore the user
+    /// asked for, so there is no seed-shaped impostor to screen out.
+    static func prunePickAsides(at url: URL, keeping keep: Int) {
+        let dir = url.deletingLastPathComponent()
+        let primaries = primariesNewestFirst(in: dir, prefix: url.lastPathComponent + pickAsideInfix)
+        for name in primaries.dropFirst(keep) {
+            for suffix in ["", "-wal", "-shm"] {
+                try? FileManager.default.removeItem(at: dir.appending(path: name + suffix))
+            }
+        }
+    }
+```
+
+Call it once at the end of `applyPendingRestore`, on **both** the success and the revert path — anywhere an aside was written — with `keeping: 3`, matching the snapshot keep count.
+
+Do **not** delete the aside outright on the revert path, even though it is then a copy of a store that was put back unchanged and looks redundant. If the revert itself only partly succeeded, that aside is the only intact copy left. Let `keeping: 3` bound it instead. Say so in a comment so a later reader does not "tidy" it away.
+
 - [ ] **Step 5: Run the whole suite**
 
 Run: `xcodebuild test -project Chorus.xcodeproj -scheme Chorus -destination 'platform=macOS'`
@@ -1384,6 +1483,17 @@ git commit -m "fix: pruning kept a seeded snapshot over the user's real backup
 snapshotHasUsableData only asks whether a store has a space, and the default
 seed has two, so a snapshot taken after a loss counted as worth protecting
 while the backup holding the user's data aged past the keep window."
+```
+
+Commit Step 4b separately, so the seed-prune fix and the new family's reaper stay legible apart:
+
+```sh
+git add Chorus/App/StoreRepair.swift ChorusTests/ChorusTests.swift
+git commit -m "fix: bound the user-chosen restore's way-back copies
+
+Each deliberate restore sets the whole store triple aside under .prepick- and
+no existing reaper matched that family, so the copies accumulated without
+limit. Keeps the newest three, by the same stamp ordering the snapshots use."
 ```
 
 ---
