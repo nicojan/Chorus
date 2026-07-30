@@ -2886,6 +2886,40 @@ final class ChorusTests: XCTestCase {
         XCTAssertFalse(unreadable.isRestorable, "unknown content is never restorable")
     }
 
+    /// Review Finding 4: the displayed list must rank backups by completeness
+    /// (the same rule `best(among:)` uses), not by filename. A `.corrupt-`
+    /// backup — damaged by definition, so it can never be preselected — must
+    /// never sort above a `.snapshot-` holding more content just because
+    /// ".corrupt-" sorts before ".snapshot-" lexically.
+    func testCandidatesOrdersBackupsByCompletenessNotFilename() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-order-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // A fuller snapshot (5 spaces) and a thinner corrupt-family backup (1
+        // space). Alphabetically ".corrupt-" < ".snapshot-", so a filename sort
+        // would put the corrupt one first; completeness must not.
+        try makePopulatedStore(at: storeURL, spaces: 5)
+        try Self.copyStoreTriple(from: storeURL, to: dir.appendingPathComponent("store.sqlite.snapshot-1700000000-1.5.11+20.bak"))
+        _ = try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
+        try Self.insertSpaces(storeURL, count: 1)
+        try Self.copyStoreTriple(from: storeURL, to: dir.appendingPathComponent("store.sqlite.corrupt-1700000600.bak"))
+
+        let live = try XCTUnwrap(StoreInventory.readContent(at: storeURL))
+        let found = StoreInventory.candidates(for: storeURL, liveContent: live)
+
+        XCTAssertEqual(found.first?.kind, .live, "the live row must always lead regardless of ranking")
+
+        let snapshotIndex = try XCTUnwrap(found.firstIndex { $0.kind == .snapshot(version: "1.5.11+20") })
+        let corruptIndex = try XCTUnwrap(found.firstIndex { $0.kind == .corrupt })
+        XCTAssertLessThan(
+            snapshotIndex, corruptIndex,
+            "a fuller snapshot must sort above a corrupt-family backup, not below it by filename"
+        )
+    }
+
     /// A backup whose file header still says WAL-mode but whose `-wal` sibling
     /// is gone (exactly what `StoreRepair.snapshot` produces when it copies a
     /// store after a clean checkpoint, since it only copies suffixes that
@@ -3016,6 +3050,38 @@ final class ChorusTests: XCTestCase {
         XCTAssertNil(
             StoreInventory.preselection(among: [emptyBackup], liveContent: empty),
             "empty backup holds no more than empty live store and is not preselected"
+        )
+    }
+
+    /// Review Finding 6 (Tier 2): a `.corrupt` winner must not suppress
+    /// preselection outright — the next-best non-corrupt candidate should be
+    /// offered instead. Preselection only ever runs when the live store holds
+    /// nothing of the user's, which is exactly when handing back "nothing
+    /// selected" (a disabled button) is worst.
+    func testPreselectionFallsThroughPastACorruptWinnerToTheNextBest() {
+        let dir = URL(fileURLWithPath: "/tmp/preselect-fallthrough")
+        // The fullest candidate overall is corrupt, so without the fallthrough
+        // fix `best(among:)` would pick it and preselection would bail entirely.
+        let corruptWinner = StoreCandidate(
+            url: dir.appendingPathComponent("c.bak"),
+            kind: .corrupt,
+            takenAt: Date(timeIntervalSince1970: 5_000),
+            content: StoreContent(spaces: 9, services: 40, links: 40, spaceNames: [], serviceLabels: []),
+            isDamaged: false
+        )
+        let nextBest = StoreCandidate(
+            url: dir.appendingPathComponent("s.bak"),
+            kind: .snapshot(version: "1.5.11+20"),
+            takenAt: Date(timeIntervalSince1970: 1_000),
+            content: StoreContent(spaces: 4, services: 13, links: 13, spaceNames: [], serviceLabels: []),
+            isDamaged: false
+        )
+        let empty = StoreContent(spaces: 0, services: 0, links: 0, spaceNames: [], serviceLabels: [])
+
+        XCTAssertEqual(
+            StoreInventory.preselection(among: [corruptWinner, nextBest], liveContent: empty),
+            nextBest,
+            "a corrupt winner must fall through to the next-best non-corrupt candidate, not suppress preselection entirely"
         )
     }
 
@@ -3292,6 +3358,94 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(anyAsideFiles.isEmpty, "a missing source must return before any aside copy is made")
     }
 
+    /// Review Finding 1: `copyTriple`'s `Bool` return is the mechanism the fix
+    /// depends on, so it is tested directly rather than only indirectly through
+    /// `applyPendingRestore`. A real copy into an existing directory succeeds;
+    /// a destination inside a directory that does not exist cannot be written
+    /// to, so `copyItem` throws and this must report failure, not silently
+    /// swallow it the way the old `Void`-returning version did.
+    func testCopyTripleReportsSuccessAndFailure() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-copytriple-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let sourceURL = dir.appendingPathComponent("source.sqlite")
+        try "some store bytes".write(to: sourceURL, atomically: true, encoding: .utf8)
+
+        let goodDestination = dir.appendingPathComponent("dest.sqlite")
+        XCTAssertTrue(
+            StoreRepair.copyTriple(from: sourceURL.path, to: goodDestination.path, label: "test-good"),
+            "a real copy into an existing directory must report success"
+        )
+        XCTAssertEqual(try String(contentsOf: goodDestination, encoding: .utf8), "some store bytes")
+
+        let badDestination = dir.appendingPathComponent("does-not-exist").appendingPathComponent("dest.sqlite")
+        XCTAssertFalse(
+            StoreRepair.copyTriple(from: sourceURL.path, to: badDestination.path, label: "test-bad"),
+            "a destination inside a directory that doesn't exist must report failure, not silently succeed"
+        )
+    }
+
+    /// Review Finding 1, the false-success half. The apply step's `removeItem`
+    /// on the live store's own main file is made to fail here by setting the
+    /// `uchg` (immutable) flag, which blocks deletion even for the file's
+    /// owner (verified empirically on this filesystem: `FileManager
+    /// .removeItem` fails with "Operation not permitted" under it, the same
+    /// failure shape a real permissions or flag problem would produce).
+    /// `copyItem` then throws "file already exists" because the (still
+    /// present) destination was never actually removed. Before the fix,
+    /// `applyPendingRestore` only checked whether `storeURL` still read
+    /// afterward — and it did, because it was untouched — so this reported
+    /// success having changed nothing. `copyTriple`'s return value now catches
+    /// this directly.
+    func testApplyPendingRestoreReportsFailureWhenTheLiveFileResistsRemoval() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-uchg-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let suite = "chorus-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        try makePopulatedStore(at: storeURL, spaces: 2)
+        for suffix in ["-wal", "-shm"] {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: storeURL.path + suffix))
+        }
+        let before = try XCTUnwrap(StoreRepair.spaceCount(at: storeURL), "precondition: live store is readable")
+        XCTAssertEqual(before, 2)
+
+        StoreRepair.snapshot(at: storeURL, stamp: "1700002000-1.0.0")
+        let snapshotName = "store.sqlite.snapshot-1700002000-1.0.0.bak"
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: dir.appendingPathComponent(snapshotName).path),
+            "precondition: the snapshot to restore from must exist"
+        )
+
+        // Lock the live main file so the apply step's own removeItem fails.
+        XCTAssertEqual(
+            chflags(storeURL.path, UInt32(UF_IMMUTABLE)), 0,
+            "precondition: chflags uchg must succeed on this filesystem, or this test cannot exercise the bug"
+        )
+        defer { _ = chflags(storeURL.path, 0) }
+
+        defaults.set(snapshotName, forKey: StoreRepair.pendingRestoreKey)
+        let result = StoreRepair.applyPendingRestore(at: storeURL, defaults: defaults)
+
+        XCTAssertFalse(
+            result,
+            "a removeItem failure during apply must be reported as failure, not masked by a stale-but-readable store"
+        )
+        XCTAssertNil(defaults.string(forKey: StoreRepair.pendingRestoreKey), "the key must still be cleared")
+        // Reading (unlike removing or writing) is unaffected by `uchg`, so this
+        // is safe to check before the flag is cleared by the `defer` above.
+        XCTAssertEqual(
+            StoreRepair.spaceCount(at: storeURL), before,
+            "the store must still hold its original content -- the apply must not have silently done nothing while reporting success"
+        )
+    }
+
     /// End to end through AppState's own helpers: a store thinned out below its
     /// record, with a fuller backup present, must produce an offer whose
     /// preselected candidate is that backup.
@@ -3322,35 +3476,40 @@ final class ChorusTests: XCTestCase {
         )
     }
 
-    /// Pins the four independent guards `recordStoreContent` relies on, without
+    /// Pins the five independent guards `recordStoreContent` relies on, without
     /// standing up a live `AppState` (the suite deliberately never constructs
     /// one). A store that lost all its spaces but kept its services is the
     /// partial-loss shape that matters most here: it is not `isEmpty`, so only
-    /// the offer-outstanding guard stops it from being recorded over while an
-    /// offer about that very loss is still on screen.
-    func testShouldRecordContentGuardsNilEmptyFallbackAndOutstandingOffer() {
+    /// the offer-outstanding and restore-scheduled guards stop it from being
+    /// recorded over while an offer (or an already-accepted pick) about that
+    /// very loss is still live.
+    func testShouldRecordContentGuardsNilEmptyFallbackOutstandingOfferAndScheduledRestore() {
         let partialLoss = StoreContent(spaces: 0, services: 5, links: 5, spaceNames: [], serviceLabels: [])
         let empty = StoreContent(spaces: 0, services: 0, links: 0, spaceNames: [], serviceLabels: [])
 
         XCTAssertFalse(
-            AppState.shouldRecordContent(nil, offerOutstanding: false, isInMemoryFallback: false),
+            AppState.shouldRecordContent(nil, offerOutstanding: false, isInMemoryFallback: false, restoreScheduled: false),
             "unreadable (nil) content is unknown, never recorded as if it were empty"
         )
         XCTAssertFalse(
-            AppState.shouldRecordContent(empty, offerOutstanding: false, isInMemoryFallback: false),
+            AppState.shouldRecordContent(empty, offerOutstanding: false, isInMemoryFallback: false, restoreScheduled: false),
             "an empty store must never overwrite the record"
         )
         XCTAssertFalse(
-            AppState.shouldRecordContent(partialLoss, offerOutstanding: true, isInMemoryFallback: false),
+            AppState.shouldRecordContent(partialLoss, offerOutstanding: true, isInMemoryFallback: false, restoreScheduled: false),
             "a partial-loss store with an offer still outstanding must not be recorded over"
         )
         XCTAssertTrue(
-            AppState.shouldRecordContent(partialLoss, offerOutstanding: false, isInMemoryFallback: false),
+            AppState.shouldRecordContent(partialLoss, offerOutstanding: false, isInMemoryFallback: false, restoreScheduled: false),
             "the same partial-loss store, once no offer is outstanding (including right after a decline), must record normally"
         )
         XCTAssertFalse(
-            AppState.shouldRecordContent(partialLoss, offerOutstanding: false, isInMemoryFallback: true),
+            AppState.shouldRecordContent(partialLoss, offerOutstanding: false, isInMemoryFallback: true, restoreScheduled: false),
             "the in-memory-fallback container is a throwaway; its content must never be recorded"
+        )
+        XCTAssertFalse(
+            AppState.shouldRecordContent(partialLoss, offerOutstanding: false, isInMemoryFallback: false, restoreScheduled: true),
+            "review Finding 3: a restore waiting to apply at the next launch must not have the store's about-to-change shape recorded over the evidence of loss"
         )
     }
 
@@ -3530,6 +3689,23 @@ final class ChorusTests: XCTestCase {
             content: StoreContent(spaces: 2, services: 5, links: 5, spaceNames: [], serviceLabels: [])
         )
         XCTAssertEqual(candidate.displayDetail, "date unknown — 2 spaces, 5 services")
+    }
+
+    /// Review Finding 5: a backup that is empty but readable — all-zero
+    /// content — is still restorable, so its detail line must say exactly what
+    /// it holds, not something that reads like "can't be read". This string is
+    /// the only thing telling a user they are about to restore over good data
+    /// with literally nothing, and it also pins the empty-vs-unreadable
+    /// distinction: this must never collapse into the nil-content case above.
+    func testDisplayDetailZeroContentBackupReadsZeroSpacesZeroServices() {
+        let stamp = Date(timeIntervalSince1970: 1_700_000_000)
+        let when = Self.labelDateFormatter.string(from: stamp)
+        let candidate = labelCandidate(
+            kind: .snapshot(version: "1.5.11+20"),
+            takenAt: stamp,
+            content: StoreContent(spaces: 0, services: 0, links: 0, spaceNames: [], serviceLabels: [])
+        )
+        XCTAssertEqual(candidate.displayDetail, "\(when) — 0 spaces, 0 services")
     }
 
     /// An unreadable backup (`content == nil`, which the real candidate

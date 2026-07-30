@@ -262,8 +262,8 @@ final class AppState {
     /// the filename — but this is read from the actual `ModelConfiguration`
     /// rather than hardcoded, so a future change to either branch's filename
     /// can't silently drift out of sync with what `chooseStoreRestore` checks
-    /// candidates against.
-    private var storeFileName = "default.store"
+    /// candidates against. Assigned once in `init`, like `storeURL` beside it.
+    private let storeFileName: String
 
     /// Whether the store banner is a dismissible notice (an automatic recovery
     /// succeeded) rather than a standing warning (running on temporary storage).
@@ -1809,7 +1809,7 @@ final class AppState {
     /// and `static` so each guard is directly testable without standing up a
     /// live `AppState` (which the test suite deliberately never does).
     ///
-    /// Four things independently block a write:
+    /// Five things independently block a write:
     /// - `content == nil`: the store couldn't be read; unknown is never
     ///   recorded as empty.
     /// - `content.isEmpty`: writing an empty record would erase the evidence
@@ -1826,13 +1826,30 @@ final class AppState {
     ///   ever recorded either. Recording is correct again as soon as the offer
     ///   is gone, including right after the user declines it: the decline key
     ///   already suppresses that exact pairing from firing again.
+    /// - `restoreScheduled`: a restore the user just picked is waiting to apply
+    ///   at the next launch (`StoreRepair.pendingRestoreKey` is set). The store
+    ///   is about to change out from under this content, so recording its
+    ///   current shape is never worth doing — and without this guard, clearing
+    ///   `storeRecoveryOffer` on a successful pick would let a partial-loss
+    ///   store's diminished content overwrite the record before the restore
+    ///   actually applies: if that restore then failed to take effect, the
+    ///   record would agree with the diminished store, and the banner that
+    ///   depends on the mismatch would never come back. On the ordinary path
+    ///   `NSApp.terminate(nil)` never returns, so the offer is never actually
+    ///   cleared before `willTerminate` fires — this guard is what keeps that
+    ///   correct on purpose rather than by that accident, for whenever
+    ///   termination is deferred or cancelled. `applyPendingRestore` clears the
+    ///   pending key at the top of the next `init`, so the launch-time record
+    ///   write right after is unaffected.
     static func shouldRecordContent(
         _ content: StoreContent?,
         offerOutstanding: Bool,
-        isInMemoryFallback: Bool
+        isInMemoryFallback: Bool,
+        restoreScheduled: Bool
     ) -> Bool {
         guard !isInMemoryFallback else { return false }
         guard !offerOutstanding else { return false }
+        guard !restoreScheduled else { return false }
         guard let content, !content.isEmpty else { return false }
         return true
     }
@@ -1850,7 +1867,8 @@ final class AppState {
         guard Self.shouldRecordContent(
             content,
             offerOutstanding: storeRecoveryOffer != nil,
-            isInMemoryFallback: isStoreInMemoryFallback
+            isInMemoryFallback: isStoreInMemoryFallback,
+            restoreScheduled: defaults.string(forKey: StoreRepair.pendingRestoreKey) != nil
         ), let content else { return }
         defaults.set(StoreInventory.encodeRecord(content), forKey: Self.contentRecordKey)
     }

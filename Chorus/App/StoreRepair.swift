@@ -181,17 +181,14 @@ enum StoreRepair {
     /// the first that `snapshotHasUsableData` — so an empty or corrupt snapshot
     /// is skipped in favor of an older good one.
     static func newestRestorableSnapshot(for storeURL: URL) -> RestoreCandidate? {
-        let fm = FileManager.default
         let dir = storeURL.deletingLastPathComponent()
         let prefix = storeURL.lastPathComponent + snapshotInfix
-        guard let names = try? fm.contentsOfDirectory(atPath: dir.path) else { return nil }
-
-        // Primary snapshot files only (skip the -wal/-shm siblings), newest-first
-        // by the numeric stamp parsed from the name.
-        let primaries = names
-            .filter { $0.hasPrefix(prefix) && $0.hasSuffix(".bak") }
-            // Newest-first by the numeric stamp; an unparseable name sorts oldest.
-            .sorted { (stampAndVersion($0, prefix: prefix).stamp ?? .min) > (stampAndVersion($1, prefix: prefix).stamp ?? .min) }
+        // Shares `primariesNewestFirst` with `pruneSnapshots`/`prunePickAsides`
+        // rather than repeating the same filter+sort a third time; the only
+        // difference (an empty directory returning `[]` here vs. `nil` before)
+        // is unobservable, since the loop below falls through to `return nil`
+        // either way.
+        let primaries = primariesNewestFirst(in: dir, prefix: prefix)
 
         for name in primaries {
             let url = dir.appending(path: name)
@@ -340,9 +337,10 @@ enum StoreRepair {
             .sorted { (stampAndVersion($0, prefix: prefix).stamp ?? .min) > (stampAndVersion($1, prefix: prefix).stamp ?? .min) }
     }
 
-    /// Deletes all but the `keep` most recent snapshot triples for this store,
-    /// plus whichever older one still holds the user's own data (see
-    /// `primariesNewestFirst` for how the newest-first order is derived).
+    /// Deletes all but the `keep` most recent snapshot triples for this store —
+    /// except that whichever older one still holds the user's own data is
+    /// always spared, even past the `keep` window (see `primariesNewestFirst`
+    /// for how the newest-first order is derived).
     static func pruneSnapshots(at url: URL, keeping keep: Int) {
         let fm = FileManager.default
         let dir = url.deletingLastPathComponent()
@@ -423,8 +421,13 @@ enum StoreRepair {
               !name.contains("/"),
               !name.contains(".."),
               name.hasSuffix(".bak") else { return nil }
-        let families = [snapshotInfix, ".prerestore-", ".corrupt-", pickAsideInfix]
-        guard families.contains(where: { name.hasPrefix(storeName + $0) }) else { return nil }
+        // Derived from `StoreInventory.BackupFamily` rather than a hand-written
+        // literal — everything else in the family chain (`BackupFamily` → the
+        // `Kind` switch → the `displayTitle` switch) is compiler-enforced
+        // exhaustive; this used to be the one exception, so a fifth family
+        // could be enumerated and offered by the picker yet silently rejected
+        // here at the next launch.
+        guard StoreInventory.backupInfixes.contains(where: { name.hasPrefix(storeName + $0) }) else { return nil }
         return name
     }
 
@@ -446,6 +449,22 @@ enum StoreRepair {
     /// file, believe it had already backed up, and skip its own aside copy —
     /// permanently, since nothing ever prunes it. `.prepick-` keeps this
     /// restore's aside out of that sentinel's sight entirely.
+    ///
+    /// Both the aside copy and the apply are gated on their own success rather
+    /// than trusting a single read at the end: `copyTriple` reports whether
+    /// every suffix it attempted actually copied, and the aside is additionally
+    /// confirmed readable before the live triple is touched at all — a disk
+    /// full enough to fail the aside copy still lets `try? removeItem` succeed,
+    /// so without this check the next step would remove the live triple, fail
+    /// to replace it, and leave nothing behind (review Finding 1). Bailing here
+    /// is safe: the pending key is already cleared, the live store is
+    /// untouched, and the source backup is untouched.
+    ///
+    /// If the restored store then fails to migrate on a later launch,
+    /// `loadContainer`'s own auto-restore may kick in and replace it again —
+    /// that is intended, not a bug: both this pick's `.bak` source and its
+    /// `.prepick-` aside survive untouched, so nothing the user chose is ever
+    /// actually lost.
     @discardableResult
     static func applyPendingRestore(
         at storeURL: URL,
@@ -467,12 +486,16 @@ enum StoreRepair {
 
         let stamp = String(Int(Date().timeIntervalSince1970))
         let asidePrefix = storeURL.path + "\(pickAsideInfix)\(stamp).bak"
-        copyTriple(from: storeURL.path, to: asidePrefix)
-        copyTriple(from: source.path, to: storeURL.path)
+        _ = copyTriple(from: storeURL.path, to: asidePrefix, label: "setting the current store aside")
+        guard StoreInventory.readContent(at: URL(fileURLWithPath: asidePrefix)) != nil else {
+            AppLogger.dataStore.error("Could not set the current store aside; refusing to restore")
+            return false
+        }
 
-        guard StoreInventory.readContent(at: storeURL) != nil else {
+        let applied = copyTriple(from: source.path, to: storeURL.path, label: "applying the chosen restore")
+        guard applied, StoreInventory.readContent(at: storeURL) != nil else {
             AppLogger.dataStore.error("Chosen restore left an unreadable store; putting the previous one back")
-            copyTriple(from: asidePrefix, to: storeURL.path)
+            _ = copyTriple(from: asidePrefix, to: storeURL.path, label: "reverting a failed restore")
             // Do NOT delete the aside here even though the revert makes it look
             // redundant: if the revert copy itself only partly succeeded (e.g. a
             // failed `-wal`), this aside is the only intact copy of the store as
@@ -494,17 +517,34 @@ enum StoreRepair {
     /// frames onto a database they were never written for. Used for setting
     /// the current store aside, applying the chosen backup, and reverting to
     /// the aside copy if the result can't be read.
-    private static func copyTriple(from sourcePath: String, to destinationPath: String) {
+    ///
+    /// Returns whether every suffix it attempted to copy actually succeeded —
+    /// a suffix whose source doesn't exist is skipped, not counted as a
+    /// failure. `applyPendingRestore` gates each step on this rather than
+    /// trusting a later read alone to notice a partial or missing copy (review
+    /// Finding 1): a failed `removeItem` on the destination (permissions, or a
+    /// `uchg` flag) makes the following `copyItem` throw "file exists", which
+    /// this now reports as failure instead of silently doing nothing while
+    /// still reading as success. `label` is logged alongside any failure so a
+    /// failed aside, apply, and revert are distinguishable in the log (review
+    /// Finding 10) — previously all three shared one generic message.
+    @discardableResult
+    static func copyTriple(from sourcePath: String, to destinationPath: String, label: String) -> Bool {
         let fm = FileManager.default
+        var allSucceeded = true
         for suffix in ["", "-wal", "-shm"] {
             let dst = URL(fileURLWithPath: destinationPath + suffix)
             try? fm.removeItem(at: dst)
             let src = URL(fileURLWithPath: sourcePath + suffix)
             guard fm.fileExists(atPath: src.path) else { continue }
-            do { try fm.copyItem(at: src, to: dst) } catch {
-                AppLogger.dataStore.error("Copy of \(src.lastPathComponent) failed: \(error.localizedDescription)")
+            do {
+                try fm.copyItem(at: src, to: dst)
+            } catch {
+                AppLogger.dataStore.error("Copy of \(src.lastPathComponent) failed (\(label)): \(error.localizedDescription)")
+                allSucceeded = false
             }
         }
+        return allSucceeded
     }
 
     // MARK: - Helpers

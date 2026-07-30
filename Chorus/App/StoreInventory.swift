@@ -32,9 +32,10 @@ enum DefaultSeed {
 }
 
 /// What a store holds. Read from a raw SQLite file for a backup, or from the
-/// open container for the live store. Comparable so candidates can be ranked
-/// without opening anything. `Hashable` because `StoreCandidate` carries one and
-/// the picker's `List` selection binds to the candidate itself.
+/// open container for the live store. `Hashable` because `StoreCandidate`
+/// carries one and tests compare values directly; ranking is done by
+/// `holdsMore(than:)` below and by `StoreInventory.isRankedAbove(_:_:)`, not by
+/// `Comparable` conformance — this type has none.
 struct StoreContent: Hashable, Sendable {
     let spaces: Int
     let services: Int
@@ -220,8 +221,10 @@ enum StoreInventory {
 }
 
 /// One store the user could be running on: the live file, or a backup Chorus
-/// kept. `content` is nil when the file could not be read. `Hashable` so the
-/// picker's `List` can bind its selection to a candidate directly.
+/// kept. `content` is nil when the file could not be read. `Hashable` for
+/// equality in tests and set-backed lookups; the picker's `List` binds
+/// selection to `StoreCandidate.ID` (a plain `String`), not to the candidate
+/// itself — see `selectionID` in `StoreRecoveryView`.
 struct StoreCandidate: Hashable, Sendable, Identifiable {
     enum Kind: Hashable, Sendable {
         /// The store the app is running on now.
@@ -333,31 +336,34 @@ extension StoreInventory {
     }
 
     /// Filename infixes of the backup families, derived from `BackupFamily` so
-    /// there is exactly one list of them.
-    private static var backupInfixes: [String] { BackupFamily.allCases.map(\.rawValue) }
+    /// there is exactly one list of them. Not `private`: `StoreRepair
+    /// .validatedRestoreName` reuses this rather than keeping its own
+    /// hand-written literal, so a new family added to `BackupFamily` can't
+    /// silently fail to be validated.
+    static var backupInfixes: [String] { BackupFamily.allCases.map(\.rawValue) }
 
     /// Every candidate for `storeURL`: the live store (whose content the caller
-    /// supplies, since it is already open) plus each backup sibling. Unreadable
-    /// and damaged files are included so the user can see they exist; the
-    /// ranking excludes them.
+    /// supplies, since it is already open) plus each backup sibling, ordered
+    /// most-complete-first (see `isRankedAbove`). Unreadable and damaged files
+    /// are included so the user can see they exist, but sort to the bottom of
+    /// the backups; the live row always leads regardless of ranking.
     static func candidates(for storeURL: URL, liveContent: StoreContent?) -> [StoreCandidate] {
-        var result: [StoreCandidate] = [
-            StoreCandidate(
-                url: storeURL,
-                kind: .live,
-                takenAt: (try? FileManager.default.attributesOfItem(atPath: storeURL.path)[.modificationDate]) as? Date,
-                content: liveContent,
-                isDamaged: false
-            )
-        ]
+        let live = StoreCandidate(
+            url: storeURL,
+            kind: .live,
+            takenAt: (try? FileManager.default.attributesOfItem(atPath: storeURL.path)[.modificationDate]) as? Date,
+            content: liveContent,
+            isDamaged: false
+        )
 
         let dir = storeURL.deletingLastPathComponent()
         let base = storeURL.lastPathComponent
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else {
-            return result
+            return [live]
         }
 
-        for name in names.sorted() where name.hasSuffix(".bak") {
+        var backups: [StoreCandidate] = []
+        for name in names where name.hasSuffix(".bak") {
             guard let infix = backupInfixes.first(where: { name.hasPrefix(base + $0) }),
                   let family = BackupFamily(rawValue: infix) else { continue }
             let url = dir.appending(path: name)
@@ -372,7 +378,7 @@ extension StoreInventory {
             case .prepick: kind = .prepick
             }
             let content = readContent(at: url)
-            result.append(StoreCandidate(
+            backups.append(StoreCandidate(
                 url: url,
                 kind: kind,
                 takenAt: parsed.stamp.map { Date(timeIntervalSince1970: TimeInterval($0)) },
@@ -381,25 +387,51 @@ extension StoreInventory {
                 isDamaged: content == nil || !passesIntegrityCheck(at: url)
             ))
         }
-        return result
+        // Most-complete-first, the same rule the picker uses to choose a
+        // winner — not filename order, which put the always-damaged
+        // `.corrupt-` family directly under "Current" and buried the newest
+        // snapshot at the bottom (review Finding 4).
+        backups.sort(by: isRankedAbove)
+        return [live] + backups
     }
 
 }
 
 extension StoreInventory {
+    /// Whether `lhs` ranks above `rhs` for display and selection: restorable
+    /// candidates always outrank non-restorable ones (unreadable or damaged),
+    /// and among restorable candidates, more services wins, then more spaces,
+    /// then more links, then the more recent one.
+    ///
+    /// Shared by `best(among:)`, which picks the single winner, and
+    /// `candidates(for:liveContent:)`, which orders the whole displayed list —
+    /// so "more complete" means the same thing wherever a candidate is ranked,
+    /// and a damaged `.corrupt-` backup can never sort above a good
+    /// `.snapshot-` the way a plain filename sort did.
+    static func isRankedAbove(_ lhs: StoreCandidate, _ rhs: StoreCandidate) -> Bool {
+        switch (lhs.isRestorable, rhs.isRestorable) {
+        case (true, false): return true
+        case (false, true): return false
+        case (false, false): return false
+        case (true, true): break
+        }
+        // Both restorable, so both have non-nil content by definition.
+        let l = lhs.content!
+        let r = rhs.content!
+        if l.services != r.services { return l.services > r.services }
+        if l.spaces != r.spaces { return l.spaces > r.spaces }
+        if l.links != r.links { return l.links > r.links }
+        return (lhs.takenAt ?? .distantPast) > (rhs.takenAt ?? .distantPast)
+    }
+
     /// The fullest restorable candidate: most services, then most spaces, then
     /// most links, then the most recent. Excludes the live store, damaged files,
     /// and files whose content is unknown.
     static func best(among candidates: [StoreCandidate]) -> StoreCandidate? {
         candidates
             .filter(\.isRestorable)
-            .max { lhs, rhs in
-                guard let l = lhs.content, let r = rhs.content else { return false }
-                if l.services != r.services { return l.services < r.services }
-                if l.spaces != r.spaces { return l.spaces < r.spaces }
-                if l.links != r.links { return l.links < r.links }
-                return (lhs.takenAt ?? .distantPast) < (rhs.takenAt ?? .distantPast)
-            }
+            .sorted(by: isRankedAbove)
+            .first
     }
 
     /// The candidate to preselect in the picker, or nil to make the user choose.
@@ -409,11 +441,15 @@ extension StoreInventory {
     /// seed. When they still have their own spaces, restoring a fuller but older
     /// backup would discard everything they did since, and only they can weigh
     /// that. A `.corrupt` backup is never preselected because that store was
-    /// damaged when it was set aside.
+    /// damaged when it was set aside — but that only rules out `.corrupt`
+    /// itself, not preselection outright: the next-best non-corrupt candidate is
+    /// still considered, since preselection only runs when the live store holds
+    /// nothing of the user's, which is exactly when handing back "nothing
+    /// selected" is worst.
     static func preselection(among candidates: [StoreCandidate], liveContent: StoreContent?) -> StoreCandidate? {
         let liveHoldsUsersData = liveContent.map { !$0.isEmpty && !$0.looksLikeUntouchedSeed } ?? false
         guard !liveHoldsUsersData else { return nil }
-        guard let winner = best(among: candidates), winner.kind != .corrupt else { return nil }
+        guard let winner = best(among: candidates.filter { $0.kind != .corrupt }) else { return nil }
         // Nothing to gain from a backup that holds no more than what is there.
         if let live = liveContent, let content = winner.content, !content.holdsMore(than: live) { return nil }
         return winner
