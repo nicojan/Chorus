@@ -2106,7 +2106,7 @@ xcodebuild test -project Chorus.xcodeproj -scheme Chorus -destination 'platform=
 ```
 Expected: builds clean, all tests pass. The sheet has no unit tests; the next step covers it.
 
-- [ ] **Step 5: Verify by hand, against a fixture store only**
+- [x] **Step 5: Verify by hand, against a fixture store only** — done 2026-07-29/30; see "What the by-hand pass found" at the end of this plan
 
 Do NOT point a dev build at `~/Library/Application Support/default.store`. Debug builds use `Application Support/Chorus-debug`, which is what these steps exercise.
 
@@ -2184,7 +2184,43 @@ git commit -m "docs: record the store recovery picker"
 
 ## Verification before calling this done
 
-- [ ] Full suite green: `xcodebuild test -project Chorus.xcodeproj -scheme Chorus -destination 'platform=macOS'` (no `-configuration Release`, per the rule added above)
-- [ ] The manual pass in Task 10 Step 5 done, including the deliberate-deletion case producing no banner. **This one belongs to the repo owner, not to whoever writes the docs** — it means launching the app and manipulating files under `Application Support`, which no agent should do here. Leave the box unticked and say so.
-- [ ] `git status` clean, and `project.yml` and `.pbxproj` consistent
-- [ ] No `@Model` stored property changed: `git diff --stat main -- Chorus/Models/` reports no changes, and `testCurrentStoredShapeIsPinned` plus `testFrozenAppPreferencesMatchesLiveModel` are green
+- [x] Full suite green: `xcodebuild test -project Chorus.xcodeproj -scheme Chorus -destination 'platform=macOS'` (no `-configuration Release`, per the rule added above) — 179 tests, 0 failures
+- [x] The manual pass in Task 10 Step 5 done, including the deliberate-deletion case producing no banner. Run 2026-07-29/30 against the debug store only, with `Chorus-debug` and its defaults domain copied aside first and put back afterwards. It found one blocker (below), fixed in `b036fae`, after which steps 4 and 8 were run again against the fixed build.
+- [x] `git status` clean, and `project.yml` and `.pbxproj` consistent
+- [x] No `@Model` stored property changed: `git diff --stat main -- Chorus/Models/` reports no changes, and `testCurrentStoredShapeIsPinned` plus `testFrozenAppPreferencesMatchesLiveModel` are green
+
+### What the by-hand pass found
+
+**The blocker: "Restore and Restart" never restarted.** The pick was written and
+the relaunch poller armed, and then nothing happened. AppKit will not terminate
+while a sheet is attached, and it drops the request instead of deferring it, so
+the app stayed up, the poller expired against its own 30-second bound, and the
+restore landed only when the app was next opened by hand. Command-Q is inert in
+the same state, which is what pinned the cause down; a `sample` of the process
+showed an idle run loop, not a hang. Fixed by splitting arming from quitting:
+the pick arms while the sheet is up, so a spawn failure can still be reported
+there, and the quit runs from the sheet's `onDismiss`, waiting out any still
+attached sheet up to a bound.
+
+Two things the steps as written expected turned out differently, and neither is
+a defect:
+
+- **Step 3's preselection.** Emptying the live store with `DELETE FROM ZSPACE`
+  leaves it *unusable*, not merely empty, so 1.5.15's automatic restore ran
+  first and put the user's data back. Preselection is then correctly skipped —
+  it only fires when the live store holds nothing of the user's. Preselection
+  itself was confirmed in step 8, where the live store cannot be read at all.
+- **Step 13's broken backup.** The picker will not let one be chosen: the row
+  selects but the action stays disabled, which the step already names as the
+  better outcome. The revert path underneath it was exercised anyway by writing
+  the pending key directly, standing in for a backup that goes bad between the
+  pick and the relaunch. The log named the revert, the store was untouched, and
+  no foreign `-wal` was left behind.
+
+Everything else passed as written: the record written at termination, the
+`prepick-` aside in its own family, no banner when the record and the store
+agree, no banner after a deliberate deletion even with fuller backups on disk,
+the decline surviving a relaunch, the Settings sheet presenting in front (with
+and without a main window), the button enabling on selection, current rather
+than launch-time counts, and the "can't be read" live row leading to a restore
+that works and keeps even the unreadable store as an aside.
