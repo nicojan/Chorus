@@ -58,8 +58,14 @@ struct StoreRecoveryView: View {
                     .keyboardShortcut(.cancelAction)
                 Button("Restore and Restart") {
                     guard let selectedCandidate else { return }
-                    if appState.chooseStoreRestore(selectedCandidate) { return }
-                    failureMessage = "Chorus could not restart itself. Quit and open it again to put this backup back."
+                    guard appState.chooseStoreRestore(selectedCandidate) else {
+                        failureMessage = "Chorus could not restart itself. Quit and open it again to put this backup back."
+                        return
+                    }
+                    // Closing this sheet is what lets the quit through: AppKit
+                    // will not terminate while a sheet is attached. The restart
+                    // itself runs from the sheet's `onDismiss`.
+                    dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(selectedCandidate?.isRestorable != true)

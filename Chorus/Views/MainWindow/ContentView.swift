@@ -156,7 +156,12 @@ struct ContentView: View {
                 .environment(appState)
                 .modelContainer(appState.modelContainer)
         }
-        .sheet(isPresented: $state.isShowingStoreRecovery) {
+        .sheet(isPresented: $state.isShowingStoreRecovery, onDismiss: {
+            // Only quits when the user actually picked a backup. It has to
+            // happen here rather than in the button: a quit requested while
+            // this sheet is still attached is refused and dropped.
+            appState.quitForScheduledRestore()
+        }) {
             StoreRecoveryView()
         }
         .alert(

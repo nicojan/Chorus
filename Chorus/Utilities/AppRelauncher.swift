@@ -46,9 +46,17 @@ enum AppRelauncher {
     /// Returns whether the poller was actually spawned. `false` means
     /// `Process.run()` itself failed (logged) and nothing was scheduled; the
     /// caller decides what that means for anything it already wrote.
+    ///
+    /// Arming and quitting are deliberately two calls. `NSApp.terminate` does
+    /// nothing while a sheet is attached to a window, and the picker calls this
+    /// from inside its own sheet — so quitting in the same breath as arming
+    /// left the app running, the poller expiring after its bound, and the user
+    /// staring at a sheet where nothing happened. Arm here while the sheet is
+    /// still up (so a spawn failure can still be reported in it), dismiss, then
+    /// call `quit()`.
     @MainActor
     @discardableResult
-    static func relaunchAfterExit() -> Bool {
+    static func armRelaunch() -> Bool {
         guard !scheduled else { return true }
         scheduled = true
 
@@ -76,7 +84,44 @@ enum AppRelauncher {
             scheduled = false
             return false
         }
-        NSApp.terminate(nil)
         return true
+    }
+
+    /// How long to keep waiting for an attached sheet to go away before quitting
+    /// anyway, and how often to look. Two seconds is far longer than a sheet
+    /// dismissal animation; the bound exists so a sheet that never closes cannot
+    /// strand the quit forever.
+    private static let sheetWaitIntervalSeconds = 0.1
+    private static var maxSheetWaits: Int { Int((2.0 / sheetWaitIntervalSeconds).rounded()) }
+
+    /// Whether to wait rather than quit now.
+    ///
+    /// Pure so the rule can be tested: quitting through an attached sheet is a
+    /// no-op in AppKit, so wait while one is up — but never past the bound, or a
+    /// sheet that outlives its own dismissal would keep the app alive with a
+    /// restore already scheduled.
+    static func shouldWaitForSheet(sheetAttached: Bool, attempt: Int) -> Bool {
+        sheetAttached && attempt < maxSheetWaits
+    }
+
+    /// Quits, once nothing is in the way.
+    ///
+    /// Call after the picker's sheet has been dismissed. The check is belt and
+    /// braces: `onDismiss` already runs after SwiftUI tears the sheet down, but
+    /// the window can still be closing on that turn, and a quit request AppKit
+    /// refuses is simply dropped — there is no second chance and no error.
+    @MainActor
+    static func quit(attempt: Int = 0) {
+        let sheetAttached = NSApp.windows.contains { $0.attachedSheet != nil }
+        guard !shouldWaitForSheet(sheetAttached: sheetAttached, attempt: attempt) else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + sheetWaitIntervalSeconds) {
+                MainActor.assumeIsolated { quit(attempt: attempt + 1) }
+            }
+            return
+        }
+        if sheetAttached {
+            AppLogger.dataStore.error("Quitting for a restore with a sheet still attached; it may be refused")
+        }
+        NSApp.terminate(nil)
     }
 }

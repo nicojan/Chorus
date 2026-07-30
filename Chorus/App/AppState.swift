@@ -303,6 +303,12 @@ final class AppState {
     /// Whether the picker sheet is up.
     var isShowingStoreRecovery = false
 
+    /// Whether the user picked a backup and Chorus owes them a restart. Set
+    /// when the pick is scheduled and the relaunch poller is armed; read once
+    /// the sheet has closed, since the quit cannot happen while it is up. See
+    /// `quitForScheduledRestore`.
+    private(set) var isRestoreRestartArmed = false
+
     /// Whether `init` fell back to a throwaway in-memory container because the
     /// real store was unusable. While this is true, the container's counts are
     /// not the user's store — reading `.spaces`/`.services` from it can show an
@@ -2000,15 +2006,38 @@ final class AppState {
     /// failure leaves the offer (and whatever sheet is bound to it) in place
     /// for the caller to report rather than silently dismissing it as if the
     /// restore had actually started.
+    ///
+    /// This only *arms* the restart. The quit itself waits for the picker's
+    /// sheet to be dismissed, because AppKit refuses to terminate through an
+    /// attached sheet and drops the request rather than deferring it — see
+    /// `quitForScheduledRestore`. Arming still happens here, while the sheet is
+    /// up, so a spawn failure can be reported in it.
     @discardableResult
     func chooseStoreRestore(_ candidate: StoreCandidate, defaults: UserDefaults = .standard) -> Bool {
         guard Self.scheduleRestore(candidate, storeName: storeFileName, defaults: defaults) else { return false }
-        guard AppRelauncher.relaunchAfterExit() else {
+        guard AppRelauncher.armRelaunch() else {
             AppLogger.dataStore.error("Restore was scheduled but the relaunch could not be spawned; it will still apply on the next launch")
             return false
         }
         storeRecoveryOffer = nil
+        isRestoreRestartArmed = true
         return true
+    }
+
+    /// Quits if the user picked a backup, called once the picker's sheet has
+    /// closed.
+    ///
+    /// Split from `chooseStoreRestore` because quitting from inside the sheet
+    /// silently did nothing: AppKit will not terminate while a sheet is
+    /// attached, so the app stayed up, the relaunch poller expired on its own
+    /// bound, and the restore only landed whenever the user next opened Chorus
+    /// by hand. The flag matters as much as the timing — this runs on every
+    /// dismissal of that sheet, including Cancel, and must quit only when a
+    /// restore is actually waiting.
+    func quitForScheduledRestore() {
+        guard isRestoreRestartArmed else { return }
+        isRestoreRestartArmed = false
+        AppRelauncher.quit()
     }
 
     /// Safety net for crash-mid-delete (or stores written by a build that

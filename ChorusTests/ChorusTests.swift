@@ -3792,6 +3792,39 @@ final class ChorusTests: XCTestCase {
         }
     }
 
+    /// A quit requested while a sheet is attached is refused by AppKit and
+    /// dropped, not deferred. The picker hit this for real: it quit from inside
+    /// its own sheet, so the app stayed running, the relaunch poller expired,
+    /// and the restore only landed when the user next opened Chorus by hand.
+    /// The rule below is what keeps the quit waiting for the sheet to go.
+    func testWaitsForAnAttachedSheetBeforeQuitting() {
+        XCTAssertTrue(
+            AppRelauncher.shouldWaitForSheet(sheetAttached: true, attempt: 0),
+            "a quit through an attached sheet is dropped, so it has to wait"
+        )
+        XCTAssertTrue(AppRelauncher.shouldWaitForSheet(sheetAttached: true, attempt: 1))
+    }
+
+    /// Nothing in the way means quit now: waiting on every restart would add a
+    /// delay to the one path this feature exists for.
+    func testQuitsImmediatelyWithNoSheetAttached() {
+        XCTAssertFalse(AppRelauncher.shouldWaitForSheet(sheetAttached: false, attempt: 0))
+        XCTAssertFalse(
+            AppRelauncher.shouldWaitForSheet(sheetAttached: false, attempt: 99),
+            "no sheet is no sheet, whatever the attempt count"
+        )
+    }
+
+    /// The wait is bounded. A sheet that never closes must not strand a restore
+    /// the user already picked and that is already written to disk; past the
+    /// bound Chorus quits anyway and lets AppKit decide.
+    func testStopsWaitingForASheetThatNeverCloses() {
+        XCTAssertFalse(
+            AppRelauncher.shouldWaitForSheet(sheetAttached: true, attempt: 1_000),
+            "an unbounded wait would leave the app up with a restore pending"
+        )
+    }
+
     /// `scheduleRestore` is the guards-plus-write half of `chooseStoreRestore`,
     /// hoisted out to a `nonisolated static` so it's testable without building
     /// an `AppState` (the suite deliberately never does). A restorable
