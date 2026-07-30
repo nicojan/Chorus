@@ -946,6 +946,50 @@ final class ChorusTests: XCTestCase {
         )
     }
 
+    /// Each user-chosen restore writes a full store triple aside under
+    /// `.prepick-`, and no existing reaper matches that family, so without this
+    /// the directory grows by one copy of the whole store per restore, forever.
+    func testPrunePickAsidesKeepsOnlyTheNewestFew() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-prune-pick-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try makePopulatedStore(at: storeURL, spaces: 2)
+
+        // Five asides, oldest first. Pruning is filename bookkeeping — it never
+        // reads a candidate's contents — so stand-in bytes are the honest
+        // fixture here, and they keep the test fast.
+        let stamps = ["1700000010", "1700000020", "1700000030", "1700000040", "1700000050"]
+        for stamp in stamps {
+            for suffix in ["", "-wal", "-shm"] {
+                let path = storeURL.path + ".prepick-\(stamp).bak" + suffix
+                try Data("aside \(stamp)\(suffix)".utf8).write(to: URL(fileURLWithPath: path))
+            }
+        }
+
+        StoreRepair.prunePickAsides(at: storeURL, keeping: 3)
+
+        let left = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        let primaries = left.filter { $0.hasPrefix("store.sqlite.prepick-") && $0.hasSuffix(".bak") }.sorted()
+        XCTAssertEqual(
+            primaries,
+            ["store.sqlite.prepick-1700000030.bak",
+             "store.sqlite.prepick-1700000040.bak",
+             "store.sqlite.prepick-1700000050.bak"],
+            "the three newest asides must survive, got \(primaries)"
+        )
+        for stamp in ["1700000010", "1700000020"] {
+            for suffix in ["", "-wal", "-shm"] {
+                XCTAssertFalse(
+                    left.contains("store.sqlite.prepick-\(stamp).bak" + suffix),
+                    "a pruned aside must take its whole triple with it, \(stamp)\(suffix) survived"
+                )
+            }
+        }
+        XCTAssertTrue(left.contains("store.sqlite"), "pruning must never touch the live store")
+    }
+
     /// A stale `hasEverHadData` flag with NO store file and no snapshot (e.g. a
     /// support step deleted the store but not the preferences) must start fresh
     /// and clear the flag — not brick the app into a permanent empty state.

@@ -325,6 +325,15 @@ enum StoreRepair {
         }
     }
 
+    /// Backup primaries for one family, newest first by numeric stamp. A plain
+    /// lexical sort would misorder a differently-formatted stamp.
+    private static func primariesNewestFirst(in dir: URL, prefix: String) -> [String] {
+        guard let all = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return [] }
+        return all
+            .filter { $0.hasPrefix(prefix) && $0.hasSuffix(".bak") }
+            .sorted { (stampAndVersion($0, prefix: prefix).stamp ?? .min) > (stampAndVersion($1, prefix: prefix).stamp ?? .min) }
+    }
+
     /// Deletes all but the `keep` most recent snapshot triples for this store.
     /// Snapshot names sort newest-last by their fixed-width Unix-second stamp, so
     /// a lexical sort orders them by age.
@@ -332,13 +341,7 @@ enum StoreRepair {
         let fm = FileManager.default
         let dir = url.deletingLastPathComponent()
         let prefix = url.lastPathComponent + snapshotInfix
-        guard let all = try? fm.contentsOfDirectory(atPath: dir.path) else { return }
-
-        // Newest-first by numeric stamp — consistent with newestRestorableSnapshot
-        // (a plain lexical sort would misorder a differently-formatted stamp).
-        let primaries = all
-            .filter { $0.hasPrefix(prefix) && $0.hasSuffix(".bak") }
-            .sorted { (stampAndVersion($0, prefix: prefix).stamp ?? .min) > (stampAndVersion($1, prefix: prefix).stamp ?? .min) }
+        let primaries = primariesNewestFirst(in: dir, prefix: prefix)
         guard primaries.count > keep else { return }
 
         var retain = Set(primaries.prefix(keep))
@@ -359,6 +362,31 @@ enum StoreRepair {
         }
     }
 
+    // MARK: - User-chosen restore's way-back copies
+
+    /// Filename infix marking the store as it stood immediately before a
+    /// deliberate, user-chosen restore. Its own family, separate from
+    /// `snapshotInfix`/`.prerestore-`/`.corrupt-` — see `applyPendingRestore`'s
+    /// doc for why it can't share `.prerestore-`.
+    static let pickAsideInfix = ".prepick-"
+
+    /// The user-chosen restore's way-back copies. Each deliberate restore writes one
+    /// full triple, and no other reaper matches the family, so keep the newest few
+    /// and delete the rest.
+    ///
+    /// Recency alone is the right rule here, unlike `pruneSnapshots`: every aside is
+    /// by definition the store as it stood immediately before a restore the user
+    /// asked for, so there is no seed-shaped impostor to screen out.
+    static func prunePickAsides(at url: URL, keeping keep: Int) {
+        let dir = url.deletingLastPathComponent()
+        let primaries = primariesNewestFirst(in: dir, prefix: url.lastPathComponent + pickAsideInfix)
+        for name in primaries.dropFirst(keep) {
+            for suffix in ["", "-wal", "-shm"] {
+                try? FileManager.default.removeItem(at: dir.appending(path: name + suffix))
+            }
+        }
+    }
+
     // MARK: - User-chosen restore
 
     /// Where the user's pick waits for the next launch. The restore itself runs
@@ -375,7 +403,7 @@ enum StoreRepair {
               !name.contains("/"),
               !name.contains(".."),
               name.hasSuffix(".bak") else { return nil }
-        let families = [snapshotInfix, ".prerestore-", ".corrupt-", ".prepick-"]
+        let families = [snapshotInfix, ".prerestore-", ".corrupt-", pickAsideInfix]
         guard families.contains(where: { name.hasPrefix(storeName + $0) }) else { return nil }
         return name
     }
@@ -418,16 +446,23 @@ enum StoreRepair {
         }
 
         let stamp = String(Int(Date().timeIntervalSince1970))
-        let asidePrefix = storeURL.path + ".prepick-\(stamp).bak"
+        let asidePrefix = storeURL.path + "\(pickAsideInfix)\(stamp).bak"
         copyTriple(from: storeURL.path, to: asidePrefix)
         copyTriple(from: source.path, to: storeURL.path)
 
         guard StoreInventory.readContent(at: storeURL) != nil else {
             AppLogger.dataStore.error("Chosen restore left an unreadable store; putting the previous one back")
             copyTriple(from: asidePrefix, to: storeURL.path)
+            // Do NOT delete the aside here even though the revert makes it look
+            // redundant: if the revert copy itself only partly succeeded (e.g. a
+            // failed `-wal`), this aside is the only intact copy of the store as
+            // it stood before the attempt. Bound the family by count instead —
+            // prunePickAsides below — never by deleting it on this path.
+            prunePickAsides(at: storeURL, keeping: 3)
             return false
         }
         AppLogger.dataStore.info("Restored the store the user chose: \(name)")
+        prunePickAsides(at: storeURL, keeping: 3)
         return true
     }
 
