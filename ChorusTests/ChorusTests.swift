@@ -3322,4 +3322,36 @@ final class ChorusTests: XCTestCase {
         )
     }
 
+    /// Pins the four independent guards `recordStoreContent` relies on, without
+    /// standing up a live `AppState` (the suite deliberately never constructs
+    /// one). A store that lost all its spaces but kept its services is the
+    /// partial-loss shape that matters most here: it is not `isEmpty`, so only
+    /// the offer-outstanding guard stops it from being recorded over while an
+    /// offer about that very loss is still on screen.
+    func testShouldRecordContentGuardsNilEmptyFallbackAndOutstandingOffer() {
+        let partialLoss = StoreContent(spaces: 0, services: 5, links: 5, spaceNames: [], serviceLabels: [])
+        let empty = StoreContent(spaces: 0, services: 0, links: 0, spaceNames: [], serviceLabels: [])
+
+        XCTAssertFalse(
+            AppState.shouldRecordContent(nil, offerOutstanding: false, isInMemoryFallback: false),
+            "unreadable (nil) content is unknown, never recorded as if it were empty"
+        )
+        XCTAssertFalse(
+            AppState.shouldRecordContent(empty, offerOutstanding: false, isInMemoryFallback: false),
+            "an empty store must never overwrite the record"
+        )
+        XCTAssertFalse(
+            AppState.shouldRecordContent(partialLoss, offerOutstanding: true, isInMemoryFallback: false),
+            "a partial-loss store with an offer still outstanding must not be recorded over"
+        )
+        XCTAssertTrue(
+            AppState.shouldRecordContent(partialLoss, offerOutstanding: false, isInMemoryFallback: false),
+            "the same partial-loss store, once no offer is outstanding (including right after a decline), must record normally"
+        )
+        XCTAssertFalse(
+            AppState.shouldRecordContent(partialLoss, offerOutstanding: false, isInMemoryFallback: true),
+            "the in-memory-fallback container is a throwaway; its content must never be recorded"
+        )
+    }
+
 }

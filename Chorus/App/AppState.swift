@@ -266,6 +266,10 @@ final class AppState {
     /// declined offer does not come back every launch.
     static let declinedRestoresKey = "chorus.declinedRestores"
 
+    /// Bound on how many declined pairings `declineStoreRecovery` keeps, so a
+    /// long-lived install cannot grow this list without end.
+    static let maxDeclinedRestores = 20
+
     /// Why Chorus is offering to restore a backup, or nil when it is not.
     private(set) var storeRecoveryOffer: StoreRecoveryOffer?
 
@@ -277,6 +281,15 @@ final class AppState {
 
     /// Whether the picker sheet is up.
     var isShowingStoreRecovery = false
+
+    /// Whether `init` fell back to a throwaway in-memory container because the
+    /// real store was unusable. While this is true, the container's counts are
+    /// not the user's store — reading `.spaces`/`.services` from it can show an
+    /// empty or freshly-seeded shape that has nothing to do with what actually
+    /// sits on disk. `evaluateStoreRecovery` and `recordStoreContent` both
+    /// branch on this so neither one mistakes the temporary container for the
+    /// real thing.
+    private(set) var isStoreInMemoryFallback = false
 
     init() {
         // The current shipping shape, pinned as an explicit `VersionedSchema`.
@@ -338,6 +351,7 @@ final class AppState {
             // the user can quit, restore a snapshot, and relaunch without loss.
             self.storeError = "Your saved data couldn't be loaded, so Chorus is running with temporary storage — changes won't be saved. Chorus keeps automatic backups from before each update; your data folder (with those backups) is at: \(config.url.deletingLastPathComponent().path)"
             self.storeFileURL = config.url.deletingLastPathComponent()
+            self.isStoreInMemoryFallback = true
         }
 
         self.dataStoreManager = DataStoreManager()
@@ -855,10 +869,18 @@ final class AppState {
     /// during the session lowers the record here, which is what stops the next
     /// launch reading the user's own housekeeping as data loss.
     private func setupTerminationRecording() {
+        // `queue: nil`, not `.main`, is load-bearing here. A non-nil queue makes
+        // `NotificationCenter` deliver the block asynchronously via
+        // `queue.addOperation`, and `NSApplication` exits right after posting
+        // this notification without giving the run loop another turn to drain
+        // it — the block would be silently dropped. `queue: nil` runs it
+        // synchronously on the posting thread instead, which AppKit guarantees
+        // is main for this notification, so `MainActor.assumeIsolated` still
+        // holds and the write actually lands before the process exits.
         defaultCenterTokens.append(NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
             object: nil,
-            queue: .main
+            queue: nil
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.recordStoreContent() }
         })
@@ -1737,6 +1759,13 @@ final class AppState {
     /// What the live store holds right now, read from the open container.
     /// Cheaper and more accurate than a second SQLite read, which would miss
     /// anything not yet checkpointed.
+    ///
+    /// Only meaningful while `modelContainer` is the real store. While
+    /// `isStoreInMemoryFallback` is true this reads the throwaway in-memory
+    /// container instead — empty, or freshly reseeded — which has nothing to
+    /// do with what actually sits on disk. `evaluateStoreRecovery` and
+    /// `recordStoreContent` both branch around that case rather than trusting
+    /// this call blindly.
     func liveStoreContent() -> StoreContent? {
         let context = modelContainer.mainContext
         do {
@@ -1753,21 +1782,67 @@ final class AppState {
         }
     }
 
+    /// Whether `recordStoreContent` should write a new record right now. Pure
+    /// and `static` so each guard is directly testable without standing up a
+    /// live `AppState` (which the test suite deliberately never does).
+    ///
+    /// Four things independently block a write:
+    /// - `content == nil`: the store couldn't be read; unknown is never
+    ///   recorded as empty.
+    /// - `content.isEmpty`: writing an empty record would erase the evidence
+    ///   the offer depends on and silence the feature for good.
+    /// - `isInMemoryFallback`: the running container is a throwaway, so its
+    ///   counts are not the user's store — recording them would stamp a
+    ///   seed-shaped (or empty) record over the real history.
+    /// - `offerOutstanding`: an offer is computed by comparing the live store
+    ///   against the CURRENT record. A store that lost every space but kept
+    ///   its services is not `isEmpty`, so without this guard the record would
+    ///   be overwritten with that diminished shape moments after the offer was
+    ///   computed from it — and a crash, or a quit before the picker is
+    ///   answered, would then lose the evidence permanently, with no decline
+    ///   ever recorded either. Recording is correct again as soon as the offer
+    ///   is gone, including right after the user declines it: the decline key
+    ///   already suppresses that exact pairing from firing again.
+    static func shouldRecordContent(
+        _ content: StoreContent?,
+        offerOutstanding: Bool,
+        isInMemoryFallback: Bool
+    ) -> Bool {
+        guard !isInMemoryFallback else { return false }
+        guard !offerOutstanding else { return false }
+        guard let content, !content.isEmpty else { return false }
+        return true
+    }
+
     /// Records what the store holds, so a later launch can tell loss from
     /// housekeeping. Called after a clean open and again at termination; a hard
-    /// crash can leave it stale, which costs at most one declinable offer.
-    ///
-    /// An empty store is never recorded. That guard is load-bearing: writing the
-    /// record while the store is empty would erase the very evidence the offer
-    /// depends on, and the loss itself would silence the feature.
+    /// crash can leave it stale, which costs at most one declinable offer. See
+    /// `shouldRecordContent` for the guards that decide whether this actually
+    /// writes — at launch of a healthy store no offer is outstanding, so
+    /// termination recording proceeds normally and a user's own housekeeping
+    /// (deleting a space mid-session) still lowers the record rather than
+    /// looking like loss on the next launch.
     func recordStoreContent(defaults: UserDefaults = .standard) {
-        guard let content = liveStoreContent(), !content.isEmpty else { return }
+        let content = liveStoreContent()
+        guard Self.shouldRecordContent(
+            content,
+            offerOutstanding: storeRecoveryOffer != nil,
+            isInMemoryFallback: isStoreInMemoryFallback
+        ), let content else { return }
         defaults.set(StoreInventory.encodeRecord(content), forKey: Self.contentRecordKey)
     }
 
     /// Works out whether to offer a restore and prepares the picker's contents.
+    ///
+    /// While `isStoreInMemoryFallback` is true, `liveStoreContent()` reflects
+    /// the throwaway container, not the real store that failed to open — a
+    /// store that merely failed to open (rather than being genuinely empty)
+    /// would then wrongly show as empty in the picker, and a fuller backup
+    /// could be preselected over data that is still intact on disk. Read the
+    /// actual file instead in that case; an unreadable result is passed
+    /// through as unknown (nil), never substituted with zero.
     func evaluateStoreRecovery(storeURL: URL, defaults: UserDefaults = .standard) {
-        let live = liveStoreContent()
+        let live = isStoreInMemoryFallback ? StoreInventory.readContent(at: storeURL) : liveStoreContent()
         let candidates = StoreInventory.candidates(for: storeURL, liveContent: live)
         let best = StoreInventory.best(among: candidates)
         let declined = Set(defaults.stringArray(forKey: Self.declinedRestoresKey) ?? [])
@@ -1781,19 +1856,32 @@ final class AppState {
         )
         preselectedCandidate = StoreInventory.preselection(among: candidates, liveContent: live)
         if let offer = storeRecoveryOffer {
-            AppLogger.dataStore.error("Offering a store restore (\(String(describing: offer))); candidates=\(candidates.count)")
+            // Expected, user-facing behavior, not a fault — an offer being up
+            // is normal operation for this feature, so this stays out of
+            // `.error` to avoid manufacturing noise on a data-safety path that
+            // support already watches closely.
+            AppLogger.dataStore.notice("Offering a store restore (\(String(describing: offer))); candidates=\(candidates.count)")
         }
     }
 
     /// Remembers that the user said no to this pairing, and drops the offer.
+    ///
+    /// Uses the live candidate already computed into `storeCandidates` by
+    /// `evaluateStoreRecovery` rather than calling `liveStoreContent()` again:
+    /// that candidate's content is the fallback-aware value `offer(...)`
+    /// itself was checked against, so the decline key matches exactly. Calling
+    /// `liveStoreContent()` fresh here would read the wrong source in the
+    /// in-memory-fallback case (the throwaway container, not the file), so the
+    /// key it produced would never match the one `offer(...)` checks on a
+    /// later launch, and the decline would silently fail to stick.
     func declineStoreRecovery(defaults: UserDefaults = .standard) {
         if let best = StoreInventory.best(among: storeCandidates) {
-            let key = StoreInventory.declineKey(live: liveStoreContent(), candidate: best)
+            let liveContent = storeCandidates.first(where: { $0.kind == .live })?.content
+            let key = StoreInventory.declineKey(live: liveContent, candidate: best)
             var declined = defaults.stringArray(forKey: Self.declinedRestoresKey) ?? []
             if !declined.contains(key) {
                 declined.append(key)
-                // Bounded so a long-lived install cannot grow this without end.
-                defaults.set(Array(declined.suffix(20)), forKey: Self.declinedRestoresKey)
+                defaults.set(Array(declined.suffix(Self.maxDeclinedRestores)), forKey: Self.declinedRestoresKey)
             }
         }
         storeRecoveryOffer = nil
