@@ -2096,6 +2096,8 @@ Do NOT point a dev build at `~/Library/Application Support/default.store`. Debug
 5. Relaunch again and confirm no banner: the record and the store now agree.
 6. Delete a space on purpose, quit, relaunch. Confirm no banner, which is the deliberate-deletion case.
 7. Open Settings and confirm "Restore from a backup…" opens the same sheet with nothing preselected while the store holds your own data.
+8. **A store that will not open at all.** Two behaviours here cannot be unit-tested, because proving them needs a live `AppState` and the suite deliberately never builds one — so this step is the only check they get. Quit, then corrupt the debug store's primary file (`printf 'garbage' > ~/Library/Application\ Support/Chorus-debug/default.store`, keeping a copy of the good triple and a snapshot beside it), and launch. Confirm the live row reads "can't be read" and **not** "0 spaces, 0 services": under this failure Chorus falls back to a throwaway in-memory container, and reporting what *that* holds would describe the wrong store and preselect a backup over a file that might be intact. Confirm a backup is still offered, and that the sheet lists the good snapshot.
+9. **A decline has to stick.** With an offer showing, click "Not now", quit, and relaunch. Confirm the banner does **not** come back. This is the other behaviour tests cannot reach: the decline is keyed on the live store's signature, and if that key is computed from the wrong source it never matches on the next launch and the banner returns every single time.
 
 - [ ] **Step 6: Commit**
 
