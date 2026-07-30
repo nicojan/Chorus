@@ -2609,18 +2609,22 @@ final class ChorusTests: XCTestCase {
         XCTAssertNil(StoreInventory.readContent(at: alien))
     }
 
-    /// Guards the exact regression this reader exists to avoid. The module
-    /// comment on `readContent` says it must stay off `immutable=1` because a
-    /// `.bak` can sit beside a `-wal` holding committed-but-uncheckpointed rows,
-    /// and an immutable open would silently under-count it. `makePopulatedStore`
+    /// Guards the exact regression this reader exists to avoid. See
+    /// `StoreInventory.openReadOnly`'s doc for the full rule: a plain open
+    /// never uses `immutable=1` when a `-wal` sibling exists, because a `.bak`
+    /// can sit beside a `-wal` holding committed-but-uncheckpointed rows, and
+    /// an immutable open would silently under-count it. `makePopulatedStore`
     /// alone can't prove that: its container deallocates at the end of the
     /// call, and SQLite auto-checkpoints (folds the WAL into the main file) on
     /// the last close, so by the time `readContent` runs the row is very likely
     /// already in the main file either way. This test holds a second, writable
     /// connection open for the duration — so nothing checkpoints — commits a
     /// row through it, and shows `readContent` counts that row while a control
-    /// connection opened with `immutable=1` does not. If `readContent` ever
-    /// grows an `immutable=1` (or any URI) open, this goes red.
+    /// connection opened with `immutable=1` does not. This test's store keeps a
+    /// real `-wal` file the whole time, so `openReadOnly`'s narrow immutable
+    /// fallback (which only applies when no `-wal` sibling exists) must not
+    /// engage here; if `readContent` ever used `immutable=1` while a `-wal`
+    /// with real rows is present, this goes red.
     func testReadContentSeesCommittedRowsStillInTheWAL() throws {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("chorus-wal-\(UUID().uuidString)", isDirectory: true)

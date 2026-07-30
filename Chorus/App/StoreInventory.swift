@@ -78,9 +78,9 @@ enum StoreInventory {
     /// no file, a file that is not a database, or a schema without the tables
     /// this app owns. Nil is "unknown" and callers must not read it as empty.
     ///
-    /// Opened read-only and deliberately WITHOUT `immutable=1`: a `.bak` can sit
-    /// beside a `-wal` holding committed rows, and an immutable open ignores the
-    /// WAL, which would under-count a backup and could cost it the ranking.
+    /// Opened via `openReadOnly`, whose doc explains why the plain read-only
+    /// open never uses `immutable=1`, and the narrow case where the fallback
+    /// does.
     static func readContent(at url: URL) -> StoreContent? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         guard let db = openReadOnly(url) else { return nil }
