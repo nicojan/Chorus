@@ -48,6 +48,7 @@
 		B095E6333D67F97829F12E97 /* ChorusSchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = 311EEF2D99711EA929371A79 /* ChorusSchema.swift */; };
 		B2138F3B8FD4E8960E0E04A6 /* ServiceTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CC71C78C036E2C4DF3EAF2E /* ServiceTabView.swift */; };
 		BAA5421430BDF6F9B918B7B5 /* WebViewPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608B27F538D778C6FC4B1697 /* WebViewPool.swift */; };
+		BD6B6CD0E903780B610BD6B5 /* StoreRecoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E05727F83BFEFB338D97E4DF /* StoreRecoveryView.swift */; };
 		C14E7A689411E8DCCC20ED74 /* fanboy-annoyance.json in Resources */ = {isa = PBXBuildFile; fileRef = 0D9CBE47687FB4FF2EF6BED5 /* fanboy-annoyance.json */; };
 		C1E4CE7879BB117DBA721C35 /* SpaceStripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 537DF7ABA3D6DED64273776A /* SpaceStripView.swift */; };
 		C4ADA7C24E806E00FF4709D1 /* ChorusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBA2B8A19B41207F66E51CC3 /* ChorusTests.swift */; };
@@ -129,6 +130,7 @@
 		DCE1C5083FF8571A533E856F /* ChorusTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChorusTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DD7FF3D960F0FCA3A2F310B1 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		DEE60F6F23AE3708B57614F2 /* SpaceEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceEditorSheet.swift; sourceTree = "<group>"; };
+		E05727F83BFEFB338D97E4DF /* StoreRecoveryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreRecoveryView.swift; sourceTree = "<group>"; };
 		E143D686890F381C5B42761F /* ChorusApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChorusApp.swift; sourceTree = "<group>"; };
 		E1E431CF7CE145D536081A23 /* UserAgentProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAgentProvider.swift; sourceTree = "<group>"; };
 		E30F23AFD0B5D81AF103BF37 /* ServiceCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceCatalog.swift; sourceTree = "<group>"; };
@@ -292,6 +294,7 @@
 				B84763F63532609A902F453A /* ServiceSidebarView.swift */,
 				4CC71C78C036E2C4DF3EAF2E /* ServiceTabView.swift */,
 				537DF7ABA3D6DED64273776A /* SpaceStripView.swift */,
+				E05727F83BFEFB338D97E4DF /* StoreRecoveryView.swift */,
 				DA4617D503719C1701307F28 /* WebContentView.swift */,
 				538A1641C210F10E3CD43E14 /* WebToolbarView.swift */,
 			);
@@ -501,6 +504,7 @@
 				CF6CC3C4CC580F7733D24212 /* SpaceServiceLink.swift in Sources */,
 				C1E4CE7879BB117DBA721C35 /* SpaceStripView.swift in Sources */,
 				3C5338A54D7C824BCF6C642C /* StoreInventory.swift in Sources */,
+				BD6B6CD0E903780B610BD6B5 /* StoreRecoveryView.swift in Sources */,
 				D19CD58F64D002620BE6850C /* StoreRepair.swift in Sources */,
 				4129642FB0AD19AC83F01A30 /* UserAgentProvider.swift in Sources */,
 				75C395B384D9E21AF94FBC4F /* UserScriptManager.swift in Sources */,

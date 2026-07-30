@@ -171,6 +171,21 @@ struct GeneralSettingsView: View {
                 ))
             }
 
+            Section("Data") {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Restore from a backup")
+                        Text("Chorus keeps a copy of your spaces and services before each update.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Restore from a backup…") {
+                        appState.isShowingStoreRecovery = true
+                    }
+                }
+            }
+
             Section("Accessibility") {
                 Picker("Default zoom", selection: Binding(
                     get: { prefs.defaultZoomEffective },

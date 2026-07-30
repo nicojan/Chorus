@@ -24,6 +24,12 @@ struct ContentView: View {
                         }
                         .font(.caption)
                     }
+                    if appState.storeRecoveryOffer != nil {
+                        Button("Review backups…") {
+                            appState.isShowingStoreRecovery = true
+                        }
+                        .font(.caption)
+                    }
                     if appState.storeErrorDismissible {
                         Button {
                             appState.dismissStoreBanner()
@@ -41,6 +47,27 @@ struct ContentView: View {
                 .background(Color.yellow.opacity(0.15))
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Warning: \(error)")
+            }
+
+            if appState.storeError == nil, appState.storeRecoveryOffer != nil {
+                HStack(spacing: 6) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .foregroundStyle(.yellow)
+                        .accessibilityHidden(true)
+                    Text("Chorus has a backup with more of your spaces and services than it can see now.")
+                        .font(.caption)
+                        .lineLimit(2)
+                    Spacer()
+                    Button("Review backups…") { appState.isShowingStoreRecovery = true }
+                        .font(.caption)
+                    Button("Not now") { appState.declineStoreRecovery() }
+                        .font(.caption)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.yellow.opacity(0.15))
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Chorus has a backup with more of your spaces and services than it can see now.")
             }
 
             if !appState.networkMonitor.isOnline {
@@ -123,6 +150,9 @@ struct ContentView: View {
             QuickSwitcherView()
                 .environment(appState)
                 .modelContainer(appState.modelContainer)
+        }
+        .sheet(isPresented: $state.isShowingStoreRecovery) {
+            StoreRecoveryView()
         }
         .alert(
             appState.pendingMediaRequest?.title ?? "",
