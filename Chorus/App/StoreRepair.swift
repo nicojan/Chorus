@@ -356,13 +356,13 @@ enum StoreRepair {
     /// Validates a pending restore filename. The value comes from UserDefaults,
     /// which is outside the app's control, so it is treated as untrusted: it must
     /// be a plain filename (no separators, no traversal) belonging to this store
-    /// and naming one of the three backup families.
+    /// and naming one of the four backup families.
     static func validatedRestoreName(_ name: String, storeName: String) -> String? {
         guard !name.isEmpty,
               !name.contains("/"),
               !name.contains(".."),
               name.hasSuffix(".bak") else { return nil }
-        let families = [snapshotInfix, ".prerestore-", ".corrupt-"]
+        let families = [snapshotInfix, ".prerestore-", ".corrupt-", ".prepick-"]
         guard families.contains(where: { name.hasPrefix(storeName + $0) }) else { return nil }
         return name
     }
@@ -376,6 +376,15 @@ enum StoreRepair {
     /// `restoreFromSnapshot`, which keeps one copy for an automatic retry loop,
     /// each deliberate restore is a separate decision and deserves its own way
     /// back. If the result cannot be read, the copy is put back.
+    ///
+    /// The aside copy uses its own `.prepick-` family rather than
+    /// `.prerestore-`. `restoreFromSnapshot`'s "already backed up" sentinel
+    /// treats the presence of ANY `.prerestore-`-prefixed file as proof it has
+    /// already set the live store aside once; if a deliberate restore wrote
+    /// into that same family, every later *automatic* restore would see that
+    /// file, believe it had already backed up, and skip its own aside copy —
+    /// permanently, since nothing ever prunes it. `.prepick-` keeps this
+    /// restore's aside out of that sentinel's sight entirely.
     @discardableResult
     static func applyPendingRestore(
         at storeURL: URL,
@@ -396,20 +405,9 @@ enum StoreRepair {
         }
 
         let stamp = String(Int(Date().timeIntervalSince1970))
-        let asidePrefix = storeURL.path + ".prerestore-\(stamp).bak"
+        let asidePrefix = storeURL.path + ".prepick-\(stamp).bak"
         copyTriple(from: storeURL.path, to: asidePrefix)
-
-        let fm = FileManager.default
-        for suffix in ["", "-wal", "-shm"] {
-            try? fm.removeItem(at: URL(fileURLWithPath: storeURL.path + suffix))
-            let src = URL(fileURLWithPath: source.path + suffix)
-            guard fm.fileExists(atPath: src.path) else { continue }
-            do {
-                try fm.copyItem(at: src, to: URL(fileURLWithPath: storeURL.path + suffix))
-            } catch {
-                AppLogger.dataStore.error("Restore copy of \(src.lastPathComponent) failed: \(error.localizedDescription)")
-            }
-        }
+        copyTriple(from: source.path, to: storeURL.path)
 
         guard StoreInventory.readContent(at: storeURL) != nil else {
             AppLogger.dataStore.error("Chosen restore left an unreadable store; putting the previous one back")
@@ -420,15 +418,21 @@ enum StoreRepair {
         return true
     }
 
-    /// Copies a store triple, overwriting the destination. Used for both setting
-    /// the current store aside and putting it back.
+    /// Copies a store triple, overwriting the destination. Every destination
+    /// suffix is cleared *unconditionally*, even when the source lacks that
+    /// suffix: a destination left with its own stale `-wal`/`-shm` beside a
+    /// freshly copied main file is a foreign WAL, and SQLite does not bind a
+    /// WAL to a specific database file — the next open can replay those
+    /// frames onto a database they were never written for. Used for setting
+    /// the current store aside, applying the chosen backup, and reverting to
+    /// the aside copy if the result can't be read.
     private static func copyTriple(from sourcePath: String, to destinationPath: String) {
         let fm = FileManager.default
         for suffix in ["", "-wal", "-shm"] {
-            let src = URL(fileURLWithPath: sourcePath + suffix)
-            guard fm.fileExists(atPath: src.path) else { continue }
             let dst = URL(fileURLWithPath: destinationPath + suffix)
             try? fm.removeItem(at: dst)
+            let src = URL(fileURLWithPath: sourcePath + suffix)
+            guard fm.fileExists(atPath: src.path) else { continue }
             do { try fm.copyItem(at: src, to: dst) } catch {
                 AppLogger.dataStore.error("Copy of \(src.lastPathComponent) failed: \(error.localizedDescription)")
             }

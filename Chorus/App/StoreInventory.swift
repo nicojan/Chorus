@@ -229,11 +229,19 @@ struct StoreCandidate: Hashable, Sendable, Identifiable {
         /// A pre-update snapshot. Version is the build it preceded, when the
         /// filename parses.
         case snapshot(version: String?)
-        /// The store set aside by an earlier restore.
+        /// The store set aside by an earlier *automatic* restore
+        /// (`StoreRepair.restoreFromSnapshot`).
         case prerestore
         /// The store set aside before dangling-link repair. Damaged by
         /// definition, so never preselected.
         case corrupt
+        /// The store set aside by `StoreRepair.applyPendingRestore` just
+        /// before putting the user's deliberately chosen backup in place.
+        /// Its own family, separate from `.prerestore`: `restoreFromSnapshot`
+        /// tests for the presence of any `.prerestore-`-prefixed file as its
+        /// "already backed up" sentinel, and a deliberate restore's aside must
+        /// never satisfy that check.
+        case prepick
     }
 
     let url: URL
@@ -252,9 +260,21 @@ struct StoreCandidate: Hashable, Sendable, Identifiable {
 }
 
 extension StoreInventory {
-    /// Filename infixes of the three backup families, all of which are copies of
-    /// the user's own store and so all worth offering.
-    private static let backupInfixes = [".snapshot-", ".prerestore-", ".corrupt-"]
+    /// The four backup families, all of which are copies of the user's own
+    /// store and so all worth offering. An enum, not bare strings, so the
+    /// switch in `candidates(for:liveContent:)` is exhaustive: adding a family
+    /// here without giving it a `StoreCandidate.Kind` case is a compile error,
+    /// not a silent fall-through to `.corrupt`.
+    private enum BackupFamily: String, CaseIterable {
+        case snapshot = ".snapshot-"
+        case prerestore = ".prerestore-"
+        case corrupt = ".corrupt-"
+        case prepick = ".prepick-"
+    }
+
+    /// Filename infixes of the backup families, derived from `BackupFamily` so
+    /// there is exactly one list of them.
+    private static var backupInfixes: [String] { BackupFamily.allCases.map(\.rawValue) }
 
     /// Every candidate for `storeURL`: the live store (whose content the caller
     /// supplies, since it is already open) plus each backup sibling. Unreadable
@@ -278,16 +298,18 @@ extension StoreInventory {
         }
 
         for name in names.sorted() where name.hasSuffix(".bak") {
-            guard let infix = backupInfixes.first(where: { name.hasPrefix(base + $0) }) else { continue }
+            guard let infix = backupInfixes.first(where: { name.hasPrefix(base + $0) }),
+                  let family = BackupFamily(rawValue: infix) else { continue }
             let url = dir.appending(path: name)
             // Shared with StoreRepair rather than reimplemented; see the task's
             // "Reuse, not duplication" note.
             let parsed = StoreRepair.stampAndVersion(name, prefix: base + infix)
             let kind: StoreCandidate.Kind
-            switch infix {
-            case ".snapshot-": kind = .snapshot(version: parsed.version)
-            case ".prerestore-": kind = .prerestore
-            default: kind = .corrupt
+            switch family {
+            case .snapshot: kind = .snapshot(version: parsed.version)
+            case .prerestore: kind = .prerestore
+            case .corrupt: kind = .corrupt
+            case .prepick: kind = .prepick
             }
             let content = readContent(at: url)
             result.append(StoreCandidate(

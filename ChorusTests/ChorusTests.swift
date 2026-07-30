@@ -2690,7 +2690,7 @@ final class ChorusTests: XCTestCase {
 
     // MARK: - Candidate enumeration
 
-    /// Enumeration must find all three backup families plus the live store,
+    /// Enumeration must find all four backup families plus the live store,
     /// parse stamps, and mark an unreadable file as unknown rather than empty.
     func testCandidateEnumerationCoversAllBackupFamilies() throws {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -2700,7 +2700,8 @@ final class ChorusTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
 
         // Live store with 1 space; a 4-space snapshot; a 2-space prerestore; a
-        // 3-space corrupt-family backup; and one unreadable snapshot.
+        // 3-space corrupt-family backup; a 5-space prepick-family backup (the
+        // aside `applyPendingRestore` writes); and one unreadable snapshot.
         try makePopulatedStore(at: storeURL, spaces: 4)
         StoreRepair.snapshot(at: storeURL, stamp: "1700000000-1.5.11+20")
         _ = try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
@@ -2709,6 +2710,9 @@ final class ChorusTests: XCTestCase {
         _ = try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
         try Self.insertSpaces(storeURL, count: 3)
         try Self.copyStoreTriple(from: storeURL, to: dir.appendingPathComponent("store.sqlite.corrupt-1700000600.bak"))
+        _ = try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
+        try Self.insertSpaces(storeURL, count: 5)
+        try Self.copyStoreTriple(from: storeURL, to: dir.appendingPathComponent("store.sqlite.prepick-1700000700.bak"))
         _ = try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
         try Self.insertSpaces(storeURL, count: 1)
         try "not a database".write(
@@ -2720,7 +2724,7 @@ final class ChorusTests: XCTestCase {
         let live = try XCTUnwrap(StoreInventory.readContent(at: storeURL))
         let found = StoreInventory.candidates(for: storeURL, liveContent: live)
 
-        XCTAssertEqual(found.count, 5, "live + snapshot + prerestore + corrupt + unreadable snapshot")
+        XCTAssertEqual(found.count, 6, "live + snapshot + prerestore + corrupt + prepick + unreadable snapshot")
         XCTAssertEqual(found.filter { $0.kind == .live }.count, 1)
         XCTAssertEqual(found.first { $0.kind == .live }?.content?.spaces, 1)
 
@@ -2731,6 +2735,8 @@ final class ChorusTests: XCTestCase {
 
         XCTAssertEqual(found.first { $0.kind == .prerestore }?.content?.spaces, 2)
         XCTAssertEqual(found.first { $0.kind == .corrupt }?.content?.spaces, 3)
+        XCTAssertEqual(found.first { $0.kind == .prepick }?.content?.spaces, 5, "the .prepick- family must be recognized as its own kind, not folded into .corrupt")
+        XCTAssertTrue(try XCTUnwrap(found.first { $0.kind == .prepick }).isRestorable)
 
         let unreadable = try XCTUnwrap(found.first { $0.kind == .snapshot(version: "1.5.12+21") })
         XCTAssertNil(unreadable.content, "an unreadable candidate is unknown, not empty")
@@ -2982,6 +2988,11 @@ final class ChorusTests: XCTestCase {
             StoreRepair.validatedRestoreName("default.store.prerestore-1700000000.bak", storeName: store),
             "default.store.prerestore-1700000000.bak"
         )
+        XCTAssertEqual(
+            StoreRepair.validatedRestoreName("default.store.prepick-1700000000.bak", storeName: store),
+            "default.store.prepick-1700000000.bak",
+            "the prepick family (a prior deliberate restore's aside) must itself be walkable-back-from"
+        )
         XCTAssertNil(StoreRepair.validatedRestoreName("../../etc/passwd", storeName: store), "no traversal")
         XCTAssertNil(StoreRepair.validatedRestoreName("/tmp/default.store.snapshot-1.bak", storeName: store), "no absolute paths")
         XCTAssertNil(StoreRepair.validatedRestoreName("default.store.snapshot-1/../x.bak", storeName: store), "no separators")
@@ -3017,9 +3028,16 @@ final class ChorusTests: XCTestCase {
         XCTAssertNil(defaults.string(forKey: StoreRepair.pendingRestoreKey), "the key must be cleared")
 
         let asideCount = try FileManager.default.contentsOfDirectory(atPath: dir.path)
-            .filter { $0.hasPrefix("store.sqlite.prerestore-") && $0.hasSuffix(".bak") }
+            .filter { $0.hasPrefix("store.sqlite.prepick-") && $0.hasSuffix(".bak") }
             .count
-        XCTAssertEqual(asideCount, 1, "the thinned store must have been set aside")
+        XCTAssertEqual(asideCount, 1, "the thinned store must have been set aside, in its own .prepick- family (not .prerestore-, which restoreFromSnapshot's sentinel checks)")
+
+        XCTAssertTrue(
+            try FileManager.default.contentsOfDirectory(atPath: dir.path)
+                .filter { $0.hasPrefix("store.sqlite.prerestore-") }
+                .isEmpty,
+            "a deliberate restore must never write into the .prerestore- family that restoreFromSnapshot's sentinel watches"
+        )
 
         // A second apply with no key set is a no-op.
         XCTAssertFalse(StoreRepair.applyPendingRestore(at: storeURL, defaults: defaults))
@@ -3029,6 +3047,106 @@ final class ChorusTests: XCTestCase {
         XCTAssertFalse(StoreRepair.applyPendingRestore(at: storeURL, defaults: defaults))
         XCTAssertNil(defaults.string(forKey: StoreRepair.pendingRestoreKey))
         XCTAssertEqual(StoreRepair.spaceCount(at: storeURL), 4, "a rejected name must not touch the store")
+    }
+
+    /// The revert branch (the chosen backup turns out unreadable) must put the
+    /// previous store back exactly, and must not leave the CHOSEN BACKUP's
+    /// `-wal` sitting beside the reverted main file. `copyTriple` used to skip
+    /// removing a destination suffix whenever the source lacked it, which is
+    /// harmless for the aside copy (a fresh path) but not for the revert: if
+    /// the aside has no `-wal` (the normal post-clean-shutdown state) and the
+    /// chosen backup's replace step left one behind, the revert would restore
+    /// the old main file while leaving that foreign `-wal` in place — and
+    /// SQLite does not bind a WAL to a specific database, so the next open
+    /// would replay those frames onto the wrong store.
+    func testApplyPendingRestoreRevertsWithoutLeavingAForeignWAL() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-revert-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let suite = "chorus-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        // The live store, in the normal post-clean-shutdown shape: real data,
+        // no `-wal`/`-shm` siblings. This is what the aside copy will capture.
+        try makePopulatedStore(at: storeURL, spaces: 3)
+        for suffix in ["-wal", "-shm"] {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: storeURL.path + suffix))
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: storeURL.path + "-wal"), "precondition: no -wal sibling")
+        let before = try XCTUnwrap(StoreRepair.spaceCount(at: storeURL), "precondition: live store is readable")
+        XCTAssertEqual(before, 3)
+
+        // A validly-named, but garbage, chosen backup — readContent will fail
+        // on it — WITH a `-wal` sibling of its own. This is the "foreign WAL"
+        // that must not survive the revert.
+        let backupName = "store.sqlite.corrupt-1700001000.bak"
+        let backupURL = dir.appendingPathComponent(backupName)
+        try "not a database".write(to: backupURL, atomically: true, encoding: .utf8)
+        try "someone else's WAL frames".write(
+            to: URL(fileURLWithPath: backupURL.path + "-wal"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        defaults.set(backupName, forKey: StoreRepair.pendingRestoreKey)
+        XCTAssertFalse(
+            StoreRepair.applyPendingRestore(at: storeURL, defaults: defaults),
+            "an unreadable chosen backup must report failure"
+        )
+
+        XCTAssertNil(defaults.string(forKey: StoreRepair.pendingRestoreKey), "the key must still be cleared even on revert")
+        XCTAssertEqual(
+            StoreRepair.spaceCount(at: storeURL), before,
+            "the revert must restore exactly what was live before the attempt"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: storeURL.path + "-wal"),
+            "no foreign -wal from the rejected backup may remain beside the reverted store"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: storeURL.path + "-shm"),
+            "no foreign -shm from the rejected backup may remain beside the reverted store"
+        )
+    }
+
+    /// The missing-source branch: a filename that passes validation (it names
+    /// one of the backup families and belongs to this store) but whose file is
+    /// no longer on disk. This must return false, clear the key so it can't
+    /// loop, and leave the live store completely untouched — no aside copy, no
+    /// partial write.
+    func testApplyPendingRestoreMissingSourceLeavesStoreUntouched() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-missing-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let suite = "chorus-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        try makePopulatedStore(at: storeURL, spaces: 2)
+        let before = try XCTUnwrap(StoreRepair.spaceCount(at: storeURL))
+
+        // Validly named for this store, but never written to disk.
+        let missingName = "store.sqlite.snapshot-1700009999-1.9.9.bak"
+        XCTAssertNotNil(
+            StoreRepair.validatedRestoreName(missingName, storeName: storeURL.lastPathComponent),
+            "precondition: the name itself must pass validation"
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent(missingName).path))
+
+        defaults.set(missingName, forKey: StoreRepair.pendingRestoreKey)
+        XCTAssertFalse(StoreRepair.applyPendingRestore(at: storeURL, defaults: defaults))
+
+        XCTAssertNil(defaults.string(forKey: StoreRepair.pendingRestoreKey), "the key must be cleared")
+        XCTAssertEqual(StoreRepair.spaceCount(at: storeURL), before, "a missing source must not touch the store")
+
+        let anyAsideFiles = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .filter { $0.hasPrefix("store.sqlite.prepick-") }
+        XCTAssertTrue(anyAsideFiles.isEmpty, "a missing source must return before any aside copy is made")
     }
 
 }
