@@ -139,16 +139,16 @@ enum StoreRepair {
 
     /// True when the snapshot at `url` is safe to restore from: it opens, passes
     /// `PRAGMA integrity_check`, and holds at least one `Space`. Reads only.
+    ///
+    /// Opens via `StoreInventory.openReadOnly` rather than its own connection,
+    /// so this integrity check gets the same WAL-header/no-`-wal` fallback as
+    /// `spaceCount` above — an `integrity_check` run over an `immutable=1`
+    /// connection is exactly as meaningful as one over a plain read-only
+    /// connection, so nothing about what this check proves changes.
     static func snapshotHasUsableData(at url: URL) -> Bool {
         guard (spaceCount(at: url) ?? 0) > 0 else { return false }
 
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
-              let db else {
-            if let db { sqlite3_close(db) }
-            return false
-        }
-        sqlite3_busy_timeout(db, 3000)
+        guard let db = StoreInventory.openReadOnly(url) else { return false }
         defer { sqlite3_close(db) }
         // `(1)` stops at the first error — we only need ok/not-ok, and this
         // bounds the check's cost at launch on a large store.

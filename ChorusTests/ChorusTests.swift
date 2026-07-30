@@ -638,6 +638,44 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(candidate?.takenAt, Date(timeIntervalSince1970: 1_700_000_000))
     }
 
+    /// End-to-end proof that the shipped recovery path sees a snapshot whose
+    /// `-wal` sibling is gone — exactly what `StoreRepair.snapshot` produces
+    /// after a clean checkpoint, since it only copies the suffixes that exist
+    /// at backup time. Before the WAL-header/no-`-wal` fallback in
+    /// `StoreInventory.openReadOnly`, this snapshot would have been
+    /// misjudged unusable (via either `spaceCount`'s gate or
+    /// `snapshotHasUsableData`'s own integrity-check open) and skipped.
+    /// Regression guard for the production bug behind this task: it fails if
+    /// any of the three readers that share the opener loses the fallback.
+    func testNewestRestorableSnapshotFindsAMainFileOnlySnapshot() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-newest-walonly-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        try makePopulatedStore(at: storeURL, spaces: 2)
+        StoreRepair.snapshot(at: storeURL, stamp: "1700000000-1.0.0")
+
+        // Strip the snapshot's own `-wal`/`-shm` siblings, regardless of
+        // whether `StoreRepair.snapshot` copied them, so the fixture is
+        // exactly the main-file-only WAL-mode shape this bug needs.
+        let snapshotURL = dir.appendingPathComponent("store.sqlite.snapshot-1700000000-1.0.0.bak")
+        for suffix in ["-wal", "-shm"] {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: snapshotURL.path + suffix))
+        }
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: snapshotURL.path + "-wal"),
+            "precondition: the snapshot has no -wal sibling"
+        )
+
+        let candidate = StoreRepair.newestRestorableSnapshot(for: storeURL)
+        XCTAssertEqual(
+            candidate?.version, "1.0.0",
+            "a main-file-only WAL-mode snapshot must be found, not skipped as unusable"
+        )
+    }
+
     /// `restoreFromSnapshot` must copy the snapshot's data back and keep exactly
     /// one prerestore backup of the bad store across repeated calls.
     func testRestoreFromSnapshotBacksUpOnceAndCopiesData() throws {
