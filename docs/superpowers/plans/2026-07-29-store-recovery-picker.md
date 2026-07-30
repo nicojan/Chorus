@@ -2147,14 +2147,30 @@ Content to convey: Chorus can now show every backup it keeps, with what each hol
 
 In `docs/internal/OPEN-ITEMS.md`, move the recovery picker out of open work and into the current status, and note that the shared-store-path item is still open and unaffected by this work.
 
-- [ ] **Step 3: Update the handoff note**
+Three statements in the existing "In progress" section have gone stale and must be corrected rather than carried over:
 
-In `.remember/remember.md`, record where this landed, what is verified by test versus by hand, and that the shared store path remains the open suspect for loss with no update involved.
+- It says tasks 1 to 6 of 11 are done at 150 tests. All eleven are done; use the final test count from your own suite run.
+- It says candidate enumeration covers "all three backup families". There are four now — Task 6 added `.prepick-`, the aside a user-chosen restore sets the current store aside under. Say why it is separate: writing it under `.prerestore-` disarmed the sentinel `restoreFromSnapshot` reads to decide whether to take its own safety copy.
+- It carries "One open behavior question for Nico" about an unreadable live store with no recorded count. That was decided: **keep the offer.** Unknown stays treated as nothing-to-lose, because the outcome is a banner the user can decline and never an automatic write. Record the decision and drop the question.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Add the test-configuration warning to `CLAUDE.md`**
+
+This is a new standing rule, so it belongs in `CLAUDE.md`'s "Build & test" section rather than in the open items. `ChorusTests` is app-hosted, and `ChorusApp.init` builds an `AppState`, so **every** `xcodebuild test` run executes the launch path — including `StoreRepair.applyPendingRestore`, which writes files. Under the default Debug configuration that is harmless: the store resolves to `Application Support/Chorus-debug` and the defaults domain to `com.nicojan.Chorus.debug`. A run with `-configuration Release` would aim that write path at the real store and the release defaults domain.
+
+Write it as a warning never to run the suite with `-configuration Release`, and say why in one line. This repo has already lost a real user's spaces and services to a careless run against live data, so the reason matters as much as the rule.
+
+- [ ] **Step 4: Update the handoff note**
+
+The handoff note is **git-ignored** (`.gitignore:23` ignores `.remember/`) and it does **not** exist inside this worktree — it lives only in the main checkout. So write to the absolute path `/Users/nicojan/dev/Chorus/.remember/remember.md`, and do **not** create a `.remember/` directory inside the worktree; that would be a stray ignored copy nobody reads.
+
+Record where this landed, what is verified by test versus what still needs a hand pass, that the shared store path remains the open suspect for loss with no update involved, and that `.superpowers/sdd/2026-07-29-store-recovery-picker/progress.md` holds every ruling and deferred finding and is git-ignored scratch, so it should be read before the branch is deleted.
+
+- [ ] **Step 5: Commit**
+
+Do **not** try to stage the handoff note — it is git-ignored, and `git add` will refuse it.
 
 ```sh
-git add CHANGELOG.md docs/internal/OPEN-ITEMS.md .remember/remember.md
+git add CHANGELOG.md docs/internal/OPEN-ITEMS.md CLAUDE.md
 git commit -m "docs: record the store recovery picker"
 ```
 
@@ -2162,7 +2178,7 @@ git commit -m "docs: record the store recovery picker"
 
 ## Verification before calling this done
 
-- [ ] Full suite green: `xcodebuild test -project Chorus.xcodeproj -scheme Chorus -destination 'platform=macOS'`
-- [ ] The manual pass in Task 10 Step 5 done, including the deliberate-deletion case producing no banner
+- [ ] Full suite green: `xcodebuild test -project Chorus.xcodeproj -scheme Chorus -destination 'platform=macOS'` (no `-configuration Release`, per the rule added above)
+- [ ] The manual pass in Task 10 Step 5 done, including the deliberate-deletion case producing no banner. **This one belongs to the repo owner, not to whoever writes the docs** — it means launching the app and manipulating files under `Application Support`, which no agent should do here. Leave the box unticked and say so.
 - [ ] `git status` clean, and `project.yml` and `.pbxproj` consistent
 - [ ] No `@Model` stored property changed: `git diff --stat main -- Chorus/Models/` reports no changes, and `testCurrentStoredShapeIsPinned` plus `testFrozenAppPreferencesMatchesLiveModel` are green
