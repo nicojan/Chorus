@@ -163,9 +163,15 @@ enum StoreRepair {
     /// wrong question for pruning: the seed has two spaces, so a snapshot taken
     /// after the loss passes it, and protecting that one let the user's real
     /// backup age past `keep` and be deleted.
+    ///
+    /// `readContent` requires three tables and can fail to read a store that
+    /// `snapshotHasUsableData` (which only needs `ZSPACE`) still judges usable.
+    /// Unknown content is not evidence of a seed, so that case falls back to the
+    /// shipped rule rather than being denied protection — pruning must never
+    /// delete a backup it merely failed to read.
     static func snapshotHoldsUsersData(at url: URL) -> Bool {
-        guard let content = StoreInventory.readContent(at: url), !content.isEmpty,
-              !content.looksLikeUntouchedSeed else { return false }
+        guard let content = StoreInventory.readContent(at: url) else { return snapshotHasUsableData(at: url) }
+        guard !content.looksLikeUntouchedSeed else { return false }
         return snapshotHasUsableData(at: url)
     }
 
@@ -334,9 +340,9 @@ enum StoreRepair {
             .sorted { (stampAndVersion($0, prefix: prefix).stamp ?? .min) > (stampAndVersion($1, prefix: prefix).stamp ?? .min) }
     }
 
-    /// Deletes all but the `keep` most recent snapshot triples for this store.
-    /// Snapshot names sort newest-last by their fixed-width Unix-second stamp, so
-    /// a lexical sort orders them by age.
+    /// Deletes all but the `keep` most recent snapshot triples for this store,
+    /// plus whichever older one still holds the user's own data (see
+    /// `primariesNewestFirst` for how the newest-first order is derived).
     static func pruneSnapshots(at url: URL, keeping keep: Int) {
         let fm = FileManager.default
         let dir = url.deletingLastPathComponent()
@@ -372,15 +378,29 @@ enum StoreRepair {
 
     /// The user-chosen restore's way-back copies. Each deliberate restore writes one
     /// full triple, and no other reaper matches the family, so keep the newest few
-    /// and delete the rest.
+    /// PLUS the single oldest, and delete the rest. Bounds the family at `keep + 1`.
     ///
-    /// Recency alone is the right rule here, unlike `pruneSnapshots`: every aside is
-    /// by definition the store as it stood immediately before a restore the user
-    /// asked for, so there is no seed-shaped impostor to screen out.
+    /// Unlike `pruneSnapshots`, no content check picks out the one worth keeping
+    /// beyond the newest few — every aside is by definition the store as it stood
+    /// immediately before a restore the user asked for, so there is no seed-shaped
+    /// impostor to screen out. But the direction of value is the OPPOSITE of
+    /// `pruneSnapshots`: the oldest aside is the store as it stood before the user
+    /// began trying candidates at all, which is exactly what a run of several
+    /// restores across several launches (the expected path for a picker the user
+    /// needed because they couldn't tell which backup was right) would otherwise
+    /// prune away first. It is also live recovery material, not internal
+    /// bookkeeping — `StoreInventory.candidates`/`best` can select from this
+    /// family — so a purely-recency rule would reap a candidate the picker is
+    /// actively offering.
     static func prunePickAsides(at url: URL, keeping keep: Int) {
         let dir = url.deletingLastPathComponent()
         let primaries = primariesNewestFirst(in: dir, prefix: url.lastPathComponent + pickAsideInfix)
-        for name in primaries.dropFirst(keep) {
+        guard let oldest = primaries.last else { return }
+
+        var retain = Set(primaries.prefix(keep))
+        retain.insert(oldest)
+
+        for name in primaries where !retain.contains(name) {
             for suffix in ["", "-wal", "-shm"] {
                 try? FileManager.default.removeItem(at: dir.appending(path: name + suffix))
             }

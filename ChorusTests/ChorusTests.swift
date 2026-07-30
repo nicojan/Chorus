@@ -913,6 +913,48 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(StoreRepair.newestRestorableSnapshot(for: storeURL)?.version, "1.0.0")
     }
 
+    /// Unreadable content must not be treated as evidence of a seed. A snapshot
+    /// that opens, holds real `ZSPACE` rows, and passes an integrity check —
+    /// exactly what `snapshotHasUsableData` (the automatic-restore rule) already
+    /// protects — must still be protected by pruning even when `readContent`
+    /// itself fails, because its schema is missing a table `readContent`
+    /// requires but `snapshotHasUsableData` does not. Without a fallback to the
+    /// shipped rule, pruning would delete the very file the automatic-restore
+    /// path would otherwise pick.
+    func testPruneFallsBackToShippedRuleWhenContentIsUnreadable() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-prune-unknown-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // Oldest snapshot: genuine data. Its own ZSPACESERVICELINK table is then
+        // dropped, so `readContent` (which requires all three tables) reads it
+        // as UNKNOWN — not empty, not seed-shaped, just unreadable — while
+        // `snapshotHasUsableData` (ZSPACE + integrity check only) still passes it.
+        try makePopulatedStore(at: storeURL, spaces: 3)
+        StoreRepair.snapshot(at: storeURL, stamp: "1700000000-1.0.0")
+        let genuineSnapshot = dir.appendingPathComponent("store.sqlite.snapshot-1700000000-1.0.0.bak")
+        for suffix in ["-wal", "-shm"] {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: genuineSnapshot.path + suffix))
+        }
+        _ = try Self.runSQLite(genuineSnapshot, "DROP TABLE ZSPACESERVICELINK;")
+
+        // Then several newer, genuinely EMPTY snapshots — no data at all, so
+        // they must never be mistaken for something worth protecting.
+        try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
+        for stamp in ["1700000100-1.1.0", "1700000200-1.2.0", "1700000300-1.3.0", "1700000400-1.4.0"] {
+            StoreRepair.snapshot(at: storeURL, stamp: stamp)
+        }
+
+        StoreRepair.pruneSnapshots(at: storeURL, keeping: 3)
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: genuineSnapshot.path),
+            "a snapshot whose content merely failed to read must not be pruned as if it were a seed"
+        )
+    }
+
     /// Pruning must protect the newest snapshot holding the user's own data, not
     /// the newest one that merely has rows. A snapshot taken after the loss holds
     /// the default seed, and treating that as worth keeping let the real backup
@@ -949,7 +991,11 @@ final class ChorusTests: XCTestCase {
     /// Each user-chosen restore writes a full store triple aside under
     /// `.prepick-`, and no existing reaper matches that family, so without this
     /// the directory grows by one copy of the whole store per restore, forever.
-    func testPrunePickAsidesKeepsOnlyTheNewestFew() throws {
+    /// Recency alone is not enough here, unlike `pruneSnapshots`: the OLDEST
+    /// aside is the store as it stood before the user began trying candidates at
+    /// all, so it must survive alongside the newest few, not be pruned away by
+    /// a purely newest-first rule the way a run of several restores would.
+    func testPrunePickAsidesKeepsNewestPlusOldest() throws {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("chorus-prune-pick-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -974,18 +1020,17 @@ final class ChorusTests: XCTestCase {
         let primaries = left.filter { $0.hasPrefix("store.sqlite.prepick-") && $0.hasSuffix(".bak") }.sorted()
         XCTAssertEqual(
             primaries,
-            ["store.sqlite.prepick-1700000030.bak",
+            ["store.sqlite.prepick-1700000010.bak",
+             "store.sqlite.prepick-1700000030.bak",
              "store.sqlite.prepick-1700000040.bak",
              "store.sqlite.prepick-1700000050.bak"],
-            "the three newest asides must survive, got \(primaries)"
+            "the newest three plus the oldest must survive, got \(primaries)"
         )
-        for stamp in ["1700000010", "1700000020"] {
-            for suffix in ["", "-wal", "-shm"] {
-                XCTAssertFalse(
-                    left.contains("store.sqlite.prepick-\(stamp).bak" + suffix),
-                    "a pruned aside must take its whole triple with it, \(stamp)\(suffix) survived"
-                )
-            }
+        for suffix in ["", "-wal", "-shm"] {
+            XCTAssertFalse(
+                left.contains("store.sqlite.prepick-1700000020.bak" + suffix),
+                "the second-oldest aside must be pruned along with its whole triple, \(suffix) survived"
+            )
         }
         XCTAssertTrue(left.contains("store.sqlite"), "pruning must never touch the live store")
     }
