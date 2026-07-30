@@ -2815,10 +2815,6 @@ final class ChorusTests: XCTestCase {
             "more content beats more recent"
         )
         XCTAssertNil(StoreInventory.best(among: [live, damaged, unknown]), "nothing restorable means no winner")
-
-        // Extra assertion: empty but valid backup cannot be preselected over empty live store
-        let emptyBackup = candidate("empty", .snapshot(version: "1.5.14"), spaces: 0, services: 0, at: 8_000)
-        XCTAssertNil(StoreInventory.preselection(among: [emptyBackup], liveContent: StoreContent(spaces: 0, services: 0, links: 0, spaceNames: [], serviceLabels: [])), "empty backup holds no more than empty live store")
     }
 
     /// Preselection is narrower than ranking: it only fires when the live store
@@ -2857,6 +2853,20 @@ final class ChorusTests: XCTestCase {
         XCTAssertNil(
             StoreInventory.preselection(among: [corruptBackup], liveContent: empty),
             "a corrupt-family backup is never preselected"
+        )
+
+        // An empty but valid backup cannot be preselected: it holds no more than
+        // the live store, even when both are empty.
+        let emptyBackup = StoreCandidate(
+            url: dir.appendingPathComponent("empty.bak"),
+            kind: .snapshot(version: "1.5.14"),
+            takenAt: Date(timeIntervalSince1970: 8_000),
+            content: empty,
+            isDamaged: false
+        )
+        XCTAssertNil(
+            StoreInventory.preselection(among: [emptyBackup], liveContent: empty),
+            "empty backup holds no more than empty live store and is not preselected"
         )
     }
 
