@@ -155,6 +155,20 @@ enum StoreRepair {
         return scalarText(db, "PRAGMA integrity_check(1);") == "ok"
     }
 
+    /// Whether the snapshot at `url` holds data that is actually the user's, as
+    /// opposed to the default seed a post-loss snapshot captures.
+    ///
+    /// `snapshotHasUsableData` answers "can this be opened and does it have a
+    /// space", which is the right question for an automatic restore. It is the
+    /// wrong question for pruning: the seed has two spaces, so a snapshot taken
+    /// after the loss passes it, and protecting that one let the user's real
+    /// backup age past `keep` and be deleted.
+    static func snapshotHoldsUsersData(at url: URL) -> Bool {
+        guard let content = StoreInventory.readContent(at: url), !content.isEmpty,
+              !content.looksLikeUntouchedSeed else { return false }
+        return snapshotHasUsableData(at: url)
+    }
+
     /// The newest pre-migration snapshot of the store at `storeURL` that is safe
     /// to restore from, or nil if none qualifies. Walks the `.snapshot-*.bak`
     /// siblings newest-first (by the filename's Unix-second stamp) and returns
@@ -327,13 +341,12 @@ enum StoreRepair {
             .sorted { (stampAndVersion($0, prefix: prefix).stamp ?? .min) > (stampAndVersion($1, prefix: prefix).stamp ?? .min) }
         guard primaries.count > keep else { return }
 
-        // Retain the newest `keep`, PLUS the newest snapshot that still holds
-        // usable data. Without the second clause a run of post-loss empty
-        // snapshots (each version bump snapshots the emptied store) would push
-        // the last good backup past `keep` and delete the only copy of real data.
         var retain = Set(primaries.prefix(keep))
-        if let newestGood = primaries.first(where: { snapshotHasUsableData(at: dir.appending(path: $0)) }) {
-            retain.insert(newestGood)
+        // Protect the newest snapshot holding the USER's data, not merely the
+        // newest with rows: a snapshot taken after a loss holds the default
+        // seed, and protecting that one would let the real backup age out.
+        if let newestUsers = primaries.first(where: { snapshotHoldsUsersData(at: dir.appending(path: $0)) }) {
+            retain.insert(newestUsers)
         }
 
         for name in primaries where !retain.contains(name) {

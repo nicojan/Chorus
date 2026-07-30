@@ -598,6 +598,27 @@ final class ChorusTests: XCTestCase {
         }
     }
 
+    /// Writes the untouched default seed shape into an existing store by raw SQL:
+    /// the two seeded space names and the seven seeded service labels.
+    private static func insertSeedShape(_ url: URL) throws {
+        let spaceEnt = try runSQLite(url, "SELECT Z_ENT FROM Z_PRIMARYKEY WHERE Z_NAME = 'Space';")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let serviceEnt = try runSQLite(url, "SELECT Z_ENT FROM Z_PRIMARYKEY WHERE Z_NAME = 'ServiceInstance';")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        for (i, entry) in DefaultSeed.spaces.enumerated() {
+            _ = try runSQLite(url, """
+                INSERT INTO ZSPACE (Z_PK, Z_ENT, Z_OPT, ZNAME, ZEMOJI, ZSORTORDER)
+                VALUES (\(2000 + i), \(spaceEnt.isEmpty ? "1" : spaceEnt), 1, '\(entry.name)', '\(entry.emoji)', \(i));
+                """)
+        }
+        for (i, label) in DefaultSeed.allServiceLabels.enumerated() {
+            _ = try runSQLite(url, """
+                INSERT INTO ZSERVICEINSTANCE (Z_PK, Z_ENT, Z_OPT, ZLABEL, ZURL)
+                VALUES (\(3000 + i), \(serviceEnt.isEmpty ? "2" : serviceEnt), 1, '\(label)', 'https://example.com');
+                """)
+        }
+    }
+
     /// Copies the store triple — main file plus `-wal`/`-shm` when present —
     /// from `source` to `destination`, mirroring what `StoreRepair.snapshot`
     /// does in production. A prerestore/corrupt fixture built from a bare
@@ -890,6 +911,39 @@ final class ChorusTests: XCTestCase {
         let good = dir.appendingPathComponent("store.sqlite.snapshot-1700000000-1.0.0.bak")
         XCTAssertTrue(FileManager.default.fileExists(atPath: good.path), "the newest usable snapshot must survive prune")
         XCTAssertEqual(StoreRepair.newestRestorableSnapshot(for: storeURL)?.version, "1.0.0")
+    }
+
+    /// Pruning must protect the newest snapshot holding the user's own data, not
+    /// the newest one that merely has rows. A snapshot taken after the loss holds
+    /// the default seed, and treating that as worth keeping let the real backup
+    /// age out of the keep-3 window and be deleted.
+    func testPruneProtectsTheUsersDataNotASeededSnapshot() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-prune-seed-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // Oldest snapshot: the user's own 5 spaces.
+        try makePopulatedStore(at: storeURL, spaces: 5)
+        StoreRepair.snapshot(at: storeURL, stamp: "1700000000-1.5.11+20")
+
+        // Then four newer snapshots of a seed-shaped store, as four updates
+        // after the loss would produce.
+        _ = try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
+        try Self.insertSeedShape(storeURL)
+        for (i, version) in ["1.5.12+21", "1.5.13+22", "1.5.14+23", "1.5.15+24"].enumerated() {
+            StoreRepair.snapshot(at: storeURL, stamp: "17000005\(i)0-\(version)")
+        }
+
+        StoreRepair.pruneSnapshots(at: storeURL, keeping: 3)
+
+        let remaining = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .filter { $0.hasPrefix("store.sqlite.snapshot-") && $0.hasSuffix(".bak") }
+        XCTAssertTrue(
+            remaining.contains { $0.contains("1.5.11+20") },
+            "the only snapshot holding the user's data must survive pruning, got \(remaining)"
+        )
     }
 
     /// A stale `hasEverHadData` flag with NO store file and no snapshot (e.g. a
