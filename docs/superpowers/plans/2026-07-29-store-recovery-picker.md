@@ -1761,6 +1761,7 @@ The relaunch itself cannot be unit-tested, so the test covers the part that can 
             "default.store.snapshot-1700000000-1.5.11+20.bak",
             "default.store.prerestore-1700000500.bak",
             "default.store.corrupt-1700000600.bak",
+            "default.store.prepick-1700000700.bak",
         ]
         for name in names {
             let candidate = StoreCandidate(
@@ -1981,6 +1982,7 @@ struct StoreRecoveryView: View {
         case .snapshot(let version): return version.map { "Backup from before \($0)" } ?? "Backup from before an update"
         case .prerestore: return "Backup from an earlier restore"
         case .corrupt: return "Backup from before a repair"
+        case .prepick: return "Your data before you restored a backup"
         }
     }
 
@@ -2090,7 +2092,7 @@ Do NOT point a dev build at `~/Library/Application Support/default.store`. Debug
 1. Launch the Debug build, add a third space and a couple of services, and quit. This writes the record.
 2. Quit, then empty the debug store's spaces with `sqlite3 ~/Library/Application\ Support/Chorus-debug/default.store "DELETE FROM ZSPACE;"`. Take a snapshot first by copying the triple to `default.store.snapshot-1700000000-1.5.15+24.bak{,-wal,-shm}` so there is something to restore.
 3. Launch again. Confirm: the banner appears, "Review backups…" opens the sheet, the snapshot is preselected, and the row shows the right counts and date.
-4. Click Restore and Restart. Confirm the app relaunches once (not twice, and no second instance in Activity Monitor), the spaces are back, and a `prerestore-` copy of the emptied store now exists.
+4. Click Restore and Restart. Confirm the app relaunches once (not twice, and no second instance in Activity Monitor), the spaces are back, and a **`prepick-`** copy of the emptied store now exists. (It is `prepick-`, not `prerestore-`: Task 6's review moved the user-chosen restore's aside to its own family, because writing it under `prerestore-` disarmed the sentinel the automatic restore reads.)
 5. Relaunch again and confirm no banner: the record and the store now agree.
 6. Delete a space on purpose, quit, relaunch. Confirm no banner, which is the deliberate-deletion case.
 7. Open Settings and confirm "Restore from a backup…" opens the same sheet with nothing preselected while the store holds your own data.
