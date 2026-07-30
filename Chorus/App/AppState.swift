@@ -176,6 +176,11 @@ final class AppState {
     /// workspace tokens above.
     @ObservationIgnored nonisolated(unsafe) private var distributedObserverTokens: [NSObjectProtocol] = []
 
+    /// Tokens registered on `NotificationCenter.default`, unregistered in
+    /// `deinit`. Kept apart from `systemObserverTokens`, which belongs to
+    /// `NSWorkspace.shared.notificationCenter`.
+    @ObservationIgnored nonisolated(unsafe) private var defaultCenterTokens: [NSObjectProtocol] = []
+
     /// Data-store identifiers a `cleanUpOrphanedDataStores` invocation is
     /// currently processing, so overlapping calls don't both run the backoff loop
     /// and issue `WKWebsiteDataStore.remove(...)` for the same store at once.
@@ -251,6 +256,28 @@ final class AppState {
     /// look brand new. See `loadContainer`.
     static let hasEverHadDataKey = "chorus.hasEverHadData"
 
+    /// The spaces, services, and links the store last held, written after a
+    /// clean open and again at termination. A store that comes up below this
+    /// lost data between launches; a user who deletes spaces lowers it on the
+    /// way out, so their own housekeeping never looks like loss.
+    static let contentRecordKey = "chorus.lastKnownContent"
+
+    /// Pairings of backup and live state the user has already declined, so a
+    /// declined offer does not come back every launch.
+    static let declinedRestoresKey = "chorus.declinedRestores"
+
+    /// Why Chorus is offering to restore a backup, or nil when it is not.
+    private(set) var storeRecoveryOffer: StoreRecoveryOffer?
+
+    /// Every store the user could restore from, including the live one.
+    private(set) var storeCandidates: [StoreCandidate] = []
+
+    /// The candidate the picker starts on, or nil when the user must choose.
+    private(set) var preselectedCandidate: StoreCandidate?
+
+    /// Whether the picker sheet is up.
+    var isShowingStoreRecovery = false
+
     init() {
         // The current shipping shape, pinned as an explicit `VersionedSchema`.
         // `loadContainer` opens it through `ChorusMigrationPlan`, so an older
@@ -271,6 +298,10 @@ final class AppState {
         #else
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         #endif
+
+        // A restore the user picked last session, applied before anything opens
+        // the store.
+        StoreRepair.applyPendingRestore(at: config.url)
 
         // Snapshot the store before a newly-installed version opens it, so a
         // migration that loses or reshapes data is always recoverable. No-op
@@ -375,6 +406,7 @@ final class AppState {
         setupNetworkHandling()
         setupExternalLinkRouting()
         setupMediaPermissions()
+        setupTerminationRecording()
         let didSeedDefaults = seedDefaultDataIfNeeded()
         backfillPasskeyNoticeIfNeeded(freshInstall: didSeedDefaults)
         reapOrphanedServices()
@@ -385,6 +417,12 @@ final class AppState {
         preloadActiveSpaceServices()
         startTransientBadgeFetcher()
         cleanUpOrphanedDataStores()
+
+        // Record what the store holds, then decide whether a fuller backup is
+        // worth offering. Order matters: recording first would hide the very
+        // shortfall the offer looks for, so evaluate first.
+        evaluateStoreRecovery(storeURL: config.url)
+        recordStoreContent()
     }
 
     deinit {
@@ -393,6 +431,9 @@ final class AppState {
         }
         for token in distributedObserverTokens {
             DistributedNotificationCenter.default().removeObserver(token)
+        }
+        for token in defaultCenterTokens {
+            NotificationCenter.default.removeObserver(token)
         }
         quietHoursTask?.cancel()
         idleHibernationTask?.cancel()
@@ -807,6 +848,19 @@ final class AppState {
             Task { @MainActor in
                 self?.resumePolling(reason: "system wake")
             }
+        })
+    }
+
+    /// Records what the store holds as the app goes away. A deliberate deletion
+    /// during the session lowers the record here, which is what stops the next
+    /// launch reading the user's own housekeeping as data loss.
+    private func setupTerminationRecording() {
+        defaultCenterTokens.append(NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.recordStoreContent() }
         })
     }
 
@@ -1676,6 +1730,73 @@ final class AppState {
         return links.contains {
             !reachableFromSpace.contains($0.id) || !reachableFromService.contains($0.id)
         }
+    }
+
+    // MARK: - Store recovery picker
+
+    /// What the live store holds right now, read from the open container.
+    /// Cheaper and more accurate than a second SQLite read, which would miss
+    /// anything not yet checkpointed.
+    func liveStoreContent() -> StoreContent? {
+        let context = modelContainer.mainContext
+        do {
+            return StoreContent(
+                spaces: try context.fetchCount(FetchDescriptor<Space>()),
+                services: try context.fetchCount(FetchDescriptor<ServiceInstance>()),
+                links: try context.fetchCount(FetchDescriptor<SpaceServiceLink>()),
+                spaceNames: try context.fetch(FetchDescriptor<Space>()).map(\.name),
+                serviceLabels: try context.fetch(FetchDescriptor<ServiceInstance>()).map(\.label)
+            )
+        } catch {
+            AppLogger.dataStore.error("Could not read live store content: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// Records what the store holds, so a later launch can tell loss from
+    /// housekeeping. Called after a clean open and again at termination; a hard
+    /// crash can leave it stale, which costs at most one declinable offer.
+    ///
+    /// An empty store is never recorded. That guard is load-bearing: writing the
+    /// record while the store is empty would erase the very evidence the offer
+    /// depends on, and the loss itself would silence the feature.
+    func recordStoreContent(defaults: UserDefaults = .standard) {
+        guard let content = liveStoreContent(), !content.isEmpty else { return }
+        defaults.set(StoreInventory.encodeRecord(content), forKey: Self.contentRecordKey)
+    }
+
+    /// Works out whether to offer a restore and prepares the picker's contents.
+    func evaluateStoreRecovery(storeURL: URL, defaults: UserDefaults = .standard) {
+        let live = liveStoreContent()
+        let candidates = StoreInventory.candidates(for: storeURL, liveContent: live)
+        let best = StoreInventory.best(among: candidates)
+        let declined = Set(defaults.stringArray(forKey: Self.declinedRestoresKey) ?? [])
+
+        storeCandidates = candidates
+        storeRecoveryOffer = StoreInventory.offer(
+            liveContent: live,
+            best: best,
+            record: StoreInventory.decodeRecord(defaults.string(forKey: Self.contentRecordKey)),
+            declinedKeys: declined
+        )
+        preselectedCandidate = StoreInventory.preselection(among: candidates, liveContent: live)
+        if let offer = storeRecoveryOffer {
+            AppLogger.dataStore.error("Offering a store restore (\(String(describing: offer))); candidates=\(candidates.count)")
+        }
+    }
+
+    /// Remembers that the user said no to this pairing, and drops the offer.
+    func declineStoreRecovery(defaults: UserDefaults = .standard) {
+        if let best = StoreInventory.best(among: storeCandidates) {
+            let key = StoreInventory.declineKey(live: liveStoreContent(), candidate: best)
+            var declined = defaults.stringArray(forKey: Self.declinedRestoresKey) ?? []
+            if !declined.contains(key) {
+                declined.append(key)
+                // Bounded so a long-lived install cannot grow this without end.
+                defaults.set(Array(declined.suffix(20)), forKey: Self.declinedRestoresKey)
+            }
+        }
+        storeRecoveryOffer = nil
     }
 
     /// Safety net for crash-mid-delete (or stores written by a build that

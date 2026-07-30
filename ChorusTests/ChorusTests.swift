@@ -3292,4 +3292,34 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(anyAsideFiles.isEmpty, "a missing source must return before any aside copy is made")
     }
 
+    /// End to end through AppState's own helpers: a store thinned out below its
+    /// record, with a fuller backup present, must produce an offer whose
+    /// preselected candidate is that backup.
+    func testEvaluateStoreRecoveryOffersTheFullestBackup() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-evaluate-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        try makePopulatedStore(at: storeURL, spaces: 4)
+        StoreRepair.snapshot(at: storeURL, stamp: "1700000000-1.5.11+20")
+        _ = try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
+
+        let live = StoreInventory.readContent(at: storeURL)
+        let candidates = StoreInventory.candidates(for: storeURL, liveContent: live)
+        let best = StoreInventory.best(among: candidates)
+        let record = StoreContent(spaces: 4, services: 0, links: 0, spaceNames: [], serviceLabels: [])
+
+        XCTAssertEqual(
+            StoreInventory.offer(liveContent: live, best: best, record: record, declinedKeys: []),
+            .belowRecord
+        )
+        XCTAssertEqual(
+            StoreInventory.preselection(among: candidates, liveContent: live)?.content?.spaces,
+            4,
+            "the 4-space snapshot must be preselected over an emptied live store"
+        )
+    }
+
 }
