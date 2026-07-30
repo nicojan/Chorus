@@ -35,6 +35,14 @@ Write plain, direct, active, concrete prose. No marketing gloss, no AI tells.
 - The project is generated from `project.yml` via XcodeGen. When you change build
   settings (for example a version bump), edit both `project.yml` and the
   `.pbxproj` so a later `xcodegen generate` stays consistent.
+- **Never add `-configuration Release` to that test command.** `ChorusTests` is
+  app-hosted, and `ChorusApp.init` builds an `AppState`, so every test run
+  executes the launch path, including `StoreRepair.applyPendingRestore`, which
+  writes files. Under Debug that is harmless — the store resolves to
+  `Application Support/Chorus-debug` and the defaults domain to
+  `com.nicojan.Chorus.debug`. Under Release it would aim that write at the real
+  store and the release defaults domain, and this repo has already lost a real
+  user's data to a careless run against live data.
 
 ## SwiftData schema changes (read before editing any `@Model`)
 

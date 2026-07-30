@@ -5,6 +5,10 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- A store recovery picker. Open Settings and choose "Restore from a backup" to see every backup Chorus keeps, what each one holds, and when it was taken, then put back the one you want. Chorus also offers this on its own, the moment it notices your spaces and services are missing. Either way, it sets your current data aside first, so choosing a backup never throws away what you had.
+
 ## [1.5.15] - 2026-07-29
 
 ### Fixed
