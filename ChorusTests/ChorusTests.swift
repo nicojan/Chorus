@@ -2929,6 +2929,31 @@ final class ChorusTests: XCTestCase {
         XCTAssertNotNil(
             StoreInventory.offer(liveContent: seeded, best: backup, record: record, declinedKeys: [key])
         )
+
+        // An unreadable live store (liveContent: nil) but a record on file: the
+        // record branch for unknown live content fires directly.
+        XCTAssertEqual(
+            StoreInventory.offer(liveContent: nil, best: backup, record: record, declinedKeys: []),
+            .belowRecord
+        )
+
+        // An unreadable live store and no record: this pins current behavior.
+        // "Unknown" is deliberately treated as "nothing to lose" here, because
+        // the outcome is an offer the user can decline, not an automatic action.
+        XCTAssertEqual(
+            StoreInventory.offer(liveContent: nil, best: backup, record: nil, declinedKeys: []),
+            .nothingToLose,
+            "an unreadable live store with no record is treated as nothing to lose here, since the result is a declinable offer, not an automatic restore"
+        )
+
+        // The coverage bypass: with liveContent nil there is nothing to compare
+        // against, so even `thin` -- which fails the "holds more" gate against a
+        // concrete live store above -- is not suppressed by that gate here.
+        XCTAssertEqual(
+            StoreInventory.offer(liveContent: nil, best: thin, record: nil, declinedKeys: []),
+            .nothingToLose,
+            "an unknown live store means there is nothing to compare against, so the coverage gate must not suppress even a thin backup"
+        )
     }
 
     /// The record round-trips through the string form kept in UserDefaults.
