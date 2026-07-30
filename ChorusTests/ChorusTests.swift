@@ -2777,4 +2777,87 @@ final class ChorusTests: XCTestCase {
         )
     }
 
+    /// Ranking takes the fullest restorable backup, breaks ties on recency, and
+    /// ignores the live store, damaged files, and unreadable files.
+    func testBestCandidateRanksContentThenRecency() {
+        let dir = URL(fileURLWithPath: "/tmp/ranking")
+        func candidate(
+            _ name: String,
+            _ kind: StoreCandidate.Kind,
+            spaces: Int,
+            services: Int,
+            at stamp: TimeInterval,
+            damaged: Bool = false,
+            unknown: Bool = false
+        ) -> StoreCandidate {
+            StoreCandidate(
+                url: dir.appendingPathComponent(name),
+                kind: kind,
+                takenAt: Date(timeIntervalSince1970: stamp),
+                content: unknown ? nil : StoreContent(spaces: spaces, services: services, links: services, spaceNames: [], serviceLabels: []),
+                isDamaged: damaged
+            )
+        }
+
+        let fullOld = candidate("a", .snapshot(version: "1.5.11+20"), spaces: 4, services: 13, at: 1_000)
+        let thinNew = candidate("b", .snapshot(version: "1.5.14+23"), spaces: 2, services: 7, at: 9_000)
+        let fullNewer = candidate("c", .prerestore, spaces: 4, services: 13, at: 5_000)
+        let live = candidate("live", .live, spaces: 9, services: 99, at: 9_999)
+        let damaged = candidate("d", .snapshot(version: nil), spaces: 8, services: 40, at: 9_500, damaged: true)
+        let unknown = candidate("e", .snapshot(version: nil), spaces: 0, services: 0, at: 9_600, unknown: true)
+
+        let best = StoreInventory.best(among: [fullOld, thinNew, fullNewer, live, damaged, unknown])
+        XCTAssertEqual(best, fullNewer, "equal content must break the tie on recency, and live/damaged/unknown are excluded")
+
+        XCTAssertEqual(
+            StoreInventory.best(among: [thinNew, fullOld]),
+            fullOld,
+            "more content beats more recent"
+        )
+        XCTAssertNil(StoreInventory.best(among: [live, damaged, unknown]), "nothing restorable means no winner")
+
+        // Extra assertion: empty but valid backup cannot be preselected over empty live store
+        let emptyBackup = candidate("empty", .snapshot(version: "1.5.14"), spaces: 0, services: 0, at: 8_000)
+        XCTAssertNil(StoreInventory.preselection(among: [emptyBackup], liveContent: StoreContent(spaces: 0, services: 0, links: 0, spaceNames: [], serviceLabels: [])), "empty backup holds no more than empty live store")
+    }
+
+    /// Preselection is narrower than ranking: it only fires when the live store
+    /// holds nothing of the user's, and never picks a corrupt-family backup.
+    func testPreselectionOnlyWhenLiveStoreHoldsNothingOfTheUsers() {
+        let dir = URL(fileURLWithPath: "/tmp/preselect")
+        let backup = StoreCandidate(
+            url: dir.appendingPathComponent("s.bak"),
+            kind: .snapshot(version: "1.5.11+20"),
+            takenAt: Date(timeIntervalSince1970: 1_000),
+            content: StoreContent(spaces: 4, services: 13, links: 13, spaceNames: [], serviceLabels: []),
+            isDamaged: false
+        )
+        let corruptBackup = StoreCandidate(
+            url: dir.appendingPathComponent("c.bak"),
+            kind: .corrupt,
+            takenAt: Date(timeIntervalSince1970: 2_000),
+            content: StoreContent(spaces: 9, services: 40, links: 40, spaceNames: [], serviceLabels: []),
+            isDamaged: false
+        )
+        let empty = StoreContent(spaces: 0, services: 0, links: 0, spaceNames: [], serviceLabels: [])
+        let seeded = StoreContent(
+            spaces: 2, services: 7, links: 7,
+            spaceNames: DefaultSeed.spaces.map(\.name),
+            serviceLabels: DefaultSeed.allServiceLabels
+        )
+        let usersOwn = StoreContent(spaces: 3, services: 10, links: 10, spaceNames: ["Home", "Work", "Side"], serviceLabels: [])
+
+        XCTAssertEqual(StoreInventory.preselection(among: [backup], liveContent: empty), backup, "empty live store: preselect")
+        XCTAssertEqual(StoreInventory.preselection(among: [backup], liveContent: seeded), backup, "seeded live store: preselect")
+        XCTAssertEqual(StoreInventory.preselection(among: [backup], liveContent: nil), backup, "unreadable live store: preselect")
+        XCTAssertNil(
+            StoreInventory.preselection(among: [backup], liveContent: usersOwn),
+            "the user's own data must never be silently preselected over"
+        )
+        XCTAssertNil(
+            StoreInventory.preselection(among: [corruptBackup], liveContent: empty),
+            "a corrupt-family backup is never preselected"
+        )
+    }
+
 }

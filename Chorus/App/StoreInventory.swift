@@ -303,3 +303,37 @@ extension StoreInventory {
     }
 
 }
+
+extension StoreInventory {
+    /// The fullest restorable candidate: most services, then most spaces, then
+    /// most links, then the most recent. Excludes the live store, damaged files,
+    /// and files whose content is unknown.
+    static func best(among candidates: [StoreCandidate]) -> StoreCandidate? {
+        candidates
+            .filter(\.isRestorable)
+            .max { lhs, rhs in
+                guard let l = lhs.content, let r = rhs.content else { return false }
+                if l.services != r.services { return l.services < r.services }
+                if l.spaces != r.spaces { return l.spaces < r.spaces }
+                if l.links != r.links { return l.links < r.links }
+                return (lhs.takenAt ?? .distantPast) < (rhs.takenAt ?? .distantPast)
+            }
+    }
+
+    /// The candidate to preselect in the picker, or nil to make the user choose.
+    ///
+    /// Deliberately narrower than `best`. Preselecting is only safe when the live
+    /// store holds nothing of the user's: empty, unreadable, or the untouched
+    /// seed. When they still have their own spaces, restoring a fuller but older
+    /// backup would discard everything they did since, and only they can weigh
+    /// that. A `.corrupt` backup is never preselected because that store was
+    /// damaged when it was set aside.
+    static func preselection(among candidates: [StoreCandidate], liveContent: StoreContent?) -> StoreCandidate? {
+        let liveHoldsUsersData = liveContent.map { !$0.isEmpty && !$0.looksLikeUntouchedSeed } ?? false
+        guard !liveHoldsUsersData else { return nil }
+        guard let winner = best(among: candidates), winner.kind != .corrupt else { return nil }
+        // Nothing to gain from a backup that holds no more than what is there.
+        if let live = liveContent, let content = winner.content, !content.holdsMore(than: live) { return nil }
+        return winner
+    }
+}
