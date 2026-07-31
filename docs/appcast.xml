@@ -3,6 +3,20 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.17</title>
+            <pubDate>Fri, 31 Jul 2026 11:55:00 -0700</pubDate>
+            <sparkle:version>26</sparkle:version>
+            <sparkle:shortVersionString>1.5.17</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Fixed</h3>
+<ul>
+<li>The Gmail badge counts only unread mail in your inbox. It was counting Spam too: Gmail keeps a folder's messages loaded in the page after you leave it, and Chorus counted every unread row it could find, so a spam folder holding 161 unread showed up as 99+ over an inbox with two.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.17/Chorus-1.5.17.dmg" length="9354510" type="application/octet-stream" sparkle:edSignature="/8S88p/a49pqPAH4YB8+yxTA/Il4R7uINBzJLePmLCmuMKIS/ZVGTeh6UeHD8vYr9hUrweXnwomCiPDqGGbyCw=="/>
+        </item>
+        <item>
             <title>1.5.16</title>
             <pubDate>Thu, 30 Jul 2026 00:22:33 -0700</pubDate>
             <sparkle:version>25</sparkle:version>
