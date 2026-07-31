@@ -1,6 +1,11 @@
 # Open items
 
-## 1.5.17 (2026-07-31): the Gmail badge counted Spam
+## Shipped in 1.5.17 (2026-07-31): the Gmail badge counted Spam
+
+Released: tag `v1.5.17`, build 26, DMG notarized and stapled, appcast live at the `SUFeedURL`, Homebrew cask bumped here and in the tap (`brew style`, `livecheck`, `audit --cask --online` all clean).
+
+**Verified live, in the app, against the reporter's own Gmail.** 1.5.17 was installed from the stapled DMG over `/Applications` before publishing, and the badge was watched through the sequence that produces the bug: fresh inbox 2, open Spam 2 (the old code reads 99+ in that view), back to the inbox with Spam's rows still mounted 2. That last reading is the one that used to show 99+.
+
 
 Reported from a screenshot: the Gmail icon read 99+ over an inbox holding two unread. The catalog's `badgeJS` was `document.querySelectorAll('tr.zA.zE').length`, a **document-wide** count, and Gmail keeps a visited label's list mounted after you navigate away. Measured in the reporter's own Gmail: back in the inbox, `all=101 visible=2`, with Spam's 99 unread rows still in the page. Above 99 the icon clamps to `99+`.
 
@@ -12,7 +17,9 @@ So the badge now reads that label, falls back to unread rows inside the *visible
 
 **Two semantics worth knowing.** The nav count is *Primary* unread, so mail sitting unread under Promotions or Updates (203 and 1,987 in the reporter's account) no longer reaches the badge. That matches the report, but it is a real change from "every unread row on screen". And the row-counting fallback leans on `offsetParent`, which is layout-dependent; a `.zero`-frame web view like `HibernatedBadgePoller`'s cannot use it. That path is covered: a test pins that the label path still reads the count in a zero-frame view, which is the configuration the offscreen fetcher actually uses.
 
-Verified: 182 tests. Two run the catalog expression through JavaScriptCore against a stub DOM (cached rows, browsing Spam, `1,987` parsing, empty inbox clearing to 0, the fallback, and the withhold case); two run it through real WebKit and `NotificationManager.pollNow`, one asserting the fixture really does hold 101 rows while the badge lands on 2. **Not yet verified inside a running Chorus against a live Gmail** — a Debug build has its own store and no Google session, so the app-level check is still open.
+Verified: 182 tests. Two run the catalog expression through JavaScriptCore against a stub DOM (cached rows, browsing Spam, `1,987` parsing, empty inbox clearing to 0, the fallback, and the withhold case); two run it through real WebKit and `NotificationManager.pollNow`, one asserting the fixture really does hold 101 rows while the badge lands on 2.
+
+**A note on how to verify this class of bug live.** A fresh Gmail load reads the right number under *both* the old and the new expression, so a screenshot after launch proves nothing. Only the round trip separates them: visit another label, come back, then read the badge.
 
 ## Shipped in 1.5.16 (2026-07-30): the store recovery picker
 
