@@ -1,6 +1,8 @@
 import XCTest
 import SwiftData
 import SQLite3
+import JavaScriptCore
+import WebKit
 @testable import Chorus
 
 @MainActor
@@ -1729,15 +1731,179 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(DarkReaderSupport.injection(mode: .off, appDark: false), I.none)
     }
 
-    func testGmailBadgeCountsUnreadRowsNotInboxAriaLabel() {
-        // The badge counts unread conversation rows in the current inbox view
-        // (Gmail marks them tr.zA.zE), matching what the user sees. It must no
-        // longer read the "Inbox N unread" aria-label, which sums unread across
-        // every inbox category/section and showed 99+ over a visibly empty view.
-        let js = ServiceCatalog.shared.entry(for: "gmail")?.badgeJS ?? ""
-        XCTAssertTrue(js.contains("tr.zA.zE"), "Gmail badge should count unread conversation rows")
-        XCTAssertFalse(js.contains("unread"), "Gmail badge should not parse the Inbox aria-label unread total")
-        XCTAssertFalse(js.contains("aria-label"), "Gmail badge should not read an aria-label")
+    /// Runs the catalog's Gmail `badgeJS` against a stub Gmail DOM. `hiddenUnread`
+    /// models the unread rows Gmail leaves mounted outside the visible list after
+    /// you visit another label — the ones that made a document-wide row count read
+    /// 99+ over a 2-unread inbox. Returns nil when the expression yields null,
+    /// which `pollBadge` treats as "no reading" and never writes.
+    private func evaluateGmailBadge(
+        hash: String,
+        ariaLabels: [String],
+        visibleUnread: Int,
+        hiddenUnread: Int
+    ) -> Int? {
+        guard let js = ServiceCatalog.shared.entry(for: "gmail")?.badgeJS else {
+            XCTFail("Gmail catalog entry should define badgeJS")
+            return nil
+        }
+        guard let context = JSContext() else {
+            XCTFail("Could not create a JSContext")
+            return nil
+        }
+        var jsError: String?
+        context.exceptionHandler = { _, exception in
+            jsError = exception?.toString() ?? "unknown JS exception"
+        }
+        let labels = (try? String(data: JSONEncoder().encode(ariaLabels), encoding: .utf8) ?? "[]") ?? "[]"
+        // The hidden main is listed first on purpose: the expression has to skip a
+        // stale container rather than take whichever one comes back first.
+        let prelude = """
+        var location = { hash: \(jsQuoted(hash)) };
+        var aria = \(labels).map(function (l) { return { getAttribute: function () { return l; } }; });
+        function rows(n) { var a = []; for (var i = 0; i < n; i++) { a.push({}); } return a; }
+        function main(count, visible) {
+            return {
+                offsetParent: visible ? {} : null,
+                querySelectorAll: function (sel) { return sel === 'tr.zA.zE' ? rows(count) : []; }
+            };
+        }
+        var document = { querySelectorAll: function (sel) {
+            if (sel === '[aria-label]') { return aria; }
+            if (sel === 'div[role=main]') { return [main(\(hiddenUnread), false), main(\(visibleUnread), true)]; }
+            if (sel === 'tr.zA.zE') { return rows(\(visibleUnread + hiddenUnread)); }
+            return [];
+        } };
+        """
+        let result = context.evaluateScript(prelude + "\n" + js)
+        if let jsError { XCTFail("Gmail badgeJS threw: \(jsError)") }
+        guard let result, result.isNumber else { return nil }
+        return Int(result.toInt32())
+    }
+
+    private func jsQuoted(_ value: String) -> String {
+        let escaped = value.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+        return "'\(escaped)'"
+    }
+
+    func testGmailBadgeReportsInboxUnreadNotCachedRowsFromOtherLabels() {
+        // Gmail keeps a visited label's list mounted after you navigate away, so a
+        // document-wide `tr.zA.zE` count kept adding Spam's unread to the badge —
+        // measured live as all=101 / visible=2 back in a 2-unread inbox, which the
+        // icon showed as 99+. The badge now reads Gmail's own Inbox nav count,
+        // which stays put no matter which label is on screen.
+        let aria = ["Inbox 2 unread", "Spam 161 unread", "Updates 1987 unread has menu"]
+
+        XCTAssertEqual(
+            evaluateGmailBadge(hash: "#inbox", ariaLabels: aria, visibleUnread: 2, hiddenUnread: 99), 2,
+            "99 unread rows left over from Spam must not reach the badge"
+        )
+        XCTAssertEqual(
+            evaluateGmailBadge(hash: "#spam", ariaLabels: aria, visibleUnread: 99, hiddenUnread: 2), 2,
+            "browsing Spam must not make the badge report Spam's unread"
+        )
+        XCTAssertEqual(
+            evaluateGmailBadge(hash: "#inbox", ariaLabels: ["Inbox 1,987 unread"], visibleUnread: 0, hiddenUnread: 0), 1987,
+            "a grouped thousands separator must parse, not truncate to 1"
+        )
+        // An inbox with nothing unread drops the label's count, and reading that
+        // as 0 is what authoritatively clears the badge.
+        XCTAssertEqual(
+            evaluateGmailBadge(hash: "#inbox", ariaLabels: ["Inbox", "Spam 161 unread"], visibleUnread: 0, hiddenUnread: 99), 0,
+            "an empty inbox should clear the badge"
+        )
+    }
+
+    func testGmailBadgeFallsBackToVisibleRowsAndWithholdsWhenItCannotTell() {
+        // If Gmail ever stops labelling the nav item, counting unread rows inside
+        // the *visible* list still gets the inbox right — the stale container is
+        // excluded by offsetParent.
+        XCTAssertEqual(
+            evaluateGmailBadge(hash: "#inbox", ariaLabels: [], visibleUnread: 2, hiddenUnread: 99), 2,
+            "the fallback must count only the visible list"
+        )
+        XCTAssertEqual(
+            evaluateGmailBadge(hash: "", ariaLabels: [], visibleUnread: 3, hiddenUnread: 50), 3,
+            "an empty hash is the inbox too"
+        )
+        // Outside the inbox with no label to read, the visible list belongs to some
+        // other view and counting it would be wrong. Yielding null (not 0) leaves
+        // the last good badge alone instead of clearing it.
+        XCTAssertNil(
+            evaluateGmailBadge(hash: "#spam", ariaLabels: [], visibleUnread: 99, hiddenUnread: 2),
+            "with no inbox count available, the badge should go unwritten"
+        )
+    }
+
+    /// A page shaped like Gmail after you visit Spam and come back: the inbox list
+    /// on screen, plus the Spam list still mounted and hidden. `hiddenUnread` rows
+    /// are the ones a document-wide count wrongly picked up.
+    private func fakeGmailHTML(visibleUnread: Int, hiddenUnread: Int, read: Int = 10) -> String {
+        func rows(_ unread: Int, read: Int = 0) -> String {
+            let unreadRows = (0..<unread).map { _ in "<tr class='zA zE'><td>unread</td></tr>" }
+            let readRows = (0..<read).map { _ in "<tr class='zA yO'><td>read</td></tr>" }
+            return "<table>" + (unreadRows + readRows).joined() + "</table>"
+        }
+        return """
+        <html><body>
+        <div role="navigation">
+          <a href="#inbox" aria-label="Inbox \(visibleUnread) unread">Inbox</a>
+          <a href="#spam" aria-label="Spam \(hiddenUnread) unread">Spam</a>
+        </div>
+        <div role="main">\(rows(visibleUnread, read: read))</div>
+        <div role="main" style="display:none">\(rows(hiddenUnread))</div>
+        </body></html>
+        """
+    }
+
+    /// Waits for the fixture's own markup, not `document.readyState` — the initial
+    /// empty document reads "complete" before `loadHTMLString` has replaced it, so
+    /// polling readyState races through and every query comes back empty.
+    private func waitForFixture(_ webView: WKWebView) async throws {
+        for _ in 0..<100 {
+            let mains = try? await webView.evaluateJavaScript("document.querySelectorAll('div[role=main]').length") as? Int
+            if let mains, mains > 0 { return }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTFail("Fake Gmail page never finished loading")
+    }
+
+    func testGmailBadgeInRealWebViewIgnoresCachedRowsFromOtherLabels() async throws {
+        // The JSC tests above check the expression's logic; this one runs it
+        // through the real path — WebKit's engine, the catalog string, and
+        // NotificationManager's poll — against a page shaped like the DOM that
+        // produced the bug.
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 800, height: 600))
+        webView.loadHTMLString(fakeGmailHTML(visibleUnread: 2, hiddenUnread: 99), baseURL: URL(string: "https://mail.google.com/mail/u/0/#inbox"))
+        try await waitForFixture(webView)
+
+        // The fixture reproduces the bug: the old expression still reads 101 here.
+        let documentWide = try await webView.evaluateJavaScript("document.querySelectorAll('tr.zA.zE').length") as? Int
+        XCTAssertEqual(documentWide, 101, "fixture should hold the 101 unread rows that made the badge read 99+")
+
+        let badgeManager = BadgeManager()
+        let notifications = NotificationManager(badgeManager: badgeManager)
+        let entry = ServiceCatalog.shared.entry(for: "gmail")
+        let serviceID = UUID()
+        await notifications.pollNow(for: serviceID, webView: webView, isMuted: false, showBadge: true, catalogEntry: entry)
+
+        XCTAssertEqual(badgeManager.badgeCount(for: serviceID), 2, "the badge should report the inbox's 2, not the page's 101")
+    }
+
+    func testGmailBadgeInRealWebViewWorksInAZeroFrameWebView() async throws {
+        // The offscreen badge fetcher builds its web view with a .zero frame, where
+        // layout-dependent reads like offsetParent can't be trusted. The nav-label
+        // path doesn't touch layout, so a hibernated service still reads its inbox
+        // count — worth pinning, because the row-counting fallback would not.
+        let webView = WKWebView(frame: .zero)
+        webView.loadHTMLString(fakeGmailHTML(visibleUnread: 3, hiddenUnread: 99), baseURL: URL(string: "https://mail.google.com/mail/u/0/#inbox"))
+        try await waitForFixture(webView)
+
+        guard let js = ServiceCatalog.shared.entry(for: "gmail")?.badgeJS else {
+            return XCTFail("Gmail catalog entry should define badgeJS")
+        }
+        let count = try await webView.evaluateJavaScript(js) as? Int
+        XCTAssertEqual(count, 3, "an offscreen view should still read the inbox count from the nav label")
     }
 
     func testDarkModeMigrationFromLegacyFlag() {

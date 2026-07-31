@@ -5,7 +5,7 @@
         "url": "https://mail.google.com/mail/u/0/#inbox",
         "icon": "gmail-icon",
         "category": "Email",
-        "badgeJS": "(()=>document.querySelectorAll('tr.zA.zE').length)()",
+        "badgeJS": "(()=>{const L=[...document.querySelectorAll('[aria-label]')].map(e=>e.getAttribute('aria-label')).filter(l=>/^Inbox\\b/.test(l));const u=L.find(l=>/\\bunread\\b/.test(l));if(u){const m=u.match(/([\\d,]+)\\s+unread/);return m?parseInt(m[1].replace(/,/g,''),10):0}if(L.length)return 0;const h=location.hash;if(h!==''&&h!=='#inbox')return null;const v=[...document.querySelectorAll('div[role=main]')].find(x=>x.offsetParent!==null);return v?v.querySelectorAll('tr.zA.zE').length:null})()",
         "userAgent": null,
         "description": "Google's webmail"
     },

@@ -1,5 +1,19 @@
 # Open items
 
+## 1.5.17 (2026-07-31): the Gmail badge counted Spam
+
+Reported from a screenshot: the Gmail icon read 99+ over an inbox holding two unread. The catalog's `badgeJS` was `document.querySelectorAll('tr.zA.zE').length`, a **document-wide** count, and Gmail keeps a visited label's list mounted after you navigate away. Measured in the reporter's own Gmail: back in the inbox, `all=101 visible=2`, with Spam's 99 unread rows still in the page. Above 99 the icon clamps to `99+`.
+
+The evidence run also killed the two obvious alternatives. `document.title` is view-dependent (`"Spam (161)"` while browsing Spam), and counting only visible rows reports 99 whenever Spam is the visible list. The one source that held steady across inbox, Spam, and back — with the sidebar collapsed, which is how the reporter runs it — was Gmail's own nav label, `aria-label="Inbox 2 unread"`.
+
+So the badge now reads that label, falls back to unread rows inside the *visible* `div[role=main]` when the label is missing and the hash is the inbox, and otherwise yields `null`, which `pollBadge` drops without writing — a missing reading leaves the last good badge rather than clearing it to 0.
+
+**This is the second attempt at this symptom.** 1.5.6 (`7f3e3c3`) moved *off* a nav count, `.aim .bsU`, because it read 99+ over an empty inbox, and left a test forbidding any aria-label read. That diagnosis was half right: the fault was *positional* matching — first count bubble in the document, which in this account is Spam's 161 — not the idea of reading the nav. The new expression names its target (`/^Inbox\b/`), and the old test's ban is gone with the reasoning recorded in its replacement.
+
+**Two semantics worth knowing.** The nav count is *Primary* unread, so mail sitting unread under Promotions or Updates (203 and 1,987 in the reporter's account) no longer reaches the badge. That matches the report, but it is a real change from "every unread row on screen". And the row-counting fallback leans on `offsetParent`, which is layout-dependent; a `.zero`-frame web view like `HibernatedBadgePoller`'s cannot use it. That path is covered: a test pins that the label path still reads the count in a zero-frame view, which is the configuration the offscreen fetcher actually uses.
+
+Verified: 182 tests. Two run the catalog expression through JavaScriptCore against a stub DOM (cached rows, browsing Spam, `1,987` parsing, empty inbox clearing to 0, the fallback, and the withhold case); two run it through real WebKit and `NotificationManager.pollNow`, one asserting the fixture really does hold 101 rows while the badge lands on 2. **Not yet verified inside a running Chorus against a live Gmail** — a Debug build has its own store and no Google session, so the app-level check is still open.
+
 ## Shipped in 1.5.16 (2026-07-30): the store recovery picker
 
 On `main`, hand-verified, released: tag `v1.5.16`, build 25, DMG notarized and stapled, appcast published, Homebrew cask bumped in both this repo and the tap. Design: `docs/superpowers/specs/2026-07-29-store-recovery-picker-design.md`. Plan: `docs/superpowers/plans/2026-07-29-store-recovery-picker.md`, whose closing section records the by-hand pass. Task-by-task progress, rulings, and deferred findings: `.superpowers/sdd/2026-07-29-store-recovery-picker/progress.md` (git-ignored scratch in the worktree, so read it before deleting the worktree).
@@ -26,9 +40,9 @@ There are four backup families, not three: `.snapshot-` (taken before an update)
 
 **One follow-up left deliberately undone.** `StoreRepair.copyTriple` throws away the result of removing a destination file, so an unremovable `-wal` sitting beside a main file it copied successfully still reports success — the foreign-WAL pairing that function's own comment says it prevents. Reaching it needs an immutable flag or a delete-denying ACL on that sibling, which would already have broken ordinary writes, and nothing is destroyed when it happens: the aside has been proved a faithful copy by then, the chosen backup is untouched, and `.prepick-` copies are themselves offered in the picker. The closing readability check catches the single-sibling case and misses the case where a `-wal` and `-shm` survive as a consistent pair. The fix is one line — treat a surviving destination file as a failure — plus a test, and its blast radius is `applyPendingRestore` alone, since `restoreFromSnapshot` rolls its own copy loops and does not call `copyTriple`.
 
-## Current status — through 1.5.16 (2026-07-30)
+## Current status — through 1.5.17 (2026-07-31)
 
-Everything below has shipped. **Chorus 1.5.16 is the current release**, and the section above covers what it added. The 1.5.15 work it builds on: It opens the store through an explicit versioned schema and migration plan, so an older store migrates through named, tested stages instead of leaving SwiftData to infer the mapping at open time. Inference was the cause of the data loss 1.5.14 was built to catch. If the versioned plan cannot open a store, Chorus falls back to inference, so no update is worse off than before. The safety net stays. See `docs/internal/FOLLOWUP-versioned-schema.md` and `docs/superpowers/specs/2026-07-24-versioned-schema-migration-plan.md`.
+Everything below has shipped. **Chorus 1.5.17 is the current release**, and the section above covers what it added. The 1.5.15 work it builds on: It opens the store through an explicit versioned schema and migration plan, so an older store migrates through named, tested stages instead of leaving SwiftData to infer the mapping at open time. Inference was the cause of the data loss 1.5.14 was built to catch. If the versioned plan cannot open a store, Chorus falls back to inference, so no update is worse off than before. The safety net stays. See `docs/internal/FOLLOWUP-versioned-schema.md` and `docs/superpowers/specs/2026-07-24-versioned-schema-migration-plan.md`.
 
 It went out because a user reported losing all their spaces and services while running 1.5.14, which had the net but not this fix.
 

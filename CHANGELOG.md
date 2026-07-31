@@ -5,6 +5,12 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.5.17] - 2026-07-31
+
+### Fixed
+
+- The Gmail badge counts only unread mail in your inbox. It was counting Spam too: Gmail keeps a folder's messages loaded in the page after you leave it, and Chorus counted every unread row it could find, so a spam folder holding 161 unread showed up as 99+ over an inbox with two.
+
 ## [1.5.16] - 2026-07-30
 
 ### Added
