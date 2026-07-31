@@ -1562,6 +1562,41 @@ final class ChorusTests: XCTestCase {
         XCTAssertFalse(ServiceInstance(label: "X", url: "https://x.test", forceDarkMode: false).isForceDarkModeEnabled)
     }
 
+    // MARK: - Badge sweep sign-in walls (AuthWallResolver)
+
+    func testAuthWallResolverFlagsOffHostFetchWithNoCount() {
+        // A session needing interactive sign-in gets redirected to the identity
+        // provider and comes back empty. Retrying can't fix it — a transient web
+        // view can't sign anyone in — but it does make the provider push another
+        // approval request at the user, every sweep.
+        XCTAssertTrue(AuthWallResolver.looksLikeSignInWall(
+            requestedHost: "outlook.cloud.microsoft",
+            landedHost: "login.microsoftonline.com",
+            badge: 0))
+    }
+
+    func testAuthWallResolverLeavesHealthyFetchesAlone() {
+        // Same host, no count: an authenticated inbox that is simply empty.
+        XCTAssertFalse(AuthWallResolver.looksLikeSignInWall(
+            requestedHost: "outlook.cloud.microsoft",
+            landedHost: "outlook.cloud.microsoft",
+            badge: 0))
+        // Redirected but still produced a count, so the session is fine.
+        XCTAssertFalse(AuthWallResolver.looksLikeSignInWall(
+            requestedHost: "outlook.cloud.microsoft",
+            landedHost: "outlook.office.com",
+            badge: 3))
+    }
+
+    func testAuthWallResolverTreatsMissingHostAsUnknown() {
+        // A load that never resolved a host tells us nothing, and parking on a
+        // guess would stop that badge updating until the user opens the service.
+        XCTAssertFalse(AuthWallResolver.looksLikeSignInWall(
+            requestedHost: "outlook.cloud.microsoft", landedHost: nil, badge: 0))
+        XCTAssertFalse(AuthWallResolver.looksLikeSignInWall(
+            requestedHost: nil, landedHost: "login.microsoftonline.com", badge: 0))
+    }
+
     // MARK: - Link routing (belongsToService)
 
     func testBelongsToServiceKeepsSlackWorkspacesInApp() {
