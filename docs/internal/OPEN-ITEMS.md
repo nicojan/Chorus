@@ -21,6 +21,16 @@ Verified: 182 tests. Two run the catalog expression through JavaScriptCore again
 
 **A note on how to verify this class of bug live.** A fresh Gmail load reads the right number under *both* the old and the new expression, so a screenshot after launch proves nothing. Only the round trip separates them: visit another label, come back, then read the badge.
 
+## Open: Slack notifications arrive late
+
+Reported 2026-07-31, **not investigated**. Push notifications are sometimes very late; noticed for Slack, on a workspace the reporter was not in. No measurements yet, so everything here is a place to look rather than a finding.
+
+Start by pinning down what is being reported: one Slack web client only runs the workspace it has loaded, so "a workspace I wasn't in" could mean a second Slack *service* in Chorus or a second workspace inside one already there — different bugs, different fixes. Then get a timeline: when the message was sent, when the banner arrived, whether that service was open, and its hibernation setting.
+
+Candidates, cheapest first. Hibernation is the obvious suspect for a service that goes quiet — per-service policy (followGlobal/never/immediate/after) crossed with `isNotificationCritical`, which is what keeps chat apps live; check what Slack actually resolves to. Notifications reach the app through the `chorusNotification` handler, which `HibernatedBadgePoller.makeTransientWebView` deliberately omits, so a hibernated service posts nothing at all while it is down. Poll cadence is a separate path (it moves the badge, not the banner) but worth knowing: `runActivePoll` steps 5s → 30s after runs of unchanged polls, `runBackgroundPoll` is flat 30s.
+
+Note the dev-machine caveat in `.remember/remember.md`: notification authorization for `com.nicojan.Chorus` has been wedged to `.denied` on this machine before, which can look like lateness when it is really a permission state.
+
 ## Shipped in 1.5.16 (2026-07-30): the store recovery picker
 
 On `main`, hand-verified, released: tag `v1.5.16`, build 25, DMG notarized and stapled, appcast published, Homebrew cask bumped in both this repo and the tap. Design: `docs/superpowers/specs/2026-07-29-store-recovery-picker-design.md`. Plan: `docs/superpowers/plans/2026-07-29-store-recovery-picker.md`, whose closing section records the by-hand pass. Task-by-task progress, rulings, and deferred findings: `.superpowers/sdd/2026-07-29-store-recovery-picker/progress.md` (git-ignored scratch in the worktree, so read it before deleting the worktree).
