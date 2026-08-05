@@ -418,13 +418,26 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
         // If the new-window request is for the same service — e.g. Slack opening
-        // a workspace via window.open / target=_blank — load it in the existing
-        // web view instead of spawning a separate NSWindow. Only genuinely
+        // a workspace via a target=_blank link — load it in the existing web
+        // view instead of spawning a separate NSWindow. Only genuinely
         // cross-service popups (real OAuth sign-in windows to another domain)
         // fall through and get their own window below.
-        if let targetHost = navigationAction.request.url?.host,
-           let openerHost = webView.url?.host,
-           Self.belongsToService(targetHost, serviceHost: openerHost) {
+        //
+        // Restricted to real link clicks. A programmatic `window.open()` hands
+        // the caller a window handle, and sign-in flows test it:
+        //
+        //     const w = window.open(url); if (!w) return;
+        //
+        // Returning nil there reads as "popup blocked", so the page abandons
+        // whatever it was starting with no window and no error to show for it.
+        // Same-service `window.open` therefore falls through to a real window,
+        // which shares the opener's data store so a session started in it lands
+        // in the right place.
+        if Self.shouldLoadNewWindowInPlace(
+            navigationType: navigationAction.navigationType,
+            targetHost: navigationAction.request.url?.host,
+            openerHost: webView.url?.host
+        ) {
             webView.load(navigationAction.request)
             return nil
         }
@@ -956,6 +969,26 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// Slack can switch workspaces across *.slack.com in-app — except for
     /// shared-umbrella domains (see `sharedUmbrellaDomains`) where only the exact
     /// host matches. Used to decide in-app vs. browser for links and new windows.
+    /// Whether a new-window request should collapse into the opener's web view
+    /// instead of getting its own window.
+    ///
+    /// Only real link clicks collapse. A programmatic `window.open()` must come
+    /// back with a window handle: sign-in flows null-check the return value to
+    /// detect a popup blocker, and a nil answer makes them abandon the flow
+    /// silently — no window, no error, no request. Factored out so the rule is
+    /// unit-testable without a live `WKWebView`.
+    nonisolated static func shouldLoadNewWindowInPlace(
+        navigationType: WKNavigationType,
+        targetHost: String?,
+        openerHost: String?
+    ) -> Bool {
+        guard navigationType == .linkActivated,
+              let targetHost,
+              let openerHost
+        else { return false }
+        return belongsToService(targetHost, serviceHost: openerHost)
+    }
+
     nonisolated static func belongsToService(_ targetHost: String, serviceHost: String) -> Bool {
         let target = normalizedHost(targetHost)
         let service = normalizedHost(serviceHost)
