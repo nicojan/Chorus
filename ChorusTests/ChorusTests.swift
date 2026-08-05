@@ -1562,6 +1562,51 @@ final class ChorusTests: XCTestCase {
         XCTAssertFalse(ServiceInstance(label: "X", url: "https://x.test", forceDarkMode: false).isForceDarkModeEnabled)
     }
 
+    // MARK: - New-window requests (shouldLoadNewWindowInPlace)
+
+    func testClickedSameServiceLinkLoadsInPlace() {
+        // A target=_blank click inside Slack should reuse the service's own web
+        // view rather than spawning a window.
+        XCTAssertTrue(WebViewCoordinator.shouldLoadNewWindowInPlace(
+            navigationType: .linkActivated,
+            targetHost: "myteam.slack.com",
+            openerHost: "app.slack.com"
+        ))
+    }
+
+    func testProgrammaticSameServicePopupGetsItsOwnWindow() {
+        // A page calling window.open() against its own host must still get a
+        // handle back. Collapsing it in place returned nil, which a caller that
+        // null-checks the handle reads as a blocked popup — so it gives up
+        // silently, with no window and no error to show for it.
+        XCTAssertFalse(WebViewCoordinator.shouldLoadNewWindowInPlace(
+            navigationType: .other,
+            targetHost: "teams.cloud.microsoft",
+            openerHost: "teams.cloud.microsoft"
+        ))
+    }
+
+    func testCrossServicePopupGetsItsOwnWindow() {
+        XCTAssertFalse(WebViewCoordinator.shouldLoadNewWindowInPlace(
+            navigationType: .linkActivated,
+            targetHost: "login.microsoftonline.com",
+            openerHost: "teams.cloud.microsoft"
+        ))
+    }
+
+    func testNewWindowWithUnknownHostIsNotCollapsed() {
+        XCTAssertFalse(WebViewCoordinator.shouldLoadNewWindowInPlace(
+            navigationType: .linkActivated,
+            targetHost: nil,
+            openerHost: "app.slack.com"
+        ))
+        XCTAssertFalse(WebViewCoordinator.shouldLoadNewWindowInPlace(
+            navigationType: .linkActivated,
+            targetHost: "app.slack.com",
+            openerHost: nil
+        ))
+    }
+
     // MARK: - Link routing (belongsToService)
 
     func testBelongsToServiceKeepsSlackWorkspacesInApp() {
