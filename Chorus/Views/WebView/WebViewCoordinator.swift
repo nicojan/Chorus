@@ -13,6 +13,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// reload it once the sign-in popup closes (see reloadOpenerAfterPopup).
     private weak var openerWebView: WKWebView?
 
+    /// Whether the current popup was *opened at* a known sign-in gateway. Set
+    /// once, from the URL that opened it — see `shouldReloadOpener` for why the
+    /// rest of the navigation chain is deliberately not consulted.
+    private var popupOpenedAtAuthHost = false
+
     /// Fallback URL to load if the WebContent process crashes before any
     /// navigation has committed (so `webView.reload()` has nothing to retry).
     var fallbackURL: URL?
@@ -438,6 +443,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         // needs to reload to leave its signed-out page.
         openerWebView = webView
 
+        // The sign-in signal, taken from the URL that opened the popup and not
+        // touched again: a service asking the user to sign in again opens
+        // straight at its provider. See `shouldReloadOpener`.
+        popupOpenedAtAuthHost = navigationAction.request.url?.host.map(Self.isAuthHost) ?? false
+
         // CRITICAL: Use the configuration passed in — it inherits the parent's data store
         let popup = WKWebView(frame: .zero, configuration: configuration)
         popup.navigationDelegate = self
@@ -500,14 +510,56 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     @objc private func popupWindowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow,
               window === popupWindow else { return }
-        reloadOpenerAfterPopup()
+        // Closed by the user (red button / ⌘W), not by the page.
+        reloadOpenerAfterPopup(selfClosed: false)
         cleanupPopup()
     }
 
-    /// After a sign-in / OAuth popup closes, the shared data store already holds
-    /// the new session cookies, but the service's main web view is still on its
-    /// signed-out page. Reload it so the user lands on the authenticated app.
-    private func reloadOpenerAfterPopup() {
+    /// Whether closing a popup should reload the service that opened it.
+    ///
+    /// Reloading exists for sign-in: the popup shares the service's data store,
+    /// so once sign-in finishes the session cookies are already here and the
+    /// main view only needs a reload to leave its signed-out page.
+    ///
+    /// Reloading *unconditionally* is wrong, because a popup is also how an
+    /// ordinary link opens. Glance at a link from a chat service, close the
+    /// window, and the service reloads underneath you — losing scroll position,
+    /// a half-typed message, and whatever else the page held but never sent.
+    /// That is a steady, visible cost paid for a case that comes up rarely.
+    ///
+    /// Two signals separate them, and either one is enough:
+    ///
+    /// - **The page closed itself.** OAuth popups finish by calling
+    ///   `window.close()`; a link window is closed by the user. This is the
+    ///   signal that carries flows through identity providers we don't list,
+    ///   such as a company's own Okta or Keycloak.
+    /// - **The popup was opened at a known sign-in gateway.** A service asking
+    ///   the user to sign in again opens straight at its provider, so the very
+    ///   first URL is the gateway. This covers a flow the user closes by hand
+    ///   once it is done, which some providers leave to them.
+    ///
+    /// The second signal reads the *opening* URL only, never the rest of the
+    /// navigation chain, and that distinction is the whole point. Plenty of
+    /// ordinary links pass through a sign-in gateway on their way somewhere
+    /// else: opening an Azure portal link from Teams starts at
+    /// `portal.azure.com` and redirects through `login.microsoftonline.com` for
+    /// SSO. Watching the chain counts that as a sign-in and reloads the service
+    /// — the exact bug this function exists to fix, measured happening.
+    ///
+    /// When neither signal holds, the popup was a link, and the service is left
+    /// alone. The failure mode this trades into is mild and recoverable: a
+    /// sign-in that neither starts at a listed gateway nor closes itself leaves
+    /// the service on its signed-out page until the user hits reload, once.
+    nonisolated static func shouldReloadOpener(selfClosed: Bool, openedAtAuthHost: Bool) -> Bool {
+        selfClosed || openedAtAuthHost
+    }
+
+    /// Reloads the service that opened the popup, when the rule above says to.
+    private func reloadOpenerAfterPopup(selfClosed: Bool) {
+        guard Self.shouldReloadOpener(
+            selfClosed: selfClosed,
+            openedAtAuthHost: popupOpenedAtAuthHost
+        ) else { return }
         guard let opener = openerWebView else { return }
         if opener.url != nil {
             opener.reload()
@@ -534,11 +586,16 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         // Give the next popup its own crash budget — a prior popup's tally must
         // not shorten the backoff for an unrelated sign-in opened soon after.
         popupCrashTimestamps = []
+        // Likewise the sign-in signal: a link popup opened after a sign-in must
+        // not inherit its predecessor's reason to reload the service.
+        popupOpenedAtAuthHost = false
     }
 
     func webViewDidClose(_ webView: WKWebView) {
         if webView === popupWebView {
-            reloadOpenerAfterPopup()
+            // The page called window.close() on itself — the shape an OAuth
+            // popup takes when it finishes.
+            reloadOpenerAfterPopup(selfClosed: true)
             cleanupPopup()
         }
     }
