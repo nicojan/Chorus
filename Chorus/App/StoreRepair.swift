@@ -93,6 +93,24 @@ enum StoreRepair {
         AppLogger.dataStore.info("StoreRepair: dangling links before=\(before) after=\(after)")
     }
 
+    /// Whether the store at `url` currently holds dangling join rows, read
+    /// without writing anything. `repairDanglingLinks` answers the same question
+    /// on its way to fixing them, but it runs inside the open path and reports
+    /// nothing back; callers that need to know the store arrived *damaged* — so
+    /// they can hold off on anything irreversible this launch — ask here first.
+    ///
+    /// False for a healthy store, a missing one, and a schema this build does
+    /// not recognize. Unknown is deliberately reported as "not damaged": this
+    /// gates caution, and the other guards (`hadHistory`, the restore path)
+    /// already cover a store that cannot be read at all.
+    static func hasDanglingLinks(at url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        guard let db = StoreInventory.openReadOnly(url) else { return false }
+        defer { sqlite3_close(db) }
+        guard schemaMatches(db) else { return false }
+        return (scalarInt(db, "SELECT COUNT(*) FROM \(linkTable) WHERE \(danglingPredicate);") ?? 0) > 0
+    }
+
     /// Counts `Space` rows in the store at `url` by reading the raw SQLite file,
     /// **before** any `ModelContainer` opens or migrates it. Returns the row
     /// count, or `nil` when the count can't be established — no file yet (first

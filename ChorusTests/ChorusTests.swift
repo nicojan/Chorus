@@ -4327,6 +4327,231 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(StoreRepair.spaceCount(at: legacy), 9, "and the old path must be left alone, not consumed")
     }
 
+    // MARK: - Keeping chat services live outside the active space
+
+    private func makeService(label: String, catalogID: String?) -> ServiceInstance {
+        ServiceInstance(label: label, url: "https://example.com", catalogEntryID: catalogID)
+    }
+
+    /// A chat service the active-space preload doesn't cover must still be kept
+    /// live — it is the only way it can post a notification banner. A non-chat
+    /// service must not be, and one already covered must not be preloaded twice.
+    func testChatServicesOutsideTheActiveSpaceAreKeptLive() {
+        let slack = makeService(label: "Slack", catalogID: "slack")
+        let coveredSlack = makeService(label: "Slack (this space)", catalogID: "slack")
+        let reddit = makeService(label: "Reddit", catalogID: "reddit")
+        let custom = makeService(label: "Custom chat", catalogID: nil)
+
+        let chosen = AppState.criticalServicesToKeepLive(
+            among: [slack, coveredSlack, reddit, custom],
+            covered: [coveredSlack.id],
+            limit: 5
+        )
+        XCTAssertEqual(chosen.map(\.id), [slack.id], "only the uncovered chat service is kept live")
+    }
+
+    /// The cap exists because these are exempt from eviction: without it a user
+    /// with many chat services would pin every slot in the pool. It must also
+    /// pick the SAME ones each launch, or a different set would be kept live
+    /// every time the app started.
+    func testKeepLiveSelectionIsCappedAndStable() {
+        let services = (0..<12).map { makeService(label: "Slack \($0)", catalogID: "slack") }
+
+        let first = AppState.criticalServicesToKeepLive(among: services, covered: [], limit: 5)
+        XCTAssertEqual(first.count, 5, "the cap must bound how many are kept live")
+        XCTAssertLessThan(
+            AppState.maxCrossSpaceCriticalServices, 15,
+            "the cap must stay below the pool's maxLoaded or the LRU sweep has nothing to reclaim"
+        )
+
+        let shuffled = AppState.criticalServicesToKeepLive(among: services.shuffled(), covered: [], limit: 5)
+        XCTAssertEqual(first.map(\.id), shuffled.map(\.id), "the same services must win the cap regardless of fetch order")
+    }
+
+    // MARK: - Protecting a live service's cookies
+
+    /// The tombstone list lives in UserDefaults and the services live in the
+    /// store, so restoring a backup can bring back a service whose data store is
+    /// still tombstoned from when it was deleted. Wiping it would log the user
+    /// out of a service they can see. The stale tombstone must be dropped.
+    func testTombstoneForALiveServiceIsDroppedNotHonoured() {
+        let live = UUID()
+        let genuinelyDeleted = UUID()
+
+        let result = AppState.reconciledTombstones(
+            tombstoned: [live, genuinelyDeleted],
+            claimed: [live, UUID()]
+        )
+        XCTAssertEqual(result.dropped, [live], "a tombstone whose service exists again is wrong and must be dropped")
+        XCTAssertEqual(result.keep, [genuinelyDeleted], "a real orphan must still be reclaimed")
+    }
+
+    /// An unreadable store yields no claims. Treating that as "nothing is
+    /// claimed" would mark every store on disk as garbage and wipe every login
+    /// the user has, so it must reclaim nothing at all.
+    func testUnreferencedStoresReclaimsNothingWhenTheStoreCannotBeRead() {
+        let onDisk: Set<UUID> = [UUID(), UUID(), UUID()]
+        XCTAssertEqual(
+            AppState.unreferencedDataStoreIdentifiers(onDisk: onDisk, claimed: []), [],
+            "an empty claim set means unknown, never 'all of them are garbage'"
+        )
+    }
+
+    /// The leak this closes: a store no service points at, left behind when a
+    /// service row vanished without going through a delete.
+    func testUnreferencedStoresFindsTheOnesNoServiceClaims() {
+        let claimedA = UUID(), claimedB = UUID(), stranded = UUID()
+        XCTAssertEqual(
+            AppState.unreferencedDataStoreIdentifiers(
+                onDisk: [claimedA, claimedB, stranded],
+                claimed: [claimedA, claimedB]
+            ),
+            [stranded]
+        )
+    }
+
+    func testWebsiteDataStoreDirectoryIsScopedToTheBundle() {
+        let dir = AppState.websiteDataStoreDirectory(bundleID: "com.example.App")
+        XCTAssertEqual(dir?.lastPathComponent, "WebsiteDataStore")
+        XCTAssertEqual(dir?.deletingLastPathComponent().lastPathComponent, "com.example.App")
+        XCTAssertNil(AppState.websiteDataStoreDirectory(bundleID: nil))
+        XCTAssertNil(AppState.websiteDataStoreDirectory(bundleID: ""))
+    }
+
+    /// The signal that gates both destructive reclaim paths. It has to be read
+    /// from the raw file before the open path repairs the damage away.
+    func testHasDanglingLinksSeesDamageAndClearsAfterRepair() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-damaged-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        try makePopulatedStore(at: storeURL, spaces: 2)
+        XCTAssertFalse(StoreRepair.hasDanglingLinks(at: storeURL), "a healthy store is not damaged")
+
+        // A link pointing at a space that isn't there — what a lost Space row
+        // leaves behind.
+        _ = try Self.runSQLite(storeURL, """
+            INSERT INTO ZSPACESERVICELINK (Z_PK, Z_ENT, Z_OPT, ZSPACE, ZSERVICE, ZSORTORDER)
+            VALUES (9001, 3, 1, 8888, 9999, 0);
+            """)
+        XCTAssertTrue(StoreRepair.hasDanglingLinks(at: storeURL), "a dangling link must be reported as damage")
+
+        StoreRepair.repairDanglingLinks(at: storeURL)
+        XCTAssertFalse(StoreRepair.hasDanglingLinks(at: storeURL), "and must read clean once repaired")
+    }
+
+    // MARK: - The notification interception script
+
+    /// Pulls the injected notification script out of a configured controller.
+    @MainActor
+    private func notificationScriptSource() throws -> String {
+        let manager = UserScriptManager()
+        let controller = WKUserContentController()
+        manager.installUserScripts(
+            for: makeService(label: "Slack", catalogID: "slack"),
+            customCSS: nil,
+            darkInjection: .none,
+            stayActiveInBackground: false,
+            on: controller
+        )
+        return try XCTUnwrap(
+            controller.userScripts.map(\.source).first { $0.contains("chorusNotification") },
+            "no notification interception script was installed"
+        )
+    }
+
+    /// The shim replaces `window.Notification`, so it has to keep the API it
+    /// replaced: instances must still satisfy `instanceof`, and the statics the
+    /// original carried must survive. The first version dropped both.
+    func testNotificationShimKeepsPrototypeAndStatics() throws {
+        let context = try XCTUnwrap(JSContext(), "Could not create a JSContext")
+        var posted: [String] = []
+        let record: @convention(block) (String) -> Void = { posted.append($0) }
+
+        context.evaluateScript("var window = this; var posted = [];")
+        context.setObject(record, forKeyedSubscript: "chorusPost" as NSString)
+        context.evaluateScript("""
+            window.webkit = { messageHandlers: { chorusNotification: { postMessage: function(m) { chorusPost(m); } } } };
+            function Notification(title, options) { this.title = title; }
+            Notification.prototype.close = function() { this.closed = true; };
+            Notification.maxActions = 2;
+            Notification.permission = 'default';
+            window.Notification = Notification;
+            """)
+
+        context.evaluateScript(try notificationScriptSource())
+
+        XCTAssertEqual(
+            context.evaluateScript("(new window.Notification('hi', {body: 'b'})) instanceof window.Notification")?.toBool(),
+            true,
+            "instanceof must still hold — a site that feature-detects this way breaks otherwise"
+        )
+        XCTAssertEqual(
+            context.evaluateScript("typeof (new window.Notification('hi')).close")?.toString(), "function",
+            "the prototype's methods must still be reachable"
+        )
+        XCTAssertEqual(
+            context.evaluateScript("window.Notification.maxActions")?.toInt32(), 2,
+            "statics the original carried must be copied across"
+        )
+        XCTAssertEqual(
+            context.evaluateScript("window.Notification.permission")?.toString(), "granted",
+            "and Chorus's own overrides must win over the copied ones"
+        )
+        XCTAssertEqual(posted.count, 2, "each constructed notification is forwarded once")
+        XCTAssertTrue(posted[0].contains("\"body\":\"b\""), "the payload must carry the body")
+    }
+
+    /// The path that was not covered at all. Web apps raise notifications
+    /// through the service worker registration rather than the constructor, so
+    /// without this they never reached Chorus.
+    func testNotificationShimForwardsServiceWorkerNotifications() throws {
+        let context = try XCTUnwrap(JSContext(), "Could not create a JSContext")
+        var posted: [String] = []
+        let record: @convention(block) (String) -> Void = { posted.append($0) }
+
+        context.evaluateScript("var window = this;")
+        context.setObject(record, forKeyedSubscript: "chorusPost" as NSString)
+        context.evaluateScript("""
+            window.webkit = { messageHandlers: { chorusNotification: { postMessage: function(m) { chorusPost(m); } } } };
+            var showCalls = 0;
+            function ServiceWorkerRegistration() {}
+            ServiceWorkerRegistration.prototype.showNotification = function(t, o) { showCalls++; return 'orig'; };
+            window.ServiceWorkerRegistration = ServiceWorkerRegistration;
+            """)
+
+        context.evaluateScript(try notificationScriptSource())
+
+        let returned = context.evaluateScript("""
+            (new ServiceWorkerRegistration()).showNotification('Nico', {body: 'sent a message'});
+            """)?.toString()
+        XCTAssertEqual(returned, "orig", "the original call must still run and its result be passed through")
+        XCTAssertEqual(context.evaluateScript("showCalls")?.toInt32(), 1, "exactly once — not swallowed, not doubled")
+        XCTAssertEqual(posted.count, 1, "and the notification must reach Chorus")
+        XCTAssertTrue(posted[0].contains("\"title\":\"Nico\""))
+    }
+
+    /// A page that has torn the bridge down must not take the site's own
+    /// notification call with it.
+    func testNotificationShimSurvivesAMissingBridge() throws {
+        let context = try XCTUnwrap(JSContext(), "Could not create a JSContext")
+        context.evaluateScript("""
+            var window = this;
+            window.webkit = undefined;
+            function Notification(title) { this.title = title; }
+            window.Notification = Notification;
+            """)
+        context.evaluateScript(try notificationScriptSource())
+
+        XCTAssertEqual(
+            context.evaluateScript("(new window.Notification('hi')).title")?.toString(), "hi",
+            "the original constructor must still run when the bridge is gone"
+        )
+        XCTAssertNil(context.exception, "and no exception must escape into the page")
+    }
+
     /// A fresh install has nothing at either path, and must simply open in the
     /// app's folder without any of the move machinery running.
     func testRelocationOnAFreshInstallOpensInTheAppsFolder() throws {

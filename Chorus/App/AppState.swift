@@ -318,6 +318,34 @@ final class AppState {
     /// real thing.
     private(set) var isStoreInMemoryFallback = false
 
+    /// Whether the store arrived at this launch already holding dangling join
+    /// rows — the signature of a store damaged between sessions. Read from the
+    /// raw file before anything opens or repairs it.
+    private let storeWasDamagedAtLaunch: Bool
+
+    /// Whether this launch's container came from an automatic restore.
+    private let storeWasRestoredAtLaunch: Bool
+
+    /// Whether it is safe to run the *irreversible* reclamation this launch:
+    /// deleting service rows that belong to no space, and wiping the on-disk
+    /// website data (cookies, logins) of stores nothing points at.
+    ///
+    /// Both of those are correct on a healthy store and destructive on a damaged
+    /// one, and the two escalate into each other. `repairDanglingLinks` deletes
+    /// join rows whose space row is missing; every service that lived only in
+    /// that space is then linkless, so `reapOrphanedServices` deletes it and
+    /// tombstones its data store — turning a store problem that the recovery
+    /// picker could have undone into a permanent logout. Restoring a backup can
+    /// produce the same shape for a launch.
+    ///
+    /// So neither runs on a launch where the store was damaged, restored, or
+    /// replaced by the in-memory fallback. Nothing is lost by waiting: an
+    /// invisible orphan row costs nothing to carry, the user gets the recovery
+    /// banner instead, and the next clean launch reclaims it.
+    private var isSafeToReclaim: Bool {
+        !isStoreInMemoryFallback && !storeWasDamagedAtLaunch && !storeWasRestoredAtLaunch
+    }
+
     init() {
         // The current shipping shape, pinned as an explicit `VersionedSchema`.
         // `loadContainer` opens it through `ChorusMigrationPlan`, so an older
@@ -354,10 +382,20 @@ final class AppState {
         // the snapshot it just took rather than overwriting it.
         StoreRepair.backupBeforeMigrationIfNeeded(at: config.url)
 
+        // Note the store's condition BEFORE the open path repairs it — once
+        // `tryOpen` has run `repairDanglingLinks`, the damage is gone and the
+        // evidence with it. See `isSafeToReclaim`.
+        self.storeWasDamagedAtLaunch = StoreRepair.hasDanglingLinks(at: config.url)
+
         // Open the store, self-healing an emptied or unusable store from the
         // newest usable pre-migration snapshot. The outcome drives the banner.
         let (loadedContainer, outcome) = Self.loadContainer(schema: schema, config: config)
         self.modelContainer = loadedContainer
+        if case .restoredFromSnapshot = outcome {
+            self.storeWasRestoredAtLaunch = true
+        } else {
+            self.storeWasRestoredAtLaunch = false
+        }
 
         switch outcome {
         case .openedClean:
@@ -461,6 +499,7 @@ final class AppState {
         fetchCatalogIcons(force: didUpdate)
         preloadActiveSpaceServices()
         startTransientBadgeFetcher()
+        reclaimUnreferencedDataStores()
         cleanUpOrphanedDataStores()
 
         // Record what the store holds, then decide whether a fuller backup is
@@ -2047,6 +2086,14 @@ final class AppState {
     /// that no longer belongs to any space and schedules its data store for
     /// removal. Runs once at launch, before preloading.
     private func reapOrphanedServices() {
+        // A store that arrived damaged, was restored, or isn't the real store at
+        // all can present a perfectly healthy service as linkless. Deleting it
+        // here would wipe its cookies for good. See `isSafeToReclaim`.
+        guard isSafeToReclaim else {
+            AppLogger.dataStore.info("Skipping the orphan reap: the store was damaged, restored, or is the in-memory fallback")
+            return
+        }
+
         let context = modelContainer.mainContext
         let services: [ServiceInstance]
         do {
@@ -2091,10 +2138,28 @@ final class AppState {
     /// Removes any data store identifiers previously marked as orphaned.
     /// Runs at launch (deferred) and after the user deletes a service.
     func cleanUpOrphanedDataStores() {
+        // Drop any identifier a service currently claims, and forget it for
+        // good. The tombstone list lives in UserDefaults and the services live
+        // in the store, so the two can disagree: restoring a backup rolls the
+        // store back past a deletion and brings the service row with it, while
+        // the tombstone written when it was deleted stays behind. Without this
+        // reconcile, the next launch wipes the cookies of a service the user can
+        // see and is using. Nothing legitimate is lost — a tombstone whose
+        // service exists again is, by definition, wrong.
+        let reconciled = Self.reconciledTombstones(
+            tombstoned: Self.loadOrphanedIdentifiers(),
+            claimed: liveDataStoreIdentifiers()
+        )
+        let tombstoned = reconciled.keep
+        if !reconciled.dropped.isEmpty {
+            AppLogger.dataStore.info("Dropping \(reconciled.dropped.count) tombstone(s) for data store(s) a live service still claims")
+            Self.saveOrphanedIdentifiers(tombstoned)
+        }
+
         // Exclude identifiers a prior invocation is already processing, so two
         // overlapping calls (e.g. two deletes soon after launch) don't both run
         // the backoff loop and call `remove(...)` on the same store concurrently.
-        let orphans = Self.loadOrphanedIdentifiers().subtracting(dataStoresBeingRemoved)
+        let orphans = tombstoned.subtracting(dataStoresBeingRemoved)
         guard !orphans.isEmpty else { return }
         dataStoresBeingRemoved.formUnion(orphans)
 
@@ -2148,6 +2213,73 @@ final class AppState {
             let current = Self.loadOrphanedIdentifiers()
             Self.saveOrphanedIdentifiers(current.subtracting(removed))
         }
+    }
+
+    /// Every data store identifier a service currently claims. Empty when the
+    /// store can't be read — callers must treat that as "unknown", never as
+    /// "nothing is claimed".
+    private func liveDataStoreIdentifiers() -> Set<UUID> {
+        let services = (try? modelContainer.mainContext.fetch(FetchDescriptor<ServiceInstance>())) ?? []
+        return Set(services.map(\.dataStoreIdentifier))
+    }
+
+    /// Where WebKit keeps the identifier-scoped stores made by
+    /// `WKWebsiteDataStore(forIdentifier:)`, for a non-sandboxed app.
+    ///
+    /// Read by enumeration rather than through
+    /// `WKWebsiteDataStore.allDataStoreIdentifiers`, which has been observed to
+    /// crash on macOS 26 (see `orphanedDataStoresKey`). Only the *names* come
+    /// from the filesystem; removal still goes through the supported
+    /// `remove(forIdentifier:)`, so nothing here deletes a directory by hand.
+    nonisolated static func websiteDataStoreDirectory(bundleID: String?) -> URL? {
+        guard let bundleID, !bundleID.isEmpty else { return nil }
+        return URL.libraryDirectory
+            .appending(path: "WebKit")
+            .appending(path: bundleID)
+            .appending(path: "WebsiteDataStore")
+    }
+
+    /// The on-disk stores no service claims. Pure, so the rule is testable
+    /// without WebKit or a store.
+    ///
+    /// `claimed` being empty returns nothing rather than everything: an empty
+    /// claim set means the store could not be read, and answering "then all of
+    /// them are garbage" would wipe every login the user has.
+    nonisolated static func unreferencedDataStoreIdentifiers(
+        onDisk: Set<UUID>,
+        claimed: Set<UUID>
+    ) -> Set<UUID> {
+        guard !claimed.isEmpty else { return [] }
+        return onDisk.subtracting(claimed)
+    }
+
+    /// Tombstones every on-disk data store no service points at, so the existing
+    /// removal path reclaims it.
+    ///
+    /// These accumulate whenever a service row disappears without going through
+    /// a delete — a store lost and reseeded, or rolled back to a backup taken
+    /// before the service existed. The replacement service gets a fresh
+    /// identifier and a fresh empty store, so the user is logged out while the
+    /// old store keeps their cookies on disk indefinitely. Nothing reclaimed
+    /// them, because nothing ever tombstoned them.
+    ///
+    /// Gated on `isSafeToReclaim` for the same reason as the orphan reap, and
+    /// this one is the more dangerous of the two: on a launch where the store
+    /// came up empty or seeded, every real store would read as unreferenced.
+    private func reclaimUnreferencedDataStores() {
+        guard isSafeToReclaim else { return }
+        guard let dir = Self.websiteDataStoreDirectory(bundleID: Bundle.main.bundleIdentifier),
+              let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return }
+
+        let onDisk = Set(names.compactMap(UUID.init(uuidString:)))
+        let unreferenced = Self.unreferencedDataStoreIdentifiers(
+            onDisk: onDisk,
+            claimed: liveDataStoreIdentifiers()
+        )
+        guard !unreferenced.isEmpty else { return }
+
+        AppLogger.dataStore.info("Reclaiming \(unreferenced.count) website data store(s) no service points at")
+        for identifier in unreferenced { markDataStoreOrphaned(identifier) }
     }
 
     private static func loadOrphanedIdentifiers() -> Set<UUID> {
@@ -2216,13 +2348,79 @@ final class AppState {
             webViewPool.pin(selected)
         }
 
+        // Chat services in OTHER spaces have to come up too. A service only
+        // posts notification banners through the `chorusNotification` handler on
+        // a live web view; the transient badge fetcher deliberately omits that
+        // handler, so a service with no web view is silent — its badge moves on
+        // the 180s sweep and nothing else. Preloading only the selected space
+        // therefore made "chat apps stay live so their messages arrive at once"
+        // true only inside the space you happened to be looking at, which is why
+        // Slack in another space went quiet until it was visited.
+        //
+        // The pool exempts these from both hibernation sweeps, so once up they
+        // stay up.
+        let alsoKeepLive = crossSpaceCriticalServices(excluding: Set(services.map(\.id)))
+
         Task {
             await webViewPool.preloadAll(ordered)
             if let selected {
                 webViewPool.unpin(selected)
             }
+            if !alsoKeepLive.isEmpty {
+                AppLogger.webView.info("Preloading \(alsoKeepLive.count) chat service(s) outside the active space so they can post notifications")
+                await webViewPool.preloadAll(alsoKeepLive)
+            }
         }
     }
+
+    /// Notification-critical services that the active-space preload won't cover,
+    /// capped so they cannot fill the pool.
+    ///
+    /// The cap matters because these are exempt from eviction: without one, a
+    /// user with more chat services than `WebViewPool.maxLoaded` would pin every
+    /// slot permanently and the LRU sweep would have nothing left to reclaim.
+    /// The order is the fetch's, made deterministic by sorting on id so the same
+    /// services win the cap on every launch rather than a different set each time.
+    private func crossSpaceCriticalServices(excluding covered: Set<UUID>) -> [ServiceInstance] {
+        let services = (try? modelContainer.mainContext.fetch(FetchDescriptor<ServiceInstance>())) ?? []
+        return Self.criticalServicesToKeepLive(
+            among: services,
+            covered: covered,
+            limit: Self.maxCrossSpaceCriticalServices
+        )
+    }
+
+    /// The selection rule behind `crossSpaceCriticalServices`, split out so the
+    /// exclusion, the critical test, the deterministic order and the cap are
+    /// testable without a running pool.
+    static func criticalServicesToKeepLive(
+        among services: [ServiceInstance],
+        covered: Set<UUID>,
+        limit: Int
+    ) -> [ServiceInstance] {
+        guard limit > 0 else { return [] }
+        return services
+            .filter { !covered.contains($0.id) && $0.isNotificationCritical }
+            .sorted { $0.id.uuidString < $1.id.uuidString }
+            .prefix(limit)
+            .map { $0 }
+    }
+
+    /// Which tombstones survive a reconcile against the services that exist, and
+    /// which are dropped as stale. Pure, so the rule that protects a live
+    /// service's cookies is testable without UserDefaults or a store.
+    nonisolated static func reconciledTombstones(
+        tombstoned: Set<UUID>,
+        claimed: Set<UUID>
+    ) -> (keep: Set<UUID>, dropped: Set<UUID>) {
+        let dropped = tombstoned.intersection(claimed)
+        return (tombstoned.subtracting(dropped), dropped)
+    }
+
+    /// How many chat services outside the active space are kept live. Held well
+    /// below `WebViewPool.maxLoaded` so the active space and the LRU sweep keep
+    /// room to work.
+    static let maxCrossSpaceCriticalServices = 5
 
     /// Wires the transient badge fetcher's collaborators and starts its
     /// launch + slow-periodic sweep. The fetcher renders each service that has no

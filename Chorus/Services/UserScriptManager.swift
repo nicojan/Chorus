@@ -353,29 +353,94 @@ final class UserScriptManager {
         """
     }
 
+    /// Intercepts the two ways a page raises a notification and forwards each to
+    /// the native handler.
+    ///
+    /// The replacement has to keep the `Notification` contract intact, which the
+    /// first version of this script did not. It assigned a bare function over
+    /// `window.Notification` without carrying `prototype` or the statics across,
+    /// so `n instanceof Notification` was false and everything on the
+    /// constructor except the two properties re-declared here disappeared — a
+    /// site that feature-detects either way saw a broken API. The
+    /// `RTCPeerConnection` shim in this same file already does both; this now
+    /// matches it.
+    ///
+    /// `ServiceWorkerRegistration.prototype.showNotification` is the other path,
+    /// and it was not covered at all. Modern web apps raise notifications
+    /// through it rather than through `new Notification`, so those never reached
+    /// Chorus. **This covers the page-side call only.** A notification raised
+    /// from inside the service worker — the push path — runs in a worker context
+    /// no page script can enter, and is still not intercepted.
+    ///
+    /// The original constructor is still called so the page gets a real
+    /// `Notification` back to hold `onclick`/`close()` on. That cannot double up
+    /// today: WebKit only delivers web notifications to an app that adopts the
+    /// `WKUIDelegate` notification methods, and Chorus adopts none of them, so
+    /// the original object is inert for display.
     private func makeNotificationInterceptionScript(serviceID: String) -> String {
         return """
         (function() {
+            var SERVICE_ID = \(Self.jsStringLiteral(serviceID));
+
+            function forward(title, options) {
+                try {
+                    window.webkit.messageHandlers.chorusNotification.postMessage(
+                        JSON.stringify({
+                            title: title == null ? '' : String(title),
+                            body: (options && options.body) || '',
+                            icon: (options && options.icon) || '',
+                            tag: (options && options.tag) || '',
+                            serviceID: SERVICE_ID
+                        })
+                    );
+                } catch (e) {
+                    // A page that has torn down the bridge must not take the
+                    // site's own notification call down with it.
+                }
+            }
+
             var OrigNotification = window.Notification;
-            window.Notification = function(title, options) {
-                window.webkit.messageHandlers.chorusNotification.postMessage(
-                    JSON.stringify({
-                        title: title,
-                        body: (options && options.body) || '',
-                        icon: (options && options.icon) || '',
-                        tag: (options && options.tag) || '',
-                        serviceID: \(Self.jsStringLiteral(serviceID))
-                    })
-                );
-                return new OrigNotification(title, options);
-            };
-            Object.defineProperty(window.Notification, 'permission', {
-                get: function() { return 'granted'; }
-            });
-            window.Notification.requestPermission = function(cb) {
-                if (cb) cb('granted');
-                return Promise.resolve('granted');
-            };
+            if (OrigNotification) {
+                var ChorusNotification = function(title, options) {
+                    forward(title, options);
+                    return new OrigNotification(title, options);
+                };
+
+                // Same prototype object, so `instanceof Notification` holds for
+                // instances the original constructor returns.
+                ChorusNotification.prototype = OrigNotification.prototype;
+
+                // Carry every static across, descriptors and all, before the two
+                // overrides below replace the ones Chorus answers itself.
+                Object.getOwnPropertyNames(OrigNotification).forEach(function(key) {
+                    if (key === 'prototype' || key === 'name' || key === 'length') return;
+                    try {
+                        var descriptor = Object.getOwnPropertyDescriptor(OrigNotification, key);
+                        if (descriptor) Object.defineProperty(ChorusNotification, key, descriptor);
+                    } catch (e) {}
+                });
+
+                Object.defineProperty(ChorusNotification, 'permission', {
+                    get: function() { return 'granted'; },
+                    configurable: true
+                });
+                ChorusNotification.requestPermission = function(cb) {
+                    if (cb) cb('granted');
+                    return Promise.resolve('granted');
+                };
+
+                window.Notification = ChorusNotification;
+            }
+
+            if (window.ServiceWorkerRegistration &&
+                window.ServiceWorkerRegistration.prototype &&
+                window.ServiceWorkerRegistration.prototype.showNotification) {
+                var origShow = window.ServiceWorkerRegistration.prototype.showNotification;
+                window.ServiceWorkerRegistration.prototype.showNotification = function(title, options) {
+                    forward(title, options);
+                    return origShow.apply(this, arguments);
+                };
+            }
         })();
         """
     }
