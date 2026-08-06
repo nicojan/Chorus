@@ -44,6 +44,16 @@ struct ContentView: View {
                 }
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // A banner sits at the very top of the window, inside the
+                // title-bar drag band, and the top-bar layouts turn the OS
+                // window drag off (see `WindowMovableConfigurator`). Without a
+                // handle of its own the banner is dead to dragging, and since
+                // it also pushes the tab strip's handle down out of the band,
+                // the window can't be moved by its top edge at all while one is
+                // up. Same idiom as `SpaceStripView`: the handle goes behind the
+                // content and in front of the fill, so the buttons still take
+                // their own clicks.
+                .background(WindowDragHandle())
                 .background(Color.yellow.opacity(0.15))
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Warning: \(error)")
@@ -65,6 +75,8 @@ struct ContentView: View {
                 }
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // See the store banner above for why this needs its own handle.
+                .background(WindowDragHandle())
                 .background(Color.yellow.opacity(0.15))
                 // No .accessibilityLabel override here, unlike the storeError
                 // banner above: an explicit label replaces what `.combine`
@@ -86,6 +98,8 @@ struct ContentView: View {
                 }
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity)
+                // See the store banner above for why this needs its own handle.
+                .background(WindowDragHandle())
                 .background(ServiceIconPalette.badgeRed)
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Offline")
