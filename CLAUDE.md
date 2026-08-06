@@ -44,6 +44,19 @@ Write plain, direct, active, concrete prose. No marketing gloss, no AI tells.
   store and the release defaults domain, and this repo has already lost a real
   user's data to a careless run against live data.
 
+## The store path (never go back to the default)
+
+Release builds open `Application Support/Chorus/default.store`, which
+`StoreRelocation` moves them to. Never open a store through
+`ModelConfiguration(isStoredInMemoryOnly: false)` or any other implicit default.
+For an app that is not sandboxed that resolves to
+`Application Support/default.store`, a path with no bundle id in it, so every
+other non-sandboxed SwiftData app that takes the default opens the very same
+file. Whichever app opens it second migrates it to its own model, and Core Data
+drops the entities that model does not declare. Chorus shared that file with
+Bartender 6 and both apps lost everything, at every launch, until 1.5.18 moved
+out. Debug builds sit in `Chorus-debug` for the same reason.
+
 ## SwiftData schema changes (read before editing any `@Model`)
 
 The store opens through an explicit `VersionedSchema` + `SchemaMigrationPlan`

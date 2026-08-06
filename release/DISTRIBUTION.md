@@ -156,6 +156,17 @@ Run from the repo root. Replace `X.Y.Z` with the new version.
    git commit -m "release: Chorus X.Y.Z appcast"
    git push
    ```
+   Then confirm the deploy actually ran. On 1.5.18 the push matched the
+   workflow's `docs/**` filter and the workflow was active, yet GitHub
+   dispatched nothing, so the appcast stayed on the previous version and the
+   livecheck in step 9 read the old number. If no run appears, publish it by
+   hand. Do not move on until the served appcast shows the new version.
+   ```sh
+   gh run list --workflow pages.yml --limit 3 --repo nicojan/Chorus
+   gh workflow run pages.yml --ref main --repo nicojan/Chorus   # only if none fired
+   curl -s https://nicojan.github.io/Chorus/appcast.xml | grep -m1 "<title>1\."
+   ```
+
    Installed apps pick up the update on their next scheduled check (or via
    Check for Updates…).
 
