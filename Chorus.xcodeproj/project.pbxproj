@@ -28,6 +28,7 @@
 		542D3E32DA8EA90EC36BB6A0 /* DataStoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD49B64B44CC548574DA2348 /* DataStoreManager.swift */; };
 		5561BE9B6C6D8AA46CD42884 /* WebViewContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D9F34755F65BE5A3C76C88 /* WebViewContainer.swift */; };
 		5E59730D46AE1AED21F82ECA /* AppPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88C307C75776869CE8A82618 /* AppPreferences.swift */; };
+		68FE172BCA70FBB55022F7B1 /* StoreRelocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B71CC3F7D7BD76E4100BC126 /* StoreRelocation.swift */; };
 		69AC657C2E3D81BFB330050A /* AppRelauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA77C4C73BEB532F6AC1C339 /* AppRelauncher.swift */; };
 		69FF2932CDD4A1208CA5DA71 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D9D707C0F9A04B5E0744F59 /* SettingsView.swift */; };
 		701984CFE765170D8EAE50EE /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D811CC9D75730152E17859C /* MenuBarView.swift */; };
@@ -119,6 +120,7 @@
 		9EDCAF66B6DD05BA3A244E9E /* EmojiData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiData.swift; sourceTree = "<group>"; };
 		AD49B64B44CC548574DA2348 /* DataStoreManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStoreManager.swift; sourceTree = "<group>"; };
 		B3506A7D95472D8F3E822A39 /* ServiceCatalogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceCatalogEntry.swift; sourceTree = "<group>"; };
+		B71CC3F7D7BD76E4100BC126 /* StoreRelocation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreRelocation.swift; sourceTree = "<group>"; };
 		B84763F63532609A902F453A /* ServiceSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceSidebarView.swift; sourceTree = "<group>"; };
 		CA55A0E026084DC20071FBCE /* QuickSwitcherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickSwitcherView.swift; sourceTree = "<group>"; };
 		CA77C4C73BEB532F6AC1C339 /* AppRelauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRelauncher.swift; sourceTree = "<group>"; };
@@ -354,6 +356,7 @@
 				D533B667501DF0913FF62B9A /* AppState.swift */,
 				E143D686890F381C5B42761F /* ChorusApp.swift */,
 				67FC16493C168FFB5B6C7385 /* StoreInventory.swift */,
+				B71CC3F7D7BD76E4100BC126 /* StoreRelocation.swift */,
 				0DC16234E82B88C1DB338A49 /* StoreRepair.swift */,
 			);
 			path = App;
@@ -505,6 +508,7 @@
 				C1E4CE7879BB117DBA721C35 /* SpaceStripView.swift in Sources */,
 				3C5338A54D7C824BCF6C642C /* StoreInventory.swift in Sources */,
 				BD6B6CD0E903780B610BD6B5 /* StoreRecoveryView.swift in Sources */,
+				68FE172BCA70FBB55022F7B1 /* StoreRelocation.swift in Sources */,
 				D19CD58F64D002620BE6850C /* StoreRepair.swift in Sources */,
 				4129642FB0AD19AC83F01A30 /* UserAgentProvider.swift in Sources */,
 				75C395B384D9E21AF94FBC4F /* UserScriptManager.swift in Sources */,

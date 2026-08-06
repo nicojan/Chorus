@@ -324,19 +324,21 @@ final class AppState {
         // store migrates through named, tested stages instead of inference. See
         // `Chorus/Models/Schema/ChorusSchema.swift`.
         let schema = Schema(versionedSchema: ChorusSchemaVCurrent.self)
-        // Debug builds keep their store in a separate directory so a copy run
-        // from Xcode never opens (and never migrates) the installed release
-        // app's data. The release path is left implicit — SwiftData's default,
-        // `Application Support/default.store` — so shipping behavior is
-        // unchanged. The debug path is NOT bundle-scoped by SwiftData, so we
-        // set it explicitly here; the debug *bundle id* (project.yml) already
-        // separates WebKit, Preferences and notifications.
+        // Neither build may use SwiftData's implicit default path. It is
+        // `Application Support/default.store` with no bundle id in it, so every
+        // non-sandboxed SwiftData app that takes the default opens the same
+        // file and migrates it to its own model, dropping the other's tables.
+        // Debug builds have sat in their own directory for a while, so a copy
+        // run from Xcode never opens the installed release app's data; the
+        // release build now moves into one too, for the collision `StoreRelocation`
+        // documents. The debug *bundle id* (project.yml) already separates
+        // WebKit, Preferences and notifications.
         #if DEBUG
         let debugDir = URL.applicationSupportDirectory.appending(path: "Chorus-debug")
         try? FileManager.default.createDirectory(at: debugDir, withIntermediateDirectories: true)
         let config = ModelConfiguration(schema: schema, url: debugDir.appending(path: "default.store"))
         #else
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let config = ModelConfiguration(schema: schema, url: StoreRelocation.resolveStoreURL())
         #endif
         self.storeFileName = config.url.lastPathComponent
         self.storeURL = config.url

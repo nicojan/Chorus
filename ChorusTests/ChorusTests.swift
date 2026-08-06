@@ -4201,4 +4201,144 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(unreadable.displayDetail, "can't be read")
     }
 
+    // MARK: - Moving the store out of the shared default path
+
+    /// A scratch pair of folders standing in for `Application Support` and the
+    /// `Chorus` folder inside it.
+    private func makeRelocationDirs(_ label: String) throws -> (support: URL, legacy: URL, scoped: URL) {
+        let support = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-\(label)-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        return (
+            support,
+            support.appendingPathComponent("default.store"),
+            support.appendingPathComponent("Chorus").appendingPathComponent("default.store")
+        )
+    }
+
+    /// Stands in for the store another app leaves at the shared path. Modelled
+    /// on the real thing: Bartender 6's store has one entity, `WidgetSettings`,
+    /// and none of Chorus's tables.
+    private static func makeForeignStore(at url: URL) throws {
+        _ = try runSQLite(url, """
+            CREATE TABLE ZWIDGETSETTINGS (Z_PK INTEGER PRIMARY KEY, Z_ENT INTEGER, ZTITLE VARCHAR);
+            """)
+    }
+
+    /// The ordinary upgrade: Chorus's own store and its backups move into the
+    /// app's folder, and the old path is left clean.
+    func testRelocationMovesOurStoreAndItsBackupsIntoTheAppsFolder() throws {
+        let (support, legacy, scoped) = try makeRelocationDirs("relocate-ours")
+        defer { try? FileManager.default.removeItem(at: support) }
+
+        try makePopulatedStore(at: legacy, spaces: 3)
+        StoreRepair.snapshot(at: legacy, stamp: "1700000000-1.0.0")
+
+        XCTAssertEqual(StoreRelocation.resolveStoreURL(legacy: legacy, scoped: scoped), scoped)
+        XCTAssertEqual(StoreRepair.spaceCount(at: scoped), 3, "the store's data must arrive intact")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.path), "the old store must not be left behind")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: scoped.path + ".snapshot-1700000000-1.0.0.bak"),
+            "backups must follow the store, or the recovery picker loses sight of them"
+        )
+        XCTAssertNotNil(
+            StoreRepair.newestRestorableSnapshot(for: scoped),
+            "the moved snapshot must still be found from the new path"
+        )
+    }
+
+    /// The state this whole change exists to survive: another app's store is
+    /// sitting at the shared path. It must be left exactly where it is —
+    /// moving or migrating it would destroy that app's data the same way it
+    /// destroyed Chorus's — while Chorus's own backups still come along.
+    func testRelocationLeavesAnotherAppsStoreAloneAndTakesOnlyTheBackups() throws {
+        let (support, legacy, scoped) = try makeRelocationDirs("relocate-foreign")
+        defer { try? FileManager.default.removeItem(at: support) }
+
+        // Build a Chorus store, snapshot it, then replace the live file with a
+        // foreign one — precisely what the collision leaves on disk.
+        try makePopulatedStore(at: legacy, spaces: 4)
+        StoreRepair.snapshot(at: legacy, stamp: "1700000000-1.0.0")
+        for suffix in ["", "-wal", "-shm"] {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: legacy.path + suffix))
+        }
+        try Self.makeForeignStore(at: legacy)
+
+        XCTAssertEqual(StoreRelocation.resolveStoreURL(legacy: legacy, scoped: scoped), scoped)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacy.path), "the other app's store must be left in place")
+        XCTAssertEqual(
+            try Self.runSQLite(legacy, "SELECT count(*) FROM sqlite_master WHERE name = 'ZWIDGETSETTINGS';")
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+            "1",
+            "the other app's schema must be untouched"
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: scoped.path), "a foreign store must not be adopted as ours")
+        XCTAssertNotNil(
+            StoreRepair.newestRestorableSnapshot(for: scoped),
+            "Chorus's own backups must still move, since they are the only way back"
+        )
+    }
+
+    /// End-to-end proof that the collision is recoverable: relocate past a
+    /// foreign store, then open. The user has had data, there is no live store
+    /// at the new path, and the snapshot that moved with it must be restored
+    /// rather than seeded over.
+    func testRelocatingPastAForeignStoreThenOpeningRestoresTheUsersData() throws {
+        let (support, legacy, scoped) = try makeRelocationDirs("relocate-recover")
+        defer { try? FileManager.default.removeItem(at: support) }
+        let suite = "chorus-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        try makePopulatedStore(at: legacy, spaces: 4)
+        StoreRepair.snapshot(at: legacy, stamp: "1700000000-1.0.0")
+        for suffix in ["", "-wal", "-shm"] {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: legacy.path + suffix))
+        }
+        try Self.makeForeignStore(at: legacy)
+        defaults.set(true, forKey: AppState.hasEverHadDataKey)
+
+        let url = StoreRelocation.resolveStoreURL(legacy: legacy, scoped: scoped)
+        let config = ModelConfiguration(schema: Self.storeSchema, url: url)
+        let (container, outcome) = AppState.loadContainer(schema: Self.storeSchema, config: config, defaults: defaults)
+
+        guard case .restoredFromSnapshot = outcome else {
+            return XCTFail("expected .restoredFromSnapshot, got \(outcome)")
+        }
+        XCTAssertEqual(
+            try container.mainContext.fetchCount(FetchDescriptor<Space>()), 4,
+            "the spaces the other app wiped must come back from the snapshot"
+        )
+    }
+
+    /// Once moved, the old path is never read again. An older build of Chorus
+    /// run in between could leave a store there, and importing it would
+    /// overwrite newer data with older.
+    func testRelocationIgnoresTheOldPathOnceTheAppsFolderHasAStore() throws {
+        let (support, legacy, scoped) = try makeRelocationDirs("relocate-idempotent")
+        defer { try? FileManager.default.removeItem(at: support) }
+
+        try FileManager.default.createDirectory(at: scoped.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try makePopulatedStore(at: scoped, spaces: 1)
+        try makePopulatedStore(at: legacy, spaces: 9)
+
+        XCTAssertEqual(StoreRelocation.resolveStoreURL(legacy: legacy, scoped: scoped), scoped)
+        XCTAssertEqual(StoreRepair.spaceCount(at: scoped), 1, "the store already in place must win")
+        XCTAssertEqual(StoreRepair.spaceCount(at: legacy), 9, "and the old path must be left alone, not consumed")
+    }
+
+    /// A fresh install has nothing at either path, and must simply open in the
+    /// app's folder without any of the move machinery running.
+    func testRelocationOnAFreshInstallOpensInTheAppsFolder() throws {
+        let (support, legacy, scoped) = try makeRelocationDirs("relocate-fresh")
+        defer { try? FileManager.default.removeItem(at: support) }
+
+        XCTAssertEqual(StoreRelocation.resolveStoreURL(legacy: legacy, scoped: scoped), scoped)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: scoped.path), "nothing is created until the container opens")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: scoped.deletingLastPathComponent().path),
+            "the folder itself must exist so the container can be created in it"
+        )
+    }
+
 }
