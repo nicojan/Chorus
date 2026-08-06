@@ -5,6 +5,17 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.5.18] - 2026-08-06
+
+### Fixed
+
+- Chorus keeps your spaces and services in its own folder now. It used to save them to a file whose name and location the system picks by default, which puts it outside any one app's folder. Another app that also took the default wrote to the same file. Whichever app opened it second reshaped it and dropped everything the other had stored. That is what was wiping your spaces and services, and it could happen at any launch, with no update involved. Chorus moves your data into a folder of its own on first launch. If the file at the old location turns out to belong to another app, Chorus leaves it alone and restores your data from its own backup instead.
+- Being logged out of a service after your data went missing. When Chorus lost your spaces and services and you added a service back, the new one got a fresh, empty place to keep its cookies, so you had to sign in again. The old one stayed on disk, holding a session nothing could reach. Chorus now clears out the ones no service is using.
+- Chat services in other spaces stay loaded, so their notifications arrive when the message does. Only the space you were looking at was kept loaded. A chat service anywhere else was silent: its unread count crept up on a three-minute cycle and no banner appeared at all.
+- Notifications from services that send them through a background worker. Many web apps do, and Chorus never saw those.
+- Chorus no longer cleans up after itself on a launch where your data arrived damaged or had just been restored. Deleting a service that looks unused, and erasing its cookies, is right on a healthy store and wrong on a broken one, where a service can look unused because a piece of the file is missing. It waits for a clean launch now.
+- You can drag the window by its notice bar again. While a notice was showing across the top, the window would not move.
+
 ## [1.5.17] - 2026-07-31
 
 ### Fixed
