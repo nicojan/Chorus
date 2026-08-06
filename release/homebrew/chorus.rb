@@ -6,8 +6,8 @@
 # leaves an app that updated itself alone. Livecheck reads the same appcast the
 # app does, which is what makes `brew bump-cask-pr` work.
 cask "chorus" do
-  version "1.5.17"
-  sha256 "4d0f0027b7edd1597941ac55ef45b3dee76dfd58218e6cff6af09c25e3cc937e"
+  version "1.5.18"
+  sha256 "75a85465e81f85f08b73ab5991e348e6a2ce32692f366011c9f695e5c3ad52c0"
 
   url "https://github.com/nicojan/Chorus/releases/download/v#{version}/Chorus-#{version}.dmg"
   name "Chorus"
@@ -27,12 +27,14 @@ cask "chorus" do
 
   app "Chorus.app"
 
-  # The SwiftData store is deliberately absent: release builds keep it at
-  # `~/Library/Application Support/default.store`, SwiftData's unscoped default
-  # (Chorus/App/AppState.swift), and that path is not specific to Chorus, so
-  # trashing it could take another app's store with it. Add it here once the
-  # store moves into a `Chorus/` subdirectory.
+  # The store moved into its own folder in 1.5.18, so it can finally be zapped.
+  # It used to sit at `~/Library/Application Support/default.store`, SwiftData's
+  # unscoped default, which is not specific to Chorus: another app that took the
+  # same default writes to that exact file, and trashing it would have taken
+  # that app's data with it. `Application Support/Chorus` is ours alone. The old
+  # path is still deliberately absent for the same reason as before.
   zap trash: [
+    "~/Library/Application Support/Chorus",
     "~/Library/Caches/com.nicojan.Chorus",
     "~/Library/HTTPStorages/com.nicojan.Chorus",
     "~/Library/Preferences/com.nicojan.Chorus.plist",
