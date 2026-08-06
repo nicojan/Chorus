@@ -1,5 +1,21 @@
 # Open items
 
+## Shipped in 1.5.18 (2026-08-06): the store left the shared default path
+
+Released: tag `v1.5.18`, build 27, DMG notarized and stapled, appcast live at the `SUFeedURL`, Homebrew cask bumped here and in the tap (`brew style`, `brew livecheck` and the online cask audit all clean). 197 tests, 0 failures.
+
+**Verified live on the dev machine.** 1.5.18 was installed from the stapled DMG over `/Applications` and launched: the store moved into `Application Support/Chorus`, the old path was left with nothing, and the 4 spaces and 14 services came through intact.
+
+Release builds opened SwiftData's implicit store path, `Application Support/default.store`, which carries no bundle id. Bartender 6 added a SwiftData `WidgetSettings` model on 2026-07-30 and took the same default, so both apps opened the same file and each migration dropped the other's tables. Proof rather than inference: `lsof` showed Bartender holding the file, the file's only entity was `ZWIDGETSETTINGS`, and the binary carries `_TtC11Bartender_614WidgetSettings`. Three hand-restores followed in a week, and every `.prepick-` aside from those restores holds Bartender's schema. A crash report caught it mid-flight, with a save on app deactivate faulting a row whose table had been redefined under the open connection.
+
+The move only takes what reads back as Chorus's own store, so another app's file at the old path is left alone; the backup families move either way, since after a collision they are the only way back. Once the new path has a store the old one is never read again, so an older build run in between cannot overwrite newer data with older.
+
+Four more fixes went out with it, from the review that followed. Chat services outside the active space are now preloaded, because a service with no live web view posts no notification banners at all. Data-store tombstones are reconciled against the services that exist, so a restore that rolls the store back past a deletion no longer wipes a live service's cookies. Neither the orphan reap nor the new sweep runs on a launch where the store arrived damaged or was restored. Website data stores no service points at are reclaimed, which is what was leaving stranded sessions behind. The `Notification` shim keeps its prototype and statics and now covers `ServiceWorkerRegistration.showNotification`.
+
+**Two things stay open.** The push path is still out of reach: a notification raised inside a service worker runs where no page script can go. And the window-drag fix for the notice bars has not been checked by hand; AppKit hit-testing is not reachable from the test suite.
+
+**The Pages deploy did not fire on its own.** The `docs/**` push to `main` matched the workflow's path filter and the workflow was active, but GitHub dispatched nothing, so the appcast stayed on 1.5.17 and `brew livecheck` read the old version. `gh workflow run pages.yml --ref main` published it. Watch for this on the next release: check `gh run list` after pushing the appcast rather than assuming it deployed.
+
 ## Shipped in 1.5.17 (2026-07-31): the Gmail badge counted Spam
 
 Released: tag `v1.5.17`, build 26, DMG notarized and stapled, appcast live at the `SUFeedURL`, Homebrew cask bumped here and in the tap (`brew style`, `livecheck`, `audit --cask --online` all clean).
@@ -21,9 +37,13 @@ Verified: 182 tests. Two run the catalog expression through JavaScriptCore again
 
 **A note on how to verify this class of bug live.** A fresh Gmail load reads the right number under *both* the old and the new expression, so a screenshot after launch proves nothing. Only the round trip separates them: visit another label, come back, then read the badge.
 
-## Open: Slack notifications arrive late
+## Open: Slack notifications arrive late — leading cause fixed in 1.5.18, not yet confirmed
 
-Reported 2026-07-31, **not investigated**. Push notifications are sometimes very late; noticed for Slack, on a workspace the reporter was not in. No measurements yet, so everything here is a place to look rather than a finding.
+Reported 2026-07-31. The most likely cause was found in the 2026-08-06 review and fixed: a service with no live web view posts no banners at all, because the banner path is the `chorusNotification` handler and only the active space was ever preloaded. "A workspace I was not in" fits that exactly. Chat services in every space are preloaded now, capped at five.
+
+**Still worth confirming with a real measurement**, because one path remains uncovered: a notification raised inside a service worker (the push path) runs where no page script can reach, so if Slack delivers that way the fix does not help it. Get a timeline before assuming it is closed — when the message was sent, when the banner arrived, whether that service was open, and its hibernation setting.
+
+The rest of the original notes still apply as places to look.
 
 Start by pinning down what is being reported: one Slack web client only runs the workspace it has loaded, so "a workspace I wasn't in" could mean a second Slack *service* in Chorus or a second workspace inside one already there — different bugs, different fixes. Then get a timeline: when the message was sent, when the banner arrived, whether that service was open, and its hibernation setting.
 
