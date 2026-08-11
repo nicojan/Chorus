@@ -2454,6 +2454,63 @@ final class ChorusTests: XCTestCase {
         return all.filter { $0.hasPrefix(prefix) }.sorted()
     }
 
+    // MARK: - Unclaimed per-service data stores
+
+    func testUnclaimedDataStoresAreTheOnesNoServiceClaims() {
+        let kept = UUID(), alsoKept = UUID(), leftBehind = UUID()
+        XCTAssertEqual(
+            AppState.unclaimedDataStoreIdentifiers(
+                onDisk: [kept, alsoKept, leftBehind],
+                claimed: [kept, alsoKept]
+            ),
+            [leftBehind]
+        )
+    }
+
+    func testNothingIsUnclaimedWhenEveryStoreHasItsService() {
+        let a = UUID(), b = UUID()
+        XCTAssertTrue(
+            AppState.unclaimedDataStoreIdentifiers(onDisk: [a, b], claimed: [a, b]).isEmpty
+        )
+    }
+
+    func testAServiceWithNoDirectoryYetIsNotMistakenForRubbish() {
+        // A service can be registered before WebKit has materialised its store,
+        // so `claimed` is legitimately a superset of what's on disk. Nothing to
+        // remove in that case, and nothing to be alarmed by.
+        let onDisk = UUID(), notYetOnDisk = UUID()
+        XCTAssertTrue(
+            AppState.unclaimedDataStoreIdentifiers(
+                onDisk: [onDisk],
+                claimed: [onDisk, notYetOnDisk]
+            ).isEmpty
+        )
+    }
+
+    func testDataStoreDirectoryReadingIgnoresEntriesThatAreNotIdentifiers() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-stores-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let real = UUID()
+        for name in [real.uuidString, "not-a-uuid", ".DS_Store", "Snapshots"] {
+            try FileManager.default.createDirectory(
+                at: dir.appendingPathComponent(name), withIntermediateDirectories: true
+            )
+        }
+
+        XCTAssertEqual(AppState.dataStoreIdentifiersOnDisk(in: dir), [real])
+    }
+
+    func testMissingDataStoreDirectoryReadsAsEmptyNotAsAnError() {
+        // A fresh install has no directory yet. That must read as "nothing to
+        // reconcile", never as a reason to bail out of launch.
+        let missing = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-absent-\(UUID().uuidString)", isDirectory: true)
+        XCTAssertTrue(AppState.dataStoreIdentifiersOnDisk(in: missing).isEmpty)
+    }
+
     func testSnapshotCopiesTheWholeStoreTriple() throws {
         let store = try makeFakeStore()
         defer { try? FileManager.default.removeItem(at: store.deletingLastPathComponent()) }

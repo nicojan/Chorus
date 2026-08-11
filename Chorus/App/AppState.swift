@@ -459,6 +459,10 @@ final class AppState {
         fetchCatalogIcons(force: didUpdate)
         preloadActiveSpaceServices()
         startTransientBadgeFetcher()
+        // Reconcile the directories against the services before draining the
+        // tombstone list, so anything found here is removed on this launch
+        // rather than waiting for the next one.
+        markUnclaimedDataStores()
         cleanUpOrphanedDataStores()
 
         // Record what the store holds, then decide whether a fuller backup is
@@ -2074,6 +2078,89 @@ final class AppState {
         }
         for id in orphanedIDs { markDataStoreOrphaned(id) }
         cleanUpOrphanedDataStores()
+    }
+
+    /// Where WebKit keeps one directory per `WKWebsiteDataStore(forIdentifier:)`,
+    /// named for its identifier. The app is not sandboxed, so this is the real
+    /// path rather than a container-relative one.
+    static var dataStoreDirectory: URL {
+        URL.homeDirectory
+            .appending(path: "Library/WebKit")
+            .appending(path: Bundle.main.bundleIdentifier ?? "")
+            .appending(path: "WebsiteDataStore")
+    }
+
+    /// The identifiers WebKit has a directory for, read from the directory
+    /// listing. Entries that don't parse as a UUID are ignored rather than
+    /// guessed at.
+    ///
+    /// Deliberately not `WKWebsiteDataStore.allDataStoreIdentifiers`, for the
+    /// same reason the tombstone list avoids it: that API has been observed to
+    /// crash on macOS 26 handing its `Vector<UUID>` to the Swift bridge.
+    nonisolated static func dataStoreIdentifiersOnDisk(in directory: URL) -> Set<UUID> {
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else {
+            return []
+        }
+        return Set(names.compactMap(UUID.init(uuidString:)))
+    }
+
+    /// Stores on disk that no service claims. Pure, so the rule is testable
+    /// without WebKit or a store.
+    nonisolated static func unclaimedDataStoreIdentifiers(
+        onDisk: Set<UUID>,
+        claimed: Set<UUID>
+    ) -> Set<UUID> {
+        onDisk.subtracting(claimed)
+    }
+
+    /// Schedules removal of per-service data stores that no service claims.
+    ///
+    /// The tombstone list only ever gains entries from a delete performed in
+    /// this app. That misses every other way a store is left behind, and the
+    /// most common one is this app's own recovery machinery: when a migration
+    /// fails, `loadContainer` restores an older snapshot, so a service added
+    /// after that snapshot disappears from the database while its data store
+    /// stays on disk. `applyPendingRestore` does the same for a restore the
+    /// user picked. Nothing looks at those directories again, so they are kept
+    /// forever — a full per-service container each, which for a chat service
+    /// runs to gigabytes.
+    ///
+    /// This refuses to act on anything it cannot prove, because the cost of
+    /// being wrong is a signed-in service losing its session:
+    ///
+    /// - Not on the in-memory fallback container. Its service list is a
+    ///   throwaway and would condemn every store on disk.
+    /// - Not when the fetch throws. An error is not evidence of absence.
+    /// - Not when the store reports zero services. That is the signature of the
+    ///   failures the recovery machinery exists for, not of a real install, and
+    ///   acting on that reading would delete everything at once.
+    ///
+    /// What it does mark goes through the existing tombstone path, so removal
+    /// keeps the retry/backoff and the "never remove a store a live view still
+    /// holds" guarantee already established there.
+    func markUnclaimedDataStores() {
+        guard !isStoreInMemoryFallback else { return }
+
+        let claimed: Set<UUID>
+        do {
+            let services = try modelContainer.mainContext.fetch(FetchDescriptor<ServiceInstance>())
+            claimed = Set(services.map(\.dataStoreIdentifier))
+        } catch {
+            AppLogger.dataStore.error(
+                "Could not read services to reconcile data stores: \(error.localizedDescription)"
+            )
+            return
+        }
+        guard !claimed.isEmpty else { return }
+
+        let unclaimed = Self.unclaimedDataStoreIdentifiers(
+            onDisk: Self.dataStoreIdentifiersOnDisk(in: Self.dataStoreDirectory),
+            claimed: claimed
+        )
+        guard !unclaimed.isEmpty else { return }
+
+        AppLogger.dataStore.info("Found \(unclaimed.count) unclaimed data store(s); scheduling removal")
+        for identifier in unclaimed { markDataStoreOrphaned(identifier) }
     }
 
     /// Mark a per-service data store identifier as orphaned. Called from
