@@ -18,6 +18,8 @@ This document is the reference for anyone picking the redesign up. The case-stud
 | `05 Sheets` | Add Service, Edit Service, Space Editor, Quick Switcher | yes |
 | `06 Settings` | All four tabs at full scroll height | yes |
 | `07 Explorations` | Unlocked copies of the three layouts | no |
+| `08 Redesign concepts` | Three concepts (A Tidy, B Recompose, C Rethink), each in three layouts and both appearances, plus shared specimens | no |
+| `09 Visual directions` | One screen (C sidebar) restyled six ways: Discord, Glass, Editorial, Brutalist, Soft, Terminal | no |
 
 Pages `01` through `06` are locked on purpose. They record what ships today. Unlock one only to correct an inaccuracy, never to try an idea. Ideas go on `07`.
 
@@ -70,7 +72,17 @@ Nine colours belong to Chorus. Everything else is a macOS system colour, so both
 
 ## Starting the redesign
 
-Work on page `07`. The five changes worth trying first, cheapest first:
+Three concepts now exist on page `08`, answering `docs/internal/UX-AUDIT.md`. That audit found two problems this document's own findings list missed, both above everything in it: in `hybrid` and `sidebar` a service is drawn as an unlabelled 18pt square, so two Slack workspaces are indistinguishable, and a space in the vertical rails is an emoji with its name thrown away. A service also has no state for loading, failed, or signed out.
+
+The concepts run conservative to radical. `A · Tidy` executes the list below and nothing else. `B · Recompose` adds the labels and a health dot. `C · Rethink` drops to one rail and makes the space a header on it, which reclaims 161 points of chrome and collapses `hybrid` and `topBars` into the same design — the identical pair on that page is the argument, not a mistake. Seventeen new variables prefixed `rd/` carry the proposed values; the baseline tokens are untouched.
+
+Page `09` then asks a separate question: how far can the look move before the structure has to. It takes the C sidebar and restyles it six ways — Discord, Glass, Editorial, Brutalist, Soft, Terminal — off a `Chorus / Directions` collection whose modes *are* the directions, so swapping the mode on a frame changes its character without touching a layer. Each carries a note on what it costs to build.
+
+Terminal has its own collection, `Chorus / Terminal`, because it needed roles the others do not have: a reverse-video pair, a cursor, a hot border. Fourteen roles across five real terminal palettes — ANSI electric, Matrix, Solarized Dark, Dracula, Nord — with a swatch legend beside the frame. Its rows are single monospace strings coloured with `setRangeFills` per character range rather than stacks of boxes, which is what keeps the columns aligned; the equivalent in SwiftUI is an `AttributedString`.
+
+Two things that page settled. `figma.variables.setBoundVariableForPaint` throws away any opacity set on the paint before binding, so a translucent surface renders solid unless you write `fills` again afterwards with the opacity. And `layoutPositioning = 'ABSOLUTE'` throws when the parent has no auto layout, which the plain-frame directions do not.
+
+The five changes worth trying first, cheapest first:
 
 1. Cut the radius scale from eight values to three. Nothing depends on the values staying distinct, so this is close to free.
 2. Give selection one colour and one signal. Pick the bar or the fill, and use one blue.

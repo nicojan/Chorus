@@ -1,5 +1,29 @@
 # Open items
 
+## Open: the redesign has three concepts, and needs one picked
+
+Built 2026-08-13, after the baseline below. `docs/internal/UX-AUDIT.md` holds the research and a Nielsen heuristic pass over the shipped screens; page `08 Redesign concepts` in the Figma file holds three answers to it.
+
+The audit's finding is that the baseline's seven items are all real and none of them is the biggest problem. In `hybrid` and `sidebar` a service tab draws an 18pt icon with no label (`ServiceTabView.content`, the `iconOnly` branch), so two Slack workspaces are two identical squares and the name lives only in a tooltip. `SpaceButton.verticalCell` does the same to spaces. A service has no visible state for loading, failed, or signed out, which matters because every service is a web view whose session expires quietly. Severity 4 and 3 against a list of radii and target sizes.
+
+Three concepts, conservative to radical, each in three layouts and both appearances. `A · Tidy` executes the baseline list inside the shipped skeleton — a patch. `B · Recompose` adds labels everywhere and a health dot, and costs chrome: its sidebar spends 400 points before content. `C · Rethink` drops to one rail with the space as a header on it, reclaiming 161 points, and in doing so collapses `hybrid` and `topBars` into the same design — evidence that three layouts was an artifact of having two rails rather than a real choice.
+
+**Nothing is decided and no app code changed.** The next step is picking one, which is a product call. If C wins, the loss to weigh is that always-visible per-space badges and drag-to-reorder move into a palette.
+
+## Open: six visual directions, and a ceiling on all of them
+
+Page `09 Visual directions` takes one screen, the C sidebar, and restyles it six ways: Discord, Glass, Editorial, Brutalist, Soft, Terminal. Colour comes from modes, so a direction can be swapped on a frame without touching a layer. Each carries a note on what it costs to build.
+
+**The ceiling matters more than the six.** A direction reaches the rail, the bars and the sheets. The web view stays out of reach. `ServiceInstance.customCSS` is injected as a `WKUserScript` by `UserScriptManager`, and Dark Reader is available per service. But `ServiceCSSDefaults` ships CSS for exactly one service in the catalog, LinkedIn. That single stylesheet needed selectors verified against the live page, a `:has()` trick to scope it to the messaging route, and a comment on why `100vh` cannot be used in a Chorus web view. That is the price of hiding a nav bar. Restyling a service to match a theme sits well past it, and it breaks on the service's next deploy.
+
+So the louder the chrome, the worse the seam where it meets content that will not follow. Discord and Terminal promise a look the content will not honour. Glass and Editorial frame the content instead of competing with it, which is a structural point in their favour rather than a matter of taste. The Terminal frame shows the seam honestly — Slack's own aubergine and white beside the black rail. The other five still draw a neutral placeholder, so treat their content areas as unresolved.
+
+An inset, rounded content card is the partial answer, and it is applied to Glass, Soft and Editorial. It makes the web view read as something the chrome frames rather than a second interface butting against the first. Glass needed care, since an inset card leaves the translucency nothing to refract; its card tucks 24 points under the rail. It is deliberately not applied to Discord, Brutalist or Terminal.
+
+**The palettes were measured for contrast, and the numbers disagreed with what the eye had passed.** `text-dim` was under 4.5 to 1 in five of six directions. Soft failed four ways at once and was not shippable as drawn, with a badge at 2.62. Solarized Dark measured dim text 2.42 and rules at 1.12, so it now uses Solarized's own lighter base variants. Every text role now clears 4.5 to 1 except decorative tertiary in Soft and the hairline rules. Details in `UX-AUDIT.md` section 3b.
+
+**Two things left open here.** Glass sets dark text over a light-tinted blur, so over a dark web page the rail darkens with it and the text disappears; it needs a real `NSVisualEffectView` with `.sidebar` material rather than a fixed tint, and it is untested against dark content. And Soft's pastel tints still break service recognition even with the contrast repaired, which is a design decision rather than a token value.
+
 ## Open: the interface redesign has a baseline, and has not started
 
 Built 2026-08-13. The shipped interface is now rebuilt in Figma (file `Chorus`, key `3MGhWQwnJQbfN6Egnet42I`), traced from 1.5.18 and measured pixel by pixel. Reference: `docs/internal/FIGMA-BASELINE.md`, which holds the measured geometry table, the file map, and what in the file can and cannot be trusted.
