@@ -38,6 +38,17 @@ struct ChorusApp: App {
         .defaultSize(width: 1100, height: 700)
         .windowStyle(.hiddenTitleBar)
         .commands {
+            // The stock About panel, with the donation link added to its credits
+            // field. Replacing the item rather than adding a second one keeps the
+            // menu at one About; Sparkle's group below still lands after it.
+            CommandGroup(replacing: .appInfo) {
+                Button("About Chorus") {
+                    NSApplication.shared.orderFrontStandardAboutPanel(
+                        options: [.credits: Self.aboutCredits]
+                    )
+                }
+            }
+
             #if canImport(Sparkle)
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesView(updater: updaterController.updater)
@@ -184,6 +195,35 @@ struct ChorusApp: App {
             AppLogger.dataStore.error("Failed to save window state: \(error.localizedDescription)")
             appState.modelContainer.mainContext.rollback()
         }
+    }
+
+    /// The credits block in the About panel: one line on what the app is, then a
+    /// live link to the donation page. The panel centres its own text, so the
+    /// paragraph style has to match or the link sits off to one side.
+    private static var aboutCredits: NSAttributedString {
+        let centred = NSMutableParagraphStyle()
+        centred.alignment = .center
+
+        let credits = NSMutableAttributedString(
+            string: "One window for the services you keep open all day.\n\n",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 11),
+                .foregroundColor: NSColor.secondaryLabelColor,
+                .paragraphStyle: centred
+            ]
+        )
+        credits.append(
+            NSAttributedString(
+                string: "Buy me a coffee",
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 11),
+                    .foregroundColor: NSColor.linkColor,
+                    .link: SupportLink.url,
+                    .paragraphStyle: centred
+                ]
+            )
+        )
+        return credits
     }
 }
 

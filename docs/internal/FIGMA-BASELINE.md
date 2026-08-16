@@ -20,6 +20,7 @@ This document is the reference for anyone picking the redesign up. The case-stud
 | `07 Explorations` | Unlocked copies of the three layouts | no |
 | `08 Redesign concepts` | Three concepts (A Tidy, B Recompose, C Rethink), each in three layouts and both appearances, plus shared specimens | no |
 | `09 Visual directions` | One screen (C sidebar) restyled six ways: Discord, Glass, Editorial, Brutalist, Soft, Terminal | no |
+| `10 Directions × layouts` | The same six directions in `hybrid` and `topBars`, twelve frames | no |
 
 Pages `01` through `06` are locked on purpose. They record what ships today. Unlock one only to correct an inaccuracy, never to try an idea. Ideas go on `07`.
 
@@ -81,6 +82,12 @@ Page `09` then asks a separate question: how far can the look move before the st
 Terminal has its own collection, `Chorus / Terminal`, because it needed roles the others do not have: a reverse-video pair, a cursor, a hot border. Fourteen roles across five real terminal palettes — ANSI electric, Matrix, Solarized Dark, Dracula, Nord — with a swatch legend beside the frame. Its rows are single monospace strings coloured with `setRangeFills` per character range rather than stacks of boxes, which is what keeps the columns aligned; the equivalent in SwiftUI is an `AttributedString`.
 
 Two things that page settled. `figma.variables.setBoundVariableForPaint` throws away any opacity set on the paint before binding, so a translucent surface renders solid unless you write `fills` again afterwards with the opacity. And `layoutPositioning = 'ABSOLUTE'` throws when the parent has no auto layout, which the plain-frame directions do not.
+
+Page `10` takes all six directions through the other two layouts, so a direction can be judged on more than the screen it was drawn for. In `hybrid` the spaces sit in a narrow rail on the left and the services run along the top; in `topBars` each takes a row of its own. Both hand the service bar the full width of the window, and that is what sorts the six.
+
+A vertical rail hides a width problem that a top bar exposes. Six named services do not fit 1080 points at every scale. Glass and Editorial fit all six, on small type and a 22 point icon or none. Discord and Soft fit five and push the sixth to an overflow chip, because each row carries a 30 point avatar and a badge. Brutalist fits four: it refuses to encode state in colour alone, so a cell has to hold the word LIVE or SIGNED OUT, and clipping one would break its own claim. Terminal fits three, since its rows are padded to fixed column widths, which is what keeps the sidebar's columns aligned and what wastes the most room in a bar. Read that as a ranking of how well a direction scales; a window wider than 1080 moves every count up.
+
+Two elements moved rather than shrank. Brutalist's status line and Terminal's prompt were the last row of a sidebar; with the rail lying down they become a footer along the bottom of the content. Glass keeps its inset card, which now tucks under the bar as well as the rail, so the blur still has something to refract. The frames on `10` were built by cloning each `09` frame and rebuilding its rail, which is what keeps every variable binding intact; a direction rebuilt by hand would have lost them.
 
 The five changes worth trying first, cheapest first:
 

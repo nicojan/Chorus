@@ -1,5 +1,15 @@
 # Open items
 
+## Open: the donation button is built and unreleased
+
+A 20 point button sits in the top right of the main window and opens `https://buymeacoffee.com/0xff.r4bbit`; the About panel carries the same link in its credits field, through `CommandGroup(replacing: .appInfo)` in `ChorusApp.swift`. Verified by hand in all three layouts and in the panel. `SupportLink.url` in `ContentView.swift` is the single definition both use.
+
+Two things to weigh before release. The button is 20 points, well under the 44 the audit asks for everywhere else, because the ask was for something very small; it is a mouse-only target in a Mac app, which is the argument for allowing it. And there is no way to hide it, which is the usual complaint about a standing donation button. A toggle in Settings would answer that and does not exist.
+
+The nav buttons in `hybrid` and `topBars` end in the same corner, so `ServiceSidebarView` reserves 36 points of trailing padding for the button. Cut that reserve and the two overlap as soon as the Home button appears.
+
+Charging for the themes was considered and dropped for now. The repo is public and MIT, so a paywall compiled into the binary is a speed bump, and Apollo's model relied on App Store payment infrastructure and a large userbase, neither of which applies here.
+
 ## Open: the redesign has three concepts, and needs one picked
 
 Built 2026-08-13, after the baseline below. `docs/internal/UX-AUDIT.md` holds the research and a Nielsen heuristic pass over the shipped screens; page `08 Redesign concepts` in the Figma file holds three answers to it.
@@ -23,6 +33,10 @@ An inset, rounded content card is the partial answer, and it is applied to Glass
 **The palettes were measured for contrast, and the numbers disagreed with what the eye had passed.** `text-dim` was under 4.5 to 1 in five of six directions. Soft failed four ways at once and was not shippable as drawn, with a badge at 2.62. Solarized Dark measured dim text 2.42 and rules at 1.12, so it now uses Solarized's own lighter base variants. Every text role now clears 4.5 to 1 except decorative tertiary in Soft and the hairline rules. Details in `UX-AUDIT.md` section 3b.
 
 **Two things left open here.** Glass sets dark text over a light-tinted blur, so over a dark web page the rail darkens with it and the text disappears; it needs a real `NSVisualEffectView` with `.sidebar` material rather than a fixed tint, and it is untested against dark content. And Soft's pastel tints still break service recognition even with the contrast repaired, which is a design decision rather than a token value.
+
+**All six now run in all three layouts.** Page `10 Directions × layouts` adds `hybrid` and `topBars` for each, twelve frames, so a direction is judged on more than the screen it was drawn for. A vertical rail hides a width problem that a top bar exposes: six named services do not fit 1080 points at every scale. Glass and Editorial fit all six; Discord and Soft fit five and overflow the sixth; Brutalist fits four, because it refuses to encode state in colour alone and a cell has to hold the word SIGNED OUT; Terminal fits three, since its rows are padded to fixed column widths. That is a ranking of how well a direction scales, not a defect list, and a wider window moves every count up. Details and the per-direction reasoning are in `FIGMA-BASELINE.md`.
+
+**Still missing across every direction:** sheets and notice states. Those wait for a direction to be picked, since five of the six will be thrown away.
 
 ## Open: the interface redesign has a baseline, and has not started
 

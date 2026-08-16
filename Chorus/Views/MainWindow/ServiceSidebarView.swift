@@ -259,7 +259,11 @@ struct ServiceSidebarView: View {
             // Nav buttons live at the far right of the tab bar (top-right corner
             // of the window), acting on the active service.
             WebNavButtons(webViewState: appState.webViewState, homeURL: activeHomeURL)
-                .padding(.trailing, 10)
+                // Room for the donation button, which ContentView overlays on the
+                // window's top-right corner — the same corner this row ends in.
+                // Without the reserve the two sit on top of each other as soon as
+                // the Home button appears and widens this group.
+                .padding(.trailing, 36)
         }
         // Headroom above the row. In the hybrid layout this row sits at the very
         // top of the window, and the icon-tab badge pokes ~2pt past its icon's

@@ -113,6 +113,13 @@ struct ContentView: View {
             // Fill behind everything with the window shade so the traffic-light
             // insets don't reveal the title-bar vibrancy (the top-left tint).
             .background(Color(nsColor: .windowBackgroundColor))
+            // The traffic lights hold the top-left, so the donation button takes
+            // the top-right of whichever bar the layout puts up there.
+            .overlay(alignment: .topTrailing) {
+                SupportButton()
+                    .padding(.trailing, 10)
+                    .padding(.top, supportButtonTopInset)
+            }
             // Extend up into the (hidden) title-bar area so the tab bar sits at
             // the very top of the window; the traffic-light insets keep the
             // top-left clear.
@@ -281,8 +288,51 @@ struct ContentView: View {
             .accessibilityLabel("Web content")
     }
 
+    /// Centres the donation button in the bar the current layout puts along the
+    /// top: the sidebar's nav row is 32 points tall, the top-bar spaces rail 34,
+    /// and the hybrid service rail 38.
+    private var supportButtonTopInset: CGFloat {
+        switch appState.railLayout {
+        case .sidebar: return 6
+        case .topBars: return 7
+        case .hybrid: return 9
+        }
+    }
+
     private func selectFirstService(in spaceID: UUID) {
         appState.selectedServiceID = appState.servicesForSpace(spaceID).first?.id
+    }
+}
+
+/// Where the donation button and the About panel both point.
+enum SupportLink {
+    static let url = URL(string: "https://buymeacoffee.com/0xff.r4bbit")!
+}
+
+/// A small link to the donation page, in the top-right of the window. Chorus
+/// asks for money nowhere else, so this stands all the time, which is the reason
+/// it is drawn quietly: it sits in the chrome at 20 points and only takes colour
+/// under the pointer.
+private struct SupportButton: View {
+    @State private var isHovering = false
+
+    var body: some View {
+        Button {
+            NSWorkspace.shared.open(SupportLink.url)
+        } label: {
+            Image(systemName: "cup.and.saucer.fill")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(isHovering ? Color.accentColor : Color.secondary)
+                .frame(width: 20, height: 20)
+                // The rails scroll under this button when a space holds enough
+                // services to overflow, so it needs its own fill to stay legible.
+                .background(Color(nsColor: .windowBackgroundColor))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .help("Buy me a coffee")
+        .accessibilityLabel("Buy me a coffee")
     }
 }
 
