@@ -69,6 +69,10 @@ struct GeneralSettingsView: View {
     // "If the targeted scene is a Window, the system orders it to the front."
     @Environment(\.openWindow) private var openWindow
 
+    /// Window chrome rather than user data, so it sits in defaults instead of
+    /// `AppPreferences` — see `SupportButtonVisibility`.
+    @AppStorage(SupportButtonVisibility.defaultsKey) private var showSupportButton = true
+
     private let presenceManager = AppPresenceManager()
 
     private var prefs: AppPreferences {
@@ -129,6 +133,11 @@ struct GeneralSettingsView: View {
                         Text(layout.displayName).tag(layout)
                     }
                 }
+
+                Toggle("Show the coffee cup in the window", isOn: $showSupportButton)
+                Text("The cup opens the page where you can buy me a coffee. Chorus asks for money nowhere else. Hide it and the link stays in the About panel.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Web Content") {

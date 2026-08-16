@@ -8,6 +8,7 @@ All notable changes to Chorus are documented here. Format loosely follows
 ### Added
 
 - A small button in the top right of the window opens the donation page, and the About panel carries the same link. Chorus stays free. This is here if you want to pay for it anyway.
+- Settings › General can hide that button. The window gives its corner back to the navigation buttons, and the About panel keeps the link.
 
 ## [1.5.18] - 2026-08-06
 

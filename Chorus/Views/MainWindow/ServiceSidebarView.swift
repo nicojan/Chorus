@@ -120,6 +120,10 @@ struct ServiceSidebarView: View {
     var contentInset: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Read only to size the gap the donation button needs at the far right of
+    /// the horizontal tab bar; `ContentView` owns the button itself.
+    @AppStorage(SupportButtonVisibility.defaultsKey) private var showSupportButton = true
+
     @State private var showingAddService = false
     @State private var confirmingDelete: SpaceServiceLink?
     @State private var editingService: ServiceInstance?
@@ -262,8 +266,10 @@ struct ServiceSidebarView: View {
                 // Room for the donation button, which ContentView overlays on the
                 // window's top-right corner — the same corner this row ends in.
                 // Without the reserve the two sit on top of each other as soon as
-                // the Home button appears and widens this group.
-                .padding(.trailing, 36)
+                // the Home button appears and widens this group. Settings can hide
+                // the button, and then the reserve would only be a hole, so it
+                // falls back to the plain trailing gap.
+                .padding(.trailing, showSupportButton ? SupportButtonVisibility.reservedWidth : 10)
         }
         // Headroom above the row. In the hybrid layout this row sits at the very
         // top of the window, and the icon-tab badge pokes ~2pt past its icon's

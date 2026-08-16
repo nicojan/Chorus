@@ -4,6 +4,11 @@ import SwiftData
 struct ContentView: View {
     @Environment(AppState.self) private var appState
 
+    /// Settings switches the donation button off here. See
+    /// `SupportButtonVisibility` for why this is a default rather than a
+    /// stored preference.
+    @AppStorage(SupportButtonVisibility.defaultsKey) private var showSupportButton = true
+
     var body: some View {
         @Bindable var state = appState
 
@@ -116,9 +121,11 @@ struct ContentView: View {
             // The traffic lights hold the top-left, so the donation button takes
             // the top-right of whichever bar the layout puts up there.
             .overlay(alignment: .topTrailing) {
-                SupportButton()
-                    .padding(.trailing, 10)
-                    .padding(.top, supportButtonTopInset)
+                if showSupportButton {
+                    SupportButton()
+                        .padding(.trailing, 10 - SupportButtonVisibility.targetOverhang)
+                        .padding(.top, supportButtonTopInset)
+                }
             }
             // Extend up into the (hidden) title-bar area so the tab bar sits at
             // the very top of the window; the traffic-light insets keep the
@@ -288,14 +295,16 @@ struct ContentView: View {
             .accessibilityLabel("Web content")
     }
 
-    /// Centres the donation button in the bar the current layout puts along the
-    /// top: the sidebar's nav row is 32 points tall, the top-bar spaces rail 34,
-    /// and the hybrid service rail 38.
+    /// Centres the donation button's chip in the bar the current layout puts
+    /// along the top: the sidebar's nav row is 32 points tall, the top-bar spaces
+    /// rail 34, and the hybrid service rail 38. The overhang comes off because
+    /// the chip is centred inside a larger click target.
     private var supportButtonTopInset: CGFloat {
+        let overhang = SupportButtonVisibility.targetOverhang
         switch appState.railLayout {
-        case .sidebar: return 6
-        case .topBars: return 7
-        case .hybrid: return 9
+        case .sidebar: return 6 - overhang
+        case .topBars: return 7 - overhang
+        case .hybrid: return 9 - overhang
         }
     }
 
@@ -309,10 +318,39 @@ enum SupportLink {
     static let url = URL(string: "https://buymeacoffee.com/0xff.r4bbit")!
 }
 
+/// The donation button's visibility and geometry, in one place because three
+/// views need them: `ContentView` draws the button, `ServiceSidebarView` keeps
+/// its corner clear, and Settings switches it off.
+enum SupportButtonVisibility {
+    /// Whether the window draws the button at all. This is chrome visibility
+    /// rather than user data, so it lives in defaults instead of
+    /// `AppPreferences`: a stored property there is a new schema version and a
+    /// migration (see CLAUDE.md), which a cosmetic toggle does not earn.
+    static let defaultsKey = "showSupportButton"
+
+    /// The painted chip. Below the 44 point target the UX audit asks for
+    /// everywhere else, and deliberately so: this is a permanent request for
+    /// money in a mouse-only app, and at 44 it reads as a control rather than a
+    /// quiet link. The target below carries the accessibility argument instead.
+    static let chipSize: CGFloat = 20
+
+    /// The clickable area, which is larger than the paint.
+    static let targetSize: CGFloat = 28
+
+    /// How far the target overhangs the chip on each side. Both paddings that
+    /// place the button subtract this, so the chip stays where it was drawn.
+    static var targetOverhang: CGFloat { (targetSize - chipSize) / 2 }
+
+    /// What the tab bar's nav buttons keep clear of the window's top-right
+    /// corner: the button's trailing gap, its target, and 6 points between them.
+    static var reservedWidth: CGFloat { 10 + targetSize + 6 }
+}
+
 /// A small link to the donation page, in the top-right of the window. Chorus
 /// asks for money nowhere else, so this stands all the time, which is the reason
-/// it is drawn quietly: it sits in the chrome at 20 points and only takes colour
-/// under the pointer.
+/// it is drawn quietly: it paints 20 points of chrome and only takes colour
+/// under the pointer. The pointer gets 28 points to hit, and Settings can hide
+/// it outright — see `SupportButtonVisibility`.
 private struct SupportButton: View {
     @State private var isHovering = false
 
@@ -323,10 +361,14 @@ private struct SupportButton: View {
             Image(systemName: "cup.and.saucer.fill")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(isHovering ? Color.accentColor : Color.secondary)
-                .frame(width: 20, height: 20)
+                .frame(width: SupportButtonVisibility.chipSize, height: SupportButtonVisibility.chipSize)
                 // The rails scroll under this button when a space holds enough
                 // services to overflow, so it needs its own fill to stay legible.
                 .background(Color(nsColor: .windowBackgroundColor))
+                // The paint stops at the chip; the pointer gets a wider target
+                // around it. Growing the fill instead would make the button
+                // louder, which is the thing the 20 points are buying.
+                .frame(width: SupportButtonVisibility.targetSize, height: SupportButtonVisibility.targetSize)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
