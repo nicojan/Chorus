@@ -21,7 +21,7 @@ This document is the reference for anyone picking the redesign up. The case-stud
 | `08 Redesign concepts` | Three concepts (A Tidy, B Recompose, C Rethink), each in three layouts and both appearances, plus shared specimens | no |
 | `09 Visual directions` | One screen (C sidebar) restyled six ways: Discord, Glass, Editorial, Brutalist, Soft, Terminal | no |
 | `10 Directions × layouts` | The same six directions in `hybrid` and `topBars`, twelve frames | no |
-| `11 Sheets and notices · shortlist` | Glass and Editorial only: four sheets and five notice states each | no |
+| `11 Sheets and notices` | All six directions: four sheets and five notice states each, thirty frames | no |
 
 Pages `01` through `06` are locked on purpose. They record what ships today. Unlock one only to correct an inaccuracy, never to try an idea. Ideas go on `07`.
 
@@ -92,9 +92,11 @@ A vertical rail hides a width problem that a top bar exposes. Six named services
 
 Two elements moved rather than shrank. Brutalist's status line and Terminal's prompt were the last row of a sidebar; with the rail lying down they become a footer along the bottom of the content. Glass keeps its inset card, which now tucks under the bar as well as the rail, so the blur still has something to refract. The frames on `10` were built by cloning each `09` frame and rebuilding its rail, which is what keeps every variable binding intact; a direction rebuilt by hand would have lost them.
 
-Page `11` carries the two that scaled best, Glass and Editorial, through four sheets and five notice states each. Every sheet sits on a backdrop rather than on blank canvas, since Glass cannot be judged without something under it to refract.
+Page `11` carries all six directions through four sheets and five notice states each, thirty surfaces. Sizes come from the source, so `AddServiceSheet` is 520 by 480 and the other three are 420 wide. Every sheet sits on a backdrop rather than on blank canvas, since Glass cannot be judged without something under it to refract.
 
-The notices are where these two answer the baseline's fifth finding. Three warnings ship today as three unrelated designs: two raw SwiftUI yellows and a solid red bar with white text. Both directions give the three one shape, a tinted strip with a rule under it, and let the tone carry the difference through the icon and the rule rather than through the fill. Editorial's buttons are squared and bordered, Glass's are pills.
+The notices answer the baseline's fifth finding. Three warnings ship today as three unrelated designs: two raw SwiftUI yellows and a solid red bar with white text. All six directions give the three one shape, a tinted strip with a rule under it, and let the tone carry the difference through the icon and the rule rather than through the fill. Editorial's buttons are squared and bordered, Glass's are pills, Brutalist's and Terminal's are square boxes.
+
+Two directions refuse a control the others accept: Brutalist and Terminal write a toggle as `[ on ]` and `[ off ]` rather than drawing a switch, which is the claim both make about words over colour. Terminal draws from its own collection, `Chorus / Terminal`, whose fourteen roles are mapped onto the same slots the other five fill from `Chorus / Directions` — `term/reverse-bg` stands in for `dir/selection`, `term/text-dim` for both secondary and tertiary text, and so on. Case is applied once in the builder rather than string by string.
 
 Glass sits at 88 per cent opacity on its sheets. It started at 62, and at 62 the sheet inherited whatever was under it and its own text disappeared, which is the fault already recorded against Glass on page `09`. A real `NSVisualEffectView` is closer to the higher number, so the sheets are evidence for that fix rather than against it.
 
