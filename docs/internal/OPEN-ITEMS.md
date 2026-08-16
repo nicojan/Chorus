@@ -2,11 +2,17 @@
 
 ## Open: the donation button is built and unreleased
 
-A 20 point button sits in the top right of the main window and opens `https://buymeacoffee.com/0xff.r4bbit`; the About panel carries the same link in its credits field, through `CommandGroup(replacing: .appInfo)` in `ChorusApp.swift`. Verified by hand in all three layouts and in the panel. `SupportLink.url` in `ContentView.swift` is the single definition both use.
+A button 20 points across, in a 28 point target, sits in the top right of the main window and opens `https://buymeacoffee.com/0xff.r4bbit`; the About panel carries the same link in its credits field, through `CommandGroup(replacing: .appInfo)` in `ChorusApp.swift`. Verified by hand in all three layouts and in the panel. `SupportLink.url` in `ContentView.swift` is the single definition both use.
 
-Two things to weigh before release. The button is 20 points, well under the 44 the audit asks for everywhere else, because the ask was for something very small; it is a mouse-only target in a Mac app, which is the argument for allowing it. And there is no way to hide it, which is the usual complaint about a standing donation button. A toggle in Settings would answer that and does not exist.
+Both things that were open here are now settled, on 2026-08-16.
 
-The nav buttons in `hybrid` and `topBars` end in the same corner, so `ServiceSidebarView` reserves 36 points of trailing padding for the button. Cut that reserve and the two overlap as soon as the Home button appears.
+The paint stays at 20 points and the click target grew to 28. The audit asks for 44 everywhere else and this is a deliberate exception: a permanent request for money that reads as a control is louder than the ask was, and the pointer, not the finger, is what hits it. `SupportButtonVisibility` in `ContentView.swift` holds both sizes and the arithmetic that keeps the chip where it was drawn when the target grows around it.
+
+Settings › General can hide the button. It writes `showSupportButton` to `UserDefaults`, not to `AppPreferences`, because a stored property there is a new schema version and a migration, which button visibility does not earn — see the SwiftData section of `CLAUDE.md`. The cost of that choice is that the setting sits outside the store, so a restore from backup does not carry it, and it is the one General setting not in `AppPreferences`.
+
+The nav buttons in `hybrid` and `topBars` end in the same corner, so `ServiceSidebarView` reserves `SupportButtonVisibility.reservedWidth` (44 points) of trailing padding for the button, and falls back to 10 when the button is hidden. Cut that reserve and the two overlap as soon as the Home button appears.
+
+All three states were verified in the running Debug build on 2026-08-16: the button drawn with the nav buttons clear of it, the corner with the button hidden and the nav buttons moved into the space, and the cup taking its hover colour with the pointer 4 points outside the painted chip, which is what proves the wider target is live.
 
 Charging for the themes was considered and dropped for now. The repo is public and MIT, so a paywall compiled into the binary is a speed bump, and Apollo's model relied on App Store payment infrastructure and a large userbase, neither of which applies here.
 
@@ -41,6 +47,8 @@ An inset, rounded content card is the partial answer, and it is applied to Glass
 Brutalist and Terminal write a toggle as `[ on ]` and `[ off ]` rather than drawing a switch, which keeps the claim both directions make, that a word carries the state and a colour never carries it alone. Terminal draws from its own variable collection, `Chorus / Terminal`, whose fourteen roles map onto the same slots the other five fill from `Chorus / Directions`.
 
 **Nothing is decided.** All six now cover the same ground, in three layouts and on every sheet and notice, so the choice is open on the evidence rather than narrowed by what happens to be drawn.
+
+**The placeholder pass is parked, on purpose, from 2026-08-16.** Filling the other five content areas with a drawn service the way Terminal does would take eighteen frames, and it only pays off if a visual direction is a live candidate. What gates building anything is the concept pick on page `08`, which is independent of the skin and answers the audit findings on its own. Pick a concept first. If a direction then survives, draw the content before choosing between the survivors, because the seam is what separates them.
 
 ## Reference: the interface baseline in Figma
 
