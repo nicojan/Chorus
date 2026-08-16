@@ -42,11 +42,11 @@ Brutalist and Terminal write a toggle as `[ on ]` and `[ off ]` rather than draw
 
 **Nothing is decided.** All six now cover the same ground, in three layouts and on every sheet and notice, so the choice is open on the evidence rather than narrowed by what happens to be drawn.
 
-## Open: the interface redesign has a baseline, and has not started
+## Reference: the interface baseline in Figma
 
-Built 2026-08-13. The shipped interface is now rebuilt in Figma (file `Chorus`, key `3MGhWQwnJQbfN6Egnet42I`), traced from 1.5.18 and measured pixel by pixel. Reference: `docs/internal/FIGMA-BASELINE.md`, which holds the measured geometry table, the file map, and what in the file can and cannot be trusted.
+Built 2026-08-13. The shipped interface is rebuilt in Figma (file `Chorus`, key `3MGhWQwnJQbfN6Egnet42I`), traced from 1.5.18 and measured pixel by pixel. Reference: `docs/internal/FIGMA-BASELINE.md`, which holds the measured geometry table, the file map, and what in the file can and cannot be trusted.
 
-Nothing has been redesigned. Pages `01` through `06` record what ships today and are locked; page `07` is the empty workspace.
+Pages `01` through `06` record what ships today and are locked; page `07` is the empty workspace. The redesign work sits on `08` through `11` and is covered by the open sections above. **No app code has changed for the redesign** — everything below describes the shipped interface, not a proposal.
 
 Measuring turned up seven things worth fixing, ranked by cost. Eight corner radii where three would do, five of them between 6 and 10. Three different fills for one selected state (`E4F0FF`, `E8F3FF`, `D2E6FF`). Selection drawn three ways at once, with a lighter stroke on chips than on tabs. One text size doing 36 of about 63 jobs, against four uses of primary colour. Two banners on raw SwiftUI yellow while the third goes solid red, so the three warnings read as three designs. A tab rail padded 6 above and 2 below. Two tap-target sizes and six icon sizes, with 40 sitting under Apple's floor of 44.
 
