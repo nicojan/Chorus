@@ -36,7 +36,9 @@ An inset, rounded content card is the partial answer, and it is applied to Glass
 
 **All six now run in all three layouts.** Page `10 Directions × layouts` adds `hybrid` and `topBars` for each, twelve frames, so a direction is judged on more than the screen it was drawn for. A vertical rail hides a width problem that a top bar exposes: six named services do not fit 1080 points at every scale. Glass and Editorial fit all six; Discord and Soft fit five and overflow the sixth; Brutalist fits four, because it refuses to encode state in colour alone and a cell has to hold the word SIGNED OUT; Terminal fits three, since its rows are padded to fixed column widths. That is a ranking of how well a direction scales, not a defect list, and a wider window moves every count up. Details and the per-direction reasoning are in `FIGMA-BASELINE.md`.
 
-**Still missing across every direction:** sheets and notice states. Those wait for a direction to be picked, since five of the six will be thrown away.
+**Glass and Editorial now have sheets and notice states.** Page `11 Sheets and notices · shortlist` carries the two that scaled best through Add Service, Edit Service, Space Editor, Quick Switcher, the three banners, the find bar and the lock screen. Both give the three warnings one shape, which answers the baseline's fifth finding. Glass's sheets sit at 88 per cent opacity: at the 62 they started on, a sheet inherited whatever was under it and its own text vanished, which is more evidence that Glass needs a real `NSVisualEffectView` rather than a fixed tint.
+
+**Still missing:** sheets and notice states for Discord, Brutalist, Soft and Terminal. Those wait for a direction to be picked, since three of the four would be thrown away. Nothing is decided between Glass and Editorial, and that decision is now the only thing blocking app work on the redesign.
 
 ## Open: the interface redesign has a baseline, and has not started
 
