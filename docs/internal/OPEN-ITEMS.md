@@ -16,15 +16,33 @@ All three states were verified in the running Debug build on 2026-08-16: the but
 
 Charging for the themes was considered and dropped for now. The repo is public and MIT, so a paywall compiled into the binary is a speed bump, and Apollo's model relied on App Store payment infrastructure and a large userbase, neither of which applies here.
 
-## Open: the redesign has three concepts, and needs one picked
+## Open: C · Rethink is the structural concept, and the labelled service row is built
 
 Built 2026-08-13, after the baseline below. `docs/internal/UX-AUDIT.md` holds the research and a Nielsen heuristic pass over the shipped screens; page `08 Redesign concepts` in the Figma file holds three answers to it.
 
-The audit's finding is that the baseline's seven items are all real and none of them is the biggest problem. In `hybrid` and `sidebar` a service tab draws an 18pt icon with no label (`ServiceTabView.content`, the `iconOnly` branch), so two Slack workspaces are two identical squares and the name lives only in a tooltip. `SpaceButton.verticalCell` does the same to spaces. A service has no visible state for loading, failed, or signed out, which matters because every service is a web view whose session expires quietly. Severity 4 and 3 against a list of radii and target sizes.
+The audit's finding is that the baseline's seven items are all real and none of them is the biggest problem. In `hybrid` and `sidebar` a service tab drew an 18pt icon with no label (`ServiceTabView.content`, the `iconOnly` branch), so two Slack workspaces were two identical squares and the name lived only in a tooltip. `SpaceButton.verticalCell` does the same to spaces. A service has no visible state for loading, failed, or signed out, which matters because every service is a web view whose session expires quietly. Severity 4 and 3 against a list of radii and target sizes. **The severity 4 one is fixed on a branch — see the step 3 note below.** The severity 3 one still stands.
 
 Three concepts, conservative to radical, each in three layouts and both appearances. `A · Tidy` executes the baseline list inside the shipped skeleton — a patch. `B · Recompose` adds labels everywhere and a health dot, and costs chrome: its sidebar spends 400 points before content. `C · Rethink` drops to one rail with the space as a header on it, reclaiming 161 points, and in doing so collapses `hybrid` and `topBars` into the same design — evidence that three layouts was an artifact of having two rails rather than a real choice.
 
-**Nothing is decided and no app code changed.** The next step is picking one, which is a product call. If C wins, the loss to weigh is that always-visible per-space badges and drag-to-reorder move into a palette.
+**C is picked, on 2026-08-16.** Three things followed from the choice and are now settled rather than open. Two rails become one, so `hybrid` and `topBars` stop being separate designs. A service and a space each carry a readable name in every layout, which is the severity 4 finding and the severity 3 one under it. And the six visual directions on pages `09` to `11` are all drawn on C's sidebar already, so whichever one wins needs no redrawing.
+
+The design that follows from it is written up in `docs/superpowers/specs/2026-08-16-concept-c-rethink-design.md`: the measured geometry off the drawn frames, what each app file has to become, a seven-step build order, and three risks worth reading before any code moves.
+
+**Step 1 of that order is done.** The audit's macOS 26 warning, that an `NSGlassContainerView` inside `NSToolbarView` eats clicks aimed at SwiftUI controls in the title-bar band, does not reach Chorus: the app creates no `NSToolbar`, and a click on a `hybrid` service tab in that band selects the service and leaves the window where it was. Measured in the Debug build on 2026-08-16, on macOS 26.5, against SDK 26.5. So C's horizontal geometry stands as drawn. Dragging in the band is the part that scripted input cannot check, and it needs the by-hand pass once the rail is rebuilt.
+
+**Step 3 is built, on the branch `feat/service-row-view` (`6ad81f5`), and it is not merged and not pushed.** `ServiceRowView` draws one labelled row in both axes and replaces both unlabelled cells: the vertical rail's 32pt icon and the horizontal bar's `iconOnly` tab. Vertical is the drawn 224 by 34 row at 36pt pitch inside a 240pt rail; horizontal is a 32pt tab that hugs its label. The badge, the mute bell, the hibernation moon and the media glyph come off the icon's corners and sit inline on the trailing edge, badge last. `ServiceTabView` and `ServiceIconView` are deleted; the shared parts beside them (`ServiceIconSquare`, `ServiceAccessibility`, `BadgeCountView`, `MediaIndicatorGlyph`) stay. The reorder maths, drag and drop, arrow keys and VoiceOver move actions moved across untouched, and `supportButtonTopInset` is re-measured against the new bar heights (topBars 34 to 36, hybrid 38 to 40). 197 tests, 0 failures.
+
+Three things about it are worth knowing before picking it up.
+
+- **How it looks is unverified.** A fullscreen game held the display and the Debug window would not come forward, so no screenshot was taken in any layout. Nothing about the change is confirmed by eye.
+- **In `sidebar` this step alone costs chrome.** 52pt space rail plus 240pt service rail is 292 points before content, against today's 104. Step 5 takes the second rail out and lands it at 240, so the cost is an artifact of shipping step 3 on its own. The horizontal layouts have no such cost.
+- **The horizontal tab has no width cap, on purpose.** A `maxWidth` only bites when something proposes an unbounded width, which the strip's fallback scroll view does, and there it stretches every short tab to the cap instead of trimming the long ones. `ViewThatFits` already hands overflow to that scroll view, so a long name costs scrolling rather than layout.
+
+Selection and focus were left exactly as they were, `focusEffectDisabled()` included, because the specimen that reshapes them is step 7 and cutting it twice is waste. **Step 2 (`RailLayout` to two cases) is not started** and does not depend on step 3.
+
+**One product call is still open and it gates step 4.** The palette on page `08` labels its rows `⌘1` to `⌘4`, and `⌘1`–`⌘9` currently switches services (`KeyboardShortcutManager.swift:16`), an accelerator set the audit rates severity 0 and says to protect. The spec assumes the digits are palette-local, so nothing shipped breaks, and flags the alternative rather than deciding it.
+
+The price, accepted with the pick: always-visible per-space badges and drag-to-reorder move into a palette. A and B are closed. A never answered the severity 4 finding, which is the product's core loop; B answered it and spent 400 points of sidebar before content to do it.
 
 ## Open: six visual directions, and a ceiling on all of them
 
@@ -48,13 +66,13 @@ Brutalist and Terminal write a toggle as `[ on ]` and `[ off ]` rather than draw
 
 **Nothing is decided.** All six now cover the same ground, in three layouts and on every sheet and notice, so the choice is open on the evidence rather than narrowed by what happens to be drawn.
 
-**The placeholder pass is parked, on purpose, from 2026-08-16.** Filling the other five content areas with a drawn service the way Terminal does would take eighteen frames, and it only pays off if a visual direction is a live candidate. What gates building anything is the concept pick on page `08`, which is independent of the skin and answers the audit findings on its own. Pick a concept first. If a direction then survives, draw the content before choosing between the survivors, because the seam is what separates them.
+**The placeholder pass was parked on 2026-08-16, and the pick released it the same day.** Filling the other five content areas with a drawn service the way Terminal does would take eighteen frames. It was held back because the concept pick gated everything and is independent of the skin. That pick is made, so the direction is now the open question, and the seam between chrome and content is what separates the six. Draw the content before choosing between them. Rejecting all six and staying native is still a live answer.
 
 ## Reference: the interface baseline in Figma
 
 Built 2026-08-13. The shipped interface is rebuilt in Figma (file `Chorus`, key `3MGhWQwnJQbfN6Egnet42I`), traced from 1.5.18 and measured pixel by pixel. Reference: `docs/internal/FIGMA-BASELINE.md`, which holds the measured geometry table, the file map, and what in the file can and cannot be trusted.
 
-Pages `01` through `06` record what ships today and are locked; page `07` is the empty workspace. The redesign work sits on `08` through `11` and is covered by the open sections above. **No app code has changed for the redesign** — everything below describes the shipped interface, not a proposal.
+Pages `01` through `06` record what ships today and are locked; page `07` is the empty workspace. The redesign work sits on `08` through `11` and is covered by the open sections above. **Everything below describes the shipped interface, not a proposal.** The one piece of redesign code written so far sits unmerged on `feat/service-row-view`, so `main` still matches these pages.
 
 Measuring turned up seven things worth fixing, ranked by cost. Eight corner radii where three would do, five of them between 6 and 10. Three different fills for one selected state (`E4F0FF`, `E8F3FF`, `D2E6FF`). Selection drawn three ways at once, with a lighter stroke on chips than on tabs. One text size doing 36 of about 63 jobs, against four uses of primary colour. Two banners on raw SwiftUI yellow while the third goes solid red, so the three warnings read as three designs. A tab rail padded 6 above and 2 below. Two tap-target sizes and six icon sizes, with 40 sitting under Apple's floor of 44.
 
