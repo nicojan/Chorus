@@ -43,6 +43,16 @@ Selection and focus were left exactly as they were, `focusEffectDisabled()` incl
 
 **Step 2 (`RailLayout` to two cases) is not started, and it should wait for step 5.** It does not depend on step 3, and the spec called it mechanical with no visual change. The second half of that is wrong, and the spec now carries the correction. Retiring `hybrid` maps its users onto `topBars`, and until one rail draws both layouts those are two different screens: `hybrid` keeps the spaces on a 52pt rail down the left, `topBars` has no left rail and stacks two horizontal strips. Shipping the enum change alone moves every hybrid user to an arrangement they did not pick, then moves them again at step 5.
 
+**Step 4 is built and merged, and none of it has been seen.** `SpaceHeaderView` draws the current space as a 224 by 36 header on the rail, or 150 by 32 in the bar, with the aggregate badge and a pop-up chevron. `SpacePaletteView` is the switcher it opens: a 260 point popover at radius 14, whose rows carry emoji, name, service count, unread badge and the `⌘` digit. 203 tests, 0 failures, six of them new and all on the pure helpers (`SpacePalette`, `SpaceHeader`). Nothing presents either view until step 5, so they compile and run but cannot be reached, and the by-eye pass has to wait for that step.
+
+Three decisions inside it worth not relitigating:
+
+- **Space drag-to-reorder and the per-space context menu moved into the palette**, beyond the two views the spec named. `SpaceStripView` holds them today and step 5 deletes it, so they move into the palette or they disappear. `ServiceReorder` was reused untouched, as the spec demands.
+- **The palette reports edit, delete and add upward through closures** instead of presenting the sheets itself. A sheet raised from inside a popover goes down with the popover when it closes. Whoever assembles the rail at step 5 owns those sheets.
+- **The header and the palette are not welded together.** The header is a button with an `isPaletteOpen` flag; the owner attaches the `.popover`. Three lines at the call site, and neither view has to know about the other.
+
+Two things about it are unverified by construction. `⌘`-digit resolution reads `KeyPress.characters`, which is untested against a live command-modified keystroke, and the palette takes `focusEffectDisabled()` on its container so the popover does not draw a ring around everything. Step 7 is the specimen that settles focus, and it should look at that.
+
 **The product call that gated step 4 is answered: the digits are palette-local.** The palette on page `08` labels its rows `⌘1` to `⌘4`, and `⌘1`–`⌘9` currently switches services (`KeyboardShortcutManager.swift:16`), an accelerator set the audit rates severity 0 and says to protect. `SpacePaletteView` binds the digits itself while it is open; `KeyboardShortcutManager` is left alone, so nothing shipped breaks. Reassigning them globally was the alternative and it is rejected: it breaks a shipped accelerator to solve a problem nobody reported. Step 4 is unblocked.
 
 The price, accepted with the pick: always-visible per-space badges and drag-to-reorder move into a palette. A and B are closed. A never answered the severity 4 finding, which is the product's core loop; B answered it and spent 400 points of sidebar before content to do it.

@@ -2026,6 +2026,66 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(AppPreferences(railLayoutRaw: "garbage").railLayout, .sidebar)
     }
 
+    // MARK: - Space header and palette (build step 4)
+
+    /// The palette labels its rows ⌘1 upward. Only the first nine get a digit —
+    /// there is no ⌘0 row, and a tenth space is reached by arrow or click.
+    func testSpacePaletteAssignsCommandDigitsToTheFirstNineRowsOnly() {
+        XCTAssertEqual(SpacePalette.shortcutDigit(forIndex: 0), 1)
+        XCTAssertEqual(SpacePalette.shortcutDigit(forIndex: 8), 9)
+        XCTAssertNil(SpacePalette.shortcutDigit(forIndex: 9))
+        XCTAssertNil(SpacePalette.shortcutDigit(forIndex: 40))
+    }
+
+    /// The digits are palette-local (decided 2026-08-17): they resolve to a row
+    /// only while the palette is open, and only when a row is actually there. A
+    /// digit past the end is not handled, so it never swallows the keystroke.
+    func testSpacePaletteResolvesADigitOnlyWithinTheRowCount() {
+        XCTAssertEqual(SpacePalette.index(forDigit: 1, rowCount: 3), 0)
+        XCTAssertEqual(SpacePalette.index(forDigit: 3, rowCount: 3), 2)
+        XCTAssertNil(SpacePalette.index(forDigit: 4, rowCount: 3))
+        XCTAssertNil(SpacePalette.index(forDigit: 0, rowCount: 3))
+        XCTAssertNil(SpacePalette.index(forDigit: 10, rowCount: 12))
+        XCTAssertNil(SpacePalette.index(forDigit: 1, rowCount: 0))
+    }
+
+    func testSpacePaletteSubtitleCountsServices() {
+        XCTAssertEqual(SpacePalette.subtitle(serviceCount: 0), "No services")
+        XCTAssertEqual(SpacePalette.subtitle(serviceCount: 1), "1 service")
+        XCTAssertEqual(SpacePalette.subtitle(serviceCount: 4), "4 services")
+    }
+
+    /// VoiceOver hears everything the row shows: name, how many services, the
+    /// unread count, and mute. Mirrors `ServiceAccessibility.label`.
+    func testSpacePaletteRowSpokenLabelFoldsInCountBadgeAndMute() {
+        XCTAssertEqual(
+            SpacePalette.rowLabel(name: "Work", serviceCount: 3, badgeCount: 0, isMuted: false),
+            "Work, 3 services"
+        )
+        XCTAssertEqual(
+            SpacePalette.rowLabel(name: "Work", serviceCount: 1, badgeCount: 1, isMuted: false),
+            "Work, 1 service, 1 unread"
+        )
+        XCTAssertEqual(
+            SpacePalette.rowLabel(name: "Work", serviceCount: 2, badgeCount: 7, isMuted: true),
+            "Work, 2 services, 7 unread, muted"
+        )
+    }
+
+    /// The header says where you are and that it opens something. The trait is
+    /// applied by the view; this pins the words.
+    func testSpaceHeaderSpokenLabelFoldsInBadgeAndMute() {
+        XCTAssertEqual(SpaceHeader.label(spaceName: "Work", badgeCount: 0, isMuted: false), "Work")
+        XCTAssertEqual(SpaceHeader.label(spaceName: "Work", badgeCount: 1, isMuted: false), "Work, 1 unread")
+        XCTAssertEqual(SpaceHeader.label(spaceName: "Work", badgeCount: 12, isMuted: true), "Work, 12 unread, muted")
+    }
+
+    /// With no space resolved the header still draws rather than collapsing the
+    /// rail, and it says so.
+    func testSpaceHeaderLabelWithoutASpace() {
+        XCTAssertEqual(SpaceHeader.label(spaceName: nil, badgeCount: 0, isMuted: false), "No space")
+    }
+
     func testAppearanceModeParsesFromStoredValueWithSystemFallback() {
         XCTAssertEqual(AppPreferences(appearanceModeRaw: nil).appearanceMode, .system)
         XCTAssertEqual(AppPreferences(appearanceModeRaw: "system").appearanceMode, .system)
