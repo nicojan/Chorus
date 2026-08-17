@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Shared colors and helpers for service icons. Centralized so the vertical rail
-/// (`ServiceIconView`) and the horizontal folder tabs (`ServiceTabView`) render
-/// identically and so contrast is fixed in one place.
+/// Shared colors and helpers for service icons. Centralized so every surface
+/// that draws a service — the rail's `ServiceRowView`, the space chips, the
+/// quick switcher — renders identically and contrast is fixed in one place.
 enum ServiceIconPalette {
     /// Fill colors for the letter-tile fallback. Each is dark enough to clear
     /// WCAG 4.5:1 against the white initial drawn on top (Tailwind 700-class
@@ -105,92 +105,6 @@ struct ServiceIconSquare: View {
         guard let id = instance.catalogEntryID else { return nil }
         let name = "brand-\(id)"
         return NSImage(named: name) != nil ? name : nil
-    }
-}
-
-struct ServiceIconView: View {
-    let instance: ServiceInstance
-    let isSelected: Bool
-    var badgeCount: Int = 0
-    var isHibernated: Bool = false
-    var isMuted: Bool = false
-    var cameraActive: Bool = false
-    var micActive: Bool = false
-    var micMuted: Bool = false
-
-    @State private var isHovering = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        HStack(spacing: 0) {
-            // Selection indicator — matches the space strip's accent pill
-            RoundedRectangle(cornerRadius: 1.5)
-                .fill(.tint)
-                .opacity(isSelected ? 1 : 0)
-                .frame(width: 3, height: 28)
-
-            ZStack(alignment: .topTrailing) {
-                ServiceIconSquare(instance: instance, size: 32, cornerRadius: 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(backgroundColor)
-                            .frame(width: 40, height: 40)
-                    )
-
-                if badgeCount > 0 && instance.showBadge {
-                    BadgeCountView(count: badgeCount)
-                        .offset(x: 4, y: -4)
-                }
-
-                if isHibernated {
-                    Image(systemName: "moon.zzz.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(.secondary)
-                        .offset(x: -12, y: -4)
-                        .accessibilityHidden(true)
-                }
-
-                if isMuted {
-                    Image(systemName: "bell.slash.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                        .padding(2)
-                        .background(Circle().fill(.background))
-                        .offset(x: 4, y: 18)
-                        .accessibilityHidden(true)
-                }
-
-                MediaIndicatorGlyph(cameraActive: cameraActive, micActive: micActive, micMuted: micMuted)
-                    .offset(x: -12, y: 18)
-            }
-            .frame(width: 40, height: 40)
-            .opacity(isHibernated ? 0.5 : (isMuted ? 0.75 : 1.0))
-            .frame(maxWidth: .infinity)
-        }
-        .padding(.vertical, 3)
-        .onHover { hovering in
-            isHovering = hovering
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(ServiceAccessibility.label(
-            name: instance.label,
-            badgeCount: badgeCount,
-            isHibernated: isHibernated,
-            isMuted: isMuted,
-            cameraActive: cameraActive,
-            micActive: micActive,
-            micMuted: micMuted
-        ))
-        .accessibilityAddTraits([.isButton, isSelected ? .isSelected : []])
-    }
-
-    private var backgroundColor: AnyShapeStyle {
-        if isSelected {
-            return AnyShapeStyle(.tint.opacity(0.20))
-        } else if isHovering {
-            return AnyShapeStyle(Color.primary.opacity(0.06))
-        }
-        return AnyShapeStyle(Color.clear)
     }
 }
 

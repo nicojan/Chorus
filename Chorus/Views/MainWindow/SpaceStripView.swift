@@ -94,7 +94,7 @@ struct SpaceStripView: View {
             // click here falls through to the window-drag handle behind the row.
             Spacer(minLength: 40)
         }
-        .frame(height: ServiceTabView.height + 4)
+        .frame(height: ServiceRowView.tabHeight + 4)
         // The OS window drag is off in this layout (chip drags reorder), so a
         // full-width drag handle behind the row makes every empty area move the
         // window; the chips sit in front and take their own clicks. Mirrors
@@ -421,7 +421,7 @@ private struct SpaceButton: View {
             }
         }
         .padding(.horizontal, 10)
-        .frame(height: ServiceTabView.height)
+        .frame(height: ServiceRowView.tabHeight)
         .opacity(isMuted ? 0.7 : 1.0)
         .background(fillStyle)
         .clipShape(RoundedRectangle(cornerRadius: 7))

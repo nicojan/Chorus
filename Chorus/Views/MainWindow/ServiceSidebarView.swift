@@ -136,11 +136,12 @@ struct ServiceSidebarView: View {
     /// here and the arrow keys move relative to it.
     @FocusState private var focusedServiceID: UUID?
     // Fallback drop midpoints, used only until the first geometry pass records a
-    // cell's real size. The horizontal fallback matches an icon-only tab (~34pt
-    // wide) rather than a full-width tab — a wrong (too large) value would make
-    // every horizontal drop resolve `.before` and leave the last slot unreachable.
-    private static let serviceDropMidpoint: CGFloat = 23
-    private static let serviceDropMidpointHorizontal: CGFloat = 17
+    // cell's real size. Both are half of what `ServiceRowView` draws: a 34 point
+    // row in the vertical rail, and a labelled tab of roughly 120 points in the
+    // horizontal bar. A wrong (too large) value would make every drop on that
+    // axis resolve `.before` and leave the last slot unreachable.
+    private static let serviceDropMidpoint: CGFloat = ServiceRowView.rowHeight / 2
+    private static let serviceDropMidpointHorizontal: CGFloat = ServiceRowView.tabTypicalWidth / 2
     /// Measured size of each drop cell, so the before/after split uses the target's
     /// true midpoint instead of a hardcoded guess.
     @State private var cellSizes: [UUID: CGSize] = [:]
@@ -234,6 +235,7 @@ struct ServiceSidebarView: View {
     private var verticalBody: some View {
         VStack(spacing: 0) {
             ScrollView {
+                // 2 points between 34 point rows is the drawn 36 point pitch.
                 LazyVStack(spacing: 2) {
                     ForEach(filteredLinks) { link in
                         serviceRow(for: link)
@@ -246,8 +248,9 @@ struct ServiceSidebarView: View {
             Divider()
 
             addServiceButton
+                .padding(.vertical, 6)
         }
-        .frame(width: 52)
+        .frame(width: ServiceRowView.railWidth)
         .background(.background)
     }
 
@@ -271,14 +274,12 @@ struct ServiceSidebarView: View {
                 // falls back to the plain trailing gap.
                 .padding(.trailing, showSupportButton ? SupportButtonVisibility.reservedWidth : 10)
         }
-        // Headroom above the row. In the hybrid layout this row sits at the very
-        // top of the window, and the icon-tab badge pokes ~2pt past its icon's
-        // top-trailing corner (see ServiceTabView) — with the row flush to the
-        // top edge the badge had no margin and read as shaved. Padding the whole
-        // HStack (tabs + nav buttons together) keeps them aligned while the frame
-        // grows to match; the drag handle and shade fill the added band.
-        .padding(.top, 4)
-        .frame(height: ServiceTabView.height + 8)
+        // The bar is 8 points taller than the tabs it holds, so the row sits
+        // centred with 4 points clear above and below. It used to carry that as
+        // top padding instead, because the icon-only tab hung its badge ~2pt
+        // past the top-trailing corner and a flush row shaved it; the labelled
+        // row carries its badge inline, so plain centring does the job.
+        .frame(height: ServiceRowView.tabHeight + 8)
         // The OS window drag is off in the top-bar and hybrid layouts, so tab
         // drags reorder instead of moving the window (see
         // WindowMovableConfigurator). A full-width drag handle behind the row
@@ -446,37 +447,18 @@ struct ServiceSidebarView: View {
         muted: Bool,
         media: WebViewPool.MediaCaptureState?
     ) -> some View {
-        if axis == .vertical {
-            Button {
-                selectService(link)
-            } label: {
-                ServiceIconView(
-                    instance: link.service,
-                    isSelected: isSelected,
-                    badgeCount: badge,
-                    isHibernated: hibernated,
-                    isMuted: muted,
-                    cameraActive: media?.cameraActive ?? false,
-                    micActive: media?.micActive ?? false,
-                    micMuted: media?.micMuted ?? false
-                )
-            }
-            .buttonStyle(.plain)
-            .contentShape(Rectangle())
-        } else {
-            ServiceTabView(
-                instance: link.service,
-                isSelected: isSelected,
-                badgeCount: badge,
-                isHibernated: hibernated,
-                isMuted: muted,
-                iconOnly: true,
-                cameraActive: media?.cameraActive ?? false,
-                micActive: media?.micActive ?? false,
-                micMuted: media?.micMuted ?? false
-            ) {
-                selectService(link)
-            }
+        ServiceRowView(
+            instance: link.service,
+            isSelected: isSelected,
+            axis: axis,
+            badgeCount: badge,
+            isHibernated: hibernated,
+            isMuted: muted,
+            cameraActive: media?.cameraActive ?? false,
+            micActive: media?.micActive ?? false,
+            micMuted: media?.micMuted ?? false
+        ) {
+            selectService(link)
         }
     }
 
@@ -489,18 +471,33 @@ struct ServiceSidebarView: View {
         focusedServiceID = link.service.id
     }
 
+    /// In the wide vertical rail this is a labelled row like the services above
+    /// it, with the plus sitting in a 20 point box so its text starts on the same
+    /// x as theirs. The horizontal bar has no width to spare, so it stays a plus.
     private var addServiceButton: some View {
         Button {
             showingAddService = true
         } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 12, weight: .medium))
-                .frame(
-                    width: axis == .vertical ? 44 : 36,
-                    height: axis == .vertical ? 32 : ServiceTabView.height
-                )
-                .foregroundStyle(.secondary)
-                .contentShape(Rectangle())
+            Group {
+                if axis == .vertical {
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 12, weight: .medium))
+                            .frame(width: 20, height: 20)
+                        Text("Add service")
+                            .font(.subheadline)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(width: ServiceRowView.rowWidth, height: 30)
+                } else {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .medium))
+                        .frame(width: 36, height: ServiceRowView.tabHeight)
+                }
+            }
+            .foregroundStyle(.secondary)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help("Add service")

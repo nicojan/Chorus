@@ -297,14 +297,14 @@ struct ContentView: View {
 
     /// Centres the donation button's chip in the bar the current layout puts
     /// along the top: the sidebar's nav row is 32 points tall, the top-bar spaces
-    /// rail 34, and the hybrid service rail 38. The overhang comes off because
+    /// rail 36, and the hybrid service rail 40. The overhang comes off because
     /// the chip is centred inside a larger click target.
     private var supportButtonTopInset: CGFloat {
         let overhang = SupportButtonVisibility.targetOverhang
         switch appState.railLayout {
         case .sidebar: return 6 - overhang
-        case .topBars: return 7 - overhang
-        case .hybrid: return 9 - overhang
+        case .topBars: return 8 - overhang
+        case .hybrid: return 10 - overhang
         }
     }
 
