@@ -39,7 +39,9 @@ Three things about it are worth knowing before picking it up.
 - **In `sidebar` this step alone costs chrome.** 52pt space rail plus 240pt service rail is 292 points before content, against today's 104. Step 5 takes the second rail out and lands it at 240, so the cost is an artifact of shipping step 3 on its own. The horizontal layouts have no such cost.
 - **The horizontal tab has no width cap, on purpose.** A `maxWidth` only bites when something proposes an unbounded width, which the strip's fallback scroll view does, and there it stretches every short tab to the cap instead of trimming the long ones. `ViewThatFits` already hands overflow to that scroll view, so a long name costs scrolling rather than layout.
 
-Selection and focus were left exactly as they were, `focusEffectDisabled()` included, because the specimen that reshapes them is step 7 and cutting it twice is waste. **Step 2 (`RailLayout` to two cases) is not started** and does not depend on step 3.
+Selection and focus were left exactly as they were, `focusEffectDisabled()` included, because the specimen that reshapes them is step 7 and cutting it twice is waste.
+
+**Step 2 (`RailLayout` to two cases) is not started, and it should wait for step 5.** It does not depend on step 3, and the spec called it mechanical with no visual change. The second half of that is wrong, and the spec now carries the correction. Retiring `hybrid` maps its users onto `topBars`, and until one rail draws both layouts those are two different screens: `hybrid` keeps the spaces on a 52pt rail down the left, `topBars` has no left rail and stacks two horizontal strips. Shipping the enum change alone moves every hybrid user to an arrangement they did not pick, then moves them again at step 5.
 
 **One product call is still open and it gates step 4.** The palette on page `08` labels its rows `⌘1` to `⌘4`, and `⌘1`–`⌘9` currently switches services (`KeyboardShortcutManager.swift:16`), an accelerator set the audit rates severity 0 and says to protect. The spec assumes the digits are palette-local, so nothing shipped breaks, and flags the alternative rather than deciding it.
 

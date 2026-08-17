@@ -59,6 +59,8 @@ There is a trap in it. `AppPreferences.railLayout` reads `railLayoutRaw.flatMap(
 
 Naming: the two survivors are the rail on the left and the bar on the top. `sidebar` keeps its raw value. The new horizontal case should take `topBars` as its raw value so the larger existing population keeps its choice byte for byte, and `hybrid` maps onto it.
 
+**Correction, 2026-08-17: this step is not free before step 5, and the build order below is wrong to call it so.** The forward-map is only invisible once one rail draws both layouts. Today `hybrid` puts the spaces on a 52pt rail down the left and the services in a bar on top, while `topBars` stacks two horizontal strips and has no left rail at all. Both were screenshotted side by side on 2026-08-17. So a `hybrid` user who takes this step on its own does not keep their arrangement: they lose the left rail and gain a second strip. That is a different screen wearing the old choice's name. Land the enum change with step 5, or accept that hybrid users get moved twice. The trap in the accessor stands either way.
+
 ### One rail view replaces two
 
 `SpaceStripView` (467 lines) and `ServiceSidebarView` (790 lines) both draw a rail in two axes. C needs one view that draws one rail in two axes, with the space as a header on it. Neither existing file is the right thing to bend into that shape, and per the file-organization rule in the global instructions a 1,257 line merge would be the wrong answer anyway.
@@ -136,7 +138,7 @@ So the horizontal geometry stands as drawn, and step 1 of the build order is don
 Each step leaves the app shippable, and the risky thing is first on purpose.
 
 1. ~~**Prove the title-bar band on macOS 26.**~~ **Done on 2026-08-16**, and it needed no throwaway build: the shipped `hybrid` layout already puts tabs where C puts its header, and a click there works. See the risks section. The horizontal geometry stands as drawn.
-2. `RailLayout` to two cases, with the `hybrid` forward-map and its test. Mechanical, no visual change, and it can ship on its own.
+2. `RailLayout` to two cases, with the `hybrid` forward-map and its test. Mechanical, and the code change is small, but **"no visual change" was wrong**: see the correction above. Hold it until step 5, or move hybrid users twice on purpose.
 3. ~~`ServiceRowView`: a labelled row in both axes, replacing the `iconOnly` branch.~~ **Built on 2026-08-16**, on the branch `feat/service-row-view` (`6ad81f5`), unmerged and unpushed. It closes the severity 4 finding. 197 tests, 0 failures; nothing checked by eye, because the display was held by a fullscreen app and the Debug window would not come forward. Two notes carried into `OPEN-ITEMS.md`: in `sidebar` this step on its own puts 292 points of chrome before content until step 5 removes the second rail, and the horizontal tab is deliberately left without a width cap.
 4. `SpaceHeaderView` and `SpacePaletteView`.
 5. `UnifiedRailView`: assemble, move the tested plumbing across, delete what it replaces.
