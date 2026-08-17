@@ -3,128 +3,45 @@ import SwiftData
 import UniformTypeIdentifiers
 import os
 
-enum ServiceReorderPlacement {
-    case before
-    case after
-}
-
-/// Sets whether the user can move the window by dragging its background.
+/// One rail, in either axis, holding the current space as its header and that
+/// space's services under it.
 ///
-/// With `.windowStyle(.hiddenTitleBar)` the top ~32px stays a title-bar drag
-/// band. In the top-bar and hybrid layouts the rails sit in that band, so a
-/// click-drag on a tab was grabbed by the window move before SwiftUI's
-/// `.draggable` reorder could start — the window slid instead of the tab
-/// reordering. A view nested in a SwiftUI `ScrollView` can't opt out of that
-/// drag (the scroll view short-circuits AppKit hit-testing, so a
-/// `mouseDownCanMoveWindow == false` nested view is never consulted).
+/// This is build step 5 of concept C, and it replaces two views rather than
+/// bending either into shape: `ServiceSidebarView` drew the services in two
+/// axes and `SpaceStripView` drew a second rail of spaces beside it. Dropping
+/// the second rail is what the concept buys — 161 points of chrome back in the
+/// vertical layout, a whole 34 point bar in the horizontal one — and it is why
+/// `hybrid` and `topBars` collapsed into a single layout: with one rail there
+/// are only two arrangements left, on the left or along the top.
 ///
-/// So we turn the OS window drag off for those layouts and hand dragging to
-/// explicit `WindowDragHandle`s instead (Chrome's model). The sidebar layout,
-/// whose rails don't hold draggable tabs in the band, keeps the normal drag.
-struct WindowMovableConfigurator: NSViewRepresentable {
-    let isMovable: Bool
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        applyWhenAttached(to: view)
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        applyWhenAttached(to: nsView)
-    }
-
-    private func applyWhenAttached(to view: NSView) {
-        let isMovable = isMovable
-        DispatchQueue.main.async {
-            view.window?.isMovable = isMovable
-        }
-    }
-}
-
-/// A transparent strip that moves the window on click-drag, the way Chrome lets
-/// you drag the empty part of its tab strip. Used to fill the reserved gap in
-/// the top-bar rails, where the OS window drag is off (see
-/// `WindowMovableConfigurator`). A double-click zooms, matching a title bar.
-struct WindowDragHandle: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView { DragView() }
-    func updateNSView(_ nsView: NSView, context: Context) {}
-
-    private final class DragView: NSView {
-        override func mouseDown(with event: NSEvent) {
-            guard let window else { return }
-            if event.clickCount == 2 {
-                window.performZoom(nil)
-            } else {
-                window.performDrag(with: event)
-            }
-        }
-    }
-}
-
-enum SpaceMove {
-    /// The spaces a service can be moved into: every space except the ones it
-    /// already belongs to. Moving into a space it's already in would just
-    /// double-link it, and the current space is one of those memberships, so
-    /// this naturally leaves it out too. Order follows `allSpaceIDs` (the
-    /// sorted space rail).
-    static func eligibleSpaceIDs(allSpaceIDs: [UUID], memberSpaceIDs: Set<UUID>) -> [UUID] {
-        allSpaceIDs.filter { !memberSpaceIDs.contains($0) }
-    }
-}
-
-enum ServiceReorder {
-    static func reorderedIDs(
-        _ ids: [UUID],
-        moving droppedID: UUID,
-        relativeTo targetID: UUID,
-        placement: ServiceReorderPlacement
-    ) -> [UUID]? {
-        guard droppedID != targetID,
-              let fromIndex = ids.firstIndex(of: droppedID),
-              let targetIndex = ids.firstIndex(of: targetID) else {
-            return nil
-        }
-
-        var reordered = ids
-        let moved = reordered.remove(at: fromIndex)
-
-        var toIndex = targetIndex
-        if placement == .after {
-            toIndex += 1
-        }
-        if fromIndex < toIndex {
-            toIndex -= 1
-        }
-        guard fromIndex != toIndex else {
-            return nil
-        }
-
-        reordered.insert(moved, at: toIndex)
-        return reordered
-    }
-}
-
-struct ServiceSidebarView: View {
-    let spaceID: UUID
+/// Everything the audit rated severity 0 came across untouched: the reorder
+/// maths (`ServiceReorder`), drag and drop, the arrow keys, the VoiceOver move
+/// actions, and the donation button's reserved corner. The space half of that
+/// plumbing now lives in `SpacePaletteView`, which the header opens.
+struct UnifiedRailView: View {
+    @Binding var selectedSpaceID: UUID?
     @Binding var selectedServiceID: UUID?
+    var axis: Axis = .vertical
+    /// Inset applied to the content (top for the vertical rail, leading for the
+    /// horizontal bar) to clear the window traffic lights, kept inside so the
+    /// background and dividers still run full-length.
+    var contentInset: CGFloat = 0
+
     @Query private var allLinks: [SpaceServiceLink]
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
-
-    var axis: Axis = .vertical
-    /// Inset applied to the content (top for the vertical rail, leading for the
-    /// horizontal tab bar) to clear the window traffic lights, kept inside so the
-    /// background and dividers still run full-length.
-    var contentInset: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Read only to size the gap the donation button needs at the far right of
-    /// the horizontal tab bar; `ContentView` owns the button itself.
+    /// the horizontal bar; `ContentView` owns the button itself.
     @AppStorage(SupportButtonVisibility.defaultsKey) private var showSupportButton = true
 
+    @State private var showingPalette = false
     @State private var showingAddService = false
+    @State private var showingAddSpace = false
+    @State private var editingSpace: Space?
+    @State private var confirmingDeleteSpace: Space?
     @State private var confirmingDelete: SpaceServiceLink?
     @State private var editingService: ServiceInstance?
     /// The link whose service is being moved into a brand-new space: set when the
@@ -146,13 +63,414 @@ struct ServiceSidebarView: View {
     /// true midpoint instead of a hardcoded guess.
     @State private var cellSizes: [UUID: CGSize] = [:]
 
+    /// The horizontal bar: a 32 point header and 32 point tabs with 5 points
+    /// clear above and below. The drawn frame says 42.
+    static let barHeight: CGFloat = 42
+
     private var filteredLinks: [SpaceServiceLink] {
-        allLinks
+        guard let spaceID = selectedSpaceID else { return [] }
+        return allLinks
             // Guard all three relationships before reading `$0.space.id`: a link
             // whose Space (or service) was deleted would fault the freed model
             // and trap on this hot render path. Matches `AppState.servicesForSpace`.
             .filter { $0.modelContext != nil && $0.service.modelContext != nil && $0.space.modelContext != nil && $0.space.id == spaceID }
             .sorted { $0.sortOrder < $1.sortOrder }
+    }
+
+    private var currentSpace: Space? {
+        guard let selectedSpaceID else { return nil }
+        return spaces.first { $0.modelContext != nil && $0.id == selectedSpaceID }
+    }
+
+    // MARK: - Layout
+
+    var body: some View {
+        content
+        .sheet(isPresented: $showingAddService) {
+            if let spaceID = selectedSpaceID {
+                AddServiceSheet(spaceID: spaceID)
+            }
+        }
+        .sheet(item: $editingService) { service in
+            EditServiceSheet(service: service)
+        }
+        .sheet(item: $movingToNewSpace) { link in
+            SpaceEditorSheet(
+                editingSpace: nil,
+                selectedSpaceID: $selectedSpaceID,
+                onCreate: { newSpace in
+                    moveService(link: link, to: newSpace, followToSpace: true)
+                }
+            )
+        }
+        .sheet(isPresented: $showingAddSpace) {
+            SpaceEditorSheet(editingSpace: nil, selectedSpaceID: $selectedSpaceID)
+        }
+        .sheet(item: $editingSpace) { space in
+            SpaceEditorSheet(editingSpace: space, selectedSpaceID: $selectedSpaceID)
+        }
+        .confirmationDialog(
+            "Delete \(confirmingDelete?.service.label ?? "service")?",
+            isPresented: Binding(
+                get: { confirmingDelete != nil },
+                set: { if !$0 { confirmingDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let link = confirmingDelete {
+                    deleteService(link: link)
+                }
+                confirmingDelete = nil
+            }
+        } message: {
+            Text("This will permanently remove the service and all its data.")
+        }
+        // Kept on the outside of the service dialog above rather than beside it:
+        // two confirmation dialogs bound to one view can race when both are
+        // attached at the same level, and only one of these is ever up.
+        .confirmationDialog(
+            "Delete \(confirmingDeleteSpace?.name ?? "space")?",
+            isPresented: Binding(
+                get: { confirmingDeleteSpace != nil },
+                set: { if !$0 { confirmingDeleteSpace = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let space = confirmingDeleteSpace {
+                    appState.deleteSpace(space.id)
+                }
+                confirmingDeleteSpace = nil
+            }
+        } message: {
+            Text("Services in this space won't be deleted, but the space will be removed.")
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if axis == .vertical {
+            verticalBody
+        } else {
+            horizontalBody
+        }
+    }
+
+    /// 240 points wide, against the 52 + 52 and two dividers the two rails used
+    /// to take. The header sits at y 38 — 28 points of traffic light, then 10 —
+    /// which is where the frame draws it.
+    private var verticalBody: some View {
+        VStack(spacing: 0) {
+            spaceHeader
+                .padding(.top, 10 + contentInset)
+                .padding(.bottom, 6)
+
+            ScrollView {
+                // 2 points between 34 point rows is the drawn 36 point pitch.
+                LazyVStack(spacing: 2) {
+                    ForEach(filteredLinks) { link in
+                        serviceRow(for: link)
+                    }
+                }
+                .padding(.bottom, 8)
+            }
+
+            Divider()
+
+            addServiceButton
+                .padding(.vertical, 6)
+        }
+        .frame(width: ServiceRowView.railWidth)
+        .background(.background)
+    }
+
+    private var horizontalBody: some View {
+        HStack(spacing: 8) {
+            spaceHeader
+                // 72 points of traffic light, then 8, puts the header at x 80.
+                .padding(.leading, 8 + contentInset)
+
+            Divider().frame(width: 1, height: 20)
+
+            tabStrip
+
+            // Empty stretch between the tabs and the nav buttons. It draws
+            // nothing and takes no hit of its own, so a click here falls through
+            // to the window-drag handle behind the row.
+            Spacer(minLength: 40)
+
+            // Nav buttons live at the far right of the bar (top-right corner of
+            // the window), acting on the active service.
+            WebNavButtons(webViewState: appState.webViewState, homeURL: activeHomeURL)
+                // Room for the donation button, which ContentView overlays on the
+                // window's top-right corner — the same corner this row ends in.
+                // Without the reserve the two sit on top of each other as soon as
+                // the Home button appears and widens this group. Settings can hide
+                // the button, and then the reserve would only be a hole, so it
+                // falls back to the plain trailing gap.
+                .padding(.trailing, showSupportButton ? SupportButtonVisibility.reservedWidth : 10)
+        }
+        .frame(height: Self.barHeight)
+        // The OS window drag is off in the bar layout, so tab drags reorder
+        // instead of moving the window (see WindowMovableConfigurator). A
+        // full-width drag handle behind the row restores "click any empty part
+        // of the bar to move the window": the header, tabs and nav buttons sit
+        // in front and take their own clicks, and every empty area falls through
+        // to here.
+        .background(WindowDragHandle())
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    // MARK: - The space header, and the palette it opens
+
+    private var spaceHeader: some View {
+        let space = currentSpace
+        let muted = space?.isMutedEffective ?? false
+        let serviceIDs = space.map { appState.servicesForSpace($0.id).map(\.id) } ?? []
+        let badgeCount = muted ? 0 : appState.badgeManager.aggregateCount(for: serviceIDs)
+
+        return SpaceHeaderView(
+            spaceName: space?.name,
+            emoji: space?.emoji ?? "🏠",
+            axis: axis,
+            badgeCount: badgeCount,
+            isMuted: muted,
+            isPaletteOpen: showingPalette
+        ) {
+            showingPalette = true
+        }
+        .popover(isPresented: $showingPalette, arrowEdge: axis == .vertical ? .trailing : .bottom) {
+            SpacePaletteView(
+                selectedSpaceID: $selectedSpaceID,
+                onEditSpace: { editingSpace = $0 },
+                onDeleteSpace: { confirmingDeleteSpace = $0 },
+                onAddSpace: { showingAddSpace = true }
+            )
+            // Re-injected rather than left to inheritance, matching how
+            // ContentView presents the quick switcher: the palette is
+            // @Query-backed and a popover that came up without the container
+            // would render an empty list.
+            .environment(appState)
+            .modelContainer(appState.modelContainer)
+        }
+    }
+
+    /// The tab strip hugs its content when the tabs fit — leaving the rest of the
+    /// bar as draggable empty space — and scrolls only when there are too many to
+    /// fit. `ViewThatFits` picks the plain (hugging) row first and falls back to
+    /// the scrolling row, which is deterministic where measuring the content
+    /// width and capping the scroll view was not.
+    private var tabStrip: some View {
+        ViewThatFits(in: .horizontal) {
+            tabRow
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    tabRow
+                }
+                // Keep the active service visible when it's selected off-screen
+                // (⌘1–9, quick switcher, or a routed link).
+                .onChange(of: selectedServiceID) { _, newID in
+                    guard let newID else { return }
+                    if reduceMotion {
+                        proxy.scrollTo(newID, anchor: .center)
+                    } else {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(newID, anchor: .center)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The row of service tabs plus the add button. A plain `HStack` (not lazy)
+    /// so `ViewThatFits` can measure its width to decide whether the tabs fit.
+    /// The traffic-light inset is spent by the header now, so this starts flush.
+    private var tabRow: some View {
+        HStack(spacing: 4) {
+            ForEach(filteredLinks) { link in
+                serviceRow(for: link)
+                    .id(link.service.id)
+            }
+            addServiceButton
+        }
+        .padding(.trailing, 8)
+        .padding(.vertical, 2)
+    }
+
+    /// Home URL of the currently selected service, for the nav home button.
+    private var activeHomeURL: URL? {
+        guard let id = selectedServiceID,
+              let service = filteredLinks.first(where: { $0.service.id == id })?.service
+        else { return nil }
+        return URL(string: service.url)
+    }
+
+    // MARK: - Service cells
+
+    @ViewBuilder
+    private func serviceRow(for link: SpaceServiceLink) -> some View {
+        let isSel = selectedServiceID == link.service.id
+        let badge = appState.badgeManager.badgeCount(for: link.service.id)
+        let hibernated = !isSel && appState.webViewPool.isHibernated(link.service.id)
+        let muted = link.service.isEffectivelyMuted
+        let media = appState.webViewPool.mediaCaptureStates[link.service.id]
+
+        cell(for: link, isSelected: isSel, badge: badge, hibernated: hibernated, muted: muted, media: media)
+            .draggable(link.id.uuidString) {
+                // Custom drag preview. Source-dimming is left to SwiftUI:
+                // manually tracking a "dragging" id can't be cleared reliably —
+                // a drop on itself or a cancelled drag never fires the drop
+                // handler — which left the row stuck at 0.4 opacity.
+                Text(link.service.label)
+                    .font(.caption)
+                    .padding(6)
+                    .background(.ultraThickMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .dropDestination(for: String.self) { items, location in
+                guard let droppedIDString = items.first,
+                      let droppedID = UUID(uuidString: droppedIDString),
+                      droppedID != link.id
+                else { return false }
+                let placement: ServiceReorderPlacement = {
+                    let size = cellSizes[link.id]
+                    if axis == .vertical {
+                        let mid = (size?.height).map { $0 / 2 } ?? Self.serviceDropMidpoint
+                        return location.y < mid ? .before : .after
+                    }
+                    let mid = (size?.width).map { $0 / 2 } ?? Self.serviceDropMidpointHorizontal
+                    return location.x < mid ? .before : .after
+                }()
+                return reorderService(
+                    droppedLinkID: droppedID,
+                    relativeTo: link,
+                    placement: placement
+                )
+            }
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.onChange(of: proxy.size, initial: true) {
+                        cellSizes[link.id] = proxy.size
+                    }
+                }
+            )
+            .accessibilityAction(named: "Move up") { moveServiceUp(link) }
+            .accessibilityAction(named: "Move down") { moveServiceDown(link) }
+            .contextMenu { serviceContextMenu(for: link) }
+            .focusable()
+            .focused($focusedServiceID, equals: link.service.id)
+            // Suppress the rectangular focus ring. Arrow-key navigation moves
+            // selection and focus together (see handleServiceKey), so the app's
+            // own pill + tint already shows where focus is — the ring only
+            // duplicated it, and boxed the cell on every click.
+            .focusEffectDisabled()
+            .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow]) { press in
+                handleServiceKey(press, for: link)
+            }
+    }
+
+    @ViewBuilder
+    private func cell(
+        for link: SpaceServiceLink,
+        isSelected: Bool,
+        badge: Int,
+        hibernated: Bool,
+        muted: Bool,
+        media: WebViewPool.MediaCaptureState?
+    ) -> some View {
+        ServiceRowView(
+            instance: link.service,
+            isSelected: isSelected,
+            axis: axis,
+            badgeCount: badge,
+            isHibernated: hibernated,
+            isMuted: muted,
+            cameraActive: media?.cameraActive ?? false,
+            micActive: media?.micActive ?? false,
+            micMuted: media?.micMuted ?? false
+        ) {
+            selectService(link)
+        }
+    }
+
+    /// Selects a service and co-locates keyboard focus on its cell, so a click
+    /// (or ⌘-digit) leaves the arrow keys with an anchor to move from — a plain
+    /// Button click doesn't reliably promote the enclosing `.focusable()` to
+    /// focused on its own.
+    private func selectService(_ link: SpaceServiceLink) {
+        selectedServiceID = link.service.id
+        focusedServiceID = link.service.id
+    }
+
+    /// Arrow keys move the selection along the rail's axis (↑/↓ vertical,
+    /// ←/→ horizontal); ⌥+arrow reorders the focused service, reusing the same
+    /// move helpers that back the VoiceOver actions. Selection stops at the ends
+    /// (no wrap). Cross-axis arrows are left unhandled so the scroll view keeps
+    /// them.
+    private func handleServiceKey(_ press: KeyPress, for link: SpaceServiceLink) -> KeyPress.Result {
+        let forward: Bool
+        switch (axis, press.key) {
+        case (.vertical, .upArrow), (.horizontal, .leftArrow):
+            forward = false
+        case (.vertical, .downArrow), (.horizontal, .rightArrow):
+            forward = true
+        default:
+            return .ignored
+        }
+
+        if press.modifiers.contains(.option) {
+            if forward { moveServiceDown(link) } else { moveServiceUp(link) }
+            // The service kept its id but changed slot — hold focus on it.
+            focusedServiceID = link.service.id
+            return .handled
+        }
+
+        let links = filteredLinks
+        guard let index = links.firstIndex(where: { $0.id == link.id }) else { return .handled }
+        let neighborIndex = forward ? index + 1 : index - 1
+        guard links.indices.contains(neighborIndex) else { return .handled }
+        let neighborID = links[neighborIndex].service.id
+        selectedServiceID = neighborID
+        focusedServiceID = neighborID
+        return .handled
+    }
+
+    /// In the wide vertical rail this is a labelled row like the services above
+    /// it, with the plus sitting in a 20 point box so its text starts on the same
+    /// x as theirs. The horizontal bar has no width to spare, so it stays a plus.
+    private var addServiceButton: some View {
+        Button {
+            showingAddService = true
+        } label: {
+            Group {
+                if axis == .vertical {
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 12, weight: .medium))
+                            .frame(width: 20, height: 20)
+                        Text("Add service")
+                            .font(.subheadline)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(width: ServiceRowView.rowWidth, height: 30)
+                } else {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .medium))
+                        .frame(width: 36, height: ServiceRowView.tabHeight)
+                }
+            }
+            .foregroundStyle(.secondary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Add service")
+        .accessibilityLabel("Add service")
+        // Without a space there is nothing to add a service to, and
+        // AddServiceSheet needs one.
+        .disabled(selectedSpaceID == nil)
     }
 
     @ViewBuilder
@@ -223,325 +541,12 @@ struct ServiceSidebarView: View {
         }
     }
 
-    @ViewBuilder
-    private var content: some View {
-        if axis == .vertical {
-            verticalBody
-        } else {
-            horizontalBody
-        }
-    }
-
-    private var verticalBody: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                // 2 points between 34 point rows is the drawn 36 point pitch.
-                LazyVStack(spacing: 2) {
-                    ForEach(filteredLinks) { link in
-                        serviceRow(for: link)
-                    }
-                }
-                .padding(.top, 8 + contentInset)
-                .padding(.bottom, 8)
-            }
-
-            Divider()
-
-            addServiceButton
-                .padding(.vertical, 6)
-        }
-        .frame(width: ServiceRowView.railWidth)
-        .background(.background)
-    }
-
-    private var horizontalBody: some View {
-        HStack(spacing: 8) {
-            tabStrip
-
-            // Empty stretch between the tabs and the nav buttons. It draws
-            // nothing and takes no hit of its own, so a click here falls through
-            // to the window-drag handle behind the row.
-            Spacer(minLength: 40)
-
-            // Nav buttons live at the far right of the tab bar (top-right corner
-            // of the window), acting on the active service.
-            WebNavButtons(webViewState: appState.webViewState, homeURL: activeHomeURL)
-                // Room for the donation button, which ContentView overlays on the
-                // window's top-right corner — the same corner this row ends in.
-                // Without the reserve the two sit on top of each other as soon as
-                // the Home button appears and widens this group. Settings can hide
-                // the button, and then the reserve would only be a hole, so it
-                // falls back to the plain trailing gap.
-                .padding(.trailing, showSupportButton ? SupportButtonVisibility.reservedWidth : 10)
-        }
-        // The bar is 8 points taller than the tabs it holds, so the row sits
-        // centred with 4 points clear above and below. It used to carry that as
-        // top padding instead, because the icon-only tab hung its badge ~2pt
-        // past the top-trailing corner and a flush row shaved it; the labelled
-        // row carries its badge inline, so plain centring does the job.
-        .frame(height: ServiceRowView.tabHeight + 8)
-        // The OS window drag is off in the top-bar and hybrid layouts, so tab
-        // drags reorder instead of moving the window (see
-        // WindowMovableConfigurator). A full-width drag handle behind the row
-        // restores "click any empty part of the bar to move the window": the
-        // tabs and nav buttons sit in front and take their own clicks, and every
-        // empty area falls through to here. This replaces a measure-and-cap on
-        // the tab scroll view that could leave it greedily filling half the row
-        // — so only the far side dragged.
-        .background(WindowDragHandle())
-        .background(Color(nsColor: .windowBackgroundColor))
-    }
-
-    /// The tab strip hugs its content when the tabs fit — leaving the rest of the
-    /// bar as draggable empty space — and scrolls only when there are too many to
-    /// fit. `ViewThatFits` picks the plain (hugging) row first and falls back to
-    /// the scrolling row, which is deterministic where measuring the content
-    /// width and capping the scroll view was not.
-    private var tabStrip: some View {
-        ViewThatFits(in: .horizontal) {
-            tabRow
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    tabRow
-                }
-                // Keep the active service visible when it's selected off-screen
-                // (⌘1–9, quick switcher, or a routed link).
-                .onChange(of: selectedServiceID) { _, newID in
-                    guard let newID else { return }
-                    if reduceMotion {
-                        proxy.scrollTo(newID, anchor: .center)
-                    } else {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            proxy.scrollTo(newID, anchor: .center)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /// The row of service tabs plus the add button. A plain `HStack` (not lazy)
-    /// so `ViewThatFits` can measure its width to decide whether the tabs fit.
-    private var tabRow: some View {
-        HStack(spacing: 4) {
-            ForEach(filteredLinks) { link in
-                serviceRow(for: link)
-                    .id(link.service.id)
-            }
-            addServiceButton
-        }
-        .padding(.leading, 8 + contentInset)
-        .padding(.trailing, 8)
-        .padding(.vertical, 2)
-    }
-
-    /// Home URL of the currently selected service, for the nav home button.
-    private var activeHomeURL: URL? {
-        guard let id = selectedServiceID,
-              let service = filteredLinks.first(where: { $0.service.id == id })?.service
-        else { return nil }
-        return URL(string: service.url)
-    }
-
-    @ViewBuilder
-    private func serviceRow(for link: SpaceServiceLink) -> some View {
-        let isSel = selectedServiceID == link.service.id
-        let badge = appState.badgeManager.badgeCount(for: link.service.id)
-        let hibernated = !isSel && appState.webViewPool.isHibernated(link.service.id)
-        let muted = link.service.isEffectivelyMuted
-        let media = appState.webViewPool.mediaCaptureStates[link.service.id]
-
-        cell(for: link, isSelected: isSel, badge: badge, hibernated: hibernated, muted: muted, media: media)
-            .draggable(link.id.uuidString) {
-                // Custom drag preview. Source-dimming is left to SwiftUI (as in
-                // SpaceStripView): manually tracking a "dragging" id can't be
-                // cleared reliably — a drop on itself or a cancelled drag never
-                // fires the drop handler — which left the row stuck at 0.4 opacity.
-                Text(link.service.label)
-                    .font(.caption)
-                    .padding(6)
-                    .background(.ultraThickMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-            }
-            .dropDestination(for: String.self) { items, location in
-                guard let droppedIDString = items.first,
-                      let droppedID = UUID(uuidString: droppedIDString),
-                      droppedID != link.id
-                else { return false }
-                let placement: ServiceReorderPlacement = {
-                    let size = cellSizes[link.id]
-                    if axis == .vertical {
-                        let mid = (size?.height).map { $0 / 2 } ?? Self.serviceDropMidpoint
-                        return location.y < mid ? .before : .after
-                    }
-                    let mid = (size?.width).map { $0 / 2 } ?? Self.serviceDropMidpointHorizontal
-                    return location.x < mid ? .before : .after
-                }()
-                return reorderService(
-                    droppedLinkID: droppedID,
-                    relativeTo: link,
-                    placement: placement
-                )
-            }
-            .background(
-                GeometryReader { proxy in
-                    Color.clear.onChange(of: proxy.size, initial: true) {
-                        cellSizes[link.id] = proxy.size
-                    }
-                }
-            )
-            .accessibilityAction(named: "Move up") { moveServiceUp(link) }
-            .accessibilityAction(named: "Move down") { moveServiceDown(link) }
-            .contextMenu { serviceContextMenu(for: link) }
-            .focusable()
-            .focused($focusedServiceID, equals: link.service.id)
-            // Suppress the rectangular focus ring. Arrow-key navigation moves
-            // selection and focus together (see handleServiceKey), so the app's
-            // own pill + tint already shows where focus is — the ring only
-            // duplicated it, and boxed the cell on every click.
-            .focusEffectDisabled()
-            .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow]) { press in
-                handleServiceKey(press, for: link)
-            }
-    }
-
-    /// Arrow keys move the selection along the rail's axis (↑/↓ vertical,
-    /// ←/→ horizontal); ⌥+arrow reorders the focused service, reusing the same
-    /// move helpers that back the VoiceOver actions. Selection stops at the ends
-    /// (no wrap). Cross-axis arrows are left unhandled so the scroll view keeps
-    /// them.
-    private func handleServiceKey(_ press: KeyPress, for link: SpaceServiceLink) -> KeyPress.Result {
-        let forward: Bool
-        switch (axis, press.key) {
-        case (.vertical, .upArrow), (.horizontal, .leftArrow):
-            forward = false
-        case (.vertical, .downArrow), (.horizontal, .rightArrow):
-            forward = true
-        default:
-            return .ignored
-        }
-
-        if press.modifiers.contains(.option) {
-            if forward { moveServiceDown(link) } else { moveServiceUp(link) }
-            // The service kept its id but changed slot — hold focus on it.
-            focusedServiceID = link.service.id
-            return .handled
-        }
-
-        let links = filteredLinks
-        guard let index = links.firstIndex(where: { $0.id == link.id }) else { return .handled }
-        let neighborIndex = forward ? index + 1 : index - 1
-        guard links.indices.contains(neighborIndex) else { return .handled }
-        let neighborID = links[neighborIndex].service.id
-        selectedServiceID = neighborID
-        focusedServiceID = neighborID
-        return .handled
-    }
-
-    @ViewBuilder
-    private func cell(
-        for link: SpaceServiceLink,
-        isSelected: Bool,
-        badge: Int,
-        hibernated: Bool,
-        muted: Bool,
-        media: WebViewPool.MediaCaptureState?
-    ) -> some View {
-        ServiceRowView(
-            instance: link.service,
-            isSelected: isSelected,
-            axis: axis,
-            badgeCount: badge,
-            isHibernated: hibernated,
-            isMuted: muted,
-            cameraActive: media?.cameraActive ?? false,
-            micActive: media?.micActive ?? false,
-            micMuted: media?.micMuted ?? false
-        ) {
-            selectService(link)
-        }
-    }
-
-    /// Selects a service and co-locates keyboard focus on its cell, so a click
-    /// (or ⌘-digit) leaves the arrow keys with an anchor to move from — a plain
-    /// Button click doesn't reliably promote the enclosing `.focusable()` to
-    /// focused on its own.
-    private func selectService(_ link: SpaceServiceLink) {
-        selectedServiceID = link.service.id
-        focusedServiceID = link.service.id
-    }
-
-    /// In the wide vertical rail this is a labelled row like the services above
-    /// it, with the plus sitting in a 20 point box so its text starts on the same
-    /// x as theirs. The horizontal bar has no width to spare, so it stays a plus.
-    private var addServiceButton: some View {
-        Button {
-            showingAddService = true
-        } label: {
-            Group {
-                if axis == .vertical {
-                    HStack(spacing: 8) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 12, weight: .medium))
-                            .frame(width: 20, height: 20)
-                        Text("Add service")
-                            .font(.subheadline)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 8)
-                    .frame(width: ServiceRowView.rowWidth, height: 30)
-                } else {
-                    Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .medium))
-                        .frame(width: 36, height: ServiceRowView.tabHeight)
-                }
-            }
-            .foregroundStyle(.secondary)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Add service")
-        .accessibilityLabel("Add service")
-    }
-
-    var body: some View {
-        content
-        .sheet(isPresented: $showingAddService) {
-            AddServiceSheet(spaceID: spaceID)
-        }
-        .sheet(item: $editingService) { service in
-            EditServiceSheet(service: service)
-        }
-        .sheet(item: $movingToNewSpace) { link in
-            SpaceEditorSheet(
-                editingSpace: nil,
-                selectedSpaceID: Binding(
-                    get: { appState.selectedSpaceID },
-                    set: { appState.selectedSpaceID = $0 }
-                ),
-                onCreate: { newSpace in
-                    moveService(link: link, to: newSpace, followToSpace: true)
-                }
-            )
-        }
-        .confirmationDialog(
-            "Delete \(confirmingDelete?.service.label ?? "service")?",
-            isPresented: Binding(
-                get: { confirmingDelete != nil },
-                set: { if !$0 { confirmingDelete = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                if let link = confirmingDelete {
-                    deleteService(link: link)
-                }
-                confirmingDelete = nil
-            }
-        } message: {
-            Text("This will permanently remove the service and all its data.")
-        }
-    }
+    // MARK: - Mutations
+    //
+    // Everything below moved across from `ServiceSidebarView` unchanged. The
+    // delete and move paths in particular are the ones that cost this repo real
+    // user data when they were got wrong, and their guards (save-before-teardown,
+    // rollback on failure) are load-bearing.
 
     @discardableResult
     private func save(_ context: String) -> Bool {
@@ -570,7 +575,7 @@ struct ServiceSidebarView: View {
     }
 
     /// Re-applies BadgeManager state for a service after its mute/showBadge
-    /// changed, so the sidebar and dock totals update immediately instead of
+    /// changed, so the rail and dock totals update immediately instead of
     /// waiting for the next poll tick.
     private func syncBadge(for service: ServiceInstance) {
         appState.refreshBadgeState(for: service.id)
@@ -578,8 +583,7 @@ struct ServiceSidebarView: View {
 
     /// Spaces the service can be moved into: every space except the ones it's
     /// already in. Membership is read from the reliable `allLinks` query, not the
-    /// service's inverse `spaceLinks` relationship, which can be stale (see the
-    /// badge-count note in SpaceStripView).
+    /// service's inverse `spaceLinks` relationship, which can be stale.
     private func eligibleSpaces(for service: ServiceInstance) -> [Space] {
         let memberIDs = Set(
             allLinks
@@ -612,7 +616,7 @@ struct ServiceSidebarView: View {
         save("move service to space")
 
         if followToSpace {
-            appState.selectedSpaceID = targetSpace.id
+            selectedSpaceID = targetSpace.id
             selectedServiceID = serviceID
         } else if selectedServiceID == serviceID {
             selectedServiceID = nil

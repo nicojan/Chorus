@@ -36,8 +36,10 @@
 		71E467BDECC180049BF6708B /* AppPresenceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1D24379DD182D4A7B6DD11 /* AppPresenceManager.swift */; };
 		75C395B384D9E21AF94FBC4F /* UserScriptManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBBF69E002BB39BB6EFF9BDB /* UserScriptManager.swift */; };
 		783EF6C467034D74DE8D5F52 /* WebViewState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 192C907C2215D62E02FF8408 /* WebViewState.swift */; };
+		78C80EEE6E3E6F9D2DB819D5 /* RailSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 542BCDA03CE248BE3E75D814 /* RailSupport.swift */; };
 		817A70A10923352BBAC3F63E /* CatalogIconCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0693A705E1552F5809BA3399 /* CatalogIconCache.swift */; };
 		8325C3DEC3242E7E2C19EB07 /* SpacePaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03E9D5B98CFDDD0B2E7FD42C /* SpacePaletteView.swift */; };
+		863BAA64BC341E5286D8915E /* UnifiedRailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D2B28970B7AEF9B0EB53AFD /* UnifiedRailView.swift */; };
 		8AEFF9F928EBEA5194112A21 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DD7FF3D960F0FCA3A2F310B1 /* Assets.xcassets */; };
 		8E4B7701A7A18F51C6109E10 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A3640458AF427BC8D3C8F2A /* NetworkMonitor.swift */; };
 		8F6E2C62BD277E5577FBE480 /* WebContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA4617D503719C1701307F28 /* WebContentView.swift */; };
@@ -52,7 +54,6 @@
 		BAA5421430BDF6F9B918B7B5 /* WebViewPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608B27F538D778C6FC4B1697 /* WebViewPool.swift */; };
 		BD6B6CD0E903780B610BD6B5 /* StoreRecoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E05727F83BFEFB338D97E4DF /* StoreRecoveryView.swift */; };
 		C14E7A689411E8DCCC20ED74 /* fanboy-annoyance.json in Resources */ = {isa = PBXBuildFile; fileRef = 0D9CBE47687FB4FF2EF6BED5 /* fanboy-annoyance.json */; };
-		C1E4CE7879BB117DBA721C35 /* SpaceStripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 537DF7ABA3D6DED64273776A /* SpaceStripView.swift */; };
 		C4ADA7C24E806E00FF4709D1 /* ChorusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBA2B8A19B41207F66E51CC3 /* ChorusTests.swift */; };
 		C65C95AB514FF50CEE9A75D6 /* ServiceCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30F23AFD0B5D81AF103BF37 /* ServiceCatalog.swift */; };
 		C87E607C9406DB3117992594 /* SpaceEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEE60F6F23AE3708B57614F2 /* SpaceEditorSheet.swift */; };
@@ -65,7 +66,6 @@
 		DB9B6FD9265D63DCA11B6CFC /* AppCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E0D298EDEBDC1F1EB614912 /* AppCapabilities.swift */; };
 		DF712EA56B5AE10C7BF77176 /* WebViewCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438D78C9503E732B7792FA10 /* WebViewCoordinator.swift */; };
 		E28F6C4DD1E61484CEA773F0 /* ContentBlockerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 728A9599471A2AB033991157 /* ContentBlockerManager.swift */; };
-		EA76A0A9EF76E4CD3DE9217C /* ServiceSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B84763F63532609A902F453A /* ServiceSidebarView.swift */; };
 		F1E3E4A757954012789BD79D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = F63EF11A2754495AEB09C97E /* Sparkle */; };
 		F709F5524B2146C260A0BCB0 /* BadgeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 706D85D3C09C182826CD4EBA /* BadgeManager.swift */; };
 		FC24793EEE444C3F48F17559 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BEC6FCF1B60E1B9CD89A3A2 /* NotificationManager.swift */; };
@@ -100,9 +100,10 @@
 		3BEC6FCF1B60E1B9CD89A3A2 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		438D78C9503E732B7792FA10 /* WebViewCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewCoordinator.swift; sourceTree = "<group>"; };
 		4666C49AA129F26D936B0715 /* ServiceInstance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceInstance.swift; sourceTree = "<group>"; };
+		4D2B28970B7AEF9B0EB53AFD /* UnifiedRailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedRailView.swift; sourceTree = "<group>"; };
 		52D93229EEC510DC0850005E /* SpaceHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceHeaderView.swift; sourceTree = "<group>"; };
-		537DF7ABA3D6DED64273776A /* SpaceStripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceStripView.swift; sourceTree = "<group>"; };
 		538A1641C210F10E3CD43E14 /* WebToolbarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebToolbarView.swift; sourceTree = "<group>"; };
+		542BCDA03CE248BE3E75D814 /* RailSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailSupport.swift; sourceTree = "<group>"; };
 		54BC620E896A6DD5CB16AF6D /* CookieConsentManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookieConsentManager.swift; sourceTree = "<group>"; };
 		5A1D24379DD182D4A7B6DD11 /* AppPresenceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPresenceManager.swift; sourceTree = "<group>"; };
 		608B27F538D778C6FC4B1697 /* WebViewPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewPool.swift; sourceTree = "<group>"; };
@@ -125,7 +126,6 @@
 		B3506A7D95472D8F3E822A39 /* ServiceCatalogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceCatalogEntry.swift; sourceTree = "<group>"; };
 		B44B9AB3EC52D565BFB46183 /* ServiceRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceRowView.swift; sourceTree = "<group>"; };
 		B71CC3F7D7BD76E4100BC126 /* StoreRelocation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreRelocation.swift; sourceTree = "<group>"; };
-		B84763F63532609A902F453A /* ServiceSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceSidebarView.swift; sourceTree = "<group>"; };
 		CA55A0E026084DC20071FBCE /* QuickSwitcherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickSwitcherView.swift; sourceTree = "<group>"; };
 		CA77C4C73BEB532F6AC1C339 /* AppRelauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRelauncher.swift; sourceTree = "<group>"; };
 		CBBF69E002BB39BB6EFF9BDB /* UserScriptManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserScriptManager.swift; sourceTree = "<group>"; };
@@ -296,13 +296,13 @@
 			children = (
 				7458024AA17BF508D4807018 /* ContentView.swift */,
 				76865DDEE671C34CC88CF4D8 /* FindInPageBar.swift */,
+				542BCDA03CE248BE3E75D814 /* RailSupport.swift */,
 				E84C935C8A82FD6B6B969E6B /* ServiceIconView.swift */,
 				B44B9AB3EC52D565BFB46183 /* ServiceRowView.swift */,
-				B84763F63532609A902F453A /* ServiceSidebarView.swift */,
 				52D93229EEC510DC0850005E /* SpaceHeaderView.swift */,
 				03E9D5B98CFDDD0B2E7FD42C /* SpacePaletteView.swift */,
-				537DF7ABA3D6DED64273776A /* SpaceStripView.swift */,
 				E05727F83BFEFB338D97E4DF /* StoreRecoveryView.swift */,
+				4D2B28970B7AEF9B0EB53AFD /* UnifiedRailView.swift */,
 				DA4617D503719C1701307F28 /* WebContentView.swift */,
 				538A1641C210F10E3CD43E14 /* WebToolbarView.swift */,
 			);
@@ -501,23 +501,23 @@
 				8E4B7701A7A18F51C6109E10 /* NetworkMonitor.swift in Sources */,
 				FC24793EEE444C3F48F17559 /* NotificationManager.swift in Sources */,
 				53C0B5A438EDC6C98FE081AB /* QuickSwitcherView.swift in Sources */,
+				78C80EEE6E3E6F9D2DB819D5 /* RailSupport.swift in Sources */,
 				C65C95AB514FF50CEE9A75D6 /* ServiceCatalog.swift in Sources */,
 				2D9A102388157D9B3C660F70 /* ServiceCatalogEntry.swift in Sources */,
 				365FD38EBDA7455F8E86BEEF /* ServiceIconView.swift in Sources */,
 				3291B385E6F0AED73FAE2B61 /* ServiceInstance.swift in Sources */,
 				C9091F7A466E9836DF4EA9A9 /* ServiceRowView.swift in Sources */,
-				EA76A0A9EF76E4CD3DE9217C /* ServiceSidebarView.swift in Sources */,
 				69FF2932CDD4A1208CA5DA71 /* SettingsView.swift in Sources */,
 				1C5CD1937EFECD06DA479F86 /* Space.swift in Sources */,
 				C87E607C9406DB3117992594 /* SpaceEditorSheet.swift in Sources */,
 				1CC3A629AEC1BBF9ACDC5FB0 /* SpaceHeaderView.swift in Sources */,
 				8325C3DEC3242E7E2C19EB07 /* SpacePaletteView.swift in Sources */,
 				CF6CC3C4CC580F7733D24212 /* SpaceServiceLink.swift in Sources */,
-				C1E4CE7879BB117DBA721C35 /* SpaceStripView.swift in Sources */,
 				3C5338A54D7C824BCF6C642C /* StoreInventory.swift in Sources */,
 				BD6B6CD0E903780B610BD6B5 /* StoreRecoveryView.swift in Sources */,
 				68FE172BCA70FBB55022F7B1 /* StoreRelocation.swift in Sources */,
 				D19CD58F64D002620BE6850C /* StoreRepair.swift in Sources */,
+				863BAA64BC341E5286D8915E /* UnifiedRailView.swift in Sources */,
 				4129642FB0AD19AC83F01A30 /* UserAgentProvider.swift in Sources */,
 				75C395B384D9E21AF94FBC4F /* UserScriptManager.swift in Sources */,
 				8F6E2C62BD277E5577FBE480 /* WebContentView.swift in Sources */,

@@ -2022,8 +2022,24 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(AppPreferences(railLayoutRaw: nil).railLayout, .sidebar)
         XCTAssertEqual(AppPreferences(railLayoutRaw: "sidebar").railLayout, .sidebar)
         XCTAssertEqual(AppPreferences(railLayoutRaw: "topBars").railLayout, .topBars)
-        XCTAssertEqual(AppPreferences(railLayoutRaw: "hybrid").railLayout, .hybrid)
         XCTAssertEqual(AppPreferences(railLayoutRaw: "garbage").railLayout, .sidebar)
+    }
+
+    /// The retired third case maps forward, and it must not take the `.sidebar`
+    /// fallback. A `hybrid` user picked their services as tabs along the top; the
+    /// fallback would hand them a rail down the left, which is the layout
+    /// furthest from what they chose.
+    func testRetiredHybridLayoutMapsForwardToTheBarRatherThanTheFallback() {
+        XCTAssertEqual(AppPreferences(railLayoutRaw: "hybrid").railLayout, .topBars)
+        XCTAssertEqual(RailLayout.resolving("hybrid"), .topBars)
+        XCTAssertNotEqual(RailLayout.resolving("hybrid"), .sidebar)
+    }
+
+    /// The enum is down to two cases, so the Settings picker offers two. If a
+    /// third ever comes back it needs its own forward-map story.
+    func testRailLayoutHasExactlyTheTwoSurvivingCases() {
+        XCTAssertEqual(RailLayout.allCases.map(\.rawValue), ["sidebar", "topBars"])
+        XCTAssertNil(RailLayout(rawValue: RailLayout.retiredHybridRawValue))
     }
 
     // MARK: - Space header and palette (build step 4)

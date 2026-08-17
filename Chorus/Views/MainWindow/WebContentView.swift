@@ -28,8 +28,11 @@ struct WebContentView: View {
                     passkeyNoticeBanner
                 }
 
-                // Horizontal layouts host the nav buttons in the top tab bar; the
-                // sidebar layout shows them in a slim row above the content.
+                // The bar layout hosts the nav buttons in the top bar itself; the
+                // sidebar layout has no bar, so they get a slim row above the
+                // content. Still keyed off `.sidebar` after the enum dropped to
+                // two cases, and still right: those are the only two places the
+                // buttons can go.
                 if appState.railLayout == .sidebar {
                     WebNavButtons(webViewState: webViewState, homeURL: URL(string: service.url))
                         .padding(.horizontal, 12)

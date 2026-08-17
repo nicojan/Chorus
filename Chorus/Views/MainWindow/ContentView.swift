@@ -227,10 +227,13 @@ struct ContentView: View {
         }
     }
 
-    /// Arranges the two rails and the web content per the chosen layout. Sidebar
-    /// keeps both rails vertical on the left; top bars stacks them horizontally
-    /// above the content; hybrid keeps spaces on the left with service tabs on
-    /// top of the content.
+    /// Arranges the rail and the web content per the chosen layout: the rail
+    /// down the left, or along the top as a bar of tabs.
+    ///
+    /// One rail, so two arrangements. The three-way choice this used to make
+    /// only existed because there were two rails to arrange, and concept C put
+    /// the space on the rail as its header instead of giving it a rail of its
+    /// own.
     @ViewBuilder
     private func mainLayout(
         spaceSelection: Binding<UUID?>,
@@ -240,52 +243,37 @@ struct ContentView: View {
         // top-left for the traffic lights: push the leftmost top elements clear.
         let lightsHeight: CGFloat = 28
         let lightsWidth: CGFloat = 72
-        let railWidth: CGFloat = 52
 
         switch appState.railLayout {
         case .sidebar:
             HStack(spacing: 0) {
-                spacesRail(axis: .vertical, selection: spaceSelection, contentInset: lightsHeight)
+                rail(axis: .vertical, spaceSelection: spaceSelection, serviceSelection: serviceSelection, contentInset: lightsHeight)
                 Divider()
-                if let spaceID = appState.selectedSpaceID {
-                    servicesRail(axis: .vertical, spaceID: spaceID, selection: serviceSelection, contentInset: lightsHeight)
-                    Divider()
-                }
                 webContent
             }
         case .topBars:
             VStack(spacing: 0) {
-                spacesRail(axis: .horizontal, selection: spaceSelection, contentInset: lightsWidth)
+                rail(axis: .horizontal, spaceSelection: spaceSelection, serviceSelection: serviceSelection, contentInset: lightsWidth)
                 Divider()
-                if let spaceID = appState.selectedSpaceID {
-                    servicesRail(axis: .horizontal, spaceID: spaceID, selection: serviceSelection)
-                }
                 webContent
-            }
-        case .hybrid:
-            HStack(spacing: 0) {
-                spacesRail(axis: .vertical, selection: spaceSelection, contentInset: lightsHeight)
-                Divider()
-                VStack(spacing: 0) {
-                    if let spaceID = appState.selectedSpaceID {
-                        servicesRail(axis: .horizontal, spaceID: spaceID, selection: serviceSelection, contentInset: lightsWidth - railWidth)
-                    }
-                    webContent
-                }
             }
         }
     }
 
-    private func spacesRail(axis: Axis, selection: Binding<UUID?>, contentInset: CGFloat = 0) -> some View {
-        SpaceStripView(selectedSpaceID: selection, axis: axis, contentInset: contentInset)
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Spaces")
-    }
-
-    private func servicesRail(axis: Axis, spaceID: UUID, selection: Binding<UUID?>, contentInset: CGFloat = 0) -> some View {
-        ServiceSidebarView(spaceID: spaceID, selectedServiceID: selection, axis: axis, contentInset: contentInset)
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Services")
+    private func rail(
+        axis: Axis,
+        spaceSelection: Binding<UUID?>,
+        serviceSelection: Binding<UUID?>,
+        contentInset: CGFloat = 0
+    ) -> some View {
+        UnifiedRailView(
+            selectedSpaceID: spaceSelection,
+            selectedServiceID: serviceSelection,
+            axis: axis,
+            contentInset: contentInset
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Space and services")
     }
 
     private var webContent: some View {
@@ -295,16 +283,16 @@ struct ContentView: View {
             .accessibilityLabel("Web content")
     }
 
-    /// Centres the donation button's chip in the bar the current layout puts
-    /// along the top: the sidebar's nav row is 32 points tall, the top-bar spaces
-    /// rail 36, and the hybrid service rail 40. The overhang comes off because
-    /// the chip is centred inside a larger click target.
+    /// Centres the donation button's 20 point chip in whatever the layout puts
+    /// along the top: the sidebar's nav row, 32 points tall, and the unified
+    /// rail's bar, 42. Re-measured when one rail replaced two — the old 36 and
+    /// 40 point bars are gone. The overhang comes off because the chip is
+    /// centred inside a larger click target.
     private var supportButtonTopInset: CGFloat {
         let overhang = SupportButtonVisibility.targetOverhang
         switch appState.railLayout {
         case .sidebar: return 6 - overhang
-        case .topBars: return 8 - overhang
-        case .hybrid: return 10 - overhang
+        case .topBars: return (UnifiedRailView.barHeight - SupportButtonVisibility.chipSize) / 2 - overhang
         }
     }
 
