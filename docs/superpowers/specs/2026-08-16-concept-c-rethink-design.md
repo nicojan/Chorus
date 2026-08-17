@@ -1,6 +1,6 @@
 # Design: C · Rethink, one rail with the space as its header
 
-Date: 2026-08-16. Status: approved in concept, not yet implemented. No app code has changed.
+Date: 2026-08-16. Status: **all seven build steps done as of 2026-08-17**, 215 tests green. What has and has not been seen by eye is recorded in `docs/internal/OPEN-ITEMS.md`; the short version is that the bar layout and the palette were watched running, and the sidebar layout, both appearances and the health marks were not.
 
 Source of truth for what this looks like: page `08 Redesign concepts` in the Figma file `Chorus` (key `3MGhWQwnJQbfN6Egnet42I`), frames `C · Rethink / …`. Research behind it: `docs/internal/UX-AUDIT.md`. What the measuring found: `docs/internal/FIGMA-BASELINE.md`.
 
@@ -142,8 +142,8 @@ Each step leaves the app shippable, and the risky thing is first on purpose.
 3. ~~`ServiceRowView`: a labelled row in both axes, replacing the `iconOnly` branch.~~ **Built on 2026-08-16**, on the branch `feat/service-row-view` (`6ad81f5`), unmerged and unpushed. It closes the severity 4 finding. 197 tests, 0 failures; nothing checked by eye, because the display was held by a fullscreen app and the Debug window would not come forward. Two notes carried into `OPEN-ITEMS.md`: in `sidebar` this step on its own puts 292 points of chrome before content until step 5 removes the second rail, and the horizontal tab is deliberately left without a width cap.
 4. ~~`SpaceHeaderView` and `SpacePaletteView`.~~ **Built on 2026-08-17**, 203 tests, 0 failures. Neither is reachable in the running app, because nothing presents them until step 5, so nothing about them has been seen. Two things landed beyond the two named views: space drag-to-reorder and the per-space context menu moved into the palette, because `SpaceStripView` holds them today and step 5 deletes it. `ServiceReorder` was reused untouched. The palette reports editing, deleting and adding upward through closures rather than presenting sheets, because a sheet raised from inside a popover goes down with the popover.
 5. ~~`UnifiedRailView`: assemble, move the tested plumbing across, delete what it replaces.~~ **Built on 2026-08-17**, with step 2 folded in, 205 tests and 0 failures. `ServiceSidebarView` and `SpaceStripView` are deleted; `WindowMovableConfigurator`, `WindowDragHandle`, `SpaceMove` and `ServiceReorder` moved to `RailSupport.swift` so the next rail rebuild cannot take them down with it. The bar layout and the palette were seen running and they hold; the sidebar layout was not. See the verification note below.
-6. Health state for loading and failed, with the second visual channel and the spoken label.
-7. The notice shape, the radius collapse, and the selection-against-focus specimen. Cheap, mechanical, and they were already the baseline's list.
+6. ~~Health state for loading and failed, with the second visual channel and the spoken label.~~ **Built on 2026-08-17.** A 9 point mark on the icon's bottom-right corner, published per service by `WebViewPool` the way media capture state already is. Three silhouettes rather than three hues, per the risk below, and `ServiceAccessibility.label` says the state in words. Signed-out stays drawn and unset, and a test pins that no navigation event can produce it.
+7. ~~The notice shape, the radius collapse, and the selection-against-focus specimen.~~ **Built on 2026-08-17.** `NoticeStrip` replaces the two yellows and the red bar; `ChorusRadius` takes eight radii to three; `RowMark` makes selection a fill and focus a ring, which is the reshape the audit asked for instead of the switch-off 1.5.10 did.
 
 ## Verifying
 

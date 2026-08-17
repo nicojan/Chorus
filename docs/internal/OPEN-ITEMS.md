@@ -43,6 +43,12 @@ Selection and focus were left exactly as they were, `focusEffectDisabled()` incl
 
 **Step 2 (`RailLayout` to two cases) is not started, and it should wait for step 5.** It does not depend on step 3, and the spec called it mechanical with no visual change. The second half of that is wrong, and the spec now carries the correction. Retiring `hybrid` maps its users onto `topBars`, and until one rail draws both layouts those are two different screens: `hybrid` keeps the spaces on a 52pt rail down the left, `topBars` has no left rail and stacks two horizontal strips. Shipping the enum change alone moves every hybrid user to an arrangement they did not pick, then moves them again at step 5.
 
+**All seven build steps of concept C are done, as of 2026-08-17. 215 tests, 0 failures.** Steps 6 and 7 landed after the pass below, so neither has been seen at all.
+
+Step 6 puts a 9 point mark on a service icon's bottom-right corner: nothing when the page is up, a grey ring while it loads, an orange disc when it failed. Three silhouettes rather than three hues, because the drawn frame separated the states by colour alone and that fails a red-green colour-blind user; `ServiceAccessibility.label` says the state in words as well. `WebViewPool` publishes it per service, the way it already publishes media capture state, so a service that broke while you were looking at another one still says so. One trap worth remembering: the error page Chorus paints on a failure is itself a navigation that finishes, so `didFinish` would have reported the service healthy a moment after it broke. `errorPageLoadInFlight` on the coordinator is the guard. Signed-out is drawn and never set, per the spec, and a test pins that no navigation event can produce it.
+
+Step 7 is the baseline's own list. `NoticeStrip` replaces the two raw yellows and the solid red bar with one shape at three severities, carrying the tone in the icon and the rule rather than the fill, and carrying the window-drag handle each notice needs. `ChorusRadius` takes eight radii down to three. `RowMark` splits selection from focus: a fill for one, a ring for the other, which is the reshape the audit asked for rather than the switch-off 1.5.10 did.
+
 **Steps 5 and 2 are built and merged, and half of concept C has now been seen running.** `UnifiedRailView` replaces `ServiceSidebarView` and `SpaceStripView`, both deleted. `RailLayout` is down to two cases. 205 tests, 0 failures.
 
 What the by-eye pass on 2026-08-17 did establish, in the Debug build against `Chorus-debug`:
