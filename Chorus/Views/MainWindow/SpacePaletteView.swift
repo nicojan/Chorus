@@ -89,7 +89,7 @@ struct SpacePaletteView: View {
 
     static let paletteWidth: CGFloat = 260
     /// Radius 14 is the spec's one value for sheets and palettes.
-    private static let cornerRadius: CGFloat = 14
+    private static let cornerRadius = ChorusRadius.surface
     private static let rowMidpointFallback: CGFloat = 19
 
     var body: some View {
@@ -159,7 +159,7 @@ struct SpacePaletteView: View {
                 .font(.title3)
                 .padding(6)
                 .background(.ultraThickMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .clipShape(RoundedRectangle(cornerRadius: ChorusRadius.control))
         }
         .dropDestination(for: String.self) { items, location in
             guard let droppedIDString = items.first,
@@ -384,10 +384,10 @@ private struct SpacePaletteRow: View {
             .padding(.horizontal, 10)
             .frame(height: 38)
             .background {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: ChorusRadius.control)
                     .fill(isCurrent ? AnyShapeStyle(.tint.opacity(0.12)) : AnyShapeStyle(Color.clear))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: ChorusRadius.control)
                             .strokeBorder(
                                 isHighlighted ? AnyShapeStyle(Color.primary.opacity(0.25)) : AnyShapeStyle(Color.clear),
                                 lineWidth: 1

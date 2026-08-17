@@ -51,7 +51,7 @@ struct EmojiPickerView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: ChorusRadius.control))
     }
 
     private var categoryTabs: some View {
@@ -79,7 +79,7 @@ struct EmojiPickerView: View {
                 .frame(width: 28, height: 24)
                 .foregroundStyle(selectedCategoryID == id ? .primary : .secondary)
                 .background(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: ChorusRadius.icon)
                         .fill(selectedCategoryID == id ? AnyShapeStyle(.tint.opacity(0.15)) : AnyShapeStyle(Color.clear))
                 )
         }
@@ -153,7 +153,7 @@ struct EmojiPickerView: View {
                         .font(.title3)
                         .frame(width: 32, height: 32)
                         .background(
-                            RoundedRectangle(cornerRadius: 6)
+                            RoundedRectangle(cornerRadius: ChorusRadius.control)
                                 .fill(selectedEmoji == item.emoji
                                     ? AnyShapeStyle(.tint.opacity(0.2))
                                     : AnyShapeStyle(Color.clear))

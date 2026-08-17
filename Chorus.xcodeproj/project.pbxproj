@@ -63,6 +63,7 @@
 		CF6CC3C4CC580F7733D24212 /* SpaceServiceLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 312995FF05808961FD519D76 /* SpaceServiceLink.swift */; };
 		D19CD58F64D002620BE6850C /* StoreRepair.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DC16234E82B88C1DB338A49 /* StoreRepair.swift */; };
 		D341B327E1C20FA11DEC2C2B /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D533B667501DF0913FF62B9A /* AppState.swift */; };
+		D4721545C5C3DD809AE549A7 /* ChorusStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50260A359445D2B4C556E1E6 /* ChorusStyle.swift */; };
 		D861B394A60C4CD2F47CF8EA /* ServiceHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFD9BB4DBF6536D1AD0CA298 /* ServiceHealth.swift */; };
 		DB9B6FD9265D63DCA11B6CFC /* AppCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E0D298EDEBDC1F1EB614912 /* AppCapabilities.swift */; };
 		DF712EA56B5AE10C7BF77176 /* WebViewCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438D78C9503E732B7792FA10 /* WebViewCoordinator.swift */; };
@@ -102,6 +103,7 @@
 		438D78C9503E732B7792FA10 /* WebViewCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewCoordinator.swift; sourceTree = "<group>"; };
 		4666C49AA129F26D936B0715 /* ServiceInstance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceInstance.swift; sourceTree = "<group>"; };
 		4D2B28970B7AEF9B0EB53AFD /* UnifiedRailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedRailView.swift; sourceTree = "<group>"; };
+		50260A359445D2B4C556E1E6 /* ChorusStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChorusStyle.swift; sourceTree = "<group>"; };
 		52D93229EEC510DC0850005E /* SpaceHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceHeaderView.swift; sourceTree = "<group>"; };
 		538A1641C210F10E3CD43E14 /* WebToolbarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebToolbarView.swift; sourceTree = "<group>"; };
 		542BCDA03CE248BE3E75D814 /* RailSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailSupport.swift; sourceTree = "<group>"; };
@@ -296,6 +298,7 @@
 		A85A2DE22EC0FC06376105BE /* MainWindow */ = {
 			isa = PBXGroup;
 			children = (
+				50260A359445D2B4C556E1E6 /* ChorusStyle.swift */,
 				7458024AA17BF508D4807018 /* ContentView.swift */,
 				76865DDEE671C34CC88CF4D8 /* FindInPageBar.swift */,
 				542BCDA03CE248BE3E75D814 /* RailSupport.swift */,
@@ -487,6 +490,7 @@
 				817A70A10923352BBAC3F63E /* CatalogIconCache.swift in Sources */,
 				A33A7902903C731E069B6CD5 /* ChorusApp.swift in Sources */,
 				B095E6333D67F97829F12E97 /* ChorusSchema.swift in Sources */,
+				D4721545C5C3DD809AE549A7 /* ChorusStyle.swift in Sources */,
 				E28F6C4DD1E61484CEA773F0 /* ContentBlockerManager.swift in Sources */,
 				230144499E6BE9FD41C03338 /* ContentView.swift in Sources */,
 				30CDFCABEDA4328515317A91 /* CookieConsentManager.swift in Sources */,

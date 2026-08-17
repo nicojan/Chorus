@@ -68,7 +68,7 @@ struct AddServiceSheet: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: ChorusRadius.control))
         .padding(.horizontal, 20)
         .padding(.bottom, 4)
         .accessibilityElement(children: .combine)
@@ -98,9 +98,9 @@ struct AddServiceSheet: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: ChorusRadius.control))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: ChorusRadius.control)
                     .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
             )
             .padding(.horizontal, 20)

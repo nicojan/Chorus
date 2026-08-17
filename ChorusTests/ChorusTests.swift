@@ -2042,6 +2042,45 @@ final class ChorusTests: XCTestCase {
         XCTAssertNil(RailLayout(rawValue: RailLayout.retiredHybridRawValue))
     }
 
+    // MARK: - Notice shape, radius scale, selection against focus (build step 7)
+
+    /// Eight radii down to three. The point of the scale is that there is
+    /// nowhere else to go, so a fourth value is the thing the test catches.
+    func testRadiusScaleHasExactlyThreeValues() {
+        XCTAssertEqual(Set(ChorusRadius.allValues), [4, 8, 14])
+        XCTAssertEqual(ChorusRadius.icon, 4)
+        XCTAssertEqual(ChorusRadius.control, 8)
+        XCTAssertEqual(ChorusRadius.surface, 14)
+    }
+
+    /// Three severities, and the tone has to carry the difference: same fill
+    /// weight throughout, a different tint and a different icon per severity.
+    func testNoticeSeveritiesAreDistinctInToneAndIcon() {
+        let all = NoticeSeverity.allCases
+        XCTAssertEqual(all.count, 3)
+        XCTAssertEqual(Set(all.map(\.systemImage)).count, 3)
+        // One fill weight for all three: the spec's point is that the fill does
+        // not carry severity, the icon and the rule do.
+        XCTAssertEqual(Set(all.map(\.fillOpacity)).count, 1)
+    }
+
+    /// Selection and keyboard focus must never be drawn the same way. The audit's
+    /// finding was that `focusEffectDisabled()` deleted the focus signal instead
+    /// of reshaping it; a fill for one and a ring for the other is the reshape.
+    func testSelectionAndFocusNeverDrawTheSameMark() {
+        XCTAssertEqual(RowMark(isSelected: true, isFocused: false), RowMark(fill: .selected, ring: false))
+        XCTAssertEqual(RowMark(isSelected: false, isFocused: true), RowMark(fill: .none, ring: true))
+        XCTAssertEqual(RowMark(isSelected: true, isFocused: true), RowMark(fill: .selected, ring: true))
+        XCTAssertEqual(RowMark(isSelected: false, isFocused: false), RowMark(fill: .none, ring: false))
+    }
+
+    /// Hover is a third, quieter thing, and selection outranks it — a selected
+    /// row under the pointer should not change weight.
+    func testHoverIsOutrankedBySelection() {
+        XCTAssertEqual(RowMark(isSelected: false, isFocused: false, isHovering: true).fill, .hover)
+        XCTAssertEqual(RowMark(isSelected: true, isFocused: false, isHovering: true).fill, .selected)
+    }
+
     // MARK: - Service health (build step 6)
 
     /// A load starting always means loading, including a retry after a failure —

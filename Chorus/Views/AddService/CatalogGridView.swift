@@ -143,7 +143,7 @@ private struct CatalogEntryButton: View {
             VStack(spacing: 6) {
                 iconView
                     .frame(width: 40, height: 40)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: ChorusRadius.control))
 
                 Text(entry.name)
                     .font(.caption)
@@ -154,7 +154,7 @@ private struct CatalogEntryButton: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: ChorusRadius.control)
                     .fill(isHovering ? Color.primary.opacity(0.06) : .clear)
             )
         }
@@ -179,7 +179,7 @@ private struct CatalogEntryButton: View {
                 .foregroundStyle(.white)
                 .frame(width: 40, height: 40)
                 .background(
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: ChorusRadius.control)
                         .fill(colorForCategory(entry.category))
                 )
         }

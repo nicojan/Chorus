@@ -258,7 +258,7 @@ struct EditServiceSheet: View {
                 .font(.system(.caption, design: .monospaced))
                 .frame(height: 120)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: ChorusRadius.control)
                         .stroke(Color(nsColor: .separatorColor))
                 )
                 .accessibilityLabel("Custom CSS")

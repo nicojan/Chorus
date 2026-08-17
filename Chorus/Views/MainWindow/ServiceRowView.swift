@@ -26,6 +26,9 @@ struct ServiceRowView: View {
     var micActive: Bool = false
     var micMuted: Bool = false
     var health: ServiceHealth = .live
+    /// Whether the keyboard is on this row. Drawn as a ring, never as the fill
+    /// selection uses — see `RowMark`.
+    var isFocused: Bool = false
     let action: () -> Void
 
     @State private var isHovering = false
@@ -43,9 +46,9 @@ struct ServiceRowView: View {
     /// fallback before the first geometry pass records a real width.
     static let tabTypicalWidth: CGFloat = 120
 
-    private static let cornerRadius: CGFloat = 8
+    private static let cornerRadius = ChorusRadius.control
     private static let iconSize: CGFloat = 20
-    private static let iconCornerRadius: CGFloat = 4
+    private static let iconCornerRadius = ChorusRadius.icon
     private static let gutter: CGFloat = 8
 
     var body: some View {
@@ -53,13 +56,14 @@ struct ServiceRowView: View {
             content
                 .opacity(isHibernated ? 0.6 : (isMuted ? 0.85 : 1.0))
                 .background {
+                    let mark = RowMark(isSelected: isSelected, isFocused: isFocused, isHovering: isHovering)
                     RoundedRectangle(cornerRadius: Self.cornerRadius)
-                        .fill(fillStyle)
+                        .fill(mark.fillStyle)
                         .overlay(
                             RoundedRectangle(cornerRadius: Self.cornerRadius)
                                 .strokeBorder(
-                                    isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.clear),
-                                    lineWidth: 1.5
+                                    mark.ring ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.clear),
+                                    lineWidth: 2
                                 )
                         )
                 }
@@ -163,12 +167,4 @@ struct ServiceRowView: View {
         }
     }
 
-    private var fillStyle: AnyShapeStyle {
-        if isSelected {
-            return AnyShapeStyle(.tint.opacity(0.12))
-        } else if isHovering {
-            return AnyShapeStyle(Color.primary.opacity(0.06))
-        }
-        return AnyShapeStyle(Color.clear)
-    }
 }

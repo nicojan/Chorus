@@ -40,7 +40,7 @@ struct SpaceEditorSheet: View {
                         .font(.system(size: 40))
                         .frame(width: 60, height: 60)
                         .background(Color.primary.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .clipShape(RoundedRectangle(cornerRadius: ChorusRadius.surface))
                         .accessibilityLabel("Selected emoji: \(selectedEmoji)")
                         .accessibilityHint("Use the picker below to change")
 

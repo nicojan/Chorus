@@ -69,7 +69,7 @@ struct FindInPageBar: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(.ultraThickMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: ChorusRadius.control))
         .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
         .padding(8)
         .frame(maxWidth: 360, alignment: .trailing)

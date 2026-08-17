@@ -13,11 +13,13 @@ struct ContentView: View {
         @Bindable var state = appState
 
         VStack(spacing: 0) {
+            // Three notices, one shape. They used to be two raw SwiftUI yellows
+            // and a solid red bar, which read as three unrelated designs stacked
+            // on each other. `NoticeStrip` carries the severity in the icon and
+            // the rule under the strip, and carries the window-drag handle every
+            // one of them needs.
             if let error = appState.storeError {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.yellow)
-                        .accessibilityHidden(true)
+                NoticeStrip(severity: .error) {
                     Text(error)
                         .font(.caption)
                         .foregroundStyle(.primary)
@@ -47,28 +49,12 @@ struct ContentView: View {
                         .accessibilityLabel("Dismiss")
                     }
                 }
-                .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                // A banner sits at the very top of the window, inside the
-                // title-bar drag band, and the top-bar layouts turn the OS
-                // window drag off (see `WindowMovableConfigurator`). Without a
-                // handle of its own the banner is dead to dragging, and since
-                // it also pushes the tab strip's handle down out of the band,
-                // the window can't be moved by its top edge at all while one is
-                // up. Same idiom as `SpaceStripView`: the handle goes behind the
-                // content and in front of the fill, so the buttons still take
-                // their own clicks.
-                .background(WindowDragHandle())
-                .background(Color.yellow.opacity(0.15))
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Warning: \(error)")
             }
 
             if appState.storeError == nil, appState.storeRecoveryOffer != nil {
-                HStack(spacing: 6) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .foregroundStyle(.yellow)
-                        .accessibilityHidden(true)
+                NoticeStrip(severity: .info) {
                     Text("Chorus has a backup with more of your spaces and services than it can see now.")
                         .font(.caption)
                         .lineLimit(2)
@@ -78,11 +64,6 @@ struct ContentView: View {
                     Button("Not now") { appState.declineStoreRecovery() }
                         .font(.caption)
                 }
-                .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                // See the store banner above for why this needs its own handle.
-                .background(WindowDragHandle())
-                .background(Color.yellow.opacity(0.15))
                 // No .accessibilityLabel override here, unlike the storeError
                 // banner above: an explicit label replaces what `.combine`
                 // would otherwise speak, and on this banner the buttons ARE
@@ -93,19 +74,11 @@ struct ContentView: View {
             }
 
             if !appState.networkMonitor.isOnline {
-                HStack(spacing: 6) {
-                    Image(systemName: "wifi.slash")
-                        .foregroundStyle(.white)
-                        .accessibilityHidden(true)
+                NoticeStrip(severity: .warning) {
                     Text("You're offline. Services won't load new content until your connection returns.")
                         .font(.caption)
-                        .foregroundStyle(.white)
+                    Spacer()
                 }
-                .padding(.vertical, 6)
-                .frame(maxWidth: .infinity)
-                // See the store banner above for why this needs its own handle.
-                .background(WindowDragHandle())
-                .background(ServiceIconPalette.badgeRed)
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Offline")
             }

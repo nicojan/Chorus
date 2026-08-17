@@ -320,7 +320,7 @@ struct UnifiedRailView: View {
         // already says why it is not loaded — so it reports live and draws no dot.
         let health = hibernated ? ServiceHealth.live : appState.webViewPool.health(for: link.service.id)
 
-        cell(for: link, isSelected: isSel, badge: badge, hibernated: hibernated, muted: muted, media: media, health: health)
+        cell(for: link, isSelected: isSel, badge: badge, hibernated: hibernated, muted: muted, media: media, health: health, focused: focusedServiceID == link.service.id)
             .draggable(link.id.uuidString) {
                 // Custom drag preview. Source-dimming is left to SwiftUI:
                 // manually tracking a "dragging" id can't be cleared reliably —
@@ -330,7 +330,7 @@ struct UnifiedRailView: View {
                     .font(.caption)
                     .padding(6)
                     .background(.ultraThickMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .clipShape(RoundedRectangle(cornerRadius: ChorusRadius.control))
             }
             .dropDestination(for: String.self) { items, location in
                 guard let droppedIDString = items.first,
@@ -364,10 +364,12 @@ struct UnifiedRailView: View {
             .contextMenu { serviceContextMenu(for: link) }
             .focusable()
             .focused($focusedServiceID, equals: link.service.id)
-            // Suppress the rectangular focus ring. Arrow-key navigation moves
-            // selection and focus together (see handleServiceKey), so the app's
-            // own pill + tint already shows where focus is — the ring only
-            // duplicated it, and boxed the cell on every click.
+            // The system's rectangular ring stays off, but the signal it used to
+            // carry is now drawn by the row itself (`RowMark`): a fill for
+            // selection, a ring for focus, never the same mark. 1.5.10 switched
+            // the system ring off because it stacked on the app's own border and
+            // the 52 point strip clipped the result; the rail is 240 wide now,
+            // and the app draws one ring rather than two.
             .focusEffectDisabled()
             .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow]) { press in
                 handleServiceKey(press, for: link)
@@ -382,7 +384,8 @@ struct UnifiedRailView: View {
         hibernated: Bool,
         muted: Bool,
         media: WebViewPool.MediaCaptureState?,
-        health: ServiceHealth
+        health: ServiceHealth,
+        focused: Bool
     ) -> some View {
         ServiceRowView(
             instance: link.service,
@@ -394,7 +397,8 @@ struct UnifiedRailView: View {
             cameraActive: media?.cameraActive ?? false,
             micActive: media?.micActive ?? false,
             micMuted: media?.micMuted ?? false,
-            health: health
+            health: health,
+            isFocused: focused
         ) {
             selectService(link)
         }

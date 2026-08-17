@@ -19,7 +19,7 @@ struct QuickSwitcherView: View {
         }
         .frame(minWidth: 420, maxWidth: 420, minHeight: 280, maxHeight: 480)
         .background(.ultraThickMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: ChorusRadius.surface))
         .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
         .onChange(of: searchText) {
             selectedIndex = 0
@@ -196,7 +196,7 @@ private struct QuickSwitcherRow: View {
         HStack(spacing: 12) {
             iconView
                 .frame(width: 28, height: 28)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .clipShape(RoundedRectangle(cornerRadius: ChorusRadius.control))
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(result.label)
@@ -221,7 +221,7 @@ private struct QuickSwitcherRow: View {
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(
-                        RoundedRectangle(cornerRadius: 4)
+                        RoundedRectangle(cornerRadius: ChorusRadius.icon)
                             .fill(Color.primary.opacity(0.06))
                     )
                     .accessibilityHidden(true)
@@ -230,7 +230,7 @@ private struct QuickSwitcherRow: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: ChorusRadius.control)
                 .fill(isHighlighted ? AnyShapeStyle(.tint.opacity(0.12)) : AnyShapeStyle(Color.clear))
                 .padding(.horizontal, 4)
         )
@@ -249,7 +249,7 @@ private struct QuickSwitcherRow: View {
                 .foregroundStyle(.white)
                 .frame(width: 28, height: 28)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: ChorusRadius.control)
                         .fill(.tint)
                 )
         }
