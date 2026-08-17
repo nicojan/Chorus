@@ -12,6 +12,8 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ### Changed
 
+- The strip of spaces is gone, and the space you are in is now a header at the top of the service rail. Click it to switch spaces, add one, rename one or delete one. The width that strip used to take goes to the page you are reading.
+- Three window layouts become two: the rail down the left, or a bar along the top. The third was one of two ways to put your services along the top, and with a single rail there is only one way left. If you were using it, your services stay along the top.
 - Every service in the rail now carries its name. It used to be an icon and nothing else, so two Slack workspaces were two identical squares and the only way to tell them apart was to hover one and wait for the tooltip. The unread count, the mute bell, the sleep moon and the camera dot move off the icon's corners and sit beside the name.
 - The rail down the left side is wider, to fit those names.
 

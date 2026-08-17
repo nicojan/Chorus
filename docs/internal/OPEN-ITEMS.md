@@ -43,7 +43,17 @@ Selection and focus were left exactly as they were, `focusEffectDisabled()` incl
 
 **Step 2 (`RailLayout` to two cases) is not started, and it should wait for step 5.** It does not depend on step 3, and the spec called it mechanical with no visual change. The second half of that is wrong, and the spec now carries the correction. Retiring `hybrid` maps its users onto `topBars`, and until one rail draws both layouts those are two different screens: `hybrid` keeps the spaces on a 52pt rail down the left, `topBars` has no left rail and stacks two horizontal strips. Shipping the enum change alone moves every hybrid user to an arrangement they did not pick, then moves them again at step 5.
 
-**Step 4 is built and merged, and none of it has been seen.** `SpaceHeaderView` draws the current space as a 224 by 36 header on the rail, or 150 by 32 in the bar, with the aggregate badge and a pop-up chevron. `SpacePaletteView` is the switcher it opens: a 260 point popover at radius 14, whose rows carry emoji, name, service count, unread badge and the `⌘` digit. 203 tests, 0 failures, six of them new and all on the pure helpers (`SpacePalette`, `SpaceHeader`). Nothing presents either view until step 5, so they compile and run but cannot be reached, and the by-eye pass has to wait for that step.
+**Steps 5 and 2 are built and merged, and half of concept C has now been seen running.** `UnifiedRailView` replaces `ServiceSidebarView` and `SpaceStripView`, both deleted. `RailLayout` is down to two cases. 205 tests, 0 failures.
+
+What the by-eye pass on 2026-08-17 did establish, in the Debug build against `Chorus-debug`:
+
+- **The bar layout is what the frame draws.** One bar, measured at 42 points, the space header at x 80 clearing the traffic lights, a divider after it, then the labelled service tabs, the nav buttons and the coffee cup at the far right. The second bar is gone.
+- **The `hybrid` forward-map works on a real store.** That store had been left on `hybrid` the day before. The rebuilt app opened it as the bar layout, which is the case the map sends it to, and not the `.sidebar` fallback.
+- **The palette opens from the header and is right.** Both spaces with emoji, name and service count, `⌘1` and `⌘2` down the trailing edge, the current space carrying the tint fill, and the New Space row under a divider. It measured 260 points wide.
+
+What it did not, and why. The dev machine was in active use. Scripted keystrokes and clicks kept landing in whatever app had come forward: a Finder window and MacWhisper both took input meant for the rail. One `⌘2` reached the installed release copy of Chorus, which is harmless, since all it changes is which service is on screen. Driving the UI was stopped there rather than pushed through. So **three things stay unverified**: the sidebar layout with its 240 point rail and the header at y 38, both appearances, and whether `⌘1`–`⌘9` inside the palette actually picks a space — the `KeyPress.characters` question from step 4 is still open. All three want a by-hand pass on a quiet machine.
+
+**Step 4 is built and merged, and none of it has been seen on its own.** `SpaceHeaderView` draws the current space as a 224 by 36 header on the rail, or 150 by 32 in the bar, with the aggregate badge and a pop-up chevron. `SpacePaletteView` is the switcher it opens: a 260 point popover at radius 14, whose rows carry emoji, name, service count, unread badge and the `⌘` digit. 203 tests, 0 failures, six of them new and all on the pure helpers (`SpacePalette`, `SpaceHeader`). Nothing presents either view until step 5, so they compile and run but cannot be reached, and the by-eye pass has to wait for that step.
 
 Three decisions inside it worth not relitigating:
 
