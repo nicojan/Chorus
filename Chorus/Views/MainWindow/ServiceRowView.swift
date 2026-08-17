@@ -25,6 +25,7 @@ struct ServiceRowView: View {
     var cameraActive: Bool = false
     var micActive: Bool = false
     var micMuted: Bool = false
+    var health: ServiceHealth = .live
     let action: () -> Void
 
     @State private var isHovering = false
@@ -77,7 +78,8 @@ struct ServiceRowView: View {
             isMuted: isMuted,
             cameraActive: cameraActive,
             micActive: micActive,
-            micMuted: micMuted
+            micMuted: micMuted,
+            health: health
         ))
         .accessibilityAddTraits([.isButton, isSelected ? .isSelected : []])
     }
@@ -89,6 +91,14 @@ struct ServiceRowView: View {
                 size: Self.iconSize,
                 cornerRadius: Self.iconCornerRadius
             )
+            // The health mark sits on the icon's bottom-right corner, as drawn.
+            // It is the one thing that stayed on the icon when the badge, bell,
+            // moon and camera dot moved inline: it is about the icon's page, and
+            // there is no room for a fifth thing on the trailing edge.
+            .overlay(alignment: .bottomTrailing) {
+                ServiceHealthDot(health: health)
+                    .offset(x: 3, y: 3)
+            }
 
             Text(instance.label)
                 .font(.subheadline)

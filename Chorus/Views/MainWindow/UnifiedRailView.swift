@@ -316,8 +316,11 @@ struct UnifiedRailView: View {
         let hibernated = !isSel && appState.webViewPool.isHibernated(link.service.id)
         let muted = link.service.isEffectivelyMuted
         let media = appState.webViewPool.mediaCaptureStates[link.service.id]
+        // A hibernated service has no page to be healthy or broken, and the moon
+        // already says why it is not loaded — so it reports live and draws no dot.
+        let health = hibernated ? ServiceHealth.live : appState.webViewPool.health(for: link.service.id)
 
-        cell(for: link, isSelected: isSel, badge: badge, hibernated: hibernated, muted: muted, media: media)
+        cell(for: link, isSelected: isSel, badge: badge, hibernated: hibernated, muted: muted, media: media, health: health)
             .draggable(link.id.uuidString) {
                 // Custom drag preview. Source-dimming is left to SwiftUI:
                 // manually tracking a "dragging" id can't be cleared reliably —
@@ -378,7 +381,8 @@ struct UnifiedRailView: View {
         badge: Int,
         hibernated: Bool,
         muted: Bool,
-        media: WebViewPool.MediaCaptureState?
+        media: WebViewPool.MediaCaptureState?,
+        health: ServiceHealth
     ) -> some View {
         ServiceRowView(
             instance: link.service,
@@ -389,7 +393,8 @@ struct UnifiedRailView: View {
             isMuted: muted,
             cameraActive: media?.cameraActive ?? false,
             micActive: media?.micActive ?? false,
-            micMuted: media?.micMuted ?? false
+            micMuted: media?.micMuted ?? false,
+            health: health
         ) {
             selectService(link)
         }

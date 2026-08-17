@@ -61,6 +61,26 @@ final class WebViewPool {
     private(set) var mediaCaptureStates: [UUID: MediaCaptureState] = [:]
     private var mediaObservations: [UUID: [NSKeyValueObservation]] = [:]
 
+    /// Per-service page health, so the rail can mark a service that is still
+    /// coming up or that failed — including one you are not looking at, which is
+    /// the whole point. Absent ⇒ `.live`, so a healthy service costs no entry.
+    private(set) var serviceHealth: [UUID: ServiceHealth] = [:]
+
+    func health(for instanceID: UUID) -> ServiceHealth {
+        serviceHealth[instanceID] ?? .live
+    }
+
+    /// Folds a navigation event into a service's health. Called by each
+    /// coordinator; `.live` is stored as an absent entry.
+    func applyHealthEvent(_ event: ServiceHealth.Event, to instanceID: UUID) {
+        let next = health(for: instanceID).next(event)
+        if next == .live {
+            serviceHealth.removeValue(forKey: instanceID)
+        } else {
+            serviceHealth[instanceID] = next
+        }
+    }
+
     /// Called when a service is fully hibernated (for badge poller tracking)
     var onServiceHibernated: ((UUID) -> Void)?
 
@@ -483,6 +503,19 @@ final class WebViewPool {
                     self.refreshMediaCaptureState(id: id, webView: live)
                 }
             },
+            // Only the rising edge is reported. A load ending is left to the
+            // coordinator's didFinish/didFail, which are the two callbacks that
+            // know whether it ended well — `isLoading` going false says only
+            // that it stopped, and treating that as success would clear a
+            // failure the instant it happened.
+            webView.observe(\.isLoading, options: [.new]) { [weak self] _, change in
+                guard change.newValue == true else { return }
+                DispatchQueue.main.async {
+                    guard let self, let live = self.webViews[id],
+                          ObjectIdentifier(live) == token else { return }
+                    self.applyHealthEvent(.startedLoading, to: id)
+                }
+            },
         ]
     }
 
@@ -533,6 +566,10 @@ final class WebViewPool {
         mediaObservations[instanceID]?.forEach { $0.invalidate() }
         mediaObservations.removeValue(forKey: instanceID)
         mediaCaptureStates.removeValue(forKey: instanceID)
+        // A hibernated service has no page, so it has no health to report; the
+        // rail draws the moon for it instead. Leaving a stale failed dot on a
+        // service that was torn down would outlive the failure.
+        serviceHealth.removeValue(forKey: instanceID)
         webViews.removeValue(forKey: instanceID)
         lastAccessTimes.removeValue(forKey: instanceID)
         coordinators.removeValue(forKey: instanceID)
@@ -551,6 +588,9 @@ final class WebViewPool {
         coordinator.mediaCapturePolicyProvider = mediaCapturePolicyProvider
         coordinator.onNavigationFinished = { [weak self] id in
             self?.onNavigationFinished?(id)
+        }
+        coordinator.onHealthEvent = { [weak self] id, event in
+            self?.applyHealthEvent(event, to: id)
         }
         return coordinator
     }

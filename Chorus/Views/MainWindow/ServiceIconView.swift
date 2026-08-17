@@ -118,7 +118,8 @@ enum ServiceAccessibility {
         isMuted: Bool,
         cameraActive: Bool = false,
         micActive: Bool = false,
-        micMuted: Bool = false
+        micMuted: Bool = false,
+        health: ServiceHealth = .live
     ) -> String {
         var parts = [name]
         if badgeCount > 0 {
@@ -126,6 +127,10 @@ enum ServiceAccessibility {
         }
         if isHibernated { parts.append("hibernated") }
         if isMuted { parts.append("muted") }
+        // The health dot separates its states by shape as well as hue, but a dot
+        // of any shape is still nothing to a screen reader — the state has to be
+        // said.
+        if health.drawsDot { parts.append(health.spokenDescription) }
         if cameraActive { parts.append("camera in use") }
         if micActive {
             parts.append("microphone in use")

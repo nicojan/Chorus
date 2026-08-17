@@ -2042,6 +2042,71 @@ final class ChorusTests: XCTestCase {
         XCTAssertNil(RailLayout(rawValue: RailLayout.retiredHybridRawValue))
     }
 
+    // MARK: - Service health (build step 6)
+
+    /// A load starting always means loading, including a retry after a failure —
+    /// otherwise the orange dot would sit there through a successful reload.
+    func testServiceHealthStartingALoadAlwaysMeansLoading() {
+        XCTAssertEqual(ServiceHealth.live.next(.startedLoading), .loading)
+        XCTAssertEqual(ServiceHealth.failed.next(.startedLoading), .loading)
+        XCTAssertEqual(ServiceHealth.loading.next(.startedLoading), .loading)
+    }
+
+    func testServiceHealthFinishingALoadClearsBothLoadingAndFailed() {
+        XCTAssertEqual(ServiceHealth.loading.next(.finishedLoading), .live)
+        XCTAssertEqual(ServiceHealth.failed.next(.finishedLoading), .live)
+        XCTAssertEqual(ServiceHealth.live.next(.finishedLoading), .live)
+    }
+
+    func testServiceHealthFailureWins() {
+        XCTAssertEqual(ServiceHealth.loading.next(.failed), .failed)
+        XCTAssertEqual(ServiceHealth.live.next(.failed), .failed)
+    }
+
+    /// Signed-out detection is deliberately not built (there is no general signal
+    /// for it — see the spec). The case exists so the rail can draw it, but no
+    /// navigation event may ever produce it, and nothing should quietly start.
+    func testNoNavigationEventEverProducesSignedOut() {
+        for start in [ServiceHealth.live, .loading, .failed, .signedOut] {
+            for event in ServiceHealth.Event.allCases {
+                XCTAssertNotEqual(start.next(event), .signedOut, "\(start) + \(event) produced signedOut")
+            }
+        }
+    }
+
+    /// Only `live` draws nothing. The other three each need a mark, and each mark
+    /// needs a shape of its own — colour alone fails a red-green colour-blind
+    /// user, which is the app's own standard.
+    func testOnlyLiveDrawsNoDotAndEveryOtherStateHasItsOwnShape() {
+        XCTAssertFalse(ServiceHealth.live.drawsDot)
+        XCTAssertTrue(ServiceHealth.loading.drawsDot)
+        XCTAssertTrue(ServiceHealth.failed.drawsDot)
+        XCTAssertTrue(ServiceHealth.signedOut.drawsDot)
+
+        let shapes = [ServiceHealth.loading, .failed, .signedOut].map(\.dotShape)
+        XCTAssertEqual(Set(shapes).count, 3, "two health states share a silhouette")
+    }
+
+    /// The state has to reach VoiceOver in words, not only as a coloured dot.
+    func testSpokenLabelCarriesHealthInWords() {
+        XCTAssertEqual(
+            ServiceAccessibility.label(name: "Slack", badgeCount: 0, isHibernated: false, isMuted: false, health: .live),
+            "Slack"
+        )
+        XCTAssertEqual(
+            ServiceAccessibility.label(name: "Slack", badgeCount: 0, isHibernated: false, isMuted: false, health: .loading),
+            "Slack, loading"
+        )
+        XCTAssertEqual(
+            ServiceAccessibility.label(name: "Slack", badgeCount: 3, isHibernated: false, isMuted: false, health: .failed),
+            "Slack, 3 unread, failed to load"
+        )
+        XCTAssertEqual(
+            ServiceAccessibility.label(name: "Slack", badgeCount: 0, isHibernated: false, isMuted: true, health: .signedOut),
+            "Slack, muted, signed out"
+        )
+    }
+
     // MARK: - Space header and palette (build step 4)
 
     /// The palette labels its rows ⌘1 upward. Only the first nine get a digit —

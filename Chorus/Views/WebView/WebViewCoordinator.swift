@@ -46,6 +46,21 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// for the next poll tick. Never called for OAuth popup web views.
     var onNavigationFinished: ((UUID) -> Void)?
 
+    /// Reports a navigation event for this service so the pool can keep a health
+    /// state the rail can draw. Set by `WebViewPool`. Never called for OAuth
+    /// popup web views: a popup's failure is the popup's business, and the
+    /// service behind it is still fine.
+    var onHealthEvent: ((UUID, ServiceHealth.Event) -> Void)?
+
+    /// Set just before Chorus loads one of its own error pages into the web
+    /// view, and cleared by the `didFinish` that page produces.
+    ///
+    /// Without it the failed dot would light and go out immediately: a failure
+    /// paints an error page, painting it is a navigation, and that navigation
+    /// finishes — which would report the service healthy while it is sitting on
+    /// "Unable to connect".
+    private var errorPageLoadInFlight = false
+
     /// Resolves a camera/microphone capture request to a WebKit decision. Set by
     /// `WebViewPool` (supplied by `AppState`), which owns the per-service policy
     /// and the "ask" prompt. Nil ⇒ deny (fail closed).
@@ -217,6 +232,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         // Only the service's main web view carries a badge — ignore OAuth
         // popups (the coordinator is their navigation delegate too).
         guard webView !== popupWebView, let instanceID else { return }
+        if errorPageLoadInFlight {
+            errorPageLoadInFlight = false
+        } else {
+            onHealthEvent?(instanceID, .finishedLoading)
+        }
         onNavigationFinished?(instanceID)
     }
 
@@ -272,6 +292,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
                 message: "Chorus stopped reloading it automatically to avoid a loop. You can try again, or switch to another service.",
                 retryURLString: retryURL?.absoluteString
             )
+            // A page that keeps crashing is a failure the rail should show, and
+            // the recovery page's own load must not report it healthy.
+            if let instanceID { onHealthEvent?(instanceID, .failed) }
+            errorPageLoadInFlight = true
             webView.loadHTMLString(html, baseURL: nil)
             return
         }
@@ -300,6 +324,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         // Ignore cancelled loads (e.g., user navigated away)
         guard nsError.code != NSURLErrorCancelled else { return }
 
+        // Same page the generic error page below is about, reported to the rail
+        // so a service that failed while you were looking at another one still
+        // says so.
+        if let instanceID { onHealthEvent?(instanceID, .failed) }
+
         // The URL that failed isn't `webView.url` (which still points at the
         // last committed page); pull it from the error so "Try Again" retries
         // the right page.
@@ -313,6 +342,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             message: error.localizedDescription,
             retryURLString: failingURL
         )
+        errorPageLoadInFlight = true
         webView.loadHTMLString(html, baseURL: nil)
     }
 
