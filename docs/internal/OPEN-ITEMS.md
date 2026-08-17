@@ -162,7 +162,7 @@ There are four backup families, not three: `.snapshot-` (taken before an update)
 
 ## Current status — through 1.5.17 (2026-07-31)
 
-Everything below has shipped. **Chorus 1.5.17 is the current release**, and the section above covers what it added. The 1.5.15 work it builds on: It opens the store through an explicit versioned schema and migration plan, so an older store migrates through named, tested stages instead of leaving SwiftData to infer the mapping at open time. Inference was the cause of the data loss 1.5.14 was built to catch. If the versioned plan cannot open a store, Chorus falls back to inference, so no update is worse off than before. The safety net stays. See `docs/internal/FOLLOWUP-versioned-schema.md` and `docs/superpowers/specs/2026-07-24-versioned-schema-migration-plan.md`.
+Everything below has shipped. **Chorus 1.5.18 (2026-08-06) is the current release**; its own section is above, as is 1.5.17's. This section is the history under them. The 1.5.15 work it builds on: It opens the store through an explicit versioned schema and migration plan, so an older store migrates through named, tested stages instead of leaving SwiftData to infer the mapping at open time. Inference was the cause of the data loss 1.5.14 was built to catch. If the versioned plan cannot open a store, Chorus falls back to inference, so no update is worse off than before. The safety net stays. See `docs/internal/FOLLOWUP-versioned-schema.md` and `docs/superpowers/specs/2026-07-24-versioned-schema-migration-plan.md`.
 
 It went out because a user reported losing all their spaces and services while running 1.5.14, which had the net but not this fix.
 
