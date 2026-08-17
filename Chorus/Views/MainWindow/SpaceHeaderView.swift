@@ -37,6 +37,11 @@ struct SpaceHeaderView: View {
     /// True while the palette this header opens is on screen. Held by the owner
     /// so the header can draw itself as pressed for as long as it is.
     var isPaletteOpen: Bool = false
+    /// Whether the header opens anything. False when the spaces are already on
+    /// screen somewhere else (`SpacesPresentation.ownRail`), where the header is
+    /// only saying whose services these are: no chevron, no hover fill, and no
+    /// button, so nothing offers a click that would do nothing.
+    var isInteractive: Bool = true
     let action: () -> Void
 
     @State private var isHovering = false
@@ -55,16 +60,19 @@ struct SpaceHeaderView: View {
     private static let gutter: CGFloat = 8
 
     var body: some View {
-        Button(action: action) {
-            content
-                .background {
-                    RoundedRectangle(cornerRadius: Self.cornerRadius)
-                        .fill(fillStyle)
+        Group {
+            if isInteractive {
+                Button(action: action) {
+                    filledContent
                 }
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .onHover { isHovering = $0 }
+                .accessibilityHint("Switch space")
+                .accessibilityAddTraits(.isButton)
+            } else {
+                filledContent
+            }
         }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
         .help(displayName)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(SpaceHeader.label(
@@ -72,8 +80,15 @@ struct SpaceHeaderView: View {
             badgeCount: badgeCount,
             isMuted: isMuted
         ))
-        .accessibilityHint("Switch space")
-        .accessibilityAddTraits(.isButton)
+    }
+
+    private var filledContent: some View {
+        content
+            .background {
+                RoundedRectangle(cornerRadius: Self.cornerRadius)
+                    .fill(fillStyle)
+            }
+            .contentShape(Rectangle())
     }
 
     private var content: some View {
@@ -103,10 +118,12 @@ struct SpaceHeaderView: View {
 
             // Says the header does something. `chevron.up.chevron.down` is what
             // AppKit puts on a pop-up button, which is what this behaves like.
-            Image(systemName: "chevron.up.chevron.down")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
+            if isInteractive {
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
         }
         .padding(.horizontal, Self.gutter)
         .frame(

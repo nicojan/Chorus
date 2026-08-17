@@ -37,6 +37,12 @@ struct UnifiedRailView: View {
     /// the horizontal bar; `ContentView` owns the button itself.
     @AppStorage(SupportButtonVisibility.defaultsKey) private var showSupportButton = true
 
+    /// Where the other spaces are drawn. This rail carries them itself in
+    /// `.inRail`, hands them to `SpaceRailView` in `.ownRail`, and keeps them
+    /// behind the header's popover in `.switcher`.
+    @AppStorage(SpacesPresentation.defaultsKey) private var spacesPresentationRaw = SpacesPresentation.inRail.rawValue
+    private var presentation: SpacesPresentation { SpacesPresentation.resolving(spacesPresentationRaw) }
+
     @State private var showingPalette = false
     @State private var showingAddService = false
     @State private var showingAddSpace = false
@@ -162,9 +168,27 @@ struct UnifiedRailView: View {
     /// which is where the frame draws it.
     private var verticalBody: some View {
         VStack(spacing: 0) {
-            spaceHeader
-                .padding(.top, 10 + contentInset)
-                .padding(.bottom, 6)
+            if presentation == .inRail {
+                spacesSection
+                    // 4 points more than the header takes in the other modes:
+                    // a caption is shorter than a row and would otherwise sit
+                    // level with the bottom of the traffic lights.
+                    .padding(.top, 14 + contentInset)
+                    .padding(.bottom, 6)
+                Divider()
+                    .padding(.bottom, 6)
+            } else if presentation == .ownRail {
+                // Beside a spaces rail, the space is a caption over its
+                // services rather than a header — the same caption, at the same
+                // height, so the two columns' first rows sit on one line.
+                servicesCaption
+                    .padding(.top, 14 + contentInset)
+                    .padding(.bottom, 4)
+            } else {
+                spaceHeader
+                    .padding(.top, 10 + contentInset)
+                    .padding(.bottom, 6)
+            }
 
             ScrollView {
                 // 2 points between 34 point rows is the drawn 36 point pitch.
@@ -187,11 +211,23 @@ struct UnifiedRailView: View {
 
     private var horizontalBody: some View {
         HStack(spacing: 8) {
-            spaceHeader
-                // 72 points of traffic light, then 8, puts the header at x 80.
-                .padding(.leading, 8 + contentInset)
-
-            Divider().frame(width: 1, height: 20)
+            switch presentation {
+            case .inRail:
+                spaceChipStrip
+                    // 72 points of traffic light, then 8, puts the first chip
+                    // at x 80 — where the header sits in the other modes.
+                    .padding(.leading, 8 + contentInset)
+                Divider().frame(width: 1, height: 20)
+            case .switcher:
+                spaceHeader
+                    .padding(.leading, 8 + contentInset)
+                Divider().frame(width: 1, height: 20)
+            case .ownRail:
+                // The bar above this one is nothing but spaces, and it marks the
+                // current one. Repeating it here would be the same word twice,
+                // 30 points apart.
+                Spacer().frame(width: 8 + contentInset)
+            }
 
             tabStrip
 
@@ -208,8 +244,10 @@ struct UnifiedRailView: View {
                 // Without the reserve the two sit on top of each other as soon as
                 // the Home button appears and widens this group. Settings can hide
                 // the button, and then the reserve would only be a hole, so it
-                // falls back to the plain trailing gap.
-                .padding(.trailing, showSupportButton ? SupportButtonVisibility.reservedWidth : 10)
+                // falls back to the plain trailing gap. With a spaces bar above
+                // this one, the button is up there instead and the reserve here
+                // would only be a hole.
+                .padding(.trailing, showSupportButton && presentation != .ownRail ? SupportButtonVisibility.reservedWidth : 10)
         }
         .frame(height: Self.barHeight)
         // The OS window drag is off in the bar layout, so tab drags reorder
@@ -236,7 +274,10 @@ struct UnifiedRailView: View {
             axis: axis,
             badgeCount: badgeCount,
             isMuted: muted,
-            isPaletteOpen: showingPalette
+            isPaletteOpen: showingPalette,
+            // With a rail of their own, the spaces are already on screen and the
+            // header has nothing to open.
+            isInteractive: presentation == .switcher
         ) {
             showingPalette = true
         }
@@ -253,6 +294,144 @@ struct UnifiedRailView: View {
             // would render an empty list.
             .environment(appState)
             .modelContainer(appState.modelContainer)
+        }
+    }
+
+    // MARK: - The spaces, when the rail carries them itself
+
+    /// Every space, listed above the services, with its own unread count. This
+    /// is what `.inRail` buys back: the old rail's one real advantage was that
+    /// a count in a space you were not looking at still reached your eye, and
+    /// the popover cannot do that.
+    ///
+    /// Capped at four rows and a bit, the same as the palette, so a fifth space
+    /// reads as "there is more here" and the services keep the rest of the rail.
+    private var spacesSection: some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 0) {
+                Text("Spaces")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.tertiary)
+                Spacer(minLength: 0)
+                Button {
+                    showingAddSpace = true
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 20, height: 16)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("New space")
+                .accessibilityLabel("New space")
+            }
+            .padding(.horizontal, 10)
+
+            ScrollView {
+                LazyVStack(spacing: 2) {
+                    spaceRows
+                }
+            }
+            // A height, not a cap. A `maxHeight` here would let the scroll view
+            // take every point the rail offered it and leave two spaces sitting
+            // above 130 points of nothing.
+            .frame(height: spacesSectionHeight)
+        }
+        .frame(width: ServiceRowView.rowWidth)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Spaces")
+    }
+
+    /// Whose services these are, said once, quietly, at caption height — the
+    /// `.ownRail` counterpart to the "Spaces" caption in the rail beside it.
+    private var servicesCaption: some View {
+        HStack(spacing: 6) {
+            Text(currentSpace?.emoji ?? "🏠")
+                .font(.system(size: 12))
+                .accessibilityHidden(true)
+            Text(currentSpace?.name ?? "No space")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .frame(width: ServiceRowView.rowWidth)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// What the spaces list takes: exactly its rows, until there are more than
+    /// four and a bit, and then that. Past the cap it scrolls and the rest of
+    /// the rail stays the services'.
+    private var spacesSectionHeight: CGFloat {
+        let pitch = SpaceRowStyle.rail.height + 2
+        let rows = max(1, spaces.filter { $0.modelContext != nil }.count)
+        return min(CGFloat(rows) * pitch, 4.5 * pitch)
+    }
+
+    /// The shared rows, wired to this rail's sheets. Held here rather than
+    /// inlined twice because `SpaceRailView` needs the same wiring.
+    private var spaceRows: some View {
+        SpaceListRows(
+            selectedSpaceID: $selectedSpaceID,
+            style: .rail,
+            highlightedIndex: nil,
+            onEditSpace: { editingSpace = $0 },
+            onDeleteSpace: { confirmingDeleteSpace = $0 }
+        )
+    }
+
+    /// The horizontal answer to `spacesSection`: the spaces as chips at the head
+    /// of the bar. It scrolls rather than shrinking the tabs — the services are
+    /// what the bar is mostly for — and takes at most a third of the window so a
+    /// user with eight spaces still has a bar left.
+    private var spaceChipStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                spaceChips
+                Button {
+                    showingAddSpace = true
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24, height: SpaceChipCell.chipHeight)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("New space")
+                .accessibilityLabel("New space")
+            }
+        }
+        .frame(maxWidth: 360)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Spaces")
+    }
+
+    private var spaceChips: some View {
+        ForEach(spaces.filter { $0.modelContext != nil }) { space in
+            let muted = space.isMutedEffective
+            let serviceIDs = appState.servicesForSpace(space.id).map(\.id)
+            SpaceChipCell(
+                space: space,
+                badgeCount: muted ? 0 : appState.badgeManager.aggregateCount(for: serviceIDs),
+                isMuted: muted,
+                isCurrent: space.id == selectedSpaceID
+            ) {
+                selectedSpaceID = space.id
+            }
+            .contextMenu {
+                SpaceContextMenu(
+                    space: space,
+                    canDelete: spaces.count > 1,
+                    onEdit: { editingSpace = space },
+                    onDelete: { confirmingDeleteSpace = space }
+                )
+            }
         }
     }
 

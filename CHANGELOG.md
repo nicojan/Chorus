@@ -7,14 +7,16 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ### Added
 
-- A small button in the top right of the window opens the donation page, and the About panel carries the same link. Chorus stays free. This is here if you want to pay for it anyway.
+- A small button in the top right of the window opens the donation page, and the About panel carries the same link. It is a filled disc with the cup cut out of it, so it reads as its own thing rather than another grey glyph in the bar. Chorus stays free. This is here if you want to pay for it anyway.
 - Settings › General can hide that button. The window gives its corner back to the navigation buttons, and the About panel keeps the link.
+
+- Settings › General decides where your spaces go: listed in the rail above the services, in a rail of their own, or behind the space header where a click reaches them. Listing them keeps every space's unread count in front of you.
 
 - A service that is still loading, or that failed to load, now says so in the rail. A grey ring on its icon means the page is coming up; an orange dot means it did not. Nothing shows when the page is fine. The three marks differ in shape as well as colour, so they still read if you cannot tell the colours apart, and a screen reader says which one it is.
 
 ### Changed
 
-- The strip of spaces is gone, and the space you are in is now a header at the top of the service rail. Click it to switch spaces, add one, rename one or delete one. The width that strip used to take goes to the page you are reading.
+- The strip of unlabelled space emoji is gone. Spaces are named rows now, listed at the top of the service rail with their unread counts, and the space you are in is marked. Put them in a rail of their own instead, or behind a header that opens a switcher, in Settings › General. The switcher also adds a space, renames one or deletes one.
 - Three window layouts become two: the rail down the left, or a bar along the top. The third was one of two ways to put your services along the top, and with a single rail there is only one way left. If you were using it, your services stay along the top.
 - The messages that appear across the top of the window all look like one thing now. There were three of them and they were drawn three different ways, including a solid red bar for being offline that shouted louder than the problem. They share one shape, and how serious it is comes through the icon and a thin rule rather than the colour of the whole strip.
 - Keyboard focus is visible in the rail again. The service you are on and the service the keyboard is on are two different things, and they are now drawn two different ways: a filled row for the one you picked, an outline for the one the arrow keys will move from. A fix in 1.5.10 had removed the outline rather than reshaping it, because the old rail was too narrow to hold it.

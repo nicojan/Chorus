@@ -72,6 +72,7 @@ struct GeneralSettingsView: View {
     /// Window chrome rather than user data, so it sits in defaults instead of
     /// `AppPreferences` — see `SupportButtonVisibility`.
     @AppStorage(SupportButtonVisibility.defaultsKey) private var showSupportButton = true
+    @AppStorage(SpacesPresentation.defaultsKey) private var spacesPresentationRaw = SpacesPresentation.inRail.rawValue
 
     private let presenceManager = AppPresenceManager()
 
@@ -133,6 +134,15 @@ struct GeneralSettingsView: View {
                         Text(layout.displayName).tag(layout)
                     }
                 }
+
+                Picker("Spaces", selection: $spacesPresentationRaw) {
+                    ForEach(SpacesPresentation.allCases, id: \.self) { presentation in
+                        Text(presentation.displayName).tag(presentation.rawValue)
+                    }
+                }
+                Text("Listing the spaces keeps every space's unread count on screen. Behind the header they are one click away, and the rail is shorter by however many spaces you keep.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 Toggle("Show the coffee cup in the window", isOn: $showSupportButton)
                 Text("The cup opens the page where you can buy me a coffee. Chorus asks for money nowhere else. Hide it and the link stays in the About panel.")

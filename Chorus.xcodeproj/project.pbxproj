@@ -43,6 +43,7 @@
 		8AEFF9F928EBEA5194112A21 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DD7FF3D960F0FCA3A2F310B1 /* Assets.xcassets */; };
 		8E4B7701A7A18F51C6109E10 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A3640458AF427BC8D3C8F2A /* NetworkMonitor.swift */; };
 		8F6E2C62BD277E5577FBE480 /* WebContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA4617D503719C1701307F28 /* WebContentView.swift */; };
+		921F03CB15EDBE5D778D3068 /* SpaceRailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E00E4C6D277D7BBC391A9A5 /* SpaceRailView.swift */; };
 		92BF212550953DD2E21A12E7 /* EmojiPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01EC3720B49A4D8B953CDA90 /* EmojiPickerView.swift */; };
 		9EDF307D989D199DE994D432 /* EditServiceSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DD5F8F7C2450C88FA1A3886 /* EditServiceSheet.swift */; };
 		9F0C82A9D1AFDF927EC1A59C /* DarkReaderSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6935142E75345640B2C4D7F0 /* DarkReaderSupport.swift */; };
@@ -51,6 +52,7 @@
 		A98FA6B9454EC0BCEDEED093 /* InAppBrowserWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 690DB6DBF74EAD8B040C1460 /* InAppBrowserWindow.swift */; };
 		AD626D3375822E9E5BC358BE /* FaviconFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ACFB877AD2138035F9E3EAE /* FaviconFetcher.swift */; };
 		B095E6333D67F97829F12E97 /* ChorusSchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = 311EEF2D99711EA929371A79 /* ChorusSchema.swift */; };
+		B2F84C4935CC1A517154B5C4 /* SpaceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCD0398D8A5D45C1588C47B /* SpaceListView.swift */; };
 		BAA5421430BDF6F9B918B7B5 /* WebViewPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608B27F538D778C6FC4B1697 /* WebViewPool.swift */; };
 		BD6B6CD0E903780B610BD6B5 /* StoreRecoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E05727F83BFEFB338D97E4DF /* StoreRecoveryView.swift */; };
 		C14E7A689411E8DCCC20ED74 /* fanboy-annoyance.json in Resources */ = {isa = PBXBuildFile; fileRef = 0D9CBE47687FB4FF2EF6BED5 /* fanboy-annoyance.json */; };
@@ -124,7 +126,9 @@
 		94326A5DEE01135F945E9DF3 /* Chorus.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Chorus.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9D811CC9D75730152E17859C /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		9DD5F8F7C2450C88FA1A3886 /* EditServiceSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditServiceSheet.swift; sourceTree = "<group>"; };
+		9E00E4C6D277D7BBC391A9A5 /* SpaceRailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceRailView.swift; sourceTree = "<group>"; };
 		9EDCAF66B6DD05BA3A244E9E /* EmojiData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiData.swift; sourceTree = "<group>"; };
+		ABCD0398D8A5D45C1588C47B /* SpaceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceListView.swift; sourceTree = "<group>"; };
 		AD49B64B44CC548574DA2348 /* DataStoreManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStoreManager.swift; sourceTree = "<group>"; };
 		B3506A7D95472D8F3E822A39 /* ServiceCatalogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceCatalogEntry.swift; sourceTree = "<group>"; };
 		B44B9AB3EC52D565BFB46183 /* ServiceRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceRowView.swift; sourceTree = "<group>"; };
@@ -306,7 +310,9 @@
 				E84C935C8A82FD6B6B969E6B /* ServiceIconView.swift */,
 				B44B9AB3EC52D565BFB46183 /* ServiceRowView.swift */,
 				52D93229EEC510DC0850005E /* SpaceHeaderView.swift */,
+				ABCD0398D8A5D45C1588C47B /* SpaceListView.swift */,
 				03E9D5B98CFDDD0B2E7FD42C /* SpacePaletteView.swift */,
+				9E00E4C6D277D7BBC391A9A5 /* SpaceRailView.swift */,
 				E05727F83BFEFB338D97E4DF /* StoreRecoveryView.swift */,
 				4D2B28970B7AEF9B0EB53AFD /* UnifiedRailView.swift */,
 				DA4617D503719C1701307F28 /* WebContentView.swift */,
@@ -519,7 +525,9 @@
 				1C5CD1937EFECD06DA479F86 /* Space.swift in Sources */,
 				C87E607C9406DB3117992594 /* SpaceEditorSheet.swift in Sources */,
 				1CC3A629AEC1BBF9ACDC5FB0 /* SpaceHeaderView.swift in Sources */,
+				B2F84C4935CC1A517154B5C4 /* SpaceListView.swift in Sources */,
 				8325C3DEC3242E7E2C19EB07 /* SpacePaletteView.swift in Sources */,
+				921F03CB15EDBE5D778D3068 /* SpaceRailView.swift in Sources */,
 				CF6CC3C4CC580F7733D24212 /* SpaceServiceLink.swift in Sources */,
 				3C5338A54D7C824BCF6C642C /* StoreInventory.swift in Sources */,
 				BD6B6CD0E903780B610BD6B5 /* StoreRecoveryView.swift in Sources */,

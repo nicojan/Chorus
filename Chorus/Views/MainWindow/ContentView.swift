@@ -9,6 +9,11 @@ struct ContentView: View {
     /// stored preference.
     @AppStorage(SupportButtonVisibility.defaultsKey) private var showSupportButton = true
 
+    /// Where the spaces are drawn. `.ownRail` is the only case this view has to
+    /// arrange; the other two are the rail's own business.
+    @AppStorage(SpacesPresentation.defaultsKey) private var spacesPresentationRaw = SpacesPresentation.inRail.rawValue
+    private var spacesPresentation: SpacesPresentation { SpacesPresentation.resolving(spacesPresentationRaw) }
+
     var body: some View {
         @Bindable var state = appState
 
@@ -217,16 +222,38 @@ struct ContentView: View {
         let lightsHeight: CGFloat = 28
         let lightsWidth: CGFloat = 72
 
+        // With a rail of their own, the spaces come first in both layouts, so
+        // they take the traffic-light inset and the service rail starts flush.
+        let spacesFirst = spacesPresentation == .ownRail
+
         switch appState.railLayout {
         case .sidebar:
             HStack(spacing: 0) {
-                rail(axis: .vertical, spaceSelection: spaceSelection, serviceSelection: serviceSelection, contentInset: lightsHeight)
+                if spacesFirst {
+                    SpaceRailView(selectedSpaceID: spaceSelection, axis: .vertical, contentInset: lightsHeight)
+                    Divider()
+                }
+                rail(
+                    axis: .vertical,
+                    spaceSelection: spaceSelection,
+                    serviceSelection: serviceSelection,
+                    contentInset: spacesFirst ? 0 : lightsHeight
+                )
                 Divider()
                 webContent
             }
         case .topBars:
             VStack(spacing: 0) {
-                rail(axis: .horizontal, spaceSelection: spaceSelection, serviceSelection: serviceSelection, contentInset: lightsWidth)
+                if spacesFirst {
+                    SpaceRailView(selectedSpaceID: spaceSelection, axis: .horizontal, contentInset: lightsWidth)
+                    Divider()
+                }
+                rail(
+                    axis: .horizontal,
+                    spaceSelection: spaceSelection,
+                    serviceSelection: serviceSelection,
+                    contentInset: spacesFirst ? 0 : lightsWidth
+                )
                 Divider()
                 webContent
             }
@@ -265,7 +292,12 @@ struct ContentView: View {
         let overhang = SupportButtonVisibility.targetOverhang
         switch appState.railLayout {
         case .sidebar: return 6 - overhang
-        case .topBars: return (UnifiedRailView.barHeight - SupportButtonVisibility.chipSize) / 2 - overhang
+        case .topBars:
+            // Whichever bar is topmost is the one the button has to centre in:
+            // the spaces bar when they have a rail of their own, the tab bar
+            // otherwise.
+            let barHeight = spacesPresentation == .ownRail ? SpaceRailView.barHeight : UnifiedRailView.barHeight
+            return (barHeight - SupportButtonVisibility.chipSize) / 2 - overhang
         }
     }
 
@@ -308,10 +340,15 @@ enum SupportButtonVisibility {
 }
 
 /// A small link to the donation page, in the top-right of the window. Chorus
-/// asks for money nowhere else, so this stands all the time, which is the reason
-/// it is drawn quietly: it paints 20 points of chrome and only takes colour
-/// under the pointer. The pointer gets 28 points to hit, and Settings can hide
-/// it outright — see `SupportButtonVisibility`.
+/// asks for money nowhere else, so this stands all the time, and it is the one
+/// thing in the chrome that is not a rail control — so it is drawn inverted
+/// rather than louder: a filled disc in the foreground colour with the cup
+/// punched out of it in the window's own shade. On a dark window that is a light
+/// disc with a dark cup, on a light one the other way round, and either way it
+/// reads as its own object instead of another quiet glyph in the bar.
+///
+/// It paints 20 points, the pointer gets 28 to hit, and Settings can hide it
+/// outright — see `SupportButtonVisibility`.
 private struct SupportButton: View {
     @State private var isHovering = false
 
@@ -320,14 +357,19 @@ private struct SupportButton: View {
             NSWorkspace.shared.open(SupportLink.url)
         } label: {
             Image(systemName: "cup.and.saucer.fill")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(isHovering ? Color.accentColor : Color.secondary)
+                .font(.system(size: 10, weight: .semibold))
+                // The cup takes the window's shade, so it reads as a hole in the
+                // disc rather than a glyph sitting on one.
+                .foregroundStyle(Color(nsColor: .windowBackgroundColor))
                 .frame(width: SupportButtonVisibility.chipSize, height: SupportButtonVisibility.chipSize)
-                // The rails scroll under this button when a space holds enough
-                // services to overflow, so it needs its own fill to stay legible.
-                .background(Color(nsColor: .windowBackgroundColor))
+                // The disc is also what keeps the button legible when a rail
+                // scrolls under it, which the old flat fill was there for.
+                .background {
+                    Circle()
+                        .fill(isHovering ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.primary.opacity(0.75)))
+                }
                 // The paint stops at the chip; the pointer gets a wider target
-                // around it. Growing the fill instead would make the button
+                // around it. Growing the disc instead would make the button
                 // louder, which is the thing the 20 points are buying.
                 .frame(width: SupportButtonVisibility.targetSize, height: SupportButtonVisibility.targetSize)
                 .contentShape(Rectangle())

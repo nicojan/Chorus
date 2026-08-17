@@ -2042,6 +2042,48 @@ final class ChorusTests: XCTestCase {
         XCTAssertNil(RailLayout(rawValue: RailLayout.retiredHybridRawValue))
     }
 
+    // MARK: - Spaces presentation preference
+
+    /// Unknown and missing both land on the default. A blank rail is the failure
+    /// this catches: an unreadable stored value must not resolve to "draw no
+    /// spaces anywhere".
+    func testSpacesPresentationParsesFromStoredValueWithInRailFallback() {
+        XCTAssertEqual(SpacesPresentation.resolving(nil), .inRail)
+        XCTAssertEqual(SpacesPresentation.resolving("inRail"), .inRail)
+        XCTAssertEqual(SpacesPresentation.resolving("ownRail"), .ownRail)
+        XCTAssertEqual(SpacesPresentation.resolving("switcher"), .switcher)
+        XCTAssertEqual(SpacesPresentation.resolving("garbage"), .inRail)
+    }
+
+    /// Two of the three keep every space on screen; only the switcher hides
+    /// them. This is what the layouts branch on, so it is pinned rather than
+    /// re-derived at each call site.
+    func testOnlyTheSwitcherHidesTheOtherSpaces() {
+        XCTAssertTrue(SpacesPresentation.inRail.showsAllSpaces)
+        XCTAssertTrue(SpacesPresentation.ownRail.showsAllSpaces)
+        XCTAssertFalse(SpacesPresentation.switcher.showsAllSpaces)
+    }
+
+    /// The default has to be a presentation that shows the counts. Concept C
+    /// shipped with the switcher and the unread counts of every other space went
+    /// with it, which is the regression this fixes.
+    func testSpacesPresentationDefaultsToShowingEverySpace() {
+        XCTAssertEqual(SpacesPresentation.resolving(nil), .inRail)
+        XCTAssertTrue(SpacesPresentation.resolving(nil).showsAllSpaces)
+        XCTAssertEqual(SpacesPresentation.allCases.count, 3)
+    }
+
+    /// A rail row is shorter than a palette row and drops the two things the
+    /// palette has room for. Pinned because the rail's four-and-a-bit row cap is
+    /// measured against this height.
+    func testRailSpaceRowIsShorterAndPlainerThanThePaletteRow() {
+        XCTAssertLessThan(SpaceRowStyle.rail.height, SpaceRowStyle.palette.height)
+        XCTAssertFalse(SpaceRowStyle.rail.showsSubtitle)
+        XCTAssertFalse(SpaceRowStyle.rail.showsShortcut)
+        XCTAssertTrue(SpaceRowStyle.palette.showsSubtitle)
+        XCTAssertTrue(SpaceRowStyle.palette.showsShortcut)
+    }
+
     // MARK: - Notice shape, radius scale, selection against focus (build step 7)
 
     /// Eight radii down to three. The point of the scale is that there is
