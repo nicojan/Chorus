@@ -96,7 +96,7 @@ Two things move into it and are lost from the always-visible rail, which is the 
 - Drag-to-reorder for spaces. `SpaceStripView`'s drop handling and `ServiceReorder` still apply, so the capability survives inside the palette; what is lost is reordering without opening it.
 - Always-visible aggregate badges for every space. The header shows the current space's count; the rest are one click away.
 
-### One thing the drawing does not settle
+### The digits are palette-local, decided 2026-08-17
 
 The palette frame labels its rows `⌘1` through `⌘4`. Today `⌘1`–`⌘9` switches **services** within the current space (`KeyboardShortcutManager.swift:16`), and the audit rates the accelerator set severity 0 and says explicitly it should be protected by whatever the redesign does.
 
@@ -105,7 +105,7 @@ Two readings, and the frame supports either:
 1. **Palette-local.** `⌘1`–`⌘N` picks a space only while the palette is open; the global `⌘1`–`⌘9` keeps switching services. Nothing shipped breaks.
 2. **Reassigned.** `⌘1`–`⌘N` becomes global space switching, and service switching moves to another modifier.
 
-Reading 1 is what this spec assumes, because it costs nothing and reading 2 breaks a shipped accelerator to solve a problem nobody reported. Flagged rather than decided, because it is a product call and it changes what gets built.
+**Reading 1 is the call.** It costs nothing and the rest of this spec already assumes it, while reading 2 breaks a shipped accelerator to solve a problem nobody reported. So `SpacePaletteView` binds the digits itself while it is open, and `KeyboardShortcutManager` is not touched. Step 4 is unblocked.
 
 ## Risks
 
