@@ -1,5 +1,61 @@
 # Open items
 
+## Open: PR #23 is up for review, and five contributor PRs are on main
+
+Five PRs from `marcioviniciusspiridigliozzi-dot` were merged to `main` on 2026-08-19, taking it from `366745a` to `43d590f`. All five are unreleased; 1.5.18 is still what ships.
+
+- **#15** — the store test fixture returned while its `ModelContainer` could still hold the SQLite connection, because SwiftData exposes no close and ARC promises nothing about when the container deallocates. Splits the helper so the container goes out of scope, then waits on `BEGIN EXCLUSIVE`. Test-only.
+- **#16** — the hibernated-badge sweep kept reloading a service whose session had expired, and on an SSO tenant every redirect was a fresh approval push. One reporter counted 68 in 14 hours. Parks a service after two consecutive off-host-and-empty fetches, releases it when the user opens it (`AuthWallResolver.looksLikeSignInWall`).
+- **#17** — ITP off per `WKWebsiteDataStore`, so an SSO service can read its session cookie from its provider's iframe. Default on, decided 2026-08-19.
+- **#18** — a same-service `window.open` gets a real window instead of `nil`, which pages read as "popup blocked". Link clicks still collapse into the opener (`shouldLoadNewWindowInPlace`).
+- **#21** — closing an ordinary link popup no longer reloads the service behind it (`shouldReloadOpener`).
+
+**PR #23** carries this session's own work and is waiting on review: the issue #20 fix and the Google Keep catalog entry. See the section below.
+
+### What was verified, and what was not
+
+**#15's flake never reproduced on this machine.** Twelve full-suite runs on the patched branch came back clean, and so did twelve on unmodified `main` as a control. That makes the patched runs evidence that #15 breaks nothing, and no evidence at all that it fixes anything. It went in on its reasoning rather than on a measurement: `SQLITE_BUSY` is a real result code, ARC genuinely does not promise a close, and the helper's doc comment claimed something untrue. Test-only, so the downside is bounded. The contributor measured roughly one failure in six on their machine.
+
+**#17's SPI was checked directly**, on macOS 26.5, outside the app: `_setResourceLoadStatisticsEnabled:` responds, and the read-back returns `0`. It does what the PR says on this release. A follow-up commit (`43d590f`) probes the read-back key before the KVC read — `value(forKey:)` on a non-compliant key raises an ObjC exception Swift cannot catch, so an OS that kept the setter and dropped the key would have crashed on every service store instead of logging the intended warning.
+
+**#17 is still one-tenant.** The contributor has a single Entra tenant and said so. Nobody has confirmed it elsewhere. Issue #14's reporter is on Teams and was responsive once; they are the obvious ask.
+
+**Two merge conflicts were resolved by hand**, both in `ChorusTests.swift`, both purely additive: #21 and #18 each inserted a test block at the same point. #18 had also placed its new function between `belongsToService`'s doc comment and `belongsToService` itself, leaving the latter undocumented; `57356fd` puts the comment back.
+
+## Open: PR #23 — a way out of temporary storage, and Google Keep
+
+Branch `fix/store-fresh-start`, based on `43d590f`, pushed and **not merged**. Closes #20 and #19. 232 tests, 0 failures, six consecutive full-suite runs, Debug only.
+
+### The trap in issue #20
+
+An install updated before it was ever configured came up on temporary storage at every launch, with no backup to restore and no way back. Reinstalling from the DMG did not help, and that detail is what made it diagnosable: nothing about the state lives in the app bundle. The default seed writes spaces on first launch, so `hasEverHadData` is set before the user has done anything; from then on an empty store is indistinguishable from one that lost data, and `recoveryPlan` sends it to `.preserveInMemory`. Both the flag and the store file outlive the bundle.
+
+### Two ways out, neither destructive
+
+**Automatic, deliberately narrow.** `loadContainer` starts fresh only when the store opened, read back zero spaces *and* zero services *and* zero links from our own three tables, and no snapshot sibling exists at all. `StoreRepair.storeIsProvablyEmpty` returns false for a file it could not read or whose schema it did not recognise — unknown is not empty, and that is the direction that matters. `hasAnySnapshot` is deliberately weaker than `newestRestorableSnapshot`: a snapshot too damaged to restore is still a file someone might salvage, and its existence stops the fresh start. Even then the old file is copied to `<name>.reset-<stamp>.bak` first, and a failed copy abandons the fresh start rather than seeding over the old store.
+
+**Manual.** A `Start fresh…` button on the temporary-storage banner, behind a confirmation, deferring the move to the next launch through `StoreRepair.pendingResetKey` — the same deferral a restore uses, because the store can only be moved while no container holds it open. An unreadable store fails `storeIsProvablyEmpty` by design and lands in the same dead end, so the user makes the call the checks will not.
+
+`.reset-` is a fifth `BackupFamily`, so the recovery picker lists it like any other backup and the move is reversible.
+
+### The test that was deliberately changed
+
+`testLoadContainerFallsBackToInMemoryWhenNoSnapshot` asserted the old behaviour, so it had to move. Its fixture creates spaces and nothing else, so deleting `ZSPACE` produces exactly issue #20's shape. What that assertion was protecting — the user's bytes are never destroyed — still holds, and the retargeted test checks the `.reset-` copy exists. Two new tests pin the cases that must still preserve: a store that still holds services, and a snapshot on disk too damaged to restore from. **This was an intentional safety assertion in the repo's most dangerous code, and changing it is the thing to review hardest.**
+
+### Unverified
+
+**The `Start fresh` button has never been on screen.** It needs a store that genuinely fails to open, and manufacturing one on the dev machine risks live data — see the 2026-07-22 incident. The relaunch/quit split follows the recovery picker's, which was found the hard way (AppKit drops a terminate request made through an attached sheet), but that path has not been exercised.
+
+### Google Keep (issue #19)
+
+thesvg — the source all 63 bundled marks come from, per `scripts/build_brand_icons.py` — carries a `google-keep` mark, so the provenance question the reporter raised answers itself. Slug added, imageset generated, catalog entry added with `id: google-keep` so `ServiceIconView` finds `brand-google-keep`. Their proposed `icon: "brand-keep"` was the one wrong part: that field does not pick the mark, and the id does.
+
+**Gotcha for whoever runs that script next:** `build_brand_icons.py --write` also reclassifies `brand-notion` and `brand-mattermost` as template-rendering, and both are set to `original` in the repo on purpose. Revert those two after any run.
+
+### A conflict to expect
+
+The CHANGELOG's `[Unreleased]` section is edited on both `fix/store-fresh-start` and `feat/spaces-presentation`. Whichever merges second will conflict there, additively.
+
 ## Open: the donation button is built and unreleased
 
 A button 20 points across, in a 28 point target, sits in the top right of the main window and opens `https://buymeacoffee.com/0xff.r4bbit`; the About panel carries the same link in its credits field, through `CommandGroup(replacing: .appInfo)` in `ChorusApp.swift`. Verified by hand in all three layouts and in the panel. `SupportLink.url` in `ContentView.swift` is the single definition both use.
@@ -225,15 +281,25 @@ reader mode removed entirely, and a round of security and reliability fixes
 (link-routing host matching, the favicon-redirect SSRF guard, the chat-stays-live
 cap-eviction gap, a Move-to-Space crash guard).
 
-### Open: the store sits on a shared path
+### Closed: the store sat on a shared path — shipped in 1.5.18
 
 The release build passes `ModelConfiguration(schema:isStoredInMemoryOnly:)` with no URL (`AppState.swift`), and SwiftData does not scope that default to the bundle. Verified with `lsof` against the installed 1.5.14: the running app holds `~/Library/Application Support/default.store` — the top level of the shared folder, not `…/Application Support/com.nicojan.Chorus/`. Every non-sandboxed SwiftData app that skips an explicit URL claims the same filename, so another app can open, migrate, or recreate Chorus's store, and anyone tidying Application Support sees a `default.store` belonging to no visible app. The DEBUG path is already scoped (`Chorus-debug`); only the shipping path is exposed.
 
-This is the one mechanism found so far that empties the store with no Chorus update involved, which is why it survives the 1.5.15 migration fix. Fixing it means moving the store into a bundle-scoped directory, and the move has to be a move: open the old path, copy the triple across, and never let the seed run against the new empty location. Snapshot names and the recovery banner path change with it. Not started.
+This is the one mechanism found so far that empties the store with no Chorus update involved, which is why it survives the 1.5.15 migration fix. Fixing it means moving the store into a bundle-scoped directory, and the move has to be a move: open the old path, copy the triple across, and never let the seed run against the new empty location. Snapshot names and the recovery banner path change with it.
 
-### Open: PR #10
+**Done, and released in 1.5.18 on 2026-08-06** (`StoreRelocation`). The section above it carries the shipped account; this one is kept for the diagnosis, which is the part worth re-reading if the store ever moves again.
 
-**PR #10** (opt-in spaces hiding, a bottom nav bar, and a window title), tabled pending a UX pass on the rail/title/service-name story — the window title does not render on macOS 26 and duplicates the highlighted rail icon.
+### Closed: PR #10
+
+**PR #10** (opt-in spaces hiding, a bottom nav bar, and a window title) was closed on 2026-08-19. It had gone CONFLICTING across eight files, and `feat/spaces-presentation` answers the hide-the-spaces-rail half three ways instead of one. Rebasing it would have cost the contributor an evening for a result mostly thrown away.
+
+Three things in it are worth having, and the closing comment invites each as its own small PR:
+
+- **The window title.** Two findings that are not guessable: `.windowStyle(.hiddenTitleBar)` hides the title but keeps the bar, and AppKit draws that bar over SwiftUI content, so a SwiftUI title in that strip renders nothing at all. And it has to be per-layout, since `.topBars` and `.hybrid` already put chips and tabs there.
+- **`WindowChrome`.** Extracting the traffic-light metrics so a rail and the view beside it cannot drift apart. There is no `WindowChrome` on `main` today.
+- **The rails' vertical rules cutting through the traffic-light strip.** Reported from a screenshot, not re-checked on `main` since, so confirm before fixing.
+
+The bottom toolbar position was declined: a third layout axis on top of the three the spaces work already adds, and too many combinations to check by hand.
 
 The **1.5.4** section below still describes the old auto-detection dark path (the
 probe, an "Auto" mode, and the "Re-detect dark theme" button). **1.5.9 removed

@@ -46,7 +46,7 @@ struct ContentView: View {
                             isConfirmingFreshStart = true
                         }
                         .font(.caption)
-                        .help("Set the current store aside and begin with a new, empty one")
+                        .help("Set your current data file aside and start with a new, empty one")
                     }
                     if appState.storeErrorDismissible {
                         Button {
