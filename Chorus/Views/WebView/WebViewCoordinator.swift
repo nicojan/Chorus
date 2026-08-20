@@ -1051,11 +1051,6 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         "amazon.com",
     ]
 
-    /// Whether `targetHost` belongs to the service whose current (or home) host
-    /// is `serviceHost`. Same registrable domain counts as the same service — so
-    /// Slack can switch workspaces across *.slack.com in-app — except for
-    /// shared-umbrella domains (see `sharedUmbrellaDomains`) where only the exact
-    /// host matches. Used to decide in-app vs. browser for links and new windows.
     /// Whether a new-window request should collapse into the opener's web view
     /// instead of getting its own window.
     ///
@@ -1076,6 +1071,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         return belongsToService(targetHost, serviceHost: openerHost)
     }
 
+    /// Whether `targetHost` belongs to the service whose current (or home) host
+    /// is `serviceHost`. Same registrable domain counts as the same service — so
+    /// Slack can switch workspaces across *.slack.com in-app — except for
+    /// shared-umbrella domains (see `sharedUmbrellaDomains`) where only the exact
+    /// host matches. Used to decide in-app vs. browser for links and new windows.
     nonisolated static func belongsToService(_ targetHost: String, serviceHost: String) -> Bool {
         let target = normalizedHost(targetHost)
         let service = normalizedHost(serviceHost)
