@@ -12,6 +12,8 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 - A service that is still loading, or that failed to load, now says so in the rail. A grey ring on its icon means the page is coming up; an orange dot means it did not. Nothing shows when the page is fine. The three marks differ in shape as well as colour, so they still read if you cannot tell the colours apart, and a screen reader says which one it is.
 
+- Google Keep is in the service catalog, with its own logo rather than a letter tile.
+
 ### Changed
 
 - The strip of spaces is gone, and the space you are in is now a header at the top of the service rail. Click it to switch spaces, add one, rename one or delete one. The width that strip used to take goes to the page you are reading.
@@ -20,6 +22,14 @@ All notable changes to Chorus are documented here. Format loosely follows
 - Keyboard focus is visible in the rail again. The service you are on and the service the keyboard is on are two different things, and they are now drawn two different ways: a filled row for the one you picked, an outline for the one the arrow keys will move from. A fix in 1.5.10 had removed the outline rather than reshaping it, because the old rail was too narrow to hold it.
 - Every service in the rail now carries its name. It used to be an icon and nothing else, so two Slack workspaces were two identical squares and the only way to tell them apart was to hover one and wait for the tooltip. The unread count, the mute bell, the sleep moon and the camera dot move off the icon's corners and sit beside the name.
 - The rail down the left side is wider, to fit those names.
+
+### Fixed
+
+- A fresh install that took an update before you had set anything up could get stuck on temporary storage. Chorus said your saved data could not be loaded, offered no backup to restore, and came back the same way at every launch. Deleting Chorus and installing it again did not clear it, because neither your data file nor the marker Chorus keeps beside it lives inside the app. Chorus now starts you on a new, empty file when it can see there is nothing to lose, and the warning has a Start fresh button for the times it cannot tell. Your old file is kept as a backup either way, and the backup list shows it, so you can go back.
+- Microsoft Teams and other services behind a company sign-in can stay signed in. Teams would show its own "sign in again" banner, the button led nowhere, and the state came back about a day after every successful sign-in. Chorus was blocking the hidden frame Teams reads its session from. Each service still keeps its cookies to itself.
+- Signing in to a service no longer sends you a stream of approval requests. When a sleeping service needed signing in again, the background check that reads its unread count kept reloading it, and every reload asked your authenticator to approve. One person got 68 prompts in 14 hours. Chorus now stops checking a service that needs you, and picks it up again when you open it.
+- Closing a window opened from a link leaves the service alone. It used to reload the page behind it, losing your place and anything you had typed and not sent. A sign-in window still reloads the service when it closes, which is the point of it.
+- A service that opens a window through a script gets a real one. Some sign-in flows check whether the window opened and give up quietly if it did not, which looked like nothing happening at all.
 
 ## [1.5.18] - 2026-08-06
 

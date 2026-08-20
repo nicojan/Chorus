@@ -370,6 +370,16 @@
         "description": "Live streaming"
     },
     {
+        "id": "google-keep",
+        "name": "Google Keep",
+        "url": "https://keep.google.com",
+        "icon": "google-keep-icon",
+        "category": "Productivity",
+        "badgeJS": null,
+        "userAgent": null,
+        "description": "Notes and lists"
+    },
+    {
         "id": "google-photos",
         "name": "Google Photos",
         "url": "https://photos.google.com",
