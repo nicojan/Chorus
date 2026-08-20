@@ -1665,6 +1665,53 @@ final class ChorusTests: XCTestCase {
             requestedHost: nil, landedHost: "login.microsoftonline.com", badge: 0))
     }
 
+    // MARK: - Reloading the opener after a popup closes
+
+    func testUserClosingALinkPopupLeavesTheServiceAlone() {
+        // The regression this guards: glance at a link opened from a chat
+        // service, close the window, and the service used to reload underneath
+        // you — losing scroll position and anything typed but not sent.
+        XCTAssertFalse(WebViewCoordinator.shouldReloadOpener(
+            selfClosed: false, openedAtAuthHost: false))
+    }
+
+    func testSelfClosingPopupReloadsTheService() {
+        // An OAuth popup finishes by calling window.close(). This is what
+        // carries sign-in through providers we don't list by name — a company's
+        // own Okta or Keycloak.
+        XCTAssertTrue(WebViewCoordinator.shouldReloadOpener(
+            selfClosed: true, openedAtAuthHost: false))
+    }
+
+    func testHandClosedSignInStillReloadsTheService() {
+        // A service asking the user to sign in again opens straight at its
+        // provider, so the opening URL is the gateway. Some providers leave the
+        // last click to the user, and that flow must still reload.
+        XCTAssertTrue(WebViewCoordinator.shouldReloadOpener(
+            selfClosed: false, openedAtAuthHost: true))
+    }
+
+    func testLinkThatMerelyRedirectsThroughSSOLeavesTheServiceAlone() {
+        // Measured on a real machine: opening an Azure portal link from Teams
+        // starts at portal.azure.com and redirects through
+        // login.microsoftonline.com for SSO. Judging by the navigation chain
+        // counted that as a sign-in and reloaded Teams on close. Only the
+        // opening URL is consulted, so a link like this stays a link.
+        XCTAssertFalse(WebViewCoordinator.isAuthHost("portal.azure.com"))
+        XCTAssertFalse(WebViewCoordinator.shouldReloadOpener(
+            selfClosed: false, openedAtAuthHost: false))
+    }
+
+    func testKnownAuthGatewaysAreRecognisedIncludingSubdomains() {
+        XCTAssertTrue(WebViewCoordinator.isAuthHost("login.microsoftonline.com"))
+        XCTAssertTrue(WebViewCoordinator.isAuthHost("accounts.google.com"))
+        // A subdomain of a gateway still counts.
+        XCTAssertTrue(WebViewCoordinator.isAuthHost("eu.login.microsoftonline.com"))
+        // An ordinary link target does not.
+        XCTAssertFalse(WebViewCoordinator.isAuthHost("teams.cloud.microsoft"))
+        XCTAssertFalse(WebViewCoordinator.isAuthHost("example.com"))
+    }
+
     // MARK: - Link routing (belongsToService)
 
     func testBelongsToServiceKeepsSlackWorkspacesInApp() {
