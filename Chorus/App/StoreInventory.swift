@@ -245,6 +245,11 @@ struct StoreCandidate: Hashable, Sendable, Identifiable {
         /// "already backed up" sentinel, and a deliberate restore's aside must
         /// never satisfy that check.
         case prepick
+        /// The store set aside when the user chose to start fresh from the
+        /// temporary-storage banner. Its own family so it is never mistaken for
+        /// a backup Chorus took on the user's behalf: this one exists because
+        /// the user asked to walk away from it, and the picker should say so.
+        case reset
     }
 
     let url: URL
@@ -278,6 +283,7 @@ extension StoreCandidate {
         case .prerestore: return "Backup from an earlier restore"
         case .corrupt: return "Backup from before a repair"
         case .prepick: return "Your data before you restored a backup"
+        case .reset: return "Your data before you started fresh"
         }
     }
 
@@ -333,6 +339,7 @@ extension StoreInventory {
         case prerestore = ".prerestore-"
         case corrupt = ".corrupt-"
         case prepick = ".prepick-"
+        case reset = ".reset-"
     }
 
     /// Filename infixes of the backup families, derived from `BackupFamily` so
@@ -376,6 +383,7 @@ extension StoreInventory {
             case .prerestore: kind = .prerestore
             case .corrupt: kind = .corrupt
             case .prepick: kind = .prepick
+            case .reset: kind = .reset
             }
             let content = readContent(at: url)
             backups.append(StoreCandidate(

@@ -428,6 +428,97 @@ enum StoreRepair {
     /// Where the user's pick waits for the next launch. The restore itself runs
     /// before the container opens, because swapping SQLite files under a live
     /// container faults deleted models and traps.
+    static let resetAsideInfix = ".reset-"
+
+    /// UserDefaults key holding a request to start fresh, written by the banner
+    /// and consumed by `applyPendingReset` at the next launch.
+    ///
+    /// Deferred to launch for the same reason a restore is: the store must be
+    /// moved while no `ModelContainer` holds it open, and the only moment that
+    /// is reliably true is before the container is built.
+    static let pendingResetKey = "chorus.pendingReset"
+
+    /// Whether the store at `url` provably holds nothing.
+    ///
+    /// "Provably" is the point. `readContent` returns nil for a file it cannot
+    /// read *and* for one whose schema it does not recognise, and neither is
+    /// evidence of emptiness — an unreadable store is exactly the kind that
+    /// might still hold everything. Only three zero counts read back from this
+    /// app's own three tables count as proof.
+    static func storeIsProvablyEmpty(at url: URL) -> Bool {
+        guard let content = StoreInventory.readContent(at: url) else { return false }
+        return content.spaces == 0 && content.services == 0 && content.links == 0
+    }
+
+    /// Whether any `.snapshot-*.bak` sibling exists for `storeURL`, readable or
+    /// not.
+    ///
+    /// Deliberately weaker than `newestRestorableSnapshot`, which answers "is
+    /// there one we can restore from". Before deciding nothing is worth keeping,
+    /// the question is the broader "is there anything here at all" — a snapshot
+    /// too damaged to restore automatically is still a file the user may be able
+    /// to salvage by hand, and its mere existence should stop a fresh start.
+    static func hasAnySnapshot(for storeURL: URL) -> Bool {
+        let dir = storeURL.deletingLastPathComponent()
+        let prefix = storeURL.lastPathComponent + snapshotInfix
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return false }
+        return names.contains { $0.hasPrefix(prefix) && $0.hasSuffix(".bak") }
+    }
+
+    /// Moves the store triple aside to `<name>.reset-<stamp>.bak`, leaving no
+    /// store at `url`. Returns whether the primary file is gone from `url`
+    /// afterwards, which is what the caller needs before opening a fresh one.
+    ///
+    /// Moves rather than deletes, always. Every other path in this file treats
+    /// the user's bytes as undeletable, and a fresh start is no different: the
+    /// whole reason this is safe to offer is that the old store survives under a
+    /// name the recovery picker already lists.
+    ///
+    /// A missing store is success, not failure — there is nothing to move and
+    /// the postcondition ("no store at `url`") already holds.
+    @discardableResult
+    static func moveStoreAside(at url: URL, stamp: String = String(Int(Date().timeIntervalSince1970))) -> Bool {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: url.path) else { return true }
+
+        let destination = url.deletingLastPathComponent()
+            .appending(path: url.lastPathComponent + resetAsideInfix + stamp + ".bak")
+
+        // Copy first, then remove, rather than moving: a copy that fails leaves
+        // the live store untouched, whereas a partial move can leave neither
+        // file whole. `copyTriple` reports whether every suffix it attempted
+        // actually landed.
+        guard copyTriple(from: url.path, to: destination.path, label: "reset aside") else {
+            AppLogger.dataStore.error("Could not set the store aside; leaving it in place rather than starting fresh over it")
+            return false
+        }
+        for suffix in ["", "-wal", "-shm"] {
+            try? fm.removeItem(at: URL(fileURLWithPath: url.path + suffix))
+        }
+        let cleared = !fm.fileExists(atPath: url.path)
+        if cleared {
+            AppLogger.dataStore.info("Store set aside as \(destination.lastPathComponent); starting fresh")
+        } else {
+            AppLogger.dataStore.error("Store copy succeeded but the original could not be removed; not starting fresh")
+        }
+        return cleared
+    }
+
+    /// Honours a start-fresh request written by the banner, if one is waiting.
+    /// Returns whether the store was actually set aside.
+    ///
+    /// The key is cleared before any file work, so a crash part-way through
+    /// cannot make every later launch retry the same move.
+    @discardableResult
+    static func applyPendingReset(
+        at storeURL: URL,
+        defaults: UserDefaults = .standard
+    ) -> Bool {
+        guard defaults.bool(forKey: pendingResetKey) else { return false }
+        defaults.removeObject(forKey: pendingResetKey)
+        return moveStoreAside(at: storeURL)
+    }
+
     static let pendingRestoreKey = "chorus.pendingRestore"
 
     /// Validates a pending restore filename. The value comes from UserDefaults,

@@ -9,6 +9,10 @@ struct ContentView: View {
     /// stored preference.
     @AppStorage(SupportButtonVisibility.defaultsKey) private var showSupportButton = true
 
+    /// Gates the fresh-start confirmation. Local to the view rather than on
+    /// `AppState`: nothing outside this banner presents it.
+    @State private var isConfirmingFreshStart = false
+
     var body: some View {
         @Bindable var state = appState
 
@@ -37,6 +41,13 @@ struct ContentView: View {
                         }
                         .font(.caption)
                     }
+                    if appState.isStoreInMemoryFallback {
+                        Button("Start fresh…") {
+                            isConfirmingFreshStart = true
+                        }
+                        .font(.caption)
+                        .help("Set the current store aside and begin with a new, empty one")
+                    }
                     if appState.storeErrorDismissible {
                         Button {
                             appState.dismissStoreBanner()
@@ -51,6 +62,24 @@ struct ContentView: View {
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Warning: \(error)")
+                .confirmationDialog(
+                    "Start with a new, empty Chorus?",
+                    isPresented: $isConfirmingFreshStart,
+                    titleVisibility: .visible
+                ) {
+                    Button("Start Fresh and Restart") {
+                        appState.chooseFreshStart()
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Your current data file is kept as a backup and stays listed under Review backups, so you can put it back later. Chorus restarts to do this.")
+                }
+                // The quit waits for the dialog to close: AppKit will not
+                // terminate while one is attached and drops the request rather
+                // than deferring it. Same split as the recovery picker's.
+                .onChange(of: isConfirmingFreshStart) { _, shown in
+                    if !shown { appState.quitForScheduledFreshStart() }
+                }
             }
 
             if appState.storeError == nil, appState.storeRecoveryOffer != nil {
