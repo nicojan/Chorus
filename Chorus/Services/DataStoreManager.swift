@@ -28,6 +28,9 @@ final class DataStoreManager {
     /// SPI, so it is probed rather than called blind.
     private static let resourceLoadStatisticsSelector = Selector(("_setResourceLoadStatisticsEnabled:"))
 
+    /// Getter half of the same SPI, probed before the KVC read-back below.
+    private static let resourceLoadStatisticsGetter = Selector(("_resourceLoadStatisticsEnabled"))
+
     /// Turns ITP off for a service's store.
     ///
     /// ITP treats a cookie read from an iframe on another registrable domain as
@@ -83,6 +86,15 @@ final class DataStoreManager {
 
         // Read it back. A silent no-op here is the failure that cost the most
         // time to find, so prove the write landed instead of trusting it.
+        //
+        // Probed first, like the setter. `value(forKey:)` on a key the class is
+        // not KVC-compliant for raises an ObjC exception, which Swift cannot
+        // catch — so an OS that kept the setter but dropped this key would turn
+        // a missing log line into a crash on every service store.
+        guard store.responds(to: resourceLoadStatisticsGetter) else {
+            AppLogger.dataStore.warning("Cannot read back tracking-prevention state — assuming the write landed")
+            return
+        }
         if let enabled = (store.value(forKey: "_resourceLoadStatisticsEnabled") as? NSNumber)?.boolValue,
            enabled {
             AppLogger.dataStore.warning("Tracking prevention stayed on for a service store — SSO refresh may loop")
