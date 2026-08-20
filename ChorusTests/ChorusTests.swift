@@ -571,17 +571,85 @@ final class ChorusTests: XCTestCase {
         Schema(versionedSchema: ChorusSchemaVCurrent.self)
     }
 
-    /// Creates a store at `url` with `spaces` populated spaces, then releases the
-    /// container (so the SQLite file is free for raw ops). Spaces-only keeps the
-    /// store free of links, so no dangling-link machinery is involved.
+    /// Creates a store at `url` with `spaces` populated spaces and returns only
+    /// once the file is genuinely free for raw ops. Spaces-only keeps the store
+    /// free of links, so no dangling-link machinery is involved.
+    ///
+    /// The write and the wait are separate calls on purpose: `container` has to
+    /// go out of scope before anything can wait on its connection closing, and
+    /// it only does that when `writeFixture` returns.
     private func makePopulatedStore(at url: URL, spaces: Int) throws {
-        let config = ModelConfiguration(schema: Self.storeSchema, url: url)
-        let container = try ModelContainer(for: Self.storeSchema, configurations: [config])
+        try Self.writeFixture(at: url, spaces: spaces)
+        try Self.settleStore(at: url)
+    }
+
+    /// Writes the fixture rows and lets its container go out of scope.
+    private static func writeFixture(at url: URL, spaces: Int) throws {
+        let config = ModelConfiguration(schema: storeSchema, url: url)
+        let container = try ModelContainer(for: storeSchema, configurations: [config])
         let ctx = container.mainContext
         for i in 0..<spaces {
             ctx.insert(Space(name: "S\(i)", emoji: "🏠", sortOrder: i))
         }
         try ctx.save()
+    }
+
+    enum FixtureError: Error, CustomStringConvertible {
+        case storeNeverSettled(String, String)
+
+        var description: String {
+            switch self {
+            case let .storeNeverSettled(name, detail):
+                return "fixture store \(name) never came free: \(detail)"
+            }
+        }
+    }
+
+    /// Blocks until nothing else holds the store at `url`, then folds its WAL
+    /// into the main database file.
+    ///
+    /// SwiftData exposes no way to close a `ModelContainer`. Its SQLite
+    /// connection goes away when the container deallocates, and ARC promises
+    /// nothing about when that happens — so a fixture helper that just returns
+    /// leaves every caller racing that close. Two tests here lost that race:
+    /// one saw `PRAGMA journal_mode=WAL` come back `SQLITE_BUSY` because the
+    /// container still held a transaction, and one copied the store while rows
+    /// were still only in the `-wal`, producing a main file that read as empty
+    /// and was judged an unusable snapshot.
+    ///
+    /// `BEGIN EXCLUSIVE` is the check because it is the one statement that can
+    /// only succeed when this process holds the file alone. The checkpoint that
+    /// follows is what makes a copy of the main file *alone* carry every
+    /// committed row, which is the shape `StoreRepair.snapshot` produces and
+    /// several tests then read back.
+    ///
+    /// The wait turns the run loop rather than sleeping: the container is torn
+    /// down by work scheduled on this very thread, so a bare `usleep` would
+    /// starve exactly what it is waiting for.
+    private static func settleStore(at url: URL, timeout: TimeInterval = 10) throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        var lastDetail = "not attempted"
+
+        repeat {
+            var db: OpaquePointer?
+            if sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK, let db {
+                sqlite3_busy_timeout(db, 250)
+                let locked = sqlite3_exec(db, "BEGIN EXCLUSIVE; COMMIT;", nil, nil, nil)
+                if locked == SQLITE_OK {
+                    sqlite3_exec(db, "PRAGMA wal_checkpoint(TRUNCATE);", nil, nil, nil)
+                    sqlite3_close(db)
+                    return
+                }
+                lastDetail = "BEGIN EXCLUSIVE returned \(locked)"
+                sqlite3_close(db)
+            } else {
+                lastDetail = "could not open read-write"
+                if let db { sqlite3_close(db) }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        } while Date() < deadline
+
+        throw FixtureError.storeNeverSettled(url.lastPathComponent, lastDetail)
     }
 
     /// Inserts `count` spaces into an existing store by raw SQL, so a fixture can
