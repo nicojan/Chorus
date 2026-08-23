@@ -983,6 +983,58 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(StoreRepair.moveStoreAside(at: storeURL, stamp: "1700000001"))
     }
 
+    /// The aside a fresh start leaves must be listed in the picker — that is the
+    /// promise the confirmation dialog makes, and the reason starting fresh is
+    /// safe to offer at all — while never being what Chorus proposes by itself.
+    ///
+    /// Both halves matter. Drop it from the picker and the user cannot undo a
+    /// fresh start. Let it reach `best` and the launch right after one greets
+    /// them with an offer to restore the store they just chose to leave, since
+    /// that launch is precisely when the live store is the untouched seed and
+    /// preselection is licensed.
+    func testResetAsideIsListedInThePickerButNeverProposed() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-reset-listed-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // Four spaces set aside by a fresh start, and a live store holding
+        // nothing — the shape of the launch straight after the button is used.
+        try makePopulatedStore(at: storeURL, spaces: 4)
+        try Self.copyStoreTriple(
+            from: storeURL,
+            to: dir.appendingPathComponent("store.sqlite\(StoreRepair.resetAsideInfix)1700000000.bak")
+        )
+        _ = try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
+
+        let live = try XCTUnwrap(StoreInventory.readContent(at: storeURL))
+        let found = StoreInventory.candidates(for: storeURL, liveContent: live)
+
+        let aside = try XCTUnwrap(
+            found.first { $0.kind == .reset },
+            "the .reset- family must be recognized as its own kind and listed in the picker"
+        )
+        XCTAssertEqual(aside.content?.spaces, 4, "and it must read back the data it holds")
+        XCTAssertTrue(aside.isRestorable, "the user must be able to choose it")
+
+        // But Chorus must not choose it for them.
+        XCTAssertNil(StoreInventory.best(among: found), "a .reset- aside must never be proposed")
+        XCTAssertNil(
+            StoreInventory.preselection(among: found, liveContent: live),
+            "and never preselected, least of all on the launch right after a fresh start"
+        )
+        XCTAssertNil(
+            StoreInventory.offer(
+                liveContent: live,
+                best: StoreInventory.best(among: found),
+                record: StoreContent(spaces: 4, services: 0, links: 0, spaceNames: [], serviceLabels: []),
+                declinedKeys: []
+            ),
+            "so no banner offers to undo what the user just asked for"
+        )
+    }
+
     /// The pending-reset key is consumed exactly once, so a crash mid-move can't
     /// make every later launch repeat it.
     func testApplyPendingResetRunsOnceAndOnlyWhenAsked() throws {

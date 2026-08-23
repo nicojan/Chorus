@@ -452,9 +452,20 @@ extension StoreInventory {
     /// order — the same one every time even when candidates tie on all of those.
     /// Excludes the live store, damaged files, and files whose content is
     /// unknown.
+    ///
+    /// Also excludes the `.reset` family, the one candidate Chorus must never
+    /// put forward on its own. Everything this function feeds is a proposal —
+    /// the launch banner (`offer`), the picker's preselection, and the key that
+    /// remembers a declined one — and a `.reset` aside exists precisely because
+    /// the user asked to walk away from that store. Proposing it would land on
+    /// the very next launch, when the live store is the untouched seed and so
+    /// exactly when preselection is licensed, and would reverse the action that
+    /// created the file. It stays in `candidates`, so the picker still lists it
+    /// and putting it back is one click away under Review backups; it is just
+    /// never Chorus's own suggestion.
     static func best(among candidates: [StoreCandidate]) -> StoreCandidate? {
         candidates
-            .filter(\.isRestorable)
+            .filter { $0.isRestorable && $0.kind != .reset }
             .sorted(by: isRankedAbove)
             .first
     }

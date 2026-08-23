@@ -24,7 +24,7 @@ Five PRs from `marcioviniciusspiridigliozzi-dot` were merged to `main` on 2026-0
 
 ## Open: PR #23 — a way out of temporary storage, and Google Keep
 
-Branch `fix/store-fresh-start`, based on `43d590f`, pushed and **not merged**. Closes #20 and #19. 232 tests, 0 failures, six consecutive full-suite runs, Debug only.
+Branch `fix/store-fresh-start`, based on `43d590f`, pushed and **not merged**. Closes #20 and #19. 233 tests, 0 failures, Debug only.
 
 ### The trap in issue #20
 
@@ -36,7 +36,7 @@ An install updated before it was ever configured came up on temporary storage at
 
 **Manual.** A `Start fresh…` button on the temporary-storage banner, behind a confirmation, deferring the move to the next launch through `StoreRepair.pendingResetKey` — the same deferral a restore uses, because the store can only be moved while no container holds it open. An unreadable store fails `storeIsProvablyEmpty` by design and lands in the same dead end, so the user makes the call the checks will not.
 
-`.reset-` is a fifth `BackupFamily`, so the recovery picker lists it like any other backup and the move is reversible.
+`.reset-` is a fifth `BackupFamily`, so the recovery picker lists it like any other backup and the move is reversible. `StoreInventory.best` skips the family, so Chorus lists it without ever proposing it: see the review section below.
 
 ### The test that was deliberately changed
 
@@ -45,6 +45,23 @@ An install updated before it was ever configured came up on temporary storage at
 ### Unverified
 
 **The `Start fresh` button has never been on screen.** It needs a store that genuinely fails to open, and manufacturing one on the dev machine risks live data — see the 2026-07-22 incident. The relaunch/quit split follows the recovery picker's, which was found the hard way (AppKit drops a terminate request made through an attached sheet), but that path has not been exercised.
+
+### Reviewed 2026-08-22
+
+The retarget holds up: the assertion it replaced protected "the user's bytes are never destroyed", the fresh start copies the triple aside before seeding, and the preserve direction now has three tests where it had one. 233 tests, 0 failures, Debug, run on `f6dbeae` plus the two changes below.
+
+Two findings were fixed in place.
+
+**A `.reset-` aside is listed but never proposed.** `StoreInventory.best` now skips the family. Everything `best` feeds is a proposal: the launch banner, the picker's preselection, and the key that remembers a declined offer. Preselection is licensed exactly when the live store is the untouched seed, which is the state a fresh start leaves, so the launch straight after the button would have greeted the user with an offer to restore the store they just chose to leave. For issue #20's never-configured install the content record is empty and nothing fires. For the case the button exists for, an unreadable store that did hold data, the record holds their old counts, the seed falls short of it, and the banner returns. The picker still lists the aside, so undoing a fresh start is one click under Review backups.
+
+**The promise the dialog makes is now pinned.** `testResetAsideIsListedInThePickerButNeverProposed` asserts both halves: the family is recognised and readable in `candidates`, and `best`, `preselection` and `offer` all decline to put it forward. Nothing had covered the listing, and it is the claim the whole safety argument rests on.
+
+### Follow-ups, neither blocking
+
+- **`hasAnySnapshot` checks one of five backup families.** Its doc frames the question as the broader "is there anything here at all", but it matches only `snapshotInfix`, so a `.prepick-`, `.prerestore-`, `.corrupt-` or `.reset-` aside holding real data does not stop an automatic fresh start. Nothing is destroyed either way, since the store is moved rather than deleted, and `StoreInventory.backupInfixes` already derives the full set. `.reset-` is the one member worth arguing about: counting it would let a user's own earlier fresh start veto the automatic fix and push every repeat back to the button.
+- **Nothing reaps the `.reset-` family.** `pruneSnapshots` and `prunePickAsides` bound every other family, and the latter's doc gives "no other reaper matches the family" as its reason for existing. Each fresh start leaves a full store triple on disk for good. Rare by nature, so the cost is disk space.
+
+Two smaller notes for the record. `moveStoreAside`'s default stamp is whole seconds and `copyTriple` clears the destination before copying, so two asides within one second would overwrite the first. That is reachable only across two launches inside the same second, and it matches what `snapshot(at:stamp:)` already does. And both pending keys can be set at once, in which case the restore applies and the reset immediately moves the result aside; the restored bytes land in the `.reset-` aside, so nothing is lost.
 
 ### Google Keep (issue #19)
 
