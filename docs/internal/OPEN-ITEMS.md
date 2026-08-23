@@ -1,5 +1,35 @@
 # Open items
 
+## Open: memory grows over a long run
+
+Measured 2026-08-22 against the shipping 1.5.18 build: 40 samples over three hours and twenty minutes, five minutes apart. `scripts/sample_memory.sh` writes the series and is running against `~/Library/Logs/chorus-mem.csv`.
+
+Attribution is the first thing to get right. A raw `ps` sum over `WebKit.WebContent` counts every app's helpers, which reads as 5.4 GB when Chorus owns about half of it. Chorus's own helpers hold a file under `~/Library/WebKit/com.nicojan.Chorus`, and the script picks them out with `lsof`. Thirteen WebContent processes for thirteen live services, one apiece, because every service gets its own data store.
+
+Three hours gave two different answers.
+
+**The app's own process climbs about 10 MB an hour**, 132 MB to 167 MB, in a narrow band with no drops. That one is real.
+
+**The WebContent total does not trend yet.** The fitted line says +153 MB an hour, but the series ran between 1.7 GB and 5.2 GB and ended lower than it started, so that slope is one spike dragged through noise. Three hours cannot answer this, which is why the sampler is still running.
+
+Four findings from the source, none of them inferred from the samples:
+
+- **Auto-hibernation is off by default.** `AppPreferences.autoHibernateIdleEnabledEffective` resolves nil to false, so nothing frees a WebContent process unless the user turned it on. The only ceiling is `WebViewPool.maxLoaded = 15`, and thirteen live services never reach it, so the LRU sweep has never run on this machine.
+- **Messaging services are exempt even when it is on.** `notificationCriticalIDs` is filtered out of both sweeps, in `WebViewPool.evictIfNeeded` and `AppState.hibernateIdleServices`. That is deliberate and right for instant alerts, and Slack and Teams are also the pages that grow for days.
+- **Nothing recycles a live web view.** There is no reload-after-idle path, so a page that has been up for three days keeps everything its JS heap accumulated. Chorus is not leaking here so much as never letting go.
+- **No memory-pressure response.** Nothing subscribes to `DISPATCH_SOURCE_TYPE_MEMORYPRESSURE`, so Chorus sheds nothing when the system is squeezed.
+
+One small leak sits in the app process, the same place the measured climb shows up. `snapshots[id]` holds a window-sized `NSImage` per soft-hibernated service and is dropped only in `teardownWebView`, never when the service wakes, so switching around leaves one bitmap per service resident for the session.
+
+Work in this order, cheapest first.
+
+1. Drop the snapshot in `wakeService`. One line.
+2. Default auto-hibernate on at 30 minutes. Also one line, in the effective getter, and no schema version is needed because no stored property changes.
+3. Recycle instead of exempt: reload a notification-critical service idle past a few hours, so it keeps firing alerts without keeping the heap.
+4. Add a memory-pressure source.
+
+**Only the first is backed by measurement.** The hibernate default is the biggest win per line of code and also the one the data does not yet justify, so wait for the overnight curve before changing a default that every existing user inherits.
+
 ## Open: the donation button is built and unreleased
 
 A button 20 points across, in a 28 point target, sits in the top right of the main window and opens `https://buymeacoffee.com/0xff.r4bbit`; the About panel carries the same link in its credits field, through `CommandGroup(replacing: .appInfo)` in `ChorusApp.swift`. Verified by hand in all three layouts and in the panel. `SupportLink.url` in `ContentView.swift` is the single definition both use.
