@@ -4788,4 +4788,149 @@ final class ChorusTests: XCTestCase {
         )
     }
 
+
+    // MARK: - Editorial theme
+
+    /// The audit measured every direction's text roles for contrast on
+    /// 2026-08-13 and found `text-dim` under 4.5 to 1 in five of six. Editorial
+    /// was repaired along with the rest, and this pins the repair: a role edited
+    /// to a prettier value fails here rather than in a user's eyes.
+    ///
+    /// Only `.fixed` roles are measurable, which is the honest boundary — the
+    /// native theme hands its colours to AppKit and Apple has already done this
+    /// arithmetic.
+    func testEditorialTextRolesClearWCAGContrast() {
+        let theme = ChorusTheme.editorial
+        guard let rail = theme.rail.measurable?.light else {
+            return XCTFail("Editorial's rail must be a drawn value, not a system one")
+        }
+
+        let onRail: [(String, ThemeColor)] = [
+            ("text-primary", theme.textPrimary),
+            ("text-secondary", theme.textSecondary),
+            ("text-tertiary", theme.textTertiary),
+            ("accent", theme.accent),
+            ("status-ok", theme.statusOK),
+            ("status-warn", theme.statusWarn),
+            ("status-bad", theme.statusBad),
+        ]
+        for (name, role) in onRail {
+            guard let rgb = role.measurable?.light else {
+                return XCTFail("\(name) must be a drawn value")
+            }
+            let ratio = rgb.contrastRatio(against: rail)
+            XCTAssertGreaterThanOrEqual(
+                ratio, 4.5,
+                "Editorial \(name) reads at \(String(format: "%.2f", ratio)):1 on the rail, under the 4.5 floor"
+            )
+        }
+    }
+
+    /// A label drawn on a filled ground has to clear the fill, not the rail
+    /// behind it. Both of Editorial's are near-black or near-white grounds, so
+    /// they should measure very high; a change that quietly tinted either one
+    /// would show up here first.
+    func testEditorialLabelsOnFilledGroundsClearContrast() {
+        let theme = ChorusTheme.editorial
+        let pairs: [(String, ThemeColor, ThemeColor)] = [
+            ("on-selection over selection", theme.onSelection, theme.selection),
+            ("badge-label over badge", theme.badgeLabel, theme.badge),
+        ]
+        for (name, fg, bg) in pairs {
+            guard let f = fg.measurable?.light, let b = bg.measurable?.light else {
+                return XCTFail("\(name) must be drawn values")
+            }
+            XCTAssertGreaterThanOrEqual(f.contrastRatio(against: b), 4.5, name)
+        }
+    }
+
+    /// Contrast is symmetric and bounded, and white on black is the maximum.
+    /// Without this, a broken ratio function could make every assertion above
+    /// pass for the wrong reason.
+    func testContrastRatioArithmetic() {
+        let white = ThemeRGB(0xFFFFFF)
+        let black = ThemeRGB(0x000000)
+        XCTAssertEqual(white.contrastRatio(against: black), 21.0, accuracy: 0.01)
+        XCTAssertEqual(black.contrastRatio(against: white), 21.0, accuracy: 0.01)
+        XCTAssertEqual(white.contrastRatio(against: white), 1.0, accuracy: 0.001)
+    }
+
+    /// Editorial is drawn light-only: the `Chorus / Directions` collection's
+    /// modes are the five directions, so there is no light/dark axis in it at
+    /// all. Until someone draws the dark half, the dark value is the light one
+    /// and the theme says so, so Settings can warn rather than pretend.
+    func testEditorialDarkPaletteIsUndrawnAndFallsBackToLight() {
+        let theme = ChorusTheme.editorial
+        XCTAssertFalse(theme.hasDrawnDarkPalette, "Editorial's dark half is not drawn yet")
+
+        guard let window = theme.window.measurable else {
+            return XCTFail("Editorial's window must be a drawn value")
+        }
+        XCTAssertEqual(window.light, window.dark, "an undrawn dark value must fall back to the light one")
+    }
+
+    /// The native theme is the shipped look and must stay the default, so an
+    /// unreadable or absent stored value lands there rather than on a direction
+    /// the user never chose. Same rule as `SpacesPresentation.resolving`.
+    func testThemeChoiceResolvesUnknownToNative() {
+        XCTAssertEqual(ChorusThemeChoice.resolving(nil), .native)
+        XCTAssertEqual(ChorusThemeChoice.resolving(""), .native)
+        XCTAssertEqual(ChorusThemeChoice.resolving("terminal"), .native)
+        XCTAssertEqual(ChorusThemeChoice.resolving("editorial"), .editorial)
+        XCTAssertEqual(ChorusThemeChoice.resolving("native"), .native)
+    }
+
+    /// Every case has to round-trip through its own raw value, or a stored
+    /// choice comes back as the default after a relaunch.
+    func testThemeChoiceRoundTripsThroughItsRawValue() {
+        for choice in ChorusThemeChoice.allCases {
+            XCTAssertEqual(ChorusThemeChoice.resolving(choice.rawValue), choice)
+            XCTAssertFalse(choice.displayName.isEmpty)
+        }
+    }
+
+    /// The geometry that separates the two, measured off
+    /// `Direction · Editorial / sidebar` on page 09. These are the numbers the
+    /// by-eye pass checks against, so they are worth stating once here rather
+    /// than being spread through the views.
+    func testEditorialGeometryMatchesTheDrawnFrame() {
+        let editorial = ChorusTheme.editorial
+        XCTAssertEqual(editorial.railWidth, 300)
+        XCTAssertEqual(editorial.rowHeight, 64)
+        XCTAssertEqual(editorial.contentInset, 20)
+        XCTAssertEqual(editorial.contentCornerRadius, 8)
+        XCTAssertFalse(editorial.showsServiceIcons, "Editorial lets type carry identity")
+        XCTAssertTrue(editorial.statesHealthInWords)
+
+        let native = ChorusTheme.native
+        XCTAssertEqual(native.railWidth, 240, "concept C's rail, unchanged")
+        XCTAssertEqual(native.contentInset, 0, "the native look is edge to edge")
+        XCTAssertEqual(native.contentCornerRadius, 0)
+        XCTAssertTrue(native.showsServiceIcons)
+        XCTAssertFalse(native.statesHealthInWords, "the native rail draws a corner mark instead")
+    }
+
+    /// Editorial says the health in words, so it needs a word for every state
+    /// including the healthy one — the native rail draws nothing when a service
+    /// is fine, and a blank second line would just be a gap.
+    func testEveryHealthStateHasAWordUnderEditorial() {
+        for health in ServiceHealth.allCases {
+            let label = health.statusLine
+            XCTAssertFalse(label.isEmpty, "\(health) needs a word for Editorial's status line")
+        }
+        XCTAssertEqual(ServiceHealth.live.statusLine, "Live")
+        XCTAssertEqual(ServiceHealth.signedOut.statusLine, "Signed out")
+    }
+
+    /// The status line takes its colour from the same roles the corner mark
+    /// already encodes, so the two presentations cannot drift apart. The native
+    /// dot draws `failed` orange and `signedOut` red, and Editorial's words have
+    /// to agree with that or one screen contradicts the other.
+    func testStatusLineColourRoleFollowsHealth() {
+        XCTAssertEqual(ServiceHealth.live.statusRole, .neutral)
+        XCTAssertEqual(ServiceHealth.loading.statusRole, .neutral)
+        XCTAssertEqual(ServiceHealth.failed.statusRole, .warn)
+        XCTAssertEqual(ServiceHealth.signedOut.statusRole, .bad)
+    }
+
 }

@@ -28,6 +28,7 @@
 		53C0B5A438EDC6C98FE081AB /* QuickSwitcherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA55A0E026084DC20071FBCE /* QuickSwitcherView.swift */; };
 		542D3E32DA8EA90EC36BB6A0 /* DataStoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD49B64B44CC548574DA2348 /* DataStoreManager.swift */; };
 		5561BE9B6C6D8AA46CD42884 /* WebViewContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D9F34755F65BE5A3C76C88 /* WebViewContainer.swift */; };
+		56B172F9BA56B4F62182D707 /* ChorusTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8108AAD3DCC835300AD3E82D /* ChorusTheme.swift */; };
 		5E59730D46AE1AED21F82ECA /* AppPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88C307C75776869CE8A82618 /* AppPreferences.swift */; };
 		68FE172BCA70FBB55022F7B1 /* StoreRelocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B71CC3F7D7BD76E4100BC126 /* StoreRelocation.swift */; };
 		69AC657C2E3D81BFB330050A /* AppRelauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA77C4C73BEB532F6AC1C339 /* AppRelauncher.swift */; };
@@ -120,6 +121,7 @@
 		7458024AA17BF508D4807018 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		76865DDEE671C34CC88CF4D8 /* FindInPageBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindInPageBar.swift; sourceTree = "<group>"; };
 		7E0D298EDEBDC1F1EB614912 /* AppCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCapabilities.swift; sourceTree = "<group>"; };
+		8108AAD3DCC835300AD3E82D /* ChorusTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChorusTheme.swift; sourceTree = "<group>"; };
 		8223D66D602364046AF98EDC /* Chorus.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Chorus.entitlements; sourceTree = "<group>"; };
 		88C307C75776869CE8A82618 /* AppPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreferences.swift; sourceTree = "<group>"; };
 		8F17BFF4DCC563429E130A13 /* CatalogGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogGridView.swift; sourceTree = "<group>"; };
@@ -303,6 +305,7 @@
 			isa = PBXGroup;
 			children = (
 				50260A359445D2B4C556E1E6 /* ChorusStyle.swift */,
+				8108AAD3DCC835300AD3E82D /* ChorusTheme.swift */,
 				7458024AA17BF508D4807018 /* ContentView.swift */,
 				76865DDEE671C34CC88CF4D8 /* FindInPageBar.swift */,
 				542BCDA03CE248BE3E75D814 /* RailSupport.swift */,
@@ -497,6 +500,7 @@
 				A33A7902903C731E069B6CD5 /* ChorusApp.swift in Sources */,
 				B095E6333D67F97829F12E97 /* ChorusSchema.swift in Sources */,
 				D4721545C5C3DD809AE549A7 /* ChorusStyle.swift in Sources */,
+				56B172F9BA56B4F62182D707 /* ChorusTheme.swift in Sources */,
 				E28F6C4DD1E61484CEA773F0 /* ContentBlockerManager.swift in Sources */,
 				230144499E6BE9FD41C03338 /* ContentView.swift in Sources */,
 				30CDFCABEDA4328515317A91 /* CookieConsentManager.swift in Sources */,

@@ -31,6 +31,7 @@ struct ChorusApp: App {
                 .environment(appState)
                 .modelContainer(appState.modelContainer)
                 .preferredColorScheme(appState.appearanceColorScheme)
+                .chorusThemed()
                 .onDisappear {
                     saveWindowState()
                 }
@@ -152,11 +153,13 @@ struct ChorusApp: App {
                 .environment(appState)
                 .modelContainer(appState.modelContainer)
                 .preferredColorScheme(appState.appearanceColorScheme)
+                .chorusThemed()
             #else
             SettingsView()
                 .environment(appState)
                 .modelContainer(appState.modelContainer)
                 .preferredColorScheme(appState.appearanceColorScheme)
+                .chorusThemed()
             #endif
         }
     }

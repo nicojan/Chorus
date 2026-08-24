@@ -74,6 +74,11 @@ struct GeneralSettingsView: View {
     @AppStorage(SupportButtonVisibility.defaultsKey) private var showSupportButton = true
     @AppStorage(SpacesPresentation.defaultsKey) private var spacesPresentationRaw = SpacesPresentation.inRail.rawValue
 
+    /// Which look the chrome is drawn in. A default rather than a stored
+    /// preference, for the reason in `ChorusThemeChoice`.
+    @AppStorage(ChorusThemeChoice.defaultsKey) private var themeRaw = ChorusThemeChoice.native.rawValue
+    private var theme: ChorusThemeChoice { ChorusThemeChoice.resolving(themeRaw) }
+
     private let presenceManager = AppPresenceManager()
 
     private var prefs: AppPreferences {
@@ -133,6 +138,21 @@ struct GeneralSettingsView: View {
                     ForEach(RailLayout.allCases, id: \.self) { layout in
                         Text(layout.displayName).tag(layout)
                     }
+                }
+
+                Picker("Look", selection: $themeRaw) {
+                    ForEach(ChorusThemeChoice.allCases, id: \.self) { choice in
+                        Text(choice.displayName).tag(choice.rawValue)
+                    }
+                }
+                Text("Native draws the window in the system's own colours. Editorial sets the space name large, gives every service a line saying whether it is live, and writes an unread count as a numeral instead of a red circle. It has no icons in the rail: the names do that work.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if !theme.theme.hasDrawnDarkPalette {
+                    Text("Editorial is drawn light only. On a dark appearance it still draws light, which will look wrong beside the rest of the system until the dark half exists.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                 }
 
                 Picker("Spaces", selection: $spacesPresentationRaw) {

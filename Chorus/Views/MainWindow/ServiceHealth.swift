@@ -76,6 +76,39 @@ enum ServiceHealth: Equatable, CaseIterable {
         }
     }
 
+    /// Which colour role the state takes, named rather than hard-coded so the
+    /// corner dot and Editorial's status line cannot drift apart. The native dot
+    /// already draws `failed` orange and `signedOut` red; these are those two
+    /// facts given names.
+    enum StatusRole: Equatable {
+        /// Nothing is wrong, or nothing is wrong yet.
+        case neutral
+        case warn
+        case bad
+    }
+
+    var statusRole: StatusRole {
+        switch self {
+        case .live, .loading: return .neutral
+        case .failed: return .warn
+        case .signedOut: return .bad
+        }
+    }
+
+    /// The word a rail row puts under a service's name when the theme states
+    /// health in words instead of drawing a dot (`ChorusTheme
+    /// .statesHealthInWords`). Every state needs one, `live` included: the
+    /// second line is always drawn under Editorial, so a blank would just be a
+    /// gap where the design has a word.
+    var statusLine: String {
+        switch self {
+        case .live: return "Live"
+        case .loading: return "Loading…"
+        case .failed: return "Failed to load"
+        case .signedOut: return "Signed out"
+        }
+    }
+
     /// What VoiceOver says. Empty for `live`, which has nothing to report.
     var spokenDescription: String {
         switch self {

@@ -12,6 +12,7 @@ struct WebContentView: View {
     @State private var previousServiceID: UUID?
     @State private var showPasskeyNotice = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.chorusTheme) private var theme
 
     /// Shared nav state so the top tab bar can host the nav buttons.
     private var webViewState: WebViewState { appState.webViewState }
@@ -43,7 +44,7 @@ struct WebContentView: View {
                 }
 
                 ZStack(alignment: .topTrailing) {
-                    WebViewContainer(webView: webView)
+                    WebViewContainer(webView: webView, cornerRadius: theme.contentCornerRadius)
 
                     // Show cached snapshot as instant visual feedback while page loads.
                     // Fades out once the web view finishes loading. It fills the
@@ -70,6 +71,11 @@ struct WebContentView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
                 }
+                .clipShape(RoundedRectangle(cornerRadius: theme.contentCornerRadius, style: .continuous))
+                // The card, and the well it sits in. Both are zero under the
+                // native look, so this collapses to exactly what shipped.
+                .padding(theme.contentInset)
+                .background(theme.content.color)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: webViewState.isLoading)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: appState.findInPageVisible)
             } else if selectedService != nil {
