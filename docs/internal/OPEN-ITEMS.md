@@ -88,7 +88,7 @@ What the by-eye pass on 2026-08-17 did establish, in the Debug build against `Ch
 - **The `hybrid` forward-map works on a real store.** That store had been left on `hybrid` the day before. The rebuilt app opened it as the bar layout, which is the case the map sends it to, and not the `.sidebar` fallback.
 - **The palette opens from the header and is right.** Both spaces with emoji, name and service count, `⌘1` and `⌘2` down the trailing edge, the current space carrying the tint fill, and the New Space row under a divider. It measured 260 points wide.
 
-What it did not, and why. The dev machine was in active use. Scripted keystrokes and clicks kept landing in whatever app had come forward: a Finder window and MacWhisper both took input meant for the rail. One `⌘2` reached the installed release copy of Chorus, which is harmless, since all it changes is which service is on screen. Driving the UI was stopped there rather than pushed through. So **three things stay unverified**: the sidebar layout with its 240 point rail and the header at y 38, both appearances, and whether `⌘1`–`⌘9` inside the palette actually picks a space — the `KeyPress.characters` question from step 4 is still open. All three want a by-hand pass on a quiet machine.
+What it did not, and why. The dev machine was in active use. Scripted keystrokes and clicks kept landing in whatever app had come forward: a Finder window and MacWhisper both took input meant for the rail. One `⌘2` reached the installed release copy of Chorus, which is harmless, since all it changes is which service is on screen. Driving the UI was stopped there rather than pushed through. So **three things stay unverified**: the sidebar layout with its 240 point rail and the header at y 38, both appearances, and whether `⌘1`–`⌘9` inside the palette actually picks a space — the `KeyPress.characters` question from step 4 is still open. All three want a by-hand pass on a quiet machine, and `docs/internal/VERIFY-BY-HAND.md` is that pass written out step by step, with what to expect at each one.
 
 **Step 4 is built and merged, and none of it has been seen on its own.** `SpaceHeaderView` draws the current space as a 224 by 36 header on the rail, or 150 by 32 in the bar, with the aggregate badge and a pop-up chevron. `SpacePaletteView` is the switcher it opens: a 260 point popover at radius 14, whose rows carry emoji, name, service count, unread badge and the `⌘` digit. 203 tests, 0 failures, six of them new and all on the pure helpers (`SpacePalette`, `SpaceHeader`). Nothing presents either view until step 5, so they compile and run but cannot be reached, and the by-eye pass has to wait for that step.
 
@@ -108,7 +108,7 @@ Seen running in the Debug build on 2026-08-17: the in-rail list in both axes, an
 
 The rest of the price stands. A and B are closed. A never answered the severity 4 finding, which is the product's core loop; B answered it and spent 400 points of sidebar before content to do it.
 
-## Open: six visual directions, and a ceiling on all of them
+## Decided: Editorial, of six visual directions under one ceiling
 
 Page `09 Visual directions` takes one screen, the C sidebar, and restyles it six ways: Discord, Glass, Editorial, Brutalist, Soft, Terminal. Colour comes from modes, so a direction can be swapped on a frame without touching a layer. Each carries a note on what it costs to build.
 
@@ -128,9 +128,17 @@ An inset, rounded content card is the partial answer, and it is applied to Glass
 
 Brutalist and Terminal write a toggle as `[ on ]` and `[ off ]` rather than drawing a switch, which keeps the claim both directions make, that a word carries the state and a colour never carries it alone. Terminal draws from its own variable collection, `Chorus / Terminal`, whose fourteen roles map onto the same slots the other five fill from `Chorus / Directions`.
 
-**Nothing is decided.** All six now cover the same ground, in three layouts and on every sheet and notice, so the choice is open on the evidence rather than narrowed by what happens to be drawn.
+**Editorial is picked, on 2026-08-24, without the eighteen-frame content pass.** The pass was going to fill the other five content areas with a drawn service so the six could be judged on the chrome-to-content seam. Drawing it would not have changed the answer, because the seam is already decided by the ceiling above: the web view will not follow any of the six, so a direction is judged on how well it tolerates content that ignores it.
 
-**The placeholder pass was parked on 2026-08-16, and the pick released it the same day.** Filling the other five content areas with a drawn service the way Terminal does would take eighteen frames. It was held back because the concept pick gated everything and is independent of the skin. That pick is made, so the direction is now the open question, and the seam between chrome and content is what separates the six. Draw the content before choosing between them. Rejecting all six and staying native is still a live answer.
+That test ranks the six before a single content frame is drawn. Discord and Terminal promise a look the content will not honour, and Terminal's own frame proves it by putting Slack's aubergine beside a black rail. Brutalist fits four named services in a 1080-point bar, because a cell has to hold the word SIGNED OUT. Soft still breaks service recognition with its pastel tints, and that survived the contrast repair, so it is a design problem rather than a token value.
+
+Which leaves Glass and Editorial, the two the doc already calls structural rather than a matter of taste. **Editorial wins on the one thing Glass cannot currently do.** Glass sets dark text over a light-tinted blur, so a dark web page darkens the rail with it and the text goes. Fixing that needs a real `NSVisualEffectView` with `.sidebar` material rather than the fixed tint the frames use, and even then it is untested against dark content. Chorus's content area is other people's web pages, a good share of them dark, and several of them dark only some of the time. A default whose legibility depends on what Slack shipped this week is not a default. Glass also needed its sheets pushed to 88 per cent opacity to keep their own text, which is the same failure showing up a second time.
+
+Editorial carries none of that. It fits all six services in the top bar at 1080 points, every text role clears 4.5 to 1, and its inset rounded content card is the partial answer to the seam. It frames the web view instead of competing with it, which is the whole argument.
+
+**What would overturn this.** Glass becomes the better answer the moment someone builds the `NSVisualEffectView` version and it holds against a dark page, because translucency does the framing job better than a card does. That is a build rather than a redraw, so it belongs after the rail ships. Staying native is still a live answer too, and it is the cheapest one: Editorial's value over plain SwiftUI is the content card and the type scale, and if those land and the rest reads as noise, take the rest back out.
+
+**Cancel the eighteen frames outright.** Drawing five placeholder content areas to confirm a ranking the ceiling already fixes is work that cannot change its own outcome. If Editorial needs frames, it needs them for its own screens. The comparison is over.
 
 ## Reference: the interface baseline in Figma
 

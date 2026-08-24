@@ -23,6 +23,10 @@ All notable changes to Chorus are documented here. Format loosely follows
 - Every service in the rail now carries its name. It used to be an icon and nothing else, so two Slack workspaces were two identical squares and the only way to tell them apart was to hover one and wait for the tooltip. The unread count, the mute bell, the sleep moon and the camera dot move off the icon's corners and sit beside the name.
 - The rail down the left side is wider, to fit those names.
 
+### Fixed
+
+- Chorus no longer holds on to a service's picture after you switch back to it. When you leave a service it takes a picture of the page, so returning to it shows something straight away instead of a blank panel. That picture was kept until the service was closed, one per service and the size of your window, so a day of switching around slowly filled memory with pictures of pages already on screen.
+
 ## [1.5.18] - 2026-08-06
 
 ### Fixed

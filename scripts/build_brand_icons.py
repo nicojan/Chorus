@@ -3,9 +3,11 @@
 as asset-catalog imagesets under Chorus/Resources/Assets.xcassets.
 
 Monochrome marks are flagged as template assets so SwiftUI tints them .primary
-and they stay visible in dark mode; colored marks render as-is. Re-run to refresh
-or extend the set; pass --write to actually write the imagesets (default is a
-dry-run that only prints the classification).
+and they stay visible in dark mode; colored marks render as-is. Two-tone marks
+that the colour test cannot tell apart from monochrome are pinned in
+FORCE_ORIGINAL below. Re-run to refresh or extend the set; pass --write to
+actually write the imagesets (default is a dry-run that only prints the
+classification).
 
 The logos are the trademarks of their respective owners and are bundled only to
 identify each service in the sidebar. thesvg's tooling is MIT-licensed.
@@ -58,7 +60,19 @@ def monochromish(r,g,b):
     lum = (0.2126*r+0.7152*g+0.0722*b)/255
     return lum < 0.22 or lum > 0.86     # near-black or near-white gray
 
-def classify(svg):
+# Marks that classify() would call monochrome but which must render as drawn.
+# Both are two-tone black-and-white: Notion is a white body inside a black
+# outline, Mattermost a white glyph on black. Tinting either one .primary
+# collapses both tones into one shape and the mark goes solid. classify() reads
+# colour alone and cannot see that, so it is pinned here.
+#
+# Before this list existed, every `--write` reclassified these two as template
+# and the change had to be reverted by hand afterwards.
+FORCE_ORIGINAL = {"notion", "mattermost"}
+
+def classify(svg, cid=None):
+    if cid in FORCE_ORIGINAL:
+        return "original"
     t = svg.lower()
     if re.search(r'<(linear|radial)gradient|<stop|rgb\(|hsl\(', t):
         return "color"
@@ -74,8 +88,8 @@ def classify(svg):
 
 def contents(intent):
     props = {"preserves-vector-representation": True}
-    if intent == "template":
-        props["template-rendering-intent"] = "template"
+    if intent in ("template", "original"):
+        props["template-rendering-intent"] = intent
     return json.dumps({
         "images":[{"filename":"default.svg","idiom":"universal"}],
         "info":{"author":"xcode","version":1},
@@ -89,7 +103,7 @@ def main():
         svg = fetch(slug)
         if not svg or "<svg" not in svg:
             missing.append(cid); continue
-        intent = classify(svg)
+        intent = classify(svg, cid)
         rows.append((cid, slug, intent))
         if write:
             d = os.path.join(ASSETS, f"brand-{cid}.imageset")
@@ -97,9 +111,13 @@ def main():
             with open(os.path.join(d,"default.svg"),"w") as f: f.write(svg)
             with open(os.path.join(d,"Contents.json"),"w") as f: f.write(contents(intent))
     tmpl = sorted(r[0] for r in rows if r[2]=="template")
+    forced = sorted(r[0] for r in rows if r[2]=="original")
     print(f"{'WROTE' if write else 'DRY-RUN'}: {len(rows)} icons, "
-          f"{len(tmpl)} template / {len(rows)-len(tmpl)} color; missing={missing}")
+          f"{len(tmpl)} template / {len(forced)} pinned original / "
+          f"{len(rows)-len(tmpl)-len(forced)} color; missing={missing}")
     print("template (tinted in dark mode):", ", ".join(tmpl))
+    if forced:
+        print("pinned original (see FORCE_ORIGINAL):", ", ".join(forced))
 
 if __name__ == "__main__":
     main()
