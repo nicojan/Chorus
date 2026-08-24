@@ -2,15 +2,17 @@
 
 ## Open: memory grows over a long run
 
-Measured 2026-08-22 against the shipping 1.5.18 build: 40 samples over three hours and twenty minutes, five minutes apart. `scripts/sample_memory.sh` writes the series and is running against `~/Library/Logs/chorus-mem.csv`.
+Still open, and less settled than it looked. `scripts/sample_memory.sh` writes the series to `~/Library/Logs/chorus-mem.csv`.
 
 Attribution is the first thing to get right. A raw `ps` sum over `WebKit.WebContent` counts every app's helpers, which reads as 5.4 GB when Chorus owns about half of it. Chorus's own helpers hold a file under `~/Library/WebKit/com.nicojan.Chorus`, and the script picks them out with `lsof`. Thirteen WebContent processes for thirteen live services, one apiece, because every service gets its own data store.
 
-Three hours gave two different answers.
+**One run of 40 samples, on 2026-08-22, is all the evidence there is.** Three hours and twenty minutes against the shipping 1.5.18 build. The app's own process went 143 MB to 164 MB, a fitted 10 MB an hour in a narrow band with no drops. The WebContent total did not trend: the fitted line said +192 MB an hour, but the series ran between 1.7 GB and 5.2 GB and ended lower than it started, so that slope is one spike dragged through noise.
 
-**The app's own process climbs about 10 MB an hour**, 132 MB to 167 MB, in a narrow band with no drops. That one is real.
+**The overnight run that was supposed to settle it never happened**, and the reason is worth writing down because it also produced a wrong reading. The sampler was a shell job started by hand, so it died with the machine. What sits in the CSV after that first run is two fragments, 14 samples over an hour and 5 over twenty minutes, each from a different launch of the app. Read as one series they look like a 140 to 179 MB band that climbs and comes back down, which would refute the 10 MB an hour. They are not one series. Three launches concatenated cannot show a trend of any kind, and on 2026-08-24 they were briefly read as though they could. The hour-long fragment on its own fits at -0.7 MB an hour, which is a hint against the climb and nothing more, because an hour is too short to see 10 MB.
 
-**The WebContent total does not trend yet.** The fitted line says +153 MB an hour, but the series ran between 1.7 GB and 5.2 GB and ended lower than it started, so that slope is one spike dragged through noise. Three hours cannot answer this, which is why the sampler is still running.
+Two changes went in so the question can actually be answered. Every row now carries the app's pid, so a launch boundary is visible in the data instead of having to be inferred from `uptime` resetting. And `scripts/install_mem_sampler.sh` loads the sampler as a LaunchAgent with `KeepAlive`, so it survives sleep, logout and reboot. The archived first run is `~/Library/Logs/chorus-mem-2026-08-23.csv`, under the old header.
+
+**What to do next is wait.** Read the curve once it covers a genuine multi-day span within single launches, and split it by pid before fitting anything.
 
 Four findings from the source, none of them inferred from the samples:
 
@@ -19,16 +21,15 @@ Four findings from the source, none of them inferred from the samples:
 - **Nothing recycles a live web view.** There is no reload-after-idle path, so a page that has been up for three days keeps everything its JS heap accumulated. Chorus is not leaking here so much as never letting go.
 - **No memory-pressure response.** Nothing subscribes to `DISPATCH_SOURCE_TYPE_MEMORYPRESSURE`, so Chorus sheds nothing when the system is squeezed.
 
-One small leak sits in the app process, the same place the measured climb shows up. `snapshots[id]` holds a window-sized `NSImage` per soft-hibernated service and is dropped only in `teardownWebView`, never when the service wakes, so switching around leaves one bitmap per service resident for the session.
+**The one leak in the app process is fixed, on 2026-08-24.** `snapshots[id]` holds a window-sized `NSImage` per soft-hibernated service, and it was dropped only in `teardownWebView`, so switching around left one bitmap per service resident for the session. `wakeService` now drops it. The snapshot covers the wake and has done its job by then: `WebContentView.loadWebViewForSelectedService` reads it and holds its own reference before it asks the pool for the web view, so the transition cannot blank. That fix rests on reading the source rather than on the samples. It has no test. `WebViewPool` owns live `WKWebView`s and takes its snapshot through an async `takeSnapshot` that needs a rendered view, so there is no seam to test against without a real window.
 
-Work in this order, cheapest first.
+The other three wait for data, cheapest first.
 
-1. Drop the snapshot in `wakeService`. One line.
-2. Default auto-hibernate on at 30 minutes. Also one line, in the effective getter, and no schema version is needed because no stored property changes.
-3. Recycle instead of exempt: reload a notification-critical service idle past a few hours, so it keeps firing alerts without keeping the heap.
-4. Add a memory-pressure source.
+1. Default auto-hibernate on at 30 minutes. One line, in the effective getter, and no schema version is needed because no stored property changes.
+2. Recycle instead of exempt: reload a notification-critical service idle past a few hours, so it keeps firing alerts without keeping the heap.
+3. Add a memory-pressure source.
 
-**Only the first is backed by measurement.** The hibernate default is the biggest win per line of code and also the one the data does not yet justify, so wait for the overnight curve before changing a default that every existing user inherits.
+**None of the three is backed by measurement.** The hibernate default is the biggest win per line of code and also the one the data does not justify, so it is not being made on a hunch about a default every existing user inherits.
 
 ## Open: the donation button is built and unreleased
 

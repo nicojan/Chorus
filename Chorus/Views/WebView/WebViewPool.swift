@@ -472,6 +472,12 @@ final class WebViewPool {
     private func wakeService(_ id: UUID) {
         guard let webView = webViews[id] else { return }
         webView.setAllMediaPlaybackSuspended(false)
+        // The snapshot exists to cover the wake, so it has done its job here.
+        // WebContentView reads it before asking for the web view, and holds its
+        // own reference until the page finishes loading, so this cannot blank
+        // the transition. Left in place it would keep one window-sized NSImage
+        // per service resident until teardown.
+        snapshots.removeValue(forKey: id)
         AppLogger.webView.debug("Woke service \(id)")
         onServiceSoftWoke?(id)
     }

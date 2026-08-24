@@ -3,9 +3,14 @@
 # helpers that belong to it. Helpers are XPC services parented to launchd, so
 # ownership comes from lsof — a Chorus helper holds a file under the app's own
 # Application Support directory. One CSV row per sample.
+#
+# Every row carries the app's pid. Without it, rows from two launches sit next
+# to each other looking like one series, and a growth curve read across that
+# seam is not a curve at all. `uptime` resets on relaunch and is the other tell,
+# but only the pid is unambiguous.
 OUT=${1:?usage: chorus-mem-sample.sh out.csv [interval_seconds]}
 INTERVAL=${2:-300}
-[[ -f $OUT ]] || print "iso_time,uptime,web_procs,main_mb,webcontent_mb,helpers_mb,total_mb" >> $OUT
+[[ -f $OUT ]] || print "iso_time,pid,uptime,web_procs,main_mb,webcontent_mb,helpers_mb,total_mb" >> $OUT
 while true; do
   MAIN_PID=$(pgrep -f '/Applications/Chorus.app/Contents/MacOS/Chorus' | head -1)
   if [[ -n $MAIN_PID ]]; then
@@ -21,7 +26,7 @@ while true; do
         helper_mb=$((helper_mb + rss))
       fi
     done
-    print "$(date -u +%FT%TZ),$UP,$wc_n,$MAIN_MB,$wc_mb,$helper_mb,$((MAIN_MB + wc_mb + helper_mb))" >> $OUT
+    print "$(date -u +%FT%TZ),$MAIN_PID,$UP,$wc_n,$MAIN_MB,$wc_mb,$helper_mb,$((MAIN_MB + wc_mb + helper_mb))" >> $OUT
   fi
   sleep $INTERVAL
 done
