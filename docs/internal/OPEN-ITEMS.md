@@ -191,6 +191,8 @@ Verified: 182 tests. Two run the catalog expression through JavaScriptCore again
 
 ## Open: Slack notifications arrive late — leading cause fixed in 1.5.18, not yet confirmed
 
+Tracked publicly as issue #24 since 2026-08-24, because the original report left no thread to reply on. That issue asks for the four things the timeline needs.
+
 Reported 2026-07-31. The most likely cause was found in the 2026-08-06 review and fixed: a service with no live web view posts no banners at all, because the banner path is the `chorusNotification` handler and only the active space was ever preloaded. "A workspace I was not in" fits that exactly. Chat services in every space are preloaded now, capped at five.
 
 **Still worth confirming with a real measurement**, because one path remains uncovered: a notification raised inside a service worker (the push path) runs where no page script can reach, so if Slack delivers that way the fix does not help it. Get a timeline before assuming it is closed — when the message was sent, when the banner arrived, whether that service was open, and its hibernation setting.
