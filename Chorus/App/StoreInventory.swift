@@ -329,7 +329,7 @@ extension StoreCandidate {
 }
 
 extension StoreInventory {
-    /// The four backup families, all of which are copies of the user's own
+    /// The five backup families, all of which are copies of the user's own
     /// store and so all worth offering. An enum, not bare strings, so the
     /// switch in `candidates(for:liveContent:)` is exhaustive: adding a family
     /// here without giving it a `StoreCandidate.Kind` case is a compile error,
@@ -348,6 +348,19 @@ extension StoreInventory {
     /// hand-written literal, so a new family added to `BackupFamily` can't
     /// silently fail to be validated.
     static var backupInfixes: [String] { BackupFamily.allCases.map(\.rawValue) }
+
+    /// The families that count as data still worth protecting here: every one
+    /// except `.reset-`.
+    ///
+    /// A `.reset-` aside is the copy a fresh start already made, so treating it
+    /// as something to protect would let a user's own earlier fresh start veto
+    /// the automatic fix and push every repeat of issue #20 back to the button.
+    /// The other four are copies the user did not ask to leave behind. The
+    /// picker still lists `.reset-` asides, so undoing a fresh start stays one
+    /// click under Review backups.
+    static var preservationInfixes: [String] {
+        BackupFamily.allCases.filter { $0 != .reset }.map(\.rawValue)
+    }
 
     /// Every candidate for `storeURL`: the live store (whose content the caller
     /// supplies, since it is already open) plus each backup sibling, ordered

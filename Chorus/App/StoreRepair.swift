@@ -450,19 +450,27 @@ enum StoreRepair {
         return content.spaces == 0 && content.services == 0 && content.links == 0
     }
 
-    /// Whether any `.snapshot-*.bak` sibling exists for `storeURL`, readable or
-    /// not.
+    /// Whether any backup sibling worth protecting exists for `storeURL`,
+    /// readable or not.
     ///
     /// Deliberately weaker than `newestRestorableSnapshot`, which answers "is
     /// there one we can restore from". Before deciding nothing is worth keeping,
-    /// the question is the broader "is there anything here at all" — a snapshot
-    /// too damaged to restore automatically is still a file the user may be able
-    /// to salvage by hand, and its mere existence should stop a fresh start.
-    static func hasAnySnapshot(for storeURL: URL) -> Bool {
+    /// the question is the broader "is there anything here at all". A file too
+    /// damaged to restore automatically is still one the user may be able to
+    /// salvage by hand, and its existence should stop a fresh start.
+    ///
+    /// Reads `StoreInventory.preservationInfixes`, which is every backup family
+    /// except `.reset-`. It used to read `snapshotInfix` alone, so a `.prepick-`,
+    /// `.prerestore-` or `.corrupt-` aside holding real data did not stop a
+    /// fresh start. `.reset-` stays excluded on purpose; see that property.
+    static func hasAnyPreservedCopy(for storeURL: URL) -> Bool {
         let dir = storeURL.deletingLastPathComponent()
-        let prefix = storeURL.lastPathComponent + snapshotInfix
+        let base = storeURL.lastPathComponent
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return false }
-        return names.contains { $0.hasPrefix(prefix) && $0.hasSuffix(".bak") }
+        return names.contains { name in
+            guard name.hasSuffix(".bak") else { return false }
+            return StoreInventory.preservationInfixes.contains { name.hasPrefix(base + $0) }
+        }
     }
 
     /// Moves the store triple aside to `<name>.reset-<stamp>.bak`, leaving no

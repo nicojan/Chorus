@@ -1680,7 +1680,7 @@ final class AppState {
         // Computed before any restore work, while the store is exactly as the
         // failed open left it. See `recoveryPlan` for what this licenses.
         let nothingLeftToProtect = StoreRepair.storeIsProvablyEmpty(at: config.url)
-            && !StoreRepair.hasAnySnapshot(for: config.url)
+            && !StoreRepair.hasAnyPreservedCopy(for: config.url)
         let plan = recoveryPlan(
             kind: kind,
             before: before,

@@ -32,7 +32,7 @@ An install updated before it was ever configured came up on temporary storage at
 
 ### Two ways out, neither destructive
 
-**Automatic, deliberately narrow.** `loadContainer` starts fresh only when the store opened, read back zero spaces *and* zero services *and* zero links from our own three tables, and no snapshot sibling exists at all. `StoreRepair.storeIsProvablyEmpty` returns false for a file it could not read or whose schema it did not recognise — unknown is not empty, and that is the direction that matters. `hasAnySnapshot` is deliberately weaker than `newestRestorableSnapshot`: a snapshot too damaged to restore is still a file someone might salvage, and its existence stops the fresh start. Even then the old file is copied to `<name>.reset-<stamp>.bak` first, and a failed copy abandons the fresh start rather than seeding over the old store.
+**Automatic, deliberately narrow.** `loadContainer` starts fresh only when the store opened, read back zero spaces *and* zero services *and* zero links from our own three tables, and no snapshot sibling exists at all. `StoreRepair.storeIsProvablyEmpty` returns false for a file it could not read or whose schema it did not recognise — unknown is not empty, and that is the direction that matters. `hasAnyPreservedCopy` is deliberately weaker than `newestRestorableSnapshot`: a file too damaged to restore is still one someone might salvage, and its existence stops the fresh start. It reads every backup family except `.reset-`. Even then the old file is copied to `<name>.reset-<stamp>.bak` first, and a failed copy abandons the fresh start rather than seeding over the old store.
 
 **Manual.** A `Start fresh…` button on the temporary-storage banner, behind a confirmation, deferring the move to the next launch through `StoreRepair.pendingResetKey` — the same deferral a restore uses, because the store can only be moved while no container holds it open. An unreadable store fails `storeIsProvablyEmpty` by design and lands in the same dead end, so the user makes the call the checks will not.
 
@@ -48,17 +48,20 @@ An install updated before it was ever configured came up on temporary storage at
 
 ### Reviewed 2026-08-22
 
-The retarget holds up: the assertion it replaced protected "the user's bytes are never destroyed", the fresh start copies the triple aside before seeding, and the preserve direction now has three tests where it had one. 233 tests, 0 failures, Debug, run on `f6dbeae` plus the two changes below.
+The retarget holds up: the assertion it replaced protected "the user's bytes are never destroyed", the fresh start copies the triple aside before seeding, and the preserve direction now has three tests where it had one. 235 tests, 0 failures, Debug.
 
-Two findings were fixed in place.
+Three findings were fixed in place.
 
 **A `.reset-` aside is listed but never proposed.** `StoreInventory.best` now skips the family. Everything `best` feeds is a proposal: the launch banner, the picker's preselection, and the key that remembers a declined offer. Preselection is licensed exactly when the live store is the untouched seed, which is the state a fresh start leaves, so the launch straight after the button would have greeted the user with an offer to restore the store they just chose to leave. For issue #20's never-configured install the content record is empty and nothing fires. For the case the button exists for, an unreadable store that did hold data, the record holds their old counts, the seed falls short of it, and the banner returns. The picker still lists the aside, so undoing a fresh start is one click under Review backups.
 
+**`hasAnySnapshot` checked one of five backup families, and is now `hasAnyPreservedCopy`.** Fixed 2026-08-24, after being filed as non-blocking. Its doc framed the question as the broader "is there anything here at all", but it matched `snapshotInfix` alone, so a `.prepick-`, `.prerestore-` or `.corrupt-` aside holding real data did not stop an automatic fresh start. It now reads `StoreInventory.preservationInfixes`, derived from `BackupFamily` so a new family cannot silently go unchecked.
+
+`.reset-` stays out, which was the fork. Counting it would let a user's own earlier fresh start veto the automatic fix, so a second run of issue #20 would land back on the button instead of being fixed. Nothing is lost by starting fresh twice: the second run sets its own copy aside beside the first, and the picker lists both. Two tests hold the line in opposite directions, a `.prepick-` aside stopping the fresh start and a `.reset-` aside failing to.
+
 **The promise the dialog makes is now pinned.** `testResetAsideIsListedInThePickerButNeverProposed` asserts both halves: the family is recognised and readable in `candidates`, and `best`, `preselection` and `offer` all decline to put it forward. Nothing had covered the listing, and it is the claim the whole safety argument rests on.
 
-### Follow-ups, neither blocking
+### Follow-up, not blocking
 
-- **`hasAnySnapshot` checks one of five backup families.** Its doc frames the question as the broader "is there anything here at all", but it matches only `snapshotInfix`, so a `.prepick-`, `.prerestore-`, `.corrupt-` or `.reset-` aside holding real data does not stop an automatic fresh start. Nothing is destroyed either way, since the store is moved rather than deleted, and `StoreInventory.backupInfixes` already derives the full set. `.reset-` is the one member worth arguing about: counting it would let a user's own earlier fresh start veto the automatic fix and push every repeat back to the button.
 - **Nothing reaps the `.reset-` family.** `pruneSnapshots` and `prunePickAsides` bound every other family, and the latter's doc gives "no other reaper matches the family" as its reason for existing. Each fresh start leaves a full store triple on disk for good. Rare by nature, so the cost is disk space.
 
 Two smaller notes for the record. `moveStoreAside`'s default stamp is whole seconds and `copyTriple` clears the destination before copying, so two asides within one second would overwrite the first. That is reachable only across two launches inside the same second, and it matches what `snapshot(at:stamp:)` already does. And both pending keys can be set at once, in which case the restore applies and the reset immediately moves the result aside; the restored bytes land in the `.reset-` aside, so nothing is lost.
