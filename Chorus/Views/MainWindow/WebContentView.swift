@@ -72,10 +72,21 @@ struct WebContentView: View {
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: theme.contentCornerRadius, style: .continuous))
-                // The card, and the well it sits in. Both are zero under the
+                // The border goes over the page, not behind it: the web view
+                // paints its own content edge to edge, so a stroke underneath
+                // would never be seen. Editorial's card is white on a white
+                // window and this hairline is the only thing that makes it a
+                // card.
+                .overlay {
+                    if theme.contentBorderWidth > 0 {
+                        RoundedRectangle(cornerRadius: theme.contentCornerRadius, style: .continuous)
+                            .strokeBorder(theme.separator.color, lineWidth: theme.contentBorderWidth)
+                    }
+                }
+                // The well the card sits in. Both values are zero under the
                 // native look, so this collapses to exactly what shipped.
                 .padding(theme.contentInset)
-                .background(theme.content.color)
+                .background(theme.window.color)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: webViewState.isLoading)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: appState.findInPageVisible)
             } else if selectedService != nil {

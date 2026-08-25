@@ -4922,14 +4922,18 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(ServiceHealth.signedOut.statusLine, "Signed out")
     }
 
-    /// The status line takes its colour from the same roles the corner mark
-    /// already encodes, so the two presentations cannot drift apart. The native
-    /// dot draws `failed` orange and `signedOut` red, and Editorial's words have
-    /// to agree with that or one screen contradicts the other.
-    func testStatusLineColourRoleFollowsHealth() {
+    /// Straight off `Direction · Editorial / sidebar`, where Live is grey,
+    /// Loading orange, and Failed and Signed out both red.
+    ///
+    /// An earlier version of this test made the words agree with the native
+    /// corner dot, which draws loading grey and failed orange. That was wrong:
+    /// the dot only appears when something is off, so its scale starts at "in
+    /// progress", while the words are drawn for every state and grey is spent
+    /// on Live. Agreeing with the dot made Loading invisible.
+    func testStatusLineColourRoleFollowsTheDrawnFrame() {
         XCTAssertEqual(ServiceHealth.live.statusRole, .neutral)
-        XCTAssertEqual(ServiceHealth.loading.statusRole, .neutral)
-        XCTAssertEqual(ServiceHealth.failed.statusRole, .warn)
+        XCTAssertEqual(ServiceHealth.loading.statusRole, .warn)
+        XCTAssertEqual(ServiceHealth.failed.statusRole, .bad)
         XCTAssertEqual(ServiceHealth.signedOut.statusRole, .bad)
     }
 

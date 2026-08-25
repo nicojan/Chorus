@@ -65,8 +65,10 @@ struct EditorialServiceRow: View {
 
                 Spacer(minLength: 0)
             }
+            // 13 top, 13 bottom, 3 between the lines, straight off the frame's
+            // auto-layout.
             .padding(.vertical, 13)
-            .frame(maxWidth: .infinity, minHeight: theme.rowHeight, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: theme.rowHeight, alignment: .topLeading)
             .opacity(isHibernated ? 0.6 : (isMuted ? 0.85 : 1.0))
             .contentShape(Rectangle())
             // Focus is a hairline, not the 2 point ring the native row draws.
@@ -85,6 +87,16 @@ struct EditorialServiceRow: View {
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
         .background(isHovering && !isSelected ? theme.railAlt.color : .clear)
+        // A hairline under every row, which is half of what makes the rail read
+        // as a list rather than floating text. The frame draws it as a 1 point
+        // bottom stroke on the row itself, inside its bounds.
+        .overlay(alignment: .bottom) {
+            if theme.railRules {
+                Rectangle()
+                    .fill(theme.separator.color)
+                    .frame(height: 1)
+            }
+        }
         .accessibilityLabel(ServiceAccessibility.label(
             name: instance.label,
             badgeCount: badgeCount,
@@ -93,6 +105,10 @@ struct EditorialServiceRow: View {
             health: health
         ))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        // The rail's 28 point gutter. Applied here rather than by the rail so
+        // the hairline stops where the frame stops it, at the row's own width,
+        // instead of running the full 300 points.
+        .padding(.horizontal, theme.railPadding)
     }
 
     private var selectionRule: some View {

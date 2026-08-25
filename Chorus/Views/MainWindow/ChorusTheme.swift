@@ -192,6 +192,13 @@ struct ChorusTheme {
     /// The inset card's corner radius. Costs the host `NSView` a `wantsLayer`
     /// and `masksToBounds`, and clips a page's fixed-position corner elements.
     let contentCornerRadius: CGFloat
+    /// The hairline around the card. Editorial's card is white on a white
+    /// window, so the border is the only thing that makes it a card at all:
+    /// without it the inset reads as a margin and the framing disappears.
+    let contentBorderWidth: CGFloat
+    /// Whether the rail draws a hairline under each row and a border down its
+    /// trailing edge.
+    let railRules: Bool
 
     // MARK: Behaviour
     /// Whether the rail draws a service's brand mark. Editorial does not: the
@@ -244,6 +251,8 @@ extension ChorusTheme {
         rowHeight: 34,
         contentInset: 0,
         contentCornerRadius: 0,
+        contentBorderWidth: 0,
+        railRules: false,
         showsServiceIcons: true,
         statesHealthInWords: false,
         badgeIsNumeral: false,
@@ -284,6 +293,8 @@ extension ChorusTheme {
         rowHeight: 64,
         contentInset: 20,
         contentCornerRadius: 8,
+        contentBorderWidth: 1,
+        railRules: true,
         showsServiceIcons: false,
         statesHealthInWords: true,
         badgeIsNumeral: true,

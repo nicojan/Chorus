@@ -120,6 +120,19 @@ What Editorial changes, measured off `Direction · Editorial / sidebar`. The rai
 
 `ServiceRowView` picks between its own row and `EditorialServiceRow` off the theme, so the rail, the drag and drop, the arrow keys and the VoiceOver move actions are untouched and the choice is made in one place.
 
+### The first build was far off the frame, and here is what was wrong
+
+Comparing the running app against `Direction · Editorial / sidebar` side by side, rather than against the notes about it, found six faults. All six were mine, and five of them came from theming the parts I had written and forgetting the parts I had not.
+
+- **The rail was never Editorial's colour.** `UnifiedRailView` painted `.background(.background)`, so the rail stayed system-painted and only the rows changed. In a light appearance that is near enough to white to look plausible, which is why the first pass through it read as fine.
+- **No hairline under a row.** The frame gives each row a 1 point bottom stroke in `#E6E6E1`, and half of what makes the rail read as a list rather than floating text is that rule. The `LazyVStack` also spaced rows 2 points apart, which would have broken the rule into a dashed line.
+- **No border on the card.** The card is white on a white window, so the hairline is the only thing that makes it a card. Painting the well `dir/content` was wrong twice over: the frame leaves the well unfilled and strokes the card instead.
+- **The status colours were wrong on two of four states.** The frame draws Loading orange and Failed red. An earlier version made them agree with the native corner dot, which draws loading grey and failed orange, and the reasoning was that the two presentations must not drift. That was wrong. The dot only appears when something is off, so its scale starts at "in progress"; the words are drawn for every state and grey is spent on Live. Agreeing with the dot made Loading invisible.
+- **The masthead never drew.** It was gated on `SpacesPresentation == .switcher`, and the default is `.inRail`. Editorial now leads with the masthead in every presentation, since it is the direction's signature element and the frame draws nothing else at the top of the rail.
+- **Rows were vertically centred** rather than sitting at the frame's 13 points of top padding.
+
+The lesson is cheap to state and was expensive to skip: the notes about a design are not the design. Reading `dir/rail` out of the variable collection is not the same as checking that anything paints with it.
+
 ### What running it found
 
 **The focus ring swamped the selection rule, and is fixed.** Drawn at the native row's 2 points in the accent, a focused row read as a focused text field and the 3 point selection rule beside it disappeared. It is a 1 point hairline at 45 per cent now. Selection is still a fill-equivalent and focus is still its own mark, which is what `RowMark` argues for; Editorial's version of both is simply quieter.

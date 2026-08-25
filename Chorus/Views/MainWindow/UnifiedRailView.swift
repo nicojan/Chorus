@@ -169,7 +169,29 @@ struct UnifiedRailView: View {
     /// which is where the frame draws it.
     private var verticalBody: some View {
         VStack(spacing: 0) {
-            if presentation == .inRail {
+            if theme.statesHealthInWords {
+                // Editorial leads with the masthead in every presentation. It
+                // is the direction's signature element, and the frame that
+                // defines the direction draws nothing else at the top of the
+                // rail. `spaceHeader` stays non-interactive unless the spaces
+                // are actually behind it, so it does not offer a click that
+                // would do nothing.
+                //
+                // The kicker lands at y 52: 28 points of window chrome, then
+                // this. 28 points of air under the meta line before the first
+                // row, both straight off the frame.
+                spaceHeader
+                    .padding(.horizontal, theme.railPadding)
+                    .padding(.top, 24 + contentInset)
+                    .padding(.bottom, 28)
+
+                if presentation == .inRail {
+                    spacesSection
+                        .padding(.bottom, 6)
+                    Divider()
+                        .padding(.bottom, 6)
+                }
+            } else if presentation == .inRail {
                 spacesSection
                     // 4 points more than the header takes in the other modes:
                     // a caption is shorter than a row and would otherwise sit
@@ -193,7 +215,10 @@ struct UnifiedRailView: View {
 
             ScrollView {
                 // 2 points between 34 point rows is the drawn 36 point pitch.
-                LazyVStack(spacing: 2) {
+                // Editorial's rows abut instead: each draws its own hairline
+                // along the bottom, and a gap between them would break the rule
+                // into a dashed line.
+                LazyVStack(spacing: theme.railRules ? 0 : 2) {
                     ForEach(filteredLinks) { link in
                         serviceRow(for: link)
                     }
@@ -207,7 +232,17 @@ struct UnifiedRailView: View {
                 .padding(.vertical, 6)
         }
         .frame(width: theme.railWidth)
-        .background(.background)
+        .background(theme.rail.color)
+        // Editorial's rail is #FAFAF8 against a white window, a difference of
+        // about two per cent. The trailing hairline is what actually separates
+        // them; without it the rail and the page run together.
+        .overlay(alignment: .trailing) {
+            if theme.railRules {
+                Rectangle()
+                    .fill(theme.separator.color)
+                    .frame(width: 1)
+            }
+        }
     }
 
     private var horizontalBody: some View {

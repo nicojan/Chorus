@@ -76,10 +76,16 @@ enum ServiceHealth: Equatable, CaseIterable {
         }
     }
 
-    /// Which colour role the state takes, named rather than hard-coded so the
-    /// corner dot and Editorial's status line cannot drift apart. The native dot
-    /// already draws `failed` orange and `signedOut` red; these are those two
-    /// facts given names.
+    /// Which colour role the status line takes, straight off
+    /// `Direction · Editorial / sidebar`: Live grey, Loading orange, Failed red,
+    /// Signed out red.
+    ///
+    /// This deliberately does NOT match the native corner dot, which draws
+    /// loading grey and failed orange. The two are answering different
+    /// questions. The dot is only drawn when something is wrong, so its scale
+    /// starts at "in progress"; the words are drawn for every state including
+    /// the healthy one, so grey is spent on Live and everything after it moves
+    /// up. Making them agree was tried first and it made Loading invisible.
     enum StatusRole: Equatable {
         /// Nothing is wrong, or nothing is wrong yet.
         case neutral
@@ -89,9 +95,9 @@ enum ServiceHealth: Equatable, CaseIterable {
 
     var statusRole: StatusRole {
         switch self {
-        case .live, .loading: return .neutral
-        case .failed: return .warn
-        case .signedOut: return .bad
+        case .live: return .neutral
+        case .loading: return .warn
+        case .failed, .signedOut: return .bad
         }
     }
 
