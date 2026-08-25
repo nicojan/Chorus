@@ -42,9 +42,14 @@ struct SpaceHeaderView: View {
     /// only saying whose services these are: no chevron, no hover fill, and no
     /// button, so nothing offers a click that would do nothing.
     var isInteractive: Bool = true
+    /// How many services this space holds. Only Editorial's header draws it, on
+    /// the meta line under the name; the native header has no room and does not
+    /// ask for it.
+    var serviceCount: Int = 0
     let action: () -> Void
 
     @State private var isHovering = false
+    @Environment(\.chorusTheme) private var theme
 
     /// Matches the rail and row widths in `ServiceRowView`, so the header and
     /// the services below it line up on both edges.
@@ -60,6 +65,68 @@ struct SpaceHeaderView: View {
     private static let gutter: CGFloat = 8
 
     var body: some View {
+        // Editorial gives the space a masthead rather than a chip: a small
+        // tracked-out kicker, the name at 30 points, and a line saying what is
+        // in it. Measured off `Direction · Editorial / sidebar` on page 09.
+        if theme.statesHealthInWords, axis == .vertical {
+            editorialHeader
+        } else {
+            nativeHeader
+        }
+    }
+
+    /// The meta line: what the space holds, and how much of it is unread.
+    /// Assembled here rather than inline so the wording is in one place.
+    var metaLine: String {
+        var parts = [serviceCount == 1 ? "1 service" : "\(serviceCount) services"]
+        if badgeCount > 0 { parts.append("\(badgeCount) unread") }
+        if isMuted { parts.append("muted") }
+        return parts.joined(separator: " · ")
+    }
+
+    private var editorialHeader: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("SPACE")
+                .font(theme.spaceKicker)
+                .tracking(theme.spaceKickerTracking)
+                .foregroundStyle(theme.textTertiary.color)
+
+            Spacer().frame(height: 6)
+
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(displayName)
+                    .font(theme.spaceName)
+                    .tracking(theme.spaceNameTracking)
+                    .foregroundStyle(theme.textPrimary.color)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                if isInteractive {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(theme.textTertiary.color)
+                }
+            }
+
+            Spacer().frame(height: 4)
+
+            Text(metaLine)
+                .font(theme.spaceMeta)
+                .foregroundStyle(theme.textTertiary.color)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture { if isInteractive { action() } }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(SpaceHeader.label(
+            spaceName: spaceName, badgeCount: badgeCount, isMuted: isMuted
+        ))
+        .accessibilityAddTraits(isInteractive ? .isButton : [])
+        .accessibilityHint(isInteractive ? "Switch space" : "")
+    }
+
+    private var nativeHeader: some View {
         Group {
             if isInteractive {
                 Button(action: action) {

@@ -4933,4 +4933,23 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(ServiceHealth.signedOut.statusRole, .bad)
     }
 
+
+    /// Editorial's header says what the space holds. The wording is a property
+    /// rather than inline text so it can be pinned here: the singular case is
+    /// the one that reads wrong if nobody checks it.
+    func testEditorialHeaderMetaLineWording() {
+        func meta(services: Int, unread: Int, muted: Bool = false) -> String {
+            SpaceHeaderView(
+                spaceName: "Work", emoji: "\u{1F3E0}",
+                badgeCount: unread, isMuted: muted,
+                serviceCount: services, action: {}
+            ).metaLine
+        }
+        XCTAssertEqual(meta(services: 1, unread: 0), "1 service")
+        XCTAssertEqual(meta(services: 6, unread: 0), "6 services")
+        XCTAssertEqual(meta(services: 6, unread: 15), "6 services \u{00B7} 15 unread")
+        XCTAssertEqual(meta(services: 0, unread: 0), "0 services")
+        XCTAssertEqual(meta(services: 6, unread: 15, muted: true), "6 services \u{00B7} 15 unread \u{00B7} muted")
+    }
+
 }

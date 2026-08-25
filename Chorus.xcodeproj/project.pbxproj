@@ -24,6 +24,7 @@
 		3DEA98A98656EE981A29A71D /* FindInPageBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76865DDEE671C34CC88CF4D8 /* FindInPageBar.swift */; };
 		4129642FB0AD19AC83F01A30 /* UserAgentProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E431CF7CE145D536081A23 /* UserAgentProvider.swift */; };
 		4B199EBC47BA21CE22ECC893 /* EmojiData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EDCAF66B6DD05BA3A244E9E /* EmojiData.swift */; };
+		51B59AA53B80C72648B91D36 /* EditorialServiceRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8708FF2CFFBFFBB71DB68C19 /* EditorialServiceRow.swift */; };
 		53615BD3734128E5CEE21D0A /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = E88CC47CBB66B4749ACDC068 /* AppLogger.swift */; };
 		53C0B5A438EDC6C98FE081AB /* QuickSwitcherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA55A0E026084DC20071FBCE /* QuickSwitcherView.swift */; };
 		542D3E32DA8EA90EC36BB6A0 /* DataStoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD49B64B44CC548574DA2348 /* DataStoreManager.swift */; };
@@ -123,6 +124,7 @@
 		7E0D298EDEBDC1F1EB614912 /* AppCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCapabilities.swift; sourceTree = "<group>"; };
 		8108AAD3DCC835300AD3E82D /* ChorusTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChorusTheme.swift; sourceTree = "<group>"; };
 		8223D66D602364046AF98EDC /* Chorus.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Chorus.entitlements; sourceTree = "<group>"; };
+		8708FF2CFFBFFBB71DB68C19 /* EditorialServiceRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorialServiceRow.swift; sourceTree = "<group>"; };
 		88C307C75776869CE8A82618 /* AppPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreferences.swift; sourceTree = "<group>"; };
 		8F17BFF4DCC563429E130A13 /* CatalogGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogGridView.swift; sourceTree = "<group>"; };
 		94326A5DEE01135F945E9DF3 /* Chorus.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Chorus.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -307,6 +309,7 @@
 				50260A359445D2B4C556E1E6 /* ChorusStyle.swift */,
 				8108AAD3DCC835300AD3E82D /* ChorusTheme.swift */,
 				7458024AA17BF508D4807018 /* ContentView.swift */,
+				8708FF2CFFBFFBB71DB68C19 /* EditorialServiceRow.swift */,
 				76865DDEE671C34CC88CF4D8 /* FindInPageBar.swift */,
 				542BCDA03CE248BE3E75D814 /* RailSupport.swift */,
 				BFD9BB4DBF6536D1AD0CA298 /* ServiceHealth.swift */,
@@ -507,6 +510,7 @@
 				9F0C82A9D1AFDF927EC1A59C /* DarkReaderSupport.swift in Sources */,
 				542D3E32DA8EA90EC36BB6A0 /* DataStoreManager.swift in Sources */,
 				9EDF307D989D199DE994D432 /* EditServiceSheet.swift in Sources */,
+				51B59AA53B80C72648B91D36 /* EditorialServiceRow.swift in Sources */,
 				4B199EBC47BA21CE22ECC893 /* EmojiData.swift in Sources */,
 				92BF212550953DD2E21A12E7 /* EmojiPickerView.swift in Sources */,
 				AD626D3375822E9E5BC358BE /* FaviconFetcher.swift in Sources */,

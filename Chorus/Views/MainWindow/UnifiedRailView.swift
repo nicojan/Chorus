@@ -40,6 +40,7 @@ struct UnifiedRailView: View {
     /// Where the other spaces are drawn. This rail carries them itself in
     /// `.inRail`, hands them to `SpaceRailView` in `.ownRail`, and keeps them
     /// behind the header's popover in `.switcher`.
+    @Environment(\.chorusTheme) private var theme
     @AppStorage(SpacesPresentation.defaultsKey) private var spacesPresentationRaw = SpacesPresentation.inRail.rawValue
     private var presentation: SpacesPresentation { SpacesPresentation.resolving(spacesPresentationRaw) }
 
@@ -205,7 +206,7 @@ struct UnifiedRailView: View {
             addServiceButton
                 .padding(.vertical, 6)
         }
-        .frame(width: ServiceRowView.railWidth)
+        .frame(width: theme.railWidth)
         .background(.background)
     }
 
@@ -277,7 +278,8 @@ struct UnifiedRailView: View {
             isPaletteOpen: showingPalette,
             // With a rail of their own, the spaces are already on screen and the
             // header has nothing to open.
-            isInteractive: presentation == .switcher
+            isInteractive: presentation == .switcher,
+            serviceCount: serviceIDs.count
         ) {
             showingPalette = true
         }
@@ -339,7 +341,7 @@ struct UnifiedRailView: View {
             // above 130 points of nothing.
             .frame(height: spacesSectionHeight)
         }
-        .frame(width: ServiceRowView.rowWidth)
+        .frame(width: theme.railWidth - theme.railPadding * 2)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Spaces")
     }
@@ -360,7 +362,7 @@ struct UnifiedRailView: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
-        .frame(width: ServiceRowView.rowWidth)
+        .frame(width: theme.railWidth - theme.railPadding * 2)
         .accessibilityElement(children: .combine)
     }
 

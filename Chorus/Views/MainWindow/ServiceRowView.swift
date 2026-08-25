@@ -32,6 +32,7 @@ struct ServiceRowView: View {
     let action: () -> Void
 
     @State private var isHovering = false
+    @Environment(\.chorusTheme) private var theme
 
     /// Width of the vertical rail, and of a row inside it. The 8 point gutter on
     /// each side is applied by the rail, not by the row.
@@ -52,6 +53,27 @@ struct ServiceRowView: View {
     private static let gutter: CGFloat = 8
 
     var body: some View {
+        // Editorial draws a different row: two lines, no icon, a numeral badge
+        // and a rule for selection. Branching here rather than at every call
+        // site keeps the rail, the drag-and-drop and the keyboard handling
+        // exactly as they were, and puts the choice in one place.
+        if theme.statesHealthInWords, axis == .vertical {
+            EditorialServiceRow(
+                instance: instance,
+                isSelected: isSelected,
+                badgeCount: badgeCount,
+                isHibernated: isHibernated,
+                isMuted: isMuted,
+                health: health,
+                isFocused: isFocused,
+                action: action
+            )
+        } else {
+            nativeRow
+        }
+    }
+
+    private var nativeRow: some View {
         Button(action: action) {
             content
                 .opacity(isHibernated ? 0.6 : (isMuted ? 0.85 : 1.0))
