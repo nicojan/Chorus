@@ -35,6 +35,12 @@ Write plain, direct, active, concrete prose. No marketing gloss, no AI tells.
 - The project is generated from `project.yml` via XcodeGen. When you change build
   settings (for example a version bump), edit both `project.yml` and the
   `.pbxproj` so a later `xcodegen generate` stays consistent.
+- **A new `.swift` file does not compile until you run `xcodegen generate`.**
+  `project.yml` globs the whole `Chorus` directory, but the checked-in `.pbxproj`
+  lists every file one by one, so a file added on disk belongs to no target and
+  the build simply does not see it. Symptoms are "cannot find X in scope" for
+  something you can plainly read on disk. Regenerating adds about four lines per
+  file, so check the diff is that small before committing it.
 - **Never add `-configuration Release` to that test command.** `ChorusTests` is
   app-hosted, and `ChorusApp.init` builds an `AppState`, so every test run
   executes the launch path, including `StoreRepair.applyPendingRestore`, which

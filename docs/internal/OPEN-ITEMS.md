@@ -108,7 +108,7 @@ Seen running in the Debug build on 2026-08-17: the in-rail list in both axes, an
 
 The rest of the price stands. A and B are closed. A never answered the severity 4 finding, which is the product's core loop; B answered it and spent 400 points of sidebar before content to do it.
 
-## Open: Editorial is built, and two things it needs are missing
+## Open: Editorial is built, and the space list has not caught up
 
 Built 2026-08-24, on `feat/spaces-presentation`. 229 tests, 0 failures. Seen running once in the Debug build, which found a bug and a gap.
 
@@ -137,15 +137,20 @@ The lesson is cheap to state and was expensive to skip: the notes about a design
 
 **The focus ring swamped the selection rule, and is fixed.** Drawn at the native row's 2 points in the accent, a focused row read as a focused text field and the 3 point selection rule beside it disappeared. It is a 1 point hairline at 45 per cent now. Selection is still a fill-equivalent and focus is still its own mark, which is what `RowMark` argues for; Editorial's version of both is simply quieter.
 
-**Editorial's masthead is unreachable in the default presentation, and that is not fixed.** The 30 point space name only draws when `SpacesPresentation` is `.switcher`. The default is `.inRail`, where the space list takes that spot instead, so the signature element of the direction never appears unless the user has already changed an unrelated setting. Either Editorial forces `.switcher`, or the masthead has to work above an in-rail space list, or the two settings need to stop being independent. This wants a decision before Editorial ships.
-
 **The space list is still drawn native.** `SpaceListRows` carries emoji and the system selection fill, so above an Editorial service list it reads as two designs in one rail, which is the fault the audit filed against the shipped banners. It is the most jarring thing in the window.
+
+### The masthead now leads, in every presentation
+
+It used to be gated on `SpacesPresentation == .switcher`, and the default is `.inRail`, so the direction's signature element never drew unless the user had already changed an unrelated setting. Editorial draws it first in all three presentations now. `.switcher` is the arrangement the frame shows and matches it exactly; `.inRail` puts the space list under the masthead, which the frame does not draw but which is coherent, and `spaceHeader` stays non-interactive there so it does not offer a click that would do nothing.
+
+That leaves the space list itself as the last thing out of step, below.
 
 ### Still to do
 
 - The notices, sheets, palette and quick switcher all still draw native. `NoticeStrip`, `ChorusRadius` and `RowMark` are the seams.
 - The horizontal bar is untouched: `ServiceRowView` only delegates on the vertical axis, so Editorial in the bar layout is native geometry with native colours.
 - **Editorial is light only**, because the `Chorus / Directions` collection has no light/dark axis. Its modes are the five directions. `ThemeColorPair` carries both slots and falls back until the dark half is drawn, and Settings says so. Drawing Editorial Dark in Figma drops in with no code change.
+- **Two differences from the frame that are not faults, and want a decision.** The card sits about 30 points lower than the frame's 20 point inset, because app chrome the frame does not draw sits above it. And the rail's foot carries an `Add service` bar the frame has no equivalent for. Both are real features rather than mistakes, so neither was changed to chase the drawing.
 - One deliberate deviation from the frame: the selection gutter is reserved on every row, so a name does not jump 11 points sideways when clicked. The frames were drawn one row at a time and never showed that transition.
 
 ## Decided: Editorial, of six visual directions under one ceiling
@@ -271,7 +276,7 @@ There are four backup families, not three: `.snapshot-` (taken before an update)
 
 **One follow-up left deliberately undone.** `StoreRepair.copyTriple` throws away the result of removing a destination file, so an unremovable `-wal` sitting beside a main file it copied successfully still reports success — the foreign-WAL pairing that function's own comment says it prevents. Reaching it needs an immutable flag or a delete-denying ACL on that sibling, which would already have broken ordinary writes, and nothing is destroyed when it happens: the aside has been proved a faithful copy by then, the chosen backup is untouched, and `.prepick-` copies are themselves offered in the picker. The closing readability check catches the single-sibling case and misses the case where a `-wal` and `-shm` survive as a consistent pair. The fix is one line — treat a surviving destination file as a failure — plus a test, and its blast radius is `applyPendingRestore` alone, since `restoreFromSnapshot` rolls its own copy loops and does not call `copyTriple`.
 
-## Current status — through 1.5.17 (2026-07-31)
+## History — the releases under 1.5.18
 
 Everything below has shipped. **Chorus 1.5.18 (2026-08-06) is the current release**; its own section is above, as is 1.5.17's. This section is the history under them. The 1.5.15 work it builds on: It opens the store through an explicit versioned schema and migration plan, so an older store migrates through named, tested stages instead of leaving SwiftData to infer the mapping at open time. Inference was the cause of the data loss 1.5.14 was built to catch. If the versioned plan cannot open a store, Chorus falls back to inference, so no update is worse off than before. The safety net stays. See `docs/internal/FOLLOWUP-versioned-schema.md` and `docs/superpowers/specs/2026-07-24-versioned-schema-migration-plan.md`.
 
