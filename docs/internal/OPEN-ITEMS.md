@@ -108,6 +108,33 @@ Seen running in the Debug build on 2026-08-17: the in-rail list in both axes, an
 
 The rest of the price stands. A and B are closed. A never answered the severity 4 finding, which is the product's core loop; B answered it and spent 400 points of sidebar before content to do it.
 
+## Open: Editorial is built, and two things it needs are missing
+
+Built 2026-08-24, on `feat/spaces-presentation`. 229 tests, 0 failures. Seen running once in the Debug build, which found a bug and a gap.
+
+`ChorusTheme` holds every role the chrome draws with, plus the geometry a direction is allowed to move, and reaches the views through the environment. `ChorusThemeChoice` picks between `native` and `editorial` and stores in defaults rather than in `AppPreferences`, for the reason `SpacesPresentation` does: a stored property there is a schema version and a migration, which a theme picker does not earn.
+
+A role is either `.system`, where AppKit decides, or `.fixed`, where a direction drew the value. That split is the useful part. **Every `.fixed` text role is measured in the suite**, so the audit's contrast pass of 2026-08-13 is now a test rather than something someone did once: Editorial's tightest is `status-warn` at 4.81 to 1 on the rail, and a role edited to a prettier value fails the build instead of a user's eyes. The native theme is not measured, which is the honest boundary. Apple has already done that arithmetic and this app should not pretend to a second opinion.
+
+What Editorial changes, measured off `Direction · Editorial / sidebar`. The rail goes to 300 points against 240, and a row to 248 by 64 against 224 by 34. Two lines of type where there was one, and no service icon at all. An unread count is a numeral in the accent rather than a red disc, and selection a 3 by 16 rule rather than a fill. The space gets a masthead with its name at 30 points. The web view is inset 20 points at radius 8.
+
+`ServiceRowView` picks between its own row and `EditorialServiceRow` off the theme, so the rail, the drag and drop, the arrow keys and the VoiceOver move actions are untouched and the choice is made in one place.
+
+### What running it found
+
+**The focus ring swamped the selection rule, and is fixed.** Drawn at the native row's 2 points in the accent, a focused row read as a focused text field and the 3 point selection rule beside it disappeared. It is a 1 point hairline at 45 per cent now. Selection is still a fill-equivalent and focus is still its own mark, which is what `RowMark` argues for; Editorial's version of both is simply quieter.
+
+**Editorial's masthead is unreachable in the default presentation, and that is not fixed.** The 30 point space name only draws when `SpacesPresentation` is `.switcher`. The default is `.inRail`, where the space list takes that spot instead, so the signature element of the direction never appears unless the user has already changed an unrelated setting. Either Editorial forces `.switcher`, or the masthead has to work above an in-rail space list, or the two settings need to stop being independent. This wants a decision before Editorial ships.
+
+**The space list is still drawn native.** `SpaceListRows` carries emoji and the system selection fill, so above an Editorial service list it reads as two designs in one rail, which is the fault the audit filed against the shipped banners. It is the most jarring thing in the window.
+
+### Still to do
+
+- The notices, sheets, palette and quick switcher all still draw native. `NoticeStrip`, `ChorusRadius` and `RowMark` are the seams.
+- The horizontal bar is untouched: `ServiceRowView` only delegates on the vertical axis, so Editorial in the bar layout is native geometry with native colours.
+- **Editorial is light only**, because the `Chorus / Directions` collection has no light/dark axis. Its modes are the five directions. `ThemeColorPair` carries both slots and falls back until the dark half is drawn, and Settings says so. Drawing Editorial Dark in Figma drops in with no code change.
+- One deliberate deviation from the frame: the selection gutter is reserved on every row, so a name does not jump 11 points sideways when clicked. The frames were drawn one row at a time and never showed that transition.
+
 ## Decided: Editorial, of six visual directions under one ceiling
 
 Page `09 Visual directions` takes one screen, the C sidebar, and restyles it six ways: Discord, Glass, Editorial, Brutalist, Soft, Terminal. Colour comes from modes, so a direction can be swapped on a frame without touching a layer. Each carries a note on what it costs to build.

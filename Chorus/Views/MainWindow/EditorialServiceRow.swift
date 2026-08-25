@@ -69,10 +69,16 @@ struct EditorialServiceRow: View {
             .frame(maxWidth: .infinity, minHeight: theme.rowHeight, alignment: .leading)
             .opacity(isHibernated ? 0.6 : (isMuted ? 0.85 : 1.0))
             .contentShape(Rectangle())
-            .overlay(alignment: .leading) {
+            // Focus is a hairline, not the 2 point ring the native row draws.
+            // At full weight in the accent it swamped the 3 point selection
+            // rule and the row read as a focused text field — seen in the Debug
+            // build on 2026-08-24. Selection is still the rule; focus is still
+            // its own mark, which is what `RowMark` argues for. It is just
+            // quieter, because Editorial's selection mark is quiet too.
+            .overlay {
                 if isFocused {
                     RoundedRectangle(cornerRadius: ChorusRadius.control)
-                        .strokeBorder(theme.accent.color, lineWidth: 2)
+                        .strokeBorder(theme.accent.color.opacity(0.45), lineWidth: 1)
                 }
             }
         }

@@ -23,6 +23,8 @@ All notable changes to Chorus are documented here. Format loosely follows
 - Every service in the rail now carries its name. It used to be an icon and nothing else, so two Slack workspaces were two identical squares and the only way to tell them apart was to hover one and wait for the tooltip. The unread count, the mute bell, the sleep moon and the camera dot move off the icon's corners and sit beside the name.
 - The rail down the left side is wider, to fit those names.
 
+- Settings › General has a Look. Native draws the window in the system's own colours, which is what Chorus has always done. Editorial sets the space name large, gives every service a line under its name saying whether it is live, writes an unread count as a numeral instead of a red circle, and frames the page as an inset card. It has no icons in the rail: the names do that work, which is the only thing that tells two Slack workspaces apart. Editorial is drawn light only for now, so it looks wrong on a dark appearance.
+
 ### Fixed
 
 - Chorus no longer holds on to a service's picture after you switch back to it. When you leave a service it takes a picture of the page, so returning to it shows something straight away instead of a blank panel. That picture was kept until the service was closed, one per service and the size of your window, so a day of switching around slowly filled memory with pictures of pages already on screen.
