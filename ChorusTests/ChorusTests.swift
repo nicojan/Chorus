@@ -2836,48 +2836,58 @@ final class ChorusTests: XCTestCase {
 
     /// Exercises the dangling-link guard: a link whose service has no
     /// `modelContext` (a deleted or never-inserted model — the crash class the
-    /// guard exists for) must be skipped, not grouped or trapped on.
-    func testNotificationGroupingSkipsLinkWhoseServiceIsDetached() throws {
-        // A live space with a real, inserted, linked service.
+    /// A link whose service is gone must be skipped, not grouped.
+    ///
+    /// The dangling link is made by clearing `service` on a real, saved link,
+    /// which is only expressible because that relationship is optional now. The
+    /// earlier version of this test fabricated one from three never-inserted
+    /// models instead, and that turned out to be untestable ground rather than a
+    /// clever shortcut: detached @Model objects wired to each other crash macOS
+    /// 14 outright, in several different ways depending on which one you fix
+    /// first. Nulling the reference is both supported and closer to what the
+    /// store actually holds after a service is deleted.
+    func testNotificationGroupingSkipsLinkWhoseServiceIsGone() throws {
         let container = try makeGroupingContainer()
         let ctx = container.mainContext
+
         let live = Space(name: "Live", emoji: "✅", sortOrder: 0)
         let alpha = ServiceInstance(label: "Alpha", url: "https://a.example")
-        ctx.insert(live)
-        ctx.insert(alpha)
-        link(alpha, to: live, sortOrder: 0, in: ctx)
-        try ctx.save()
-
-        // A detached space whose link points at a never-inserted service — the
-        // stand-in for a dangling link. Its service has a nil modelContext, so
-        // the guard must skip it rather than group it.
         let ghost = Space(name: "Ghost", emoji: "👻", sortOrder: 1)
         let beta = ServiceInstance(label: "Beta", url: "https://b.example")
-        // No appends: the initializer sets both relationships and SwiftData
-        // maintains the inverses, so `ghost.serviceLinks` and `beta.spaceLinks`
-        // already hold this link. Appending it again registers it twice, which
-        // macOS 26 tolerates and macOS 14 kills the test process over.
-        //
-        // Held with withExtendedLifetime rather than left to the inverses. These
-        // three models are detached, so nothing in a context retains the link,
-        // and ARC is free to release it after the last direct use — leaving
-        // `ghost.serviceLinks` reaching for a freed object when `grouped` walks
-        // it. That is a crash on macOS 14 and survives on macOS 26 only by luck
-        // of timing.
-        let danglingLink = SpaceServiceLink(sortOrder: 0, space: ghost, service: beta)
+        ctx.insert(live); ctx.insert(alpha); ctx.insert(ghost); ctx.insert(beta)
+        try ctx.save()
 
-        withExtendedLifetime(danglingLink) {
-            let result = NotificationGrouping.grouped(spaces: [live, ghost], services: [alpha, beta])
+        link(alpha, to: live, sortOrder: 0, in: ctx)
+        let dangling = link(beta, to: ghost, sortOrder: 0, in: ctx)
+        try ctx.save()
 
-            // Only the live space is grouped; the ghost's dangling link is
-            // skipped and Beta appears nowhere. Without the guard, Ghost/Beta
-            // would show.
-            XCTAssertEqual(result.groups.map { $0.space?.name }, ["Live"])
-            XCTAssertEqual(result.groups.first?.services.map(\.label), ["Alpha"])
-            XCTAssertFalse(result.groups.contains { group in
-                group.services.contains { $0.label == "Beta" }
-            })
-        }
+        dangling.service = nil
+        try ctx.save()
+
+        let result = NotificationGrouping.grouped(spaces: [live, ghost], services: [alpha, beta])
+
+        // Ghost is the point: its one link leads nowhere, so it has no members
+        // and does not appear as a space at all. Without the guard it would show
+        // up looking populated.
+        XCTAssertFalse(
+            result.groups.contains { $0.space?.name == "Ghost" },
+            "a space whose only link is dangling must not be grouped"
+        )
+        XCTAssertEqual(result.groups.first?.space?.name, "Live")
+        XCTAssertEqual(result.groups.first?.services.map(\.label), ["Alpha"])
+
+        // Beta lands in the ungrouped bucket, and that is right rather than a
+        // leak: it is a real service that now belongs to no space, which is
+        // exactly what the bucket is for. What must not happen is Beta being
+        // listed under a named space.
+        XCTAssertFalse(
+            result.groups.contains { $0.space != nil && $0.services.contains { $0.label == "Beta" } },
+            "Beta must not be listed under any space"
+        )
+        XCTAssertTrue(
+            result.groups.contains { $0.space == nil && $0.services.contains { $0.label == "Beta" } },
+            "a service with no live link belongs in the ungrouped bucket"
+        )
     }
 
     // MARK: - Move service to space
