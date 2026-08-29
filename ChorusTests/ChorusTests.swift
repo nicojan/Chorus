@@ -2846,9 +2846,11 @@ final class ChorusTests: XCTestCase {
         // the guard must skip it rather than group it.
         let ghost = Space(name: "Ghost", emoji: "👻", sortOrder: 1)
         let beta = ServiceInstance(label: "Beta", url: "https://b.example")
-        let danglingLink = SpaceServiceLink(sortOrder: 0, space: ghost, service: beta)
-        ghost.serviceLinks.append(danglingLink)
-        beta.spaceLinks.append(danglingLink)
+        // No appends: the initializer sets both relationships and SwiftData
+        // maintains the inverses, so `ghost.serviceLinks` and `beta.spaceLinks`
+        // already hold this link. Appending it again registers it twice, which
+        // macOS 26 tolerates and macOS 14 kills the test process over.
+        _ = SpaceServiceLink(sortOrder: 0, space: ghost, service: beta)
 
         let result = NotificationGrouping.grouped(spaces: [live, ghost], services: [alpha, beta])
 
