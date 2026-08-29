@@ -3636,6 +3636,67 @@ final class ChorusTests: XCTestCase {
         }
     }
 
+    /// Opens a COPY of a real store through the migration plan and reports what
+    /// came through. Skipped unless `CHORUS_REAL_STORE_COPY` names a directory.
+    ///
+    /// Every synthetic migration test here builds its own fixture, so they prove
+    /// the stages are correct about stores this file wrote. They cannot prove
+    /// anything about the store a real install has accumulated across versions,
+    /// and that is the store a release actually has to migrate. This repo has
+    /// lost a user's spaces and services twice, so before shipping a schema
+    /// change the release check is: copy the live store triple somewhere else,
+    /// point this at it, and read the counts.
+    ///
+    /// Copy all three files. A store copied without its `-wal` and `-shm` cannot
+    /// be opened read-only (`CANTOPEN`), which is the trap that once made the
+    /// auto-restore blind to perfectly good backups.
+    ///
+    ///     CHORUS_REAL_STORE_COPY=/tmp/copy xcodebuild test … \
+    ///       -only-testing:ChorusTests/ChorusTests/testMigratesARealStoreCopy
+    ///
+    /// Never point it at the live store. It opens read-write through the plan,
+    /// which migrates in place.
+    func testMigratesARealStoreCopy() throws {
+        // A file rather than an environment variable. These tests are app-hosted,
+        // and neither a bare nor a TEST_RUNNER_-prefixed variable on the
+        // xcodebuild command line reaches the hosted process — both were tried.
+        // A path in a file always arrives.
+        let marker = "/tmp/chorus-real-store-copy"
+        guard let raw = try? String(contentsOfFile: marker, encoding: .utf8) else {
+            throw XCTSkip("write a directory holding a COPY of default.store to \(marker)")
+        }
+        let dir = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let url = URL(fileURLWithPath: dir).appending(path: "default.store")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path), "no default.store in \(dir)")
+
+        let schema = Schema(versionedSchema: ChorusSchemaVCurrent.self)
+        let config = ModelConfiguration(schema: schema, url: url)
+        let container = try ModelContainer(for: schema, migrationPlan: ChorusMigrationPlan.self, configurations: [config])
+        let ctx = container.mainContext
+
+        let spaces = try ctx.fetch(FetchDescriptor<Space>())
+        let services = try ctx.fetch(FetchDescriptor<ServiceInstance>())
+        let links = try ctx.fetch(FetchDescriptor<SpaceServiceLink>())
+
+        print("REAL STORE: \(spaces.count) spaces, \(services.count) services, \(links.count) links")
+        for space in spaces.sorted(by: { $0.sortOrder < $1.sortOrder }) {
+            let members = space.serviceLinks.compactMap(\.liveService).map(\.label)
+            print("  \(space.emoji) \(space.name): \(members.joined(separator: ", "))")
+        }
+
+        XCTAssertFalse(spaces.isEmpty, "the migration must not empty the store")
+        XCTAssertFalse(services.isEmpty, "the migration must not empty the store")
+
+        // The stage under test relaxes the link's two ends. If it had nulled them
+        // instead of carrying them, every link would read as dangling — which is
+        // what losing the data would look like from here.
+        let dangling = links.filter { $0.liveEnds == nil }
+        XCTAssertTrue(
+            dangling.isEmpty,
+            "\(dangling.count) of \(links.count) links lost an end in the migration"
+        )
+    }
+
     /// The REAL production provenance. Every field store today was written by the
     /// old `AppState.init`, which used a PLAIN `Schema([...])` (no version), not a
     /// `VersionedSchema`. This seeds a store exactly that way — a plain `Schema`
