@@ -2457,7 +2457,15 @@ final class AppState {
                 webViewPool.unpin(selected)
             }
             if !alsoKeepLive.isEmpty {
-                AppLogger.webView.info("Preloading \(alsoKeepLive.count) chat service(s) outside the active space so they can post notifications")
+                // Read the count out before the call rather than interpolating
+                // it at the log line. Both this type and WebViewPool are
+                // @MainActor, so nothing is really sent anywhere and there is no
+                // race here — but Xcode 26.3 reads the log use and the call as
+                // two accesses to one region and rejects the whole thing with
+                // "sending 'alsoKeepLive' risks causing data races". Later
+                // compilers do not. An Int costs nothing and builds on both.
+                let count = alsoKeepLive.count
+                AppLogger.webView.info("Preloading \(count) chat service(s) outside the active space so they can post notifications")
                 await webViewPool.preloadAll(alsoKeepLive)
             }
         }
