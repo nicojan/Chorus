@@ -185,6 +185,26 @@ The radius collapse, the target sizes and the icon sizes are mechanical. The sel
 
 **What the file does not cover.** The store banner, recovery banner and lock screen were built from source rather than traced, because producing them needs a damaged database. The offline banner is the same, since catching it needs the network to drop. Service icons are tinted placeholders. No automated pixel diff was run against the captures.
 
+## Open: 1.5.19 is cut and cannot ship until macOS 14 is checked by hand
+
+Everything for the release is on `release/1.5.19` at `11ee93d`: the version bumped in `project.yml` and the `.pbxproj` together (build 28), and the changelog's Unreleased section closed. 238 tests, 0 failures, on macOS 26.6 locally and on macOS 15 in CI.
+
+**The one thing blocking it is a rule this repo already has.** `CLAUDE.md` asks for a real-device pass on macOS 14, the deployment target, before a schema change ships, and 1.5.19 carries one. CI cannot stand in: the `macos-14` runner image cannot open the project at all, because the file is object format 77 and that image's Xcode is 15.4. So macOS 15 is covered and macOS 14 is not, and the gap has to be closed by hand — install 1.5.19 over a real 1.5.18 store on a macOS 14 machine and check the spaces and services come through.
+
+### What the release is for
+
+**Deleting a space quit the app on macOS 15**, and had since 1.5.13. `Space.serviceLinks` and `ServiceInstance.spaceLinks` both cascade, so deleting either end has to clear the link's reference, and both references were non-optional with nothing to clear them to. macOS 26 permits the same delete, which is exactly why this machine never saw it in five releases. Two paths reached it: `AppState.deleteSpace` and the rail's `deleteService`.
+
+Both ends of `SpaceServiceLink` are optional now. The old shape is frozen as `ChorusSchemaV1_5_13`, the current identifier is `(1,5,19)`, and the stage between them is `.lightweight` because it only drops a constraint. `liveSpace`, `liveService` and `liveEnds` replace eight hand-rolled dangling-link guards.
+
+Reordering the deletes was tried first and reverted: the trap moved to the other end of the link, so the order was never the problem.
+
+### The thing that found it
+
+There is a test workflow now, `.github/workflows/test.yml`, running the suite on `macos-15` for every pull request and every push to `main`. Until it existed the only workflow published the appcast, and five contributor pull requests had been merged with nothing checking them. It found this crash on its first build that got as far as running tests.
+
+Worth knowing for later: the runner's Xcode is older than this machine's, and that difference is doing real work. It also rejected a `sending 'alsoKeepLive' risks causing data races` that 26.6 accepts, which is a compiler-version diagnostic rather than a race (both types are `@MainActor`).
+
 ## Shipped in 1.5.18 (2026-08-06): the store left the shared default path
 
 Released: tag `v1.5.18`, build 27, DMG notarized and stapled, appcast live at the `SUFeedURL`, Homebrew cask bumped here and in the tap (`brew style`, `brew livecheck` and the online cask audit all clean). 197 tests, 0 failures.
