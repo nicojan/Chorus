@@ -1,80 +1,20 @@
 # Open items
 
-## Open: PR #23 is up for review, and five contributor PRs are on main
+## Merged: PR #23, and five contributor PRs, all riding in 1.5.19
 
-Five PRs from `marcioviniciusspiridigliozzi-dot` were merged to `main` on 2026-08-19, taking it from `366745a` to `43d590f`. All five are unreleased; 1.5.18 is still what ships.
+Five PRs from `marcioviniciusspiridigliozzi-dot` were merged to `main` on 2026-08-19 (`366745a` to `43d590f`): the store-fixture race (#15), the badge sweep's SSO approval storm (#16), ITP off per data store so an SSO service can read its session from its provider's frame (#17), a real window for a same-service `window.open` (#18), and a link popup no longer reloading the service behind it (#21).
 
-- **#15** — the store test fixture returned while its `ModelContainer` could still hold the SQLite connection, because SwiftData exposes no close and ARC promises nothing about when the container deallocates. Splits the helper so the container goes out of scope, then waits on `BEGIN EXCLUSIVE`. Test-only.
-- **#16** — the hibernated-badge sweep kept reloading a service whose session had expired, and on an SSO tenant every redirect was a fresh approval push. One reporter counted 68 in 14 hours. Parks a service after two consecutive off-host-and-empty fetches, releases it when the user opens it (`AuthWallResolver.looksLikeSignInWall`).
-- **#17** — ITP off per `WKWebsiteDataStore`, so an SSO service can read its session cookie from its provider's iframe. Default on, decided 2026-08-19.
-- **#18** — a same-service `window.open` gets a real window instead of `nil`, which pages read as "popup blocked". Link clicks still collapse into the opener (`shouldLoadNewWindowInPlace`).
-- **#21** — closing an ordinary link popup no longer reloads the service behind it (`shouldReloadOpener`).
+**PR #23 merged on 2026-08-29** at `0a55562`, closing issues #20 and #19. It gives a stuck install a way out of temporary storage — automatically when Chorus can prove there is nothing to lose, and by a `Start fresh` button when it cannot — and adds Google Keep with a real vector from thesvg. `hasAnyPreservedCopy` excludes the `.reset-` family on purpose: counting it would let a user's own earlier fresh start veto the automatic fix.
 
-**PR #23** carries this session's own work and is waiting on review: the issue #20 fix and the Google Keep catalog entry. See the section below.
+Blocks 1 and 2 of `docs/internal/VERIFY-BY-HAND.md` passed by hand on 2026-08-29 and hold the evidence, down to the pid change proving the terminate went through the sheet and the hash the older aside kept across a second fresh start.
 
-### What was verified, and what was not
+### Still open, not blocking
 
-**#15's flake never reproduced on this machine.** Twelve full-suite runs on the patched branch came back clean, and so did twelve on unmodified `main` as a control. That makes the patched runs evidence that #15 breaks nothing, and no evidence at all that it fixes anything. It went in on its reasoning rather than on a measurement: `SQLITE_BUSY` is a real result code, ARC genuinely does not promise a close, and the helper's doc comment claimed something untrue. Test-only, so the downside is bounded. The contributor measured roughly one failure in six on their machine.
+- **Nothing reaps the `.reset-` family.** `pruneSnapshots` and `prunePickAsides` bound every other family. Each fresh start leaves a full store triple on disk for good. Rare by nature, so the cost is disk space.
+- **#17 is still one-tenant.** The contributor has a single Entra tenant and said so. Nobody has confirmed it elsewhere; issue #14's reporter is on Teams and was responsive once.
+- **#15's flake never reproduced here.** Twelve full-suite runs on the branch and twelve on `main` as a control both came back clean, so it went in on its reasoning rather than a measurement. Test-only, so the downside is bounded.
 
-**#17's SPI was checked directly**, on macOS 26.5, outside the app: `_setResourceLoadStatisticsEnabled:` responds, and the read-back returns `0`. It does what the PR says on this release. A follow-up commit (`43d590f`) probes the read-back key before the KVC read — `value(forKey:)` on a non-compliant key raises an ObjC exception Swift cannot catch, so an OS that kept the setter and dropped the key would have crashed on every service store instead of logging the intended warning.
-
-**#17 is still one-tenant.** The contributor has a single Entra tenant and said so. Nobody has confirmed it elsewhere. Issue #14's reporter is on Teams and was responsive once; they are the obvious ask.
-
-**Two merge conflicts were resolved by hand**, both in `ChorusTests.swift`, both purely additive: #21 and #18 each inserted a test block at the same point. #18 had also placed its new function between `belongsToService`'s doc comment and `belongsToService` itself, leaving the latter undocumented; `57356fd` puts the comment back.
-
-## Open: PR #23 — a way out of temporary storage, and Google Keep
-
-Branch `fix/store-fresh-start`, based on `43d590f`, pushed and **not merged**. Closes #20 and #19. 233 tests, 0 failures, Debug only.
-
-### The trap in issue #20
-
-An install updated before it was ever configured came up on temporary storage at every launch, with no backup to restore and no way back. Reinstalling from the DMG did not help, and that detail is what made it diagnosable: nothing about the state lives in the app bundle. The default seed writes spaces on first launch, so `hasEverHadData` is set before the user has done anything; from then on an empty store is indistinguishable from one that lost data, and `recoveryPlan` sends it to `.preserveInMemory`. Both the flag and the store file outlive the bundle.
-
-### Two ways out, neither destructive
-
-**Automatic, deliberately narrow.** `loadContainer` starts fresh only when the store opened, read back zero spaces *and* zero services *and* zero links from our own three tables, and no snapshot sibling exists at all. `StoreRepair.storeIsProvablyEmpty` returns false for a file it could not read or whose schema it did not recognise — unknown is not empty, and that is the direction that matters. `hasAnyPreservedCopy` is deliberately weaker than `newestRestorableSnapshot`: a file too damaged to restore is still one someone might salvage, and its existence stops the fresh start. It reads every backup family except `.reset-`. Even then the old file is copied to `<name>.reset-<stamp>.bak` first, and a failed copy abandons the fresh start rather than seeding over the old store.
-
-**Manual.** A `Start fresh…` button on the temporary-storage banner, behind a confirmation, deferring the move to the next launch through `StoreRepair.pendingResetKey` — the same deferral a restore uses, because the store can only be moved while no container holds it open. An unreadable store fails `storeIsProvablyEmpty` by design and lands in the same dead end, so the user makes the call the checks will not.
-
-`.reset-` is a fifth `BackupFamily`, so the recovery picker lists it like any other backup and the move is reversible. `StoreInventory.best` skips the family, so Chorus lists it without ever proposing it: see the review section below.
-
-### The test that was deliberately changed
-
-`testLoadContainerFallsBackToInMemoryWhenNoSnapshot` asserted the old behaviour, so it had to move. Its fixture creates spaces and nothing else, so deleting `ZSPACE` produces exactly issue #20's shape. What that assertion was protecting — the user's bytes are never destroyed — still holds, and the retargeted test checks the `.reset-` copy exists. Two new tests pin the cases that must still preserve: a store that still holds services, and a snapshot on disk too damaged to restore from. **This was an intentional safety assertion in the repo's most dangerous code, and changing it is the thing to review hardest.**
-
-### Unverified
-
-**The `Start fresh` button has never been on screen.** It needs a store that genuinely fails to open, and manufacturing one on the dev machine risks live data — see the 2026-07-22 incident. The relaunch/quit split follows the recovery picker's, which was found the hard way (AppKit drops a terminate request made through an attached sheet), but that path has not been exercised.
-
-### Reviewed 2026-08-22
-
-The retarget holds up: the assertion it replaced protected "the user's bytes are never destroyed", the fresh start copies the triple aside before seeding, and the preserve direction now has three tests where it had one. 235 tests, 0 failures, Debug.
-
-Three findings were fixed in place.
-
-**A `.reset-` aside is listed but never proposed.** `StoreInventory.best` now skips the family. Everything `best` feeds is a proposal: the launch banner, the picker's preselection, and the key that remembers a declined offer. Preselection is licensed exactly when the live store is the untouched seed, which is the state a fresh start leaves, so the launch straight after the button would have greeted the user with an offer to restore the store they just chose to leave. For issue #20's never-configured install the content record is empty and nothing fires. For the case the button exists for, an unreadable store that did hold data, the record holds their old counts, the seed falls short of it, and the banner returns. The picker still lists the aside, so undoing a fresh start is one click under Review backups.
-
-**`hasAnySnapshot` checked one of five backup families, and is now `hasAnyPreservedCopy`.** Fixed 2026-08-24, after being filed as non-blocking. Its doc framed the question as the broader "is there anything here at all", but it matched `snapshotInfix` alone, so a `.prepick-`, `.prerestore-` or `.corrupt-` aside holding real data did not stop an automatic fresh start. It now reads `StoreInventory.preservationInfixes`, derived from `BackupFamily` so a new family cannot silently go unchecked.
-
-`.reset-` stays out, which was the fork. Counting it would let a user's own earlier fresh start veto the automatic fix, so a second run of issue #20 would land back on the button instead of being fixed. Nothing is lost by starting fresh twice: the second run sets its own copy aside beside the first, and the picker lists both. Two tests hold the line in opposite directions, a `.prepick-` aside stopping the fresh start and a `.reset-` aside failing to.
-
-**The promise the dialog makes is now pinned.** `testResetAsideIsListedInThePickerButNeverProposed` asserts both halves: the family is recognised and readable in `candidates`, and `best`, `preselection` and `offer` all decline to put it forward. Nothing had covered the listing, and it is the claim the whole safety argument rests on.
-
-### Follow-up, not blocking
-
-- **Nothing reaps the `.reset-` family.** `pruneSnapshots` and `prunePickAsides` bound every other family, and the latter's doc gives "no other reaper matches the family" as its reason for existing. Each fresh start leaves a full store triple on disk for good. Rare by nature, so the cost is disk space.
-
-Two smaller notes for the record. `moveStoreAside`'s default stamp is whole seconds and `copyTriple` clears the destination before copying, so two asides within one second would overwrite the first. That is reachable only across two launches inside the same second, and it matches what `snapshot(at:stamp:)` already does. And both pending keys can be set at once, in which case the restore applies and the reset immediately moves the result aside; the restored bytes land in the `.reset-` aside, so nothing is lost.
-
-### Google Keep (issue #19)
-
-thesvg — the source all 63 bundled marks come from, per `scripts/build_brand_icons.py` — carries a `google-keep` mark, so the provenance question the reporter raised answers itself. Slug added, imageset generated, catalog entry added with `id: google-keep` so `ServiceIconView` finds `brand-google-keep`. Their proposed `icon: "brand-keep"` was the one wrong part: that field does not pick the mark, and the id does.
-
-**Gotcha for whoever runs that script next:** `build_brand_icons.py --write` also reclassifies `brand-notion` and `brand-mattermost` as template-rendering, and both are set to `original` in the repo on purpose. Revert those two after any run.
-
-### A conflict to expect
-
-The CHANGELOG's `[Unreleased]` section is edited on both `fix/store-fresh-start` and `feat/spaces-presentation`. Whichever merges second will conflict there, additively.
+**Gotcha for whoever runs `build_brand_icons.py` next:** `--write` also reclassifies `brand-notion` and `brand-mattermost` as template-rendering, and both are set to `original` on purpose. Revert those two after any run.
 
 ## Open: the donation button is built and unreleased
 
@@ -184,6 +124,32 @@ Measuring turned up seven things worth fixing, ranked by cost. Eight corner radi
 The radius collapse, the target sizes and the icon sizes are mechanical. The selection signal, the caption style and the banner shape are decisions somebody has to make first.
 
 **What the file does not cover.** The store banner, recovery banner and lock screen were built from source rather than traced, because producing them needs a damaged database. The offline banner is the same, since catching it needs the network to drop. Service icons are tinted placeholders. No automated pixel diff was run against the captures.
+
+## Ready: 1.5.19 is cut, tested on macOS 14 and 15, and not yet built
+
+Everything for the release is on `release/1.5.19`: the version bumped in `project.yml` and the `.pbxproj` together (build 28), and the changelog's Unreleased section closed. 239 tests, 0 failures on macOS 26.6 locally, on macOS 15 under Xcode 26.3, and on macOS 14 under Xcode 16.2.
+
+**The macOS 14 pass `CLAUDE.md` asks for is done, by CI rather than by hand.** It was written off at first on the assumption the `macos-14` runner image only carries Xcode 15.4, which cannot open a project in object format 77. It also carries 16.1 and 16.2, and the workflow already picks the newest installed, so the only obstacle was the assumption. `testMigratesFrom1_5_13PreservingLinkEnds` is the test that pass was really about, and it runs there now.
+
+What is left is the build itself: DMG, notarise, staple, `gh release`, appcast, Homebrew cask. See `release/DISTRIBUTION.md`. Nothing has been published.
+
+### What the release is for
+
+**Deleting a space quit the app on macOS 15**, and had since 1.5.13. `Space.serviceLinks` and `ServiceInstance.spaceLinks` both cascade, so deleting either end has to clear the link's reference, and both references were non-optional with nothing to clear them to. macOS 26 permits the same delete, which is exactly why this machine never saw it in five releases. Two paths reached it: `AppState.deleteSpace` and the rail's `deleteService`.
+
+Both ends of `SpaceServiceLink` are optional now. The old shape is frozen as `ChorusSchemaV1_5_13`, the current identifier is `(1,5,19)`, and the stage between them is `.lightweight` because it only drops a constraint. `liveSpace`, `liveService` and `liveEnds` replace eight hand-rolled dangling-link guards.
+
+Reordering the deletes was tried first and reverted: the trap moved to the other end of the link, so the order was never the problem.
+
+### `.cascade` means three different things, so stop using it
+
+macOS 15 and 26 take a space's links with the space. **macOS 14 does not** — the rows survive with `space` nulled, which is the dangling state `reapDanglingLinks` exists for. `deleteSpace` deletes the links itself now. Worth remembering before leaning on any other delete rule here.
+
+### The thing that found all of it
+
+`.github/workflows/test.yml` runs the suite on macOS 14 and macOS 15 for every pull request and every push to `main`. Until it existed the only workflow published the appcast, and five contributor pull requests had been merged with nothing checking them.
+
+It has earned its keep twice. It found the macOS 15 crash on its first build that reached the tests. Then macOS 14 turned up four build errors on the Xcode 16 SDK — which `CONTRIBUTING.md` tells contributors to use, so nobody on Xcode 16 could build this at all — and five latent test bugs that had been wrong all along while macOS 26 stayed forgiving. The pattern across all of them: detached or double-registered `@Model` objects, tolerated on the newest OS and fatal on the oldest.
 
 ## Shipped in 1.5.18 (2026-08-06): the store left the shared default path
 

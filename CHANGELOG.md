@@ -5,6 +5,8 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.5.19] - 2026-08-29
+
 ### Added
 
 - A small button in the top right of the window opens the donation page, and the About panel carries the same link. Chorus stays free. This is here if you want to pay for it anyway.
@@ -25,6 +27,7 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ### Fixed
 
+- Deleting a space could quit Chorus on macOS 15. The space went, and Chorus closed with it. Whether your data survived depended on when it stopped, which is not a question you should have to ask about deleting a space. It happens on macOS 15 and not on macOS 26, so the machine Chorus is built on could never show it; a test run on an older system is what found it. Nothing about your spaces or services changes, and Chorus updates the shape of its data file when it first opens, keeping a backup before it does.
 - A fresh install that took an update before you had set anything up could get stuck on temporary storage. Chorus said your saved data could not be loaded, offered no backup to restore, and came back the same way at every launch. Deleting Chorus and installing it again did not clear it, because neither your data file nor the marker Chorus keeps beside it lives inside the app. Chorus now starts you on a new, empty file when it can see there is nothing to lose, and the warning has a Start fresh button for the times it cannot tell. Your old file is kept as a backup either way, and the backup list shows it, so you can go back.
 - Microsoft Teams and other services behind a company sign-in can stay signed in. Teams would show its own "sign in again" banner, the button led nowhere, and the state came back about a day after every successful sign-in. Chorus was blocking the hidden frame Teams reads its session from. Each service still keeps its cookies to itself.
 - Signing in to a service no longer sends you a stream of approval requests. When a sleeping service needed signing in again, the background check that reads its unread count kept reloading it, and every reload asked your authenticator to approve. One person got 68 prompts in 14 hours. Chorus now stops checking a service that needs you, and picks it up again when you open it.
