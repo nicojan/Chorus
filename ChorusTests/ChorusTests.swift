@@ -2857,17 +2857,27 @@ final class ChorusTests: XCTestCase {
         // maintains the inverses, so `ghost.serviceLinks` and `beta.spaceLinks`
         // already hold this link. Appending it again registers it twice, which
         // macOS 26 tolerates and macOS 14 kills the test process over.
-        _ = SpaceServiceLink(sortOrder: 0, space: ghost, service: beta)
+        //
+        // Held with withExtendedLifetime rather than left to the inverses. These
+        // three models are detached, so nothing in a context retains the link,
+        // and ARC is free to release it after the last direct use — leaving
+        // `ghost.serviceLinks` reaching for a freed object when `grouped` walks
+        // it. That is a crash on macOS 14 and survives on macOS 26 only by luck
+        // of timing.
+        let danglingLink = SpaceServiceLink(sortOrder: 0, space: ghost, service: beta)
 
-        let result = NotificationGrouping.grouped(spaces: [live, ghost], services: [alpha, beta])
+        withExtendedLifetime(danglingLink) {
+            let result = NotificationGrouping.grouped(spaces: [live, ghost], services: [alpha, beta])
 
-        // Only the live space is grouped; the ghost's dangling link is skipped
-        // and Beta appears nowhere. Without the guard, Ghost/Beta would show.
-        XCTAssertEqual(result.groups.map { $0.space?.name }, ["Live"])
-        XCTAssertEqual(result.groups.first?.services.map(\.label), ["Alpha"])
-        XCTAssertFalse(result.groups.contains { group in
-            group.services.contains { $0.label == "Beta" }
-        })
+            // Only the live space is grouped; the ghost's dangling link is
+            // skipped and Beta appears nowhere. Without the guard, Ghost/Beta
+            // would show.
+            XCTAssertEqual(result.groups.map { $0.space?.name }, ["Live"])
+            XCTAssertEqual(result.groups.first?.services.map(\.label), ["Alpha"])
+            XCTAssertFalse(result.groups.contains { group in
+                group.services.contains { $0.label == "Beta" }
+            })
+        }
     }
 
     // MARK: - Move service to space
