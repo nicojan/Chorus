@@ -77,9 +77,39 @@ editing the live model:
 
 That last test fails if you skip these steps — treat it as the reminder, not a
 nuisance. A lossless-looking test does not prove the migration race is gone; the
-auto-restore safety net (`StoreRepair` + `loadContainer`) stays as defense, and
-`macOS 14.0` (the deployment target) needs a real-device migration pass before
-shipping a schema change — this repo's dev machine is newer.
+auto-restore safety net (`StoreRepair` + `loadContainer`) stays as defense.
+
+**Before shipping a schema change, migrate a copy of a real store.** Synthetic
+fixtures only prove the stages are right about stores the test file wrote.
+`testMigratesARealStoreCopy` opens a copy through the plan and prints what came
+through; write the directory to `/tmp/chorus-real-store-copy` and run it. Copy
+all three files — a store without its `-wal` and `-shm` cannot be opened
+read-only. Never point it at the live store: it migrates in place.
+
+## SwiftData behaves differently on macOS 14, 15 and 26
+
+The dev machine is the newest of the three and the most forgiving of all three,
+so it is the worst place to conclude anything. CI runs the suite on macOS 14 and
+15 for this reason; do not delete those jobs to make a red build green.
+
+- **`.cascade` is not a promise.** Deleting a `Space` takes its
+  `SpaceServiceLink` rows on 15 and 26. On 14 it leaves them with `space` nulled.
+  Delete join rows explicitly rather than leaning on the rule.
+- **A to-one relationship that a cascade must clear has to be optional.** While
+  `SpaceServiceLink.space` and `.service` were not, macOS 15 trapped with
+  "an appropriate default value is not configured" and deleting a space killed
+  the app for five releases. macOS 26 allowed it, which is why nobody saw it.
+- **Do not double-register a model.** Building a join row wires the inverses, so
+  when both ends are in the context the row is already registered and a following
+  `insert` is a second registration — fatal on 14, tolerated on 26. Insert only
+  when `modelContext == nil`, and never `append` to a relationship the
+  initializer already set.
+- **Do not wire detached models to each other.** Fabricating a dangling link from
+  never-inserted objects crashes 14 several different ways. Make a real link and
+  null one end instead.
+- **Older SDKs are missing `Sendable` conformances.** `Schema.Version`,
+  `UNNotificationSettings` and `NSImage` are all unmarked under Xcode 16, which
+  `CONTRIBUTING.md` tells contributors to use.
 
 ## Releasing
 
