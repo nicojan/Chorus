@@ -1,0 +1,19 @@
+name: Probe macos-14
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ci/macos-14]
+
+jobs:
+  probe:
+    runs-on: macos-14
+    steps:
+      - name: What Xcodes are here
+        run: |
+          ls -d /Applications/Xcode*.app
+          for x in /Applications/Xcode*.app; do
+            echo "--- $x"
+            "$x/Contents/Developer/usr/bin/xcodebuild" -version || true
+          done
+          sw_vers
