@@ -306,14 +306,25 @@ final class NotificationManager {
     /// scene exists, can fail with "Notifications are not allowed for this
     /// application" and leave the app unregistered, so no banner ever appears.
     /// Idempotent: macOS ignores repeat calls once the choice has been made.
+    /// The current authorization status, as its raw value.
+    ///
+    /// `nonisolated` so `UNNotificationSettings` never crosses an actor
+    /// boundary: it is not Sendable in the Xcode 16 SDK, and reading
+    /// `.authorizationStatus` off an implicitly-async call from a @MainActor
+    /// context is an error there. Only the Int comes back, which is Sendable
+    /// everywhere.
+    private nonisolated static func authorizationStatusRawValue() async -> Int {
+        await UNUserNotificationCenter.current().notificationSettings().authorizationStatus.rawValue
+    }
+
     func requestAuthorization() {
         Task {
             let center = UNUserNotificationCenter.current()
             do {
                 let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
-                let status = await center.notificationSettings().authorizationStatus
+                let status = await Self.authorizationStatusRawValue()
                 AppLogger.notifications.info(
-                    "Notification authorization: granted=\(granted), status=\(status.rawValue)")
+                    "Notification authorization: granted=\(granted), status=\(status)")
             } catch {
                 // Not fatal, but never silent: swallowing this is what makes "no
                 // banners ever appear" undiagnosable. The common cause is the app

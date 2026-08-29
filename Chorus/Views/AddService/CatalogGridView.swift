@@ -163,7 +163,11 @@ private struct CatalogEntryButton: View {
         .help(entry.description)
         .accessibilityLabel("Add \(entry.name)")
         .task {
-            icon = await CatalogIconCache.shared.icon(for: entry.id)
+            // Fetch the bytes, not the image. NSImage is not Sendable in the
+            // Xcode 16 SDK, so returning one from the actor is an error there.
+            // The actor still caches the bytes in memory, so this only touches
+            // disk the first time; the decode is what moved to this side.
+            icon = await CatalogIconCache.shared.iconData(for: entry.id).flatMap(NSImage.init(data:))
         }
     }
 
