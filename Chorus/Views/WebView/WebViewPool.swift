@@ -197,6 +197,7 @@ final class WebViewPool {
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.allowsBackForwardNavigationGestures = true
         webView.customUserAgent = instance.userAgent ?? UserAgentProvider.safariDefault
+        Self.enableInspectorInDebugBuilds(webView)
 
         let coordinator = makeCoordinator(for: instance)
         webView.navigationDelegate = coordinator
@@ -239,6 +240,7 @@ final class WebViewPool {
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.allowsBackForwardNavigationGestures = true
         webView.customUserAgent = instance.userAgent ?? UserAgentProvider.safariDefault
+        Self.enableInspectorInDebugBuilds(webView)
 
         let coordinator = makeCoordinator(for: instance)
         webView.navigationDelegate = coordinator
@@ -586,6 +588,17 @@ final class WebViewPool {
     /// Builds a navigation/UI coordinator wired to this service. Shared by
     /// `webView(for:)` and `preload(_:)` so the instance id, fallback URL,
     /// external-link routing, and navigation-finished callback stay in sync.
+    /// Turns on Safari's Web Inspector for a pooled web view, in debug builds
+    /// only. Chorus ships unsandboxed and directly, so an inspectable release
+    /// build would hand any page a debugging surface the user never asked for —
+    /// hence the `#if DEBUG`. Diagnosing a release-only problem goes through the
+    /// viewport probe in `WebContentView`, which logs rather than opens a door.
+    private static func enableInspectorInDebugBuilds(_ webView: WKWebView) {
+        #if DEBUG
+        webView.isInspectable = true
+        #endif
+    }
+
     private func makeCoordinator(for instance: ServiceInstance) -> WebViewCoordinator {
         let coordinator = WebViewCoordinator()
         coordinator.instanceID = instance.id

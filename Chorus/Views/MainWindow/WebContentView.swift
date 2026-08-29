@@ -172,9 +172,21 @@ struct WebContentView: View {
         // stale/transitional frame, leave their fixed header stranded above the
         // visible area with no way to scroll to it. Fire a synthetic resize so the
         // page re-measures against the real frame; it's a no-op for other sites.
+        //
+        // The clipped-Gmail report is still open, and this single tick is the
+        // whole safety net, so the probe reads the page's viewport either side of
+        // the resize and again once it has settled. Clicking away from a clipped
+        // service and back re-runs it, which is how a release build reproduces
+        // without an inspector. See ViewportProbe for how to read the log.
+        let label = service.label
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(250))
+            await ViewportProbe.measure(webView, service: label, stage: "before-resize")
             _ = try? await webView.evaluateJavaScript("window.dispatchEvent(new Event('resize'))")
+            await ViewportProbe.measure(webView, service: label, stage: "after-resize")
+
+            try? await Task.sleep(for: .milliseconds(2250))
+            await ViewportProbe.measure(webView, service: label, stage: "settled")
         }
 
         // Start active-mode badge/title polling for the displayed service.
@@ -286,5 +298,76 @@ struct WebContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .controlBackgroundColor))
+    }
+}
+
+// MARK: - Viewport probe
+
+/// Reads a page's viewport geometry and writes it to the unified log.
+///
+/// This exists for one open bug: Gmail now and then renders with its top ~15px
+/// clipped, and the two things that could cause it need different fixes. Either
+/// the page cached a viewport height measured against the web view's zero
+/// starting frame, or the document's root is sitting at a scroll offset that
+/// never reset. `bodyTop` and `rootScrollTop` tell those apart — a negative
+/// `bodyTop` with `rootScrollTop` at 0 is a stale layout, and a negative
+/// `bodyTop` that matches `rootScrollTop` is a stuck scroll.
+///
+/// It logs at `.info` rather than `.debug` on purpose: debug-level records are
+/// dropped unless logging is turned up first, and this has to be readable after
+/// the fact in a build the user is already running. To read it:
+///
+///     log show --last 30m --predicate 'subsystem == "com.nicojan.Chorus" && category == "WebView"' --info
+///
+/// Nothing here is page content — only numbers and a ready state — so it is safe
+/// to mark public and safe to leave on in a release build. Delete the whole
+/// type once the bug is understood.
+enum ViewportProbe {
+    /// Geometry, as JSON, or a `chorusError` key if the page refused to answer.
+    /// Kept to one round trip so the measurement can't smear across a reflow.
+    private static let script = """
+    (function () {
+      try {
+        var root = document.scrollingElement || document.documentElement;
+        var body = document.body;
+        var bodyTop = body ? body.getBoundingClientRect().top : null;
+        var vv = window.visualViewport;
+        return JSON.stringify({
+          innerHeight: window.innerHeight,
+          innerWidth: window.innerWidth,
+          bodyTop: bodyTop,
+          rootScrollTop: root ? root.scrollTop : null,
+          bodyScrollTop: body ? body.scrollTop : null,
+          rootScrollHeight: root ? root.scrollHeight : null,
+          visualOffsetTop: vv ? vv.offsetTop : null,
+          visualHeight: vv ? vv.height : null,
+          readyState: document.readyState
+        });
+      } catch (e) {
+        return JSON.stringify({ chorusError: String(e) });
+      }
+    })()
+    """
+
+    /// Measures `webView` and logs one line. Never throws and never blocks the
+    /// caller's own work — a probe that can break the thing it watches is worse
+    /// than no probe.
+    @MainActor
+    static func measure(_ webView: WKWebView, service: String, stage: String) async {
+        // The native height the page should agree with. When `innerHeight` and
+        // this diverge, the page is laid out against a frame it no longer has.
+        let frameHeight = Int(webView.frame.height.rounded())
+
+        guard let result = try? await webView.evaluateJavaScript(script),
+              let json = result as? String else {
+            AppLogger.webView.info(
+                "viewport-probe \(service, privacy: .public) \(stage, privacy: .public) frameHeight=\(frameHeight, privacy: .public) unavailable"
+            )
+            return
+        }
+
+        AppLogger.webView.info(
+            "viewport-probe \(service, privacy: .public) \(stage, privacy: .public) frameHeight=\(frameHeight, privacy: .public) \(json, privacy: .public)"
+        )
     }
 }
