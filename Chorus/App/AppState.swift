@@ -1509,6 +1509,22 @@ final class AppState {
         // after they're deleted would fault the freed backing data and trap.
         let reclaimedServiceIDs = reclaimed.map(\.id)
         let orphanedDataStoreIDs = reclaimed.map(\.dataStoreIdentifier)
+
+        // Delete this space's links by hand rather than leaving it to the
+        // `.cascade` rule, because the rule does not mean the same thing on
+        // every OS. On macOS 15 and 26 deleting the space takes its links with
+        // it. On macOS 14 it does not: the links survive with their `space`
+        // nulled, which is the dangling-link state that `reapDanglingLinks`
+        // exists to clean up after — and leaving rows for a reaper to find on
+        // one OS and not another is not a difference worth carrying.
+        //
+        // Doing it explicitly is only safe because both ends are optional now.
+        // While they were not, this exact order was one of the shapes that
+        // trapped. An orphaned service's only links are in this space, so this
+        // covers them too.
+        for link in space.serviceLinks where link.modelContext != nil {
+            context.delete(link)
+        }
         for service in reclaimed { context.delete(service) }
         context.delete(space)
 

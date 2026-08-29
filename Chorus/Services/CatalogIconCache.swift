@@ -10,8 +10,13 @@ actor CatalogIconCache {
     private let cacheDirectory: URL
     private let staleInterval: TimeInterval = 7 * 24 * 60 * 60 // 7 days
 
-    /// In-memory cache of loaded images, keyed by catalog entry ID.
-    private var imageCache: [String: NSImage] = [:]
+    /// In-memory cache of loaded icon bytes, keyed by catalog entry ID.
+    ///
+    /// Bytes rather than `NSImage` on purpose. `NSImage` is not Sendable in the
+    /// Xcode 16 SDK, so handing one out of this actor does not compile there,
+    /// and callers build the image themselves. Caching the decoded image here
+    /// would keep something no caller can be given.
+    private var dataCache: [String: Data] = [:]
 
     private init() {
         // Fall back to the temp directory rather than trapping if the caches
@@ -23,24 +28,17 @@ actor CatalogIconCache {
         try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
     }
 
-    /// Returns the cached icon for a catalog entry, or nil if not yet fetched.
-    func icon(for entryID: String) -> NSImage? {
-        if let cached = imageCache[entryID] {
+    /// Returns the raw icon data for a catalog entry, or nil if not yet fetched.
+    /// Served from memory after the first read, so a grid that reappears does
+    /// not go back to disk for every tile.
+    func iconData(for entryID: String) -> Data? {
+        if let cached = dataCache[entryID] {
             return cached
         }
         let fileURL = cacheDirectory.appendingPathComponent(entryID)
-        guard let data = try? Data(contentsOf: fileURL),
-              let image = NSImage(data: data) else {
-            return nil
-        }
-        imageCache[entryID] = image
-        return image
-    }
-
-    /// Returns the raw icon data for a catalog entry, or nil if not yet fetched.
-    func iconData(for entryID: String) -> Data? {
-        let fileURL = cacheDirectory.appendingPathComponent(entryID)
-        return try? Data(contentsOf: fileURL)
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        dataCache[entryID] = data
+        return data
     }
 
     /// Fetches icons for catalog entries that are missing or stale. Called once at
@@ -77,7 +75,7 @@ actor CatalogIconCache {
         let fileURL = cacheDirectory.appendingPathComponent(entry.id)
         do {
             try data.write(to: fileURL, options: .atomic)
-            imageCache[entry.id] = NSImage(data: data)
+            dataCache[entry.id] = data
         } catch {
             AppLogger.favicon.error("Failed to cache icon for \(entry.id): \(error.localizedDescription)")
         }

@@ -284,7 +284,12 @@ final class TransientBadgeFetcher {
     /// released.
     private func releaseOpenedAuthWalls() {
         guard !authWalledIDs.isEmpty, let isLive = hasLiveWebView else { return }
-        let reopened = authWalledIDs.filter(isLive)
+        // Called through an explicit closure rather than passed to `filter`
+        // directly: `isLive` is @MainActor, and handing it over as a bare
+        // function value makes the Xcode 16 compiler read the call as throwing
+        // ("call can throw, but it is not marked with 'try'"). Calling it inside
+        // the closure inherits this method's own main-actor isolation.
+        let reopened = authWalledIDs.filter { isLive($0) }
         guard !reopened.isEmpty else { return }
         authWalledIDs.subtract(reopened)
         for id in reopened { authWallStrikes[id] = nil }
