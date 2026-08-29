@@ -40,22 +40,22 @@ struct QuickSwitcherView: View {
     /// fires on renames and space moves — not only on insert/delete.
     private var linksSignature: [String] {
         allLinks
-            .filter { $0.modelContext != nil && $0.service.modelContext != nil && $0.space.modelContext != nil }
+            .compactMap(\.liveEnds)
             .map { "\($0.service.id)|\($0.service.label)|\($0.space.id)|\($0.space.name)" }
     }
 
     private func recomputeResults() {
         let serviceResults = allLinks
-            .filter { $0.modelContext != nil && $0.service.modelContext != nil && $0.space.modelContext != nil }
-            .map { link in
+            .compactMap(\.liveEnds)
+            .map { space, service in
                 QuickSwitcherResult(
-                    id: "\(link.space.id)-\(link.service.id)",
-                    label: link.service.label,
-                    spaceName: link.space.name,
-                    spaceEmoji: link.space.emoji,
-                    serviceID: link.service.id,
-                    spaceID: link.space.id,
-                    iconData: link.service.customIconData ?? link.service.fetchedIconData
+                    id: "\(space.id)-\(service.id)",
+                    label: service.label,
+                    spaceName: space.name,
+                    spaceEmoji: space.emoji,
+                    serviceID: service.id,
+                    spaceID: space.id,
+                    iconData: service.customIconData ?? service.fetchedIconData
                 )
             }
 

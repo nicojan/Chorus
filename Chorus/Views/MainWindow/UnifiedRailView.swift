@@ -70,10 +70,10 @@ struct UnifiedRailView: View {
     private var filteredLinks: [SpaceServiceLink] {
         guard let spaceID = selectedSpaceID else { return [] }
         return allLinks
-            // Guard all three relationships before reading `$0.space.id`: a link
-            // whose Space (or service) was deleted would fault the freed model
+            // Both ends have to be live before reading the space's id: a link
+            // whose Space or ServiceInstance is gone would fault the freed model
             // and trap on this hot render path. Matches `AppState.servicesForSpace`.
-            .filter { $0.modelContext != nil && $0.service.modelContext != nil && $0.space.modelContext != nil && $0.space.id == spaceID }
+            .filter { $0.liveEnds?.space.id == spaceID }
             .sorted { $0.sortOrder < $1.sortOrder }
     }
 
@@ -110,7 +110,7 @@ struct UnifiedRailView: View {
             SpaceEditorSheet(editingSpace: space, selectedSpaceID: $selectedSpaceID)
         }
         .confirmationDialog(
-            "Delete \(confirmingDelete?.service.label ?? "service")?",
+            "Delete \(confirmingDelete?.liveService?.label ?? "service")?",
             isPresented: Binding(
                 get: { confirmingDelete != nil },
                 set: { if !$0 { confirmingDelete = nil } }
@@ -170,7 +170,9 @@ struct UnifiedRailView: View {
                 // 2 points between 34 point rows is the drawn 36 point pitch.
                 LazyVStack(spacing: 2) {
                     ForEach(filteredLinks) { link in
-                        serviceRow(for: link)
+                        if let service = link.liveService {
+                            serviceRow(for: link, service: service)
+                        }
                     }
                 }
                 .padding(.bottom, 8)
@@ -290,8 +292,12 @@ struct UnifiedRailView: View {
     private var tabRow: some View {
         HStack(spacing: 4) {
             ForEach(filteredLinks) { link in
-                serviceRow(for: link)
-                    .id(link.service.id)
+                // filteredLinks already proved both ends live; the bind is what
+                // carries that proof into the row rather than re-deriving it.
+                if let service = link.liveService {
+                    serviceRow(for: link, service: service)
+                        .id(service.id)
+                }
             }
             addServiceButton
         }
@@ -302,7 +308,7 @@ struct UnifiedRailView: View {
     /// Home URL of the currently selected service, for the nav home button.
     private var activeHomeURL: URL? {
         guard let id = selectedServiceID,
-              let service = filteredLinks.first(where: { $0.service.id == id })?.service
+              let service = filteredLinks.compactMap(\.liveService).first(where: { $0.id == id })
         else { return nil }
         return URL(string: service.url)
     }
@@ -310,23 +316,23 @@ struct UnifiedRailView: View {
     // MARK: - Service cells
 
     @ViewBuilder
-    private func serviceRow(for link: SpaceServiceLink) -> some View {
-        let isSel = selectedServiceID == link.service.id
-        let badge = appState.badgeManager.badgeCount(for: link.service.id)
-        let hibernated = !isSel && appState.webViewPool.isHibernated(link.service.id)
-        let muted = link.service.isEffectivelyMuted
-        let media = appState.webViewPool.mediaCaptureStates[link.service.id]
+    private func serviceRow(for link: SpaceServiceLink, service: ServiceInstance) -> some View {
+        let isSel = selectedServiceID == service.id
+        let badge = appState.badgeManager.badgeCount(for: service.id)
+        let hibernated = !isSel && appState.webViewPool.isHibernated(service.id)
+        let muted = service.isEffectivelyMuted
+        let media = appState.webViewPool.mediaCaptureStates[service.id]
         // A hibernated service has no page to be healthy or broken, and the moon
         // already says why it is not loaded — so it reports live and draws no dot.
-        let health = hibernated ? ServiceHealth.live : appState.webViewPool.health(for: link.service.id)
+        let health = hibernated ? ServiceHealth.live : appState.webViewPool.health(for: service.id)
 
-        cell(for: link, isSelected: isSel, badge: badge, hibernated: hibernated, muted: muted, media: media, health: health, focused: focusedServiceID == link.service.id)
+        cell(for: link, service: service, isSelected: isSel, badge: badge, hibernated: hibernated, muted: muted, media: media, health: health, focused: focusedServiceID == service.id)
             .draggable(link.id.uuidString) {
                 // Custom drag preview. Source-dimming is left to SwiftUI:
                 // manually tracking a "dragging" id can't be cleared reliably —
                 // a drop on itself or a cancelled drag never fires the drop
                 // handler — which left the row stuck at 0.4 opacity.
-                Text(link.service.label)
+                Text(service.label)
                     .font(.caption)
                     .padding(6)
                     .background(.ultraThickMaterial)
@@ -363,7 +369,7 @@ struct UnifiedRailView: View {
             .accessibilityAction(named: "Move down") { moveServiceDown(link) }
             .contextMenu { serviceContextMenu(for: link) }
             .focusable()
-            .focused($focusedServiceID, equals: link.service.id)
+            .focused($focusedServiceID, equals: service.id)
             // The system's rectangular ring stays off, but the signal it used to
             // carry is now drawn by the row itself (`RowMark`): a fill for
             // selection, a ring for focus, never the same mark. 1.5.10 switched
@@ -379,6 +385,7 @@ struct UnifiedRailView: View {
     @ViewBuilder
     private func cell(
         for link: SpaceServiceLink,
+        service: ServiceInstance,
         isSelected: Bool,
         badge: Int,
         hibernated: Bool,
@@ -388,7 +395,7 @@ struct UnifiedRailView: View {
         focused: Bool
     ) -> some View {
         ServiceRowView(
-            instance: link.service,
+            instance: service,
             isSelected: isSelected,
             axis: axis,
             badgeCount: badge,
@@ -409,8 +416,9 @@ struct UnifiedRailView: View {
     /// Button click doesn't reliably promote the enclosing `.focusable()` to
     /// focused on its own.
     private func selectService(_ link: SpaceServiceLink) {
-        selectedServiceID = link.service.id
-        focusedServiceID = link.service.id
+        guard let service = link.liveService else { return }
+        selectedServiceID = service.id
+        focusedServiceID = service.id
     }
 
     /// Arrow keys move the selection along the rail's axis (↑/↓ vertical,
@@ -432,7 +440,7 @@ struct UnifiedRailView: View {
         if press.modifiers.contains(.option) {
             if forward { moveServiceDown(link) } else { moveServiceUp(link) }
             // The service kept its id but changed slot — hold focus on it.
-            focusedServiceID = link.service.id
+            focusedServiceID = link.liveService?.id
             return .handled
         }
 
@@ -440,7 +448,7 @@ struct UnifiedRailView: View {
         guard let index = links.firstIndex(where: { $0.id == link.id }) else { return .handled }
         let neighborIndex = forward ? index + 1 : index - 1
         guard links.indices.contains(neighborIndex) else { return .handled }
-        let neighborID = links[neighborIndex].service.id
+        guard let neighborID = links[neighborIndex].liveService?.id else { return .handled }
         selectedServiceID = neighborID
         focusedServiceID = neighborID
         return .handled
@@ -484,31 +492,38 @@ struct UnifiedRailView: View {
 
     @ViewBuilder
     private func serviceContextMenu(for link: SpaceServiceLink) -> some View {
+        if let service = link.liveService {
+            serviceContextMenuItems(for: link, service: service)
+        }
+    }
+
+    @ViewBuilder
+    private func serviceContextMenuItems(for link: SpaceServiceLink, service: ServiceInstance) -> some View {
         Button("Edit Service…") {
-            editingService = link.service
+            editingService = service
         }
 
         Toggle("Mute Notifications", isOn: Binding(
-            get: { link.service.isMuted },
+            get: { service.isMuted },
             set: { newValue in
-                link.service.isMuted = newValue
+                service.isMuted = newValue
                 save("toggle service mute")
-                syncBadge(for: link.service)
+                syncBadge(for: service)
             }
         ))
 
         Divider()
 
         Button("Open in Safari") {
-            openInDefaultBrowser(link.service)
+            openInDefaultBrowser(service)
         }
 
         Divider()
 
-        if appState.webViewPool.hasWebView(for: link.service.id) {
+        if appState.webViewPool.hasWebView(for: service.id) {
             Button("Hibernate") {
-                appState.webViewPool.hibernate(link.service.id)
-                if selectedServiceID == link.service.id {
+                appState.webViewPool.hibernate(service.id)
+                if selectedServiceID == service.id {
                     selectedServiceID = nil
                 }
             }
@@ -516,16 +531,16 @@ struct UnifiedRailView: View {
 
         Divider()
         Button("Change Icon...") {
-            pickCustomIcon(for: link.service)
+            pickCustomIcon(for: service)
         }
-        if link.service.customIconData != nil {
+        if service.customIconData != nil {
             Button("Reset Icon") {
-                resetIcon(for: link.service)
+                resetIcon(for: service)
             }
         }
         Divider()
         Menu("Move to Space") {
-            let targets = eligibleSpaces(for: link.service)
+            let targets = eligibleSpaces(for: service)
             ForEach(targets) { space in
                 Button {
                     moveService(link: link, to: space, followToSpace: false)
@@ -596,7 +611,8 @@ struct UnifiedRailView: View {
     private func eligibleSpaces(for service: ServiceInstance) -> [Space] {
         let memberIDs = Set(
             allLinks
-                .filter { $0.modelContext != nil && $0.service.modelContext != nil && $0.space.modelContext != nil && $0.service.id == service.id }
+                .compactMap(\.liveEnds)
+                .filter { $0.service.id == service.id }
                 .map { $0.space.id }
         )
         let eligible = Set(SpaceMove.eligibleSpaceIDs(allSpaceIDs: spaces.map(\.id), memberSpaceIDs: memberIDs))
@@ -612,13 +628,15 @@ struct UnifiedRailView: View {
     /// just clears selection if the moved service was showing, matching
     /// "Remove from this space".
     private func moveService(link: SpaceServiceLink, to targetSpace: Space, followToSpace: Bool) {
-        guard link.modelContext != nil, link.space.id != targetSpace.id else { return }
-        let serviceID = link.service.id
+        guard link.modelContext != nil,
+              let currentSpace = link.liveSpace, currentSpace.id != targetSpace.id,
+              let serviceID = link.liveService?.id
+        else { return }
 
         // Compute the tail order before repointing, so the link's old order in
         // its current space doesn't count toward the target's max.
         let targetOrders = allLinks
-            .filter { $0.modelContext != nil && $0.space.modelContext != nil && $0.space.id == targetSpace.id }
+            .filter { $0.modelContext != nil && $0.liveSpace?.id == targetSpace.id }
             .map(\.sortOrder)
         link.sortOrder = (targetOrders.max() ?? -1) + 1
         link.space = targetSpace
@@ -633,7 +651,13 @@ struct UnifiedRailView: View {
     }
 
     private func removeFromSpace(link: SpaceServiceLink) {
-        let service = link.service
+        // A link whose service is already gone has nothing to remove; drop the
+        // link itself and stop, rather than reasoning about a missing model.
+        guard let service = link.liveService else {
+            modelContext.delete(link)
+            save("remove dangling link from space")
+            return
+        }
         let serviceID = service.id
 
         if selectedServiceID == serviceID {
@@ -773,7 +797,12 @@ struct UnifiedRailView: View {
     }
 
     private func deleteService(link: SpaceServiceLink) {
-        let service = link.service
+        // As in removeFromSpace: a link with no service left is just a stale row.
+        guard let service = link.liveService else {
+            modelContext.delete(link)
+            save("delete dangling link")
+            return
+        }
         let serviceID = service.id
         let dataStoreIdentifier = service.dataStoreIdentifier
 

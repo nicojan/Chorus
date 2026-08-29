@@ -891,8 +891,8 @@ final class AppState {
         // Prefer one inside the current space; fall back to any match.
         if let spaceID,
            let inCurrentSpace = matches.first(where: { service in
-               service.spaceLinks.contains {
-                   $0.modelContext != nil && $0.space.modelContext != nil && $0.space.id == spaceID
+               service.spaceLinks.contains { link in
+                   link.modelContext != nil && link.liveSpace?.id == spaceID
                }
            }) {
             return inCurrentSpace
@@ -904,9 +904,10 @@ final class AppState {
         // Make sure we're in a space that contains this service so the
         // sidebar selection becomes visible. If the service lives in
         // multiple spaces, pick the first.
-        if let firstSpace = service.spaceLinks.first(where: {
-            $0.modelContext != nil && $0.space.modelContext != nil
-        })?.space.id {
+        if let firstSpace = service.spaceLinks
+            .filter({ $0.modelContext != nil })
+            .compactMap(\.liveSpace)
+            .first?.id {
             selectedSpaceID = firstSpace
         }
         selectedServiceID = service.id
@@ -1486,14 +1487,14 @@ final class AppState {
         // Guard against dangling links on both sides before materializing
         // `.service`/`.space` — reading a deleted model traps.
         let linkedServices = space.serviceLinks
-            .filter { $0.modelContext != nil && $0.service.modelContext != nil }
-            .map(\.service)
+            .filter { $0.modelContext != nil }
+            .compactMap(\.liveService)
         var memberships: [UUID: Set<UUID>] = [:]
         for service in linkedServices {
             memberships[service.id] = Set(
                 service.spaceLinks
-                    .filter { $0.modelContext != nil && $0.space.modelContext != nil }
-                    .map { $0.space.id }
+                    .filter { $0.modelContext != nil }
+                    .compactMap { $0.liveSpace?.id }
             )
         }
         let orphanedIDs = Self.servicesOrphaned(byDeletingSpace: spaceID, memberships: memberships)
@@ -2397,19 +2398,13 @@ final class AppState {
         let descriptor = FetchDescriptor<SpaceServiceLink>()
         do {
             return try context.fetch(descriptor)
-                // Guard both relationships: a link that outlived its deleted
-                // service *or* its deleted space (crash mid-delete) would trap
-                // when we materialize the non-optional relationship to read its
-                // id. Reading `.modelContext` is safe (nil once deleted); read it
-                // before `.space.id`.
-                .filter {
-                    $0.modelContext != nil
-                        && $0.service.modelContext != nil
-                        && $0.space.modelContext != nil
-                        && $0.space.id == spaceID
-                }
+                // Both ends have to be live before reading the space's id: a
+                // link that outlived its deleted service *or* its deleted space
+                // (crash mid-delete) still holds a freed model, and reading
+                // through it traps. `liveEnds` is that check.
+                .filter { $0.liveEnds?.space.id == spaceID }
                 .sorted { $0.sortOrder < $1.sortOrder }
-                .map(\.service)
+                .compactMap(\.liveService)
         } catch {
             AppLogger.dataStore.error("Failed to fetch links for space \(spaceID): \(error.localizedDescription)")
             return []
@@ -2915,11 +2910,11 @@ final class AppState {
         // Guard the link relationships first: reading `$0.space.id` on a link
         // whose Space was deleted (a dangling link that outlived StoreRepair)
         // faults the freed model and traps. Reading `.modelContext` is safe.
-        let liveLinks = service.spaceLinks.filter {
-            $0.modelContext != nil && $0.space.modelContext != nil
-        }
-        let inCurrentSpace = liveLinks.contains { $0.space.id == selectedSpaceID }
-        if !inCurrentSpace, let firstSpace = liveLinks.first?.space.id {
+        let liveSpaces = service.spaceLinks
+            .filter { $0.modelContext != nil }
+            .compactMap(\.liveSpace)
+        let inCurrentSpace = liveSpaces.contains { $0.id == selectedSpaceID }
+        if !inCurrentSpace, let firstSpace = liveSpaces.first?.id {
             selectedSpaceID = firstSpace
         }
         selectedServiceID = serviceID
