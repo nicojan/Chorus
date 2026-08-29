@@ -35,10 +35,18 @@ import SwiftData
 // (reshape) stage plus a fixture test. The plan-shape unit test turns "forgot to
 // do this" into a red test instead of field data loss.
 
+// Each `versionIdentifier` below is `nonisolated(unsafe)`. `Schema.Version` is
+// not marked `Sendable` in the Xcode 16 SDK, so a plain `static let` of one is a
+// Swift 6 error there ("may have shared mutable state"); the Xcode 26 SDK marks
+// it and accepts the same line. The value is an immutable struct of three
+// integers that nothing writes to, so the annotation asserts what is already
+// true rather than papering over a race. It is here so the project builds on
+// both, which is what lets CI run the suite on macOS 14 as well as 15.
+
 // MARK: - V1.5.11 (floor: before `stayActiveInBackground`)
 
 enum ChorusSchemaV1_5_11: VersionedSchema {
-    static let versionIdentifier = Schema.Version(1, 5, 11)
+    nonisolated(unsafe) static let versionIdentifier = Schema.Version(1, 5, 11)
 
     static var models: [any PersistentModel.Type] {
         [ServiceInstance.self, Space.self, SpaceServiceLink.self, AppPreferences.self]
@@ -176,7 +184,7 @@ enum ChorusSchemaV1_5_11: VersionedSchema {
 // MARK: - V1.5.12 (adds `stayActiveInBackground` — the incident field)
 
 enum ChorusSchemaV1_5_12: VersionedSchema {
-    static let versionIdentifier = Schema.Version(1, 5, 12)
+    nonisolated(unsafe) static let versionIdentifier = Schema.Version(1, 5, 12)
 
     // Reuses V1.5.11's frozen AppPreferences (unchanged between these versions);
     // ServiceInstance/Space/SpaceServiceLink are this namespace's own because the
@@ -286,7 +294,7 @@ enum ChorusSchemaV1_5_12: VersionedSchema {
 // shape survived a dev machine. The current version relaxes both ends.
 
 enum ChorusSchemaV1_5_13: VersionedSchema {
-    static let versionIdentifier = Schema.Version(1, 5, 13)
+    nonisolated(unsafe) static let versionIdentifier = Schema.Version(1, 5, 13)
 
     // Reuses V1.5.11's frozen AppPreferences (unchanged since); the triangle is
     // this namespace's own so the relationships point at THIS ServiceInstance.
@@ -396,7 +404,7 @@ enum ChorusSchemaVCurrent: VersionedSchema {
     // is the shape 1.5.13 through 1.5.18 shipped; this one is (1,5,19) because
     // making `SpaceServiceLink.space` and `.service` optional is a new shape and
     // 1.5.19 is where it first ships.
-    static let versionIdentifier = Schema.Version(1, 5, 19)
+    nonisolated(unsafe) static let versionIdentifier = Schema.Version(1, 5, 19)
 
     static var models: [any PersistentModel.Type] {
         [ServiceInstance.self, Space.self, SpaceServiceLink.self, AppPreferences.self]
