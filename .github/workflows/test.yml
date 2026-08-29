@@ -20,14 +20,21 @@ concurrency:
 
 jobs:
   test:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Show the toolchain
+      # The checked-in .pbxproj is object format 77, which Xcode 16 introduced.
+      # The runner image's default is older than that and refuses to open the
+      # project at all ("a future Xcode project file format"), so pick the
+      # newest Xcode installed rather than trusting the default.
+      - name: Use the newest installed Xcode
         run: |
+          newest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Selecting $newest"
+          sudo xcode-select -s "$newest/Contents/Developer"
           xcodebuild -version
           swift --version
 
