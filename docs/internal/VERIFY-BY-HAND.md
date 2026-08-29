@@ -2,7 +2,11 @@
 
 Five things are built, merged or pushed, and have never been looked at. Each one needs eyes rather than a test, and the last attempt on 2026-08-17 failed because scripted clicks kept landing in whatever app had come forward. Do these on a quiet machine, with Finder and everything else out of the way.
 
-Two of them sit on `fix/store-fresh-start` (PR #23) and three on `feat/spaces-presentation`. Check out the right branch before each block.
+**Blocks 1 and 2 passed on 2026-08-29, and PR #23 is merged.** They are kept below as the record of what was checked, and because the same steps are what to re-run if the fresh-start path ever changes. Blocks 3 to 5 are still open.
+
+The three that remain sit on `feat/spaces-presentation`.
+
+One lesson from the pass worth carrying: quit the installed release copy first. Both builds run a process called `Chorus`, so `System Events` will drive whichever it finds, and that is the likeliest way for a scripted click to go somewhere you did not mean.
 
 ## Never point any of this at the real store
 
@@ -16,7 +20,9 @@ Quit both copies of Chorus first, the Debug one and the installed release one. A
 
 ## 1. The `Start fresh` button, and the launch straight after it
 
-**Branch: `fix/store-fresh-start`. This is the gate on merging PR #23.**
+**PASSED 2026-08-29. Was the gate on merging PR #23, now merged at `0a55562`.**
+
+What the run showed: the banner carried `Start fresh…` and no `Review backups…`, the confirmation appeared before anything moved, and the restart went through the sheet rather than being dropped — the process id went 75746 to 76517, which is the evidence, since the recovery picker's version of this was where AppKit swallowed the terminate. The launch after it offered nothing to restore. The `.reset-` aside was 14 bytes, the same file that went in, and Review backups listed it as `can't be read` while `Your data now` held `Current`.
 
 The button needs a store that fails to open. `Chorus-debug` currently holds several good `.snapshot-*.bak` files, and `newestRestorableSnapshot` would find one and restore from it silently, so the banner would never appear. Start from an empty directory.
 
@@ -45,7 +51,11 @@ Then, in the Debug build:
 
 ## 2. Starting fresh twice
 
-**Same branch, straight after block 1.** This is what changed on 2026-08-24, and it has only ever been checked by test.
+**PASSED 2026-08-29, straight after block 1.** This is what changed on 2026-08-24, and until that run it had only ever been checked by test.
+
+What the run showed: the second corruption reproduced the first exactly, `haveBackup=false` in the log with a `.reset-` aside sitting right beside the store, and two `.reset-*.bak` files afterwards. The older one was compared by hash rather than by eye and came back `b2affd46b0aac8fbf277baa19dddc00745884881` both times.
+
+One thing the run turned up that is not a failure. The second aside came out at 262144 bytes though the file corrupted was 14, because a 432 KB `default.store-wal` was still beside it and SQLite most likely replayed the log onto the corrupt file at open. Nothing was lost. It does mean an aside can be bigger than the file that was damaged, which is worth knowing if a size in the picker ever looks wrong.
 
 `hasAnyPreservedCopy` now stops an automatic fresh start on a `.prepick-`, `.prerestore-` or `.corrupt-` sibling, where before it saw only `.snapshot-`. `.reset-` is excluded on purpose, so a second run of issue #20 gets fixed rather than landing back on the button.
 

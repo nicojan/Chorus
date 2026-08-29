@@ -1,5 +1,19 @@
 # Open items
 
+## Merged and unreleased: a way out of temporary storage, and Google Keep
+
+PR #23 merged on 2026-08-29 at `0a55562`, closing issues #20 and #19. It has not shipped: 1.5.18 is still what users have.
+
+Issue #20 was a fresh install that updated before setup and then ran on temporary storage forever. Seeding two default spaces on first launch sets a durable "this install has had data" flag, so an empty store afterwards reads as a store that lost data, and Chorus refuses to seed over it. Right when there is something to protect, a dead end when there is not. Both the flag and the store file outlive deleting the app, so reinstalling lands in the same place.
+
+Two ways out. Chorus starts fresh on its own when it can prove there is nothing to lose — the store opened, holds no spaces, services or links, and no backup sits beside it. A store it could not read fails that test on purpose. And a `Start fresh` button on the banner covers what those checks will not reach. Neither deletes: the old file is copied to a `.reset-<stamp>.bak` sibling and stays listed in the picker.
+
+`hasAnyPreservedCopy` reads `StoreInventory.preservationInfixes`, derived from `BackupFamily`, so a family added later cannot silently go unchecked. `.reset-` is excluded, which is the fork worth remembering: counting it would let a user's own earlier fresh start veto the automatic fix, so a second run of #20 would land back on the button.
+
+**Verified by hand on 2026-08-29**, blocks 1 and 2 of `docs/internal/VERIFY-BY-HAND.md`, which hold the evidence. 235 tests, 0 failures.
+
+Keep also arrived, with a real vector from thesvg through `scripts/build_brand_icons.py` — the same provenance as the other 63 marks. Note for whoever runs that script next: `--write` also reclassifies `brand-notion` and `brand-mattermost` as template-rendering, and both are set to `original` here on purpose.
+
 ## Open: memory grows over a long run
 
 Still open, and less settled than it looked. `scripts/sample_memory.sh` writes the series to `~/Library/Logs/chorus-mem.csv`.
