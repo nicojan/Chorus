@@ -337,10 +337,16 @@ final class ChorusTests: XCTestCase {
             XCTAssertEqual(doomed.serviceLinks.count, 2, "Space.serviceLinks inverse must be populated")
             let orphaned = AppState.servicesOrphaned(byDeletingSpace: workID, memberships: memberships)
             XCTAssertEqual(orphaned.count, 2, "Both of Work's services should be reclaimed")
+            // Mirrors AppState.deleteSpace: the space first and committed on
+            // its own, then the services it orphaned. Deleting both in one
+            // batch points the space's cascade and the service delete at the
+            // same link row, and SwiftData traps on macOS 15 because
+            // SpaceServiceLink.service is non-optional.
+            context.delete(doomed)
+            try context.save()
             for service in linkedServices where orphaned.contains(service.id) {
                 context.delete(service)
             }
-            context.delete(doomed)
             try context.save()
         }
 
@@ -481,15 +487,19 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(remaining.count, 2, "the cascade must take the probe's link with it")
     }
 
-    /// `deleteSpace` deletes a Space and the services that space orphaned in one
-    /// batch, and both models cascade to the same `SpaceServiceLink` rows. Two
-    /// cascades converging on one link is the shape that trapped a test on the
-    /// Xcode 26.3 SDK, so pin the app's own ordering rather than trusting that
-    /// the shape only ever appears in test code.
+    /// Pins the two-save ordering `AppState.deleteSpace` uses, and the reason
+    /// for it.
     ///
-    /// A crash here means `AppState.deleteSpace` would take the app down on that
-    /// SwiftData version, which is issue #3 returning by another route.
-    func testDeletingASpaceAndItsOrphanedServiceTogetherDoesNotTrap() throws {
+    /// Deleting a Space and the services it orphaned in ONE batch aims two
+    /// cascades at the same `SpaceServiceLink` row: the space's cascade removes
+    /// the link while the service delete asks SwiftData to unset that link's
+    /// `service`, which is non-optional. macOS 15 traps on it and the app dies
+    /// on an ordinary space deletion; macOS 26 allows it, which is how it
+    /// reached a release. CI on an older runner is what found it.
+    ///
+    /// Deleting the space alone first lets the cascade clear the links, so by
+    /// the second save nothing references the services.
+    func testDeletingASpaceThenItsOrphanedServiceDoesNotTrap() throws {
         let schema = Schema([
             ServiceInstance.self,
             Space.self,
@@ -507,10 +517,15 @@ final class ChorusTests: XCTestCase {
         context.insert(SpaceServiceLink(sortOrder: 0, space: space, service: onlyHere))
         try context.save()
 
-        // The exact ordering AppState.deleteSpace uses: the orphaned services
-        // first, then the space, then one save.
-        context.delete(onlyHere)
+        // The exact ordering AppState.deleteSpace uses: the space, committed on
+        // its own, then the services it orphaned.
         context.delete(space)
+        try context.save()
+        XCTAssertTrue(
+            try context.fetch(FetchDescriptor<SpaceServiceLink>()).isEmpty,
+            "the space's cascade must clear the link before the service goes"
+        )
+        context.delete(onlyHere)
         try context.save()
 
         XCTAssertTrue(try context.fetch(FetchDescriptor<SpaceServiceLink>()).isEmpty)
