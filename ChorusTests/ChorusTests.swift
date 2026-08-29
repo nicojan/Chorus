@@ -2720,7 +2720,14 @@ final class ChorusTests: XCTestCase {
     @discardableResult
     private func link(_ service: ServiceInstance, to space: Space, sortOrder: Int, in ctx: ModelContext) -> SpaceServiceLink {
         let link = SpaceServiceLink(sortOrder: sortOrder, space: space, service: service)
-        ctx.insert(link)
+        // Insert only if the relationships did not already pull it in. When both
+        // ends are in the context, building the link wires the inverses and the
+        // link is registered with them; inserting again is a second registration,
+        // which macOS 26 tolerates and macOS 14 traps on. When the ends are
+        // detached the link is not registered and the insert is what it needs.
+        if link.modelContext == nil {
+            ctx.insert(link)
+        }
         return link
     }
 
@@ -3367,7 +3374,7 @@ final class ChorusTests: XCTestCase {
             try ctx.save()
             // Link after the ends are committed; see makeDeleteFixture.
             let link = ChorusSchemaV1_5_11.SpaceServiceLink(id: linkID, sortOrder: 5, space: space, service: service)
-            ctx.insert(link)
+            if link.modelContext == nil { ctx.insert(link) }
             try ctx.save()
         }
 
@@ -3491,7 +3498,7 @@ final class ChorusTests: XCTestCase {
             try ctx.save()
             // Link after the ends are committed; see makeDeleteFixture.
             let link = ChorusSchemaV1_5_13.SpaceServiceLink(id: linkID, sortOrder: 7, space: space, service: service)
-            ctx.insert(link)
+            if link.modelContext == nil { ctx.insert(link) }
             try ctx.save()
         }
 
@@ -3559,7 +3566,9 @@ final class ChorusTests: XCTestCase {
         try ctx.save()
 
         let link = SpaceServiceLink(sortOrder: 0, space: space, service: service)
-        ctx.insert(link)
+        if link.modelContext == nil {
+            ctx.insert(link)
+        }
         try ctx.save()
         return (container, space, service, link)
     }
