@@ -3361,8 +3361,11 @@ final class ChorusTests: XCTestCase {
             service.microphonePolicyRaw = "allow"
             service.openExternalLinksInApp = true
             service.hasSeenPasskeyNotice = true
+            ctx.insert(space); ctx.insert(service)
+            try ctx.save()
+            // Link after the ends are committed; see makeDeleteFixture.
             let link = ChorusSchemaV1_5_11.SpaceServiceLink(id: linkID, sortOrder: 5, space: space, service: service)
-            ctx.insert(space); ctx.insert(service); ctx.insert(link)
+            ctx.insert(link)
             try ctx.save()
         }
 
@@ -3482,8 +3485,11 @@ final class ChorusTests: XCTestCase {
             let service = ChorusSchemaV1_5_13.ServiceInstance(id: serviceID, label: "Slack", url: "https://slack.com")
             service.hibernationPolicyRaw = "never"
             service.hibernateAfterMinutes = 42
+            ctx.insert(space); ctx.insert(service)
+            try ctx.save()
+            // Link after the ends are committed; see makeDeleteFixture.
             let link = ChorusSchemaV1_5_13.SpaceServiceLink(id: linkID, sortOrder: 7, space: space, service: service)
-            ctx.insert(space); ctx.insert(service); ctx.insert(link)
+            ctx.insert(link)
             try ctx.save()
         }
 
@@ -3536,10 +3542,22 @@ final class ChorusTests: XCTestCase {
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: [config])
         let ctx = container.mainContext
+        // Insert and commit the two ends BEFORE building the link. Constructing
+        // a link wires the inverse, so `space.serviceLinks` already holds it;
+        // inserting the space afterwards cascades that link into the context and
+        // the explicit `insert(link)` then registers it a second time. macOS 26
+        // tolerates the double registration and macOS 14 traps on it —
+        // "Duplicate registration attempt for object with id ... SpaceServiceLink"
+        // — taking the whole suite down. This is the order the other tests here
+        // already use.
         let space = Space(name: "Doomed", emoji: "📦", sortOrder: 0)
         let service = ServiceInstance(label: "only-here", url: "https://a.example", catalogEntryID: "a")
+        ctx.insert(space)
+        ctx.insert(service)
+        try ctx.save()
+
         let link = SpaceServiceLink(sortOrder: 0, space: space, service: service)
-        ctx.insert(space); ctx.insert(service); ctx.insert(link)
+        ctx.insert(link)
         try ctx.save()
         return (container, space, service, link)
     }
