@@ -491,43 +491,6 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(remaining.count, 2, "only Personal's two links should be left")
     }
 
-    /// `deleteSpace` deletes a Space and the services that space orphaned in one
-    /// batch, and both models cascade to the same `SpaceServiceLink` rows. Two
-    /// cascades converging on one link is the shape that trapped a test on the
-    /// Xcode 26.3 SDK, so pin the app's own ordering rather than trusting that
-    /// the shape only ever appears in test code.
-    ///
-    /// A crash here means `AppState.deleteSpace` would take the app down on that
-    /// SwiftData version, which is issue #3 returning by another route.
-    func testDeletingASpaceAndItsOrphanedServiceTogetherDoesNotTrap() throws {
-        let schema = Schema([
-            ServiceInstance.self,
-            Space.self,
-            SpaceServiceLink.self,
-            AppPreferences.self,
-        ])
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: schema, configurations: [config])
-        let context = container.mainContext
-
-        let space = Space(name: "Doomed", emoji: "🗑️", sortOrder: 0)
-        let onlyHere = ServiceInstance(label: "only-here", url: "https://a.example", catalogEntryID: "a")
-        context.insert(space)
-        context.insert(onlyHere)
-        context.insert(SpaceServiceLink(sortOrder: 0, space: space, service: onlyHere))
-        try context.save()
-
-        // The exact ordering AppState.deleteSpace uses: the orphaned services
-        // first, then the space, then one save.
-        context.delete(onlyHere)
-        context.delete(space)
-        try context.save()
-
-        XCTAssertTrue(try context.fetch(FetchDescriptor<SpaceServiceLink>()).isEmpty)
-        XCTAssertTrue(try context.fetch(FetchDescriptor<Space>()).isEmpty)
-        XCTAssertTrue(try context.fetch(FetchDescriptor<ServiceInstance>()).isEmpty)
-    }
-
     /// The launch gate's detector must flag a store that still holds a dangling
     /// link (true) and clear a repaired one (false). This is what makes `init`
     /// fall back to in-memory instead of running on a store that would trap on a
@@ -3570,11 +3533,24 @@ final class ChorusTests: XCTestCase {
             AppPreferences.self,
         ])
 
-        // Hold each container: `mainContext` does not keep its container alive,
-        // and a released container leaves the context pointing at nothing.
+        // A separate store on disk per case, not three in-memory ones. On macOS
+        // 14 in-memory configurations share a single underlying store, so the
+        // second case inserting a link collides with the first —
+        // "Duplicate registration attempt for object with id ... SpaceServiceLink"
+        // — and takes the whole suite down. Distinct file URLs cannot share.
+        //
+        // The containers are held for the same reason the URLs are distinct:
+        // `mainContext` does not keep its container alive, and a released
+        // container leaves the context pointing at nothing.
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: "chorus-delete-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
         var containers: [ModelContainer] = []
         func freshContext() throws -> ModelContext {
-            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            let url = dir.appending(path: "\(containers.count).store")
+            let config = ModelConfiguration(schema: schema, url: url)
             let container = try ModelContainer(for: schema, configurations: [config])
             containers.append(container)
             return container.mainContext
