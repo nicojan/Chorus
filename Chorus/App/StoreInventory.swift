@@ -245,6 +245,11 @@ struct StoreCandidate: Hashable, Sendable, Identifiable {
         /// "already backed up" sentinel, and a deliberate restore's aside must
         /// never satisfy that check.
         case prepick
+        /// The store set aside when the user chose to start fresh from the
+        /// temporary-storage banner. Its own family so it is never mistaken for
+        /// a backup Chorus took on the user's behalf: this one exists because
+        /// the user asked to walk away from it, and the picker should say so.
+        case reset
     }
 
     let url: URL
@@ -278,6 +283,7 @@ extension StoreCandidate {
         case .prerestore: return "Backup from an earlier restore"
         case .corrupt: return "Backup from before a repair"
         case .prepick: return "Your data before you restored a backup"
+        case .reset: return "Your data before you started fresh"
         }
     }
 
@@ -323,7 +329,7 @@ extension StoreCandidate {
 }
 
 extension StoreInventory {
-    /// The four backup families, all of which are copies of the user's own
+    /// The five backup families, all of which are copies of the user's own
     /// store and so all worth offering. An enum, not bare strings, so the
     /// switch in `candidates(for:liveContent:)` is exhaustive: adding a family
     /// here without giving it a `StoreCandidate.Kind` case is a compile error,
@@ -333,6 +339,7 @@ extension StoreInventory {
         case prerestore = ".prerestore-"
         case corrupt = ".corrupt-"
         case prepick = ".prepick-"
+        case reset = ".reset-"
     }
 
     /// Filename infixes of the backup families, derived from `BackupFamily` so
@@ -341,6 +348,19 @@ extension StoreInventory {
     /// hand-written literal, so a new family added to `BackupFamily` can't
     /// silently fail to be validated.
     static var backupInfixes: [String] { BackupFamily.allCases.map(\.rawValue) }
+
+    /// The families that count as data still worth protecting here: every one
+    /// except `.reset-`.
+    ///
+    /// A `.reset-` aside is the copy a fresh start already made, so treating it
+    /// as something to protect would let a user's own earlier fresh start veto
+    /// the automatic fix and push every repeat of issue #20 back to the button.
+    /// The other four are copies the user did not ask to leave behind. The
+    /// picker still lists `.reset-` asides, so undoing a fresh start stays one
+    /// click under Review backups.
+    static var preservationInfixes: [String] {
+        BackupFamily.allCases.filter { $0 != .reset }.map(\.rawValue)
+    }
 
     /// Every candidate for `storeURL`: the live store (whose content the caller
     /// supplies, since it is already open) plus each backup sibling, ordered
@@ -376,6 +396,7 @@ extension StoreInventory {
             case .prerestore: kind = .prerestore
             case .corrupt: kind = .corrupt
             case .prepick: kind = .prepick
+            case .reset: kind = .reset
             }
             let content = readContent(at: url)
             backups.append(StoreCandidate(
@@ -444,9 +465,20 @@ extension StoreInventory {
     /// order — the same one every time even when candidates tie on all of those.
     /// Excludes the live store, damaged files, and files whose content is
     /// unknown.
+    ///
+    /// Also excludes the `.reset` family, the one candidate Chorus must never
+    /// put forward on its own. Everything this function feeds is a proposal —
+    /// the launch banner (`offer`), the picker's preselection, and the key that
+    /// remembers a declined one — and a `.reset` aside exists precisely because
+    /// the user asked to walk away from that store. Proposing it would land on
+    /// the very next launch, when the live store is the untouched seed and so
+    /// exactly when preselection is licensed, and would reverse the action that
+    /// created the file. It stays in `candidates`, so the picker still lists it
+    /// and putting it back is one click away under Review backups; it is just
+    /// never Chorus's own suggestion.
     static func best(among candidates: [StoreCandidate]) -> StoreCandidate? {
         candidates
-            .filter(\.isRestorable)
+            .filter { $0.isRestorable && $0.kind != .reset }
             .sorted(by: isRankedAbove)
             .first
     }

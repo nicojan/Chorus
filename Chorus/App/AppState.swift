@@ -309,6 +309,11 @@ final class AppState {
     /// `quitForScheduledRestore`.
     private(set) var isRestoreRestartArmed = false
 
+    /// Set when the user has asked to start fresh and the relaunch is spawned,
+    /// so the quit can wait for the confirmation dialog to close. Same split,
+    /// and the same reason, as `isRestoreRestartArmed`.
+    private(set) var isFreshStartRestartArmed = false
+
     /// Whether `init` fell back to a throwaway in-memory container because the
     /// real store was unusable. While this is true, the container's counts are
     /// not the user's store — reading `.spaces`/`.services` from it can show an
@@ -374,6 +379,11 @@ final class AppState {
         // A restore the user picked last session, applied before anything opens
         // the store.
         StoreRepair.applyPendingRestore(at: config.url)
+
+        // A start-fresh the user asked for from the temporary-storage banner.
+        // Runs alongside the pending restore, and for the same reason: the store
+        // can only be moved while no container holds it open.
+        StoreRepair.applyPendingReset(at: config.url)
 
         // Snapshot the store before a newly-installed version opens it, so a
         // migration that loses or reshapes data is always recoverable. No-op
@@ -1587,10 +1597,30 @@ final class AppState {
     static func recoveryPlan(
         kind: UnusableKind,
         before: Int?,
-        fileExisted: Bool
+        fileExisted: Bool,
+        nothingLeftToProtect: Bool = false
     ) -> (attemptRestore: Bool, ifNoRestore: Recovery) {
         switch kind {
         case .emptiedWithHistory:
+            // An install that was never set up, updated before it held anything,
+            // is indistinguishable here from one that lost real data: the durable
+            // "has ever had data" flag is set either way, because the default seed
+            // writes spaces. Left at `.preserveInMemory` that install runs on
+            // temporary storage at every launch, forever, with no backup to
+            // restore and no way out — reinstalling does not help, since both the
+            // flag and the store file outlive the app bundle (issue #20).
+            //
+            // `nothingLeftToProtect` is the caller's proof that there is genuinely
+            // nothing here: the store opened, read back zero spaces AND zero
+            // services AND zero links from this app's own tables, and not one
+            // snapshot sibling exists. An unreadable store fails that test, which
+            // is the important direction — it is the one that might still hold
+            // everything.
+            //
+            // Even then the fresh start moves the old file aside rather than
+            // seeding over it, so being wrong about this costs a rename and not a
+            // user's data.
+            if fileExisted && nothingLeftToProtect { return (true, .freshStart) }
             return (true, fileExisted ? .preserveInMemory : .freshStart)
         case .openFailed:
             if (before ?? 0) > 0 {
@@ -1647,7 +1677,16 @@ final class AppState {
             kind = .openFailed
         }
 
-        let plan = recoveryPlan(kind: kind, before: before, fileExisted: fileExisted)
+        // Computed before any restore work, while the store is exactly as the
+        // failed open left it. See `recoveryPlan` for what this licenses.
+        let nothingLeftToProtect = StoreRepair.storeIsProvablyEmpty(at: config.url)
+            && !StoreRepair.hasAnyPreservedCopy(for: config.url)
+        let plan = recoveryPlan(
+            kind: kind,
+            before: before,
+            fileExisted: fileExisted,
+            nothingLeftToProtect: nothingLeftToProtect
+        )
         // Whether a usable backup EXISTS matters more than whether the restore
         // ultimately succeeds: we must never clear the durable flag and reseed
         // while a usable backup sits on disk. So look it up up front and branch on
@@ -1677,6 +1716,17 @@ final class AppState {
             // Genuinely nothing to recover: no store file existed AND no usable
             // backup is on disk. Only here is it safe to clear the stale flag and
             // let a fresh store seed.
+            //
+            // When a file IS present (the never-configured install of issue #20),
+            // it is set aside first rather than seeded over. The checks above say
+            // it holds nothing, but they are checks, and this keeps the cost of
+            // them being wrong at a renamed file the recovery picker still lists.
+            // A failed move means the old store is still there, so the fresh start
+            // is abandoned rather than run on top of it.
+            if fileExisted && !StoreRepair.moveStoreAside(at: config.url) {
+                AppLogger.dataStore.error("Fresh start abandoned: the existing store could not be set aside")
+                return (inMemoryContainer(schema: schema), .inMemoryFallback(reason: "could not set the old store aside"))
+            }
             defaults.set(false, forKey: hasEverHadDataKey)
             if case .usable(let fresh) = tryOpen(schema: schema, config: config, hadHistory: false) {
                 AppLogger.dataStore.info("No file and nothing to restore; starting fresh")
@@ -2078,6 +2128,46 @@ final class AppState {
     func quitForScheduledRestore() {
         guard isRestoreRestartArmed else { return }
         isRestoreRestartArmed = false
+        AppRelauncher.quit()
+    }
+
+    /// Records a request to abandon the current store and start on a new empty
+    /// one, then restarts so the move happens before anything opens the store.
+    ///
+    /// This is the way out of the trap in issue #20: an install that was never
+    /// configured, updated before it held anything, comes up on temporary
+    /// storage at every launch with no backup to offer and no way back. The
+    /// automatic path in `loadContainer` now handles the provable case, but it
+    /// is deliberately narrow — it refuses to act on a store it could not read —
+    /// and a store that is unreadable rather than empty lands in exactly the
+    /// same dead end. So the user gets to make the call the checks won't.
+    ///
+    /// Nothing is deleted. `StoreRepair.moveStoreAside` copies the triple to a
+    /// `.reset-<stamp>.bak` sibling before removing it, and the recovery picker
+    /// lists that family like any other backup, so a user who does this by
+    /// mistake — or who turns out to have had data after all — can restore it.
+    ///
+    /// Returns whether the restart was armed. A spawn failure leaves the key
+    /// written on purpose, exactly as `chooseStoreRestore` does: the move is
+    /// applied at the next launch whenever that happens.
+    @discardableResult
+    func chooseFreshStart(defaults: UserDefaults = .standard) -> Bool {
+        defaults.set(true, forKey: StoreRepair.pendingResetKey)
+        AppLogger.dataStore.info("Scheduled a fresh start; the current store will be set aside at the next launch")
+        guard AppRelauncher.armRelaunch() else {
+            AppLogger.dataStore.error("Fresh start was scheduled but the relaunch could not be spawned; it will still apply on the next launch")
+            return false
+        }
+        isFreshStartRestartArmed = true
+        return true
+    }
+
+    /// Quits if the user asked to start fresh, called once the confirmation
+    /// dialog has closed. See `quitForScheduledRestore` for why the quit cannot
+    /// happen in the button's own action.
+    func quitForScheduledFreshStart() {
+        guard isFreshStartRestartArmed else { return }
+        isFreshStartRestartArmed = false
         AppRelauncher.quit()
     }
 

@@ -845,9 +845,19 @@ final class ChorusTests: XCTestCase {
         XCTAssertFalse(defaults.bool(forKey: AppState.hasEverHadDataKey), "an empty fresh install hasn't recorded data yet")
     }
 
-    /// Emptied store + history but NO usable snapshot → in-memory fallback, and
-    /// the on-disk store is left untouched (not seeded, not deleted).
-    func testLoadContainerFallsBackToInMemoryWhenNoSnapshot() throws {
+    /// Emptied store + history, no snapshot, and nothing readable left in the
+    /// file → start fresh, with the old file kept as a `.reset-` backup.
+    ///
+    /// This case used to return `.inMemoryFallback` and leave the file in place,
+    /// which was the trap in issue #20: an install updated before it was ever
+    /// configured comes up on temporary storage at every launch, with no backup
+    /// to offer and no way out — reinstalling does not clear it, because both
+    /// the durable flag and the store file outlive the app bundle.
+    ///
+    /// Starting fresh here is safe *because* the old file is copied aside first,
+    /// so the guarantee the old assertion was protecting — the user's bytes are
+    /// never destroyed — still holds. It is checked explicitly below.
+    func testLoadContainerStartsFreshWhenTheEmptiedStoreHoldsNothing() throws {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("chorus-load-fallback-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -864,10 +874,251 @@ final class ChorusTests: XCTestCase {
         let config = ModelConfiguration(schema: Self.storeSchema, url: storeURL)
         let (_, outcome) = AppState.loadContainer(schema: Self.storeSchema, config: config, defaults: defaults)
 
+        XCTAssertEqual(outcome, .openedClean, "nothing was left to protect, so the user gets a working store")
+
+        // The point of the change: nothing was destroyed to get there.
+        let asides = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .filter { $0.hasPrefix("store.sqlite" + StoreRepair.resetAsideInfix) && $0.hasSuffix(".bak") }
+        XCTAssertEqual(asides.count, 1, "the old store must be kept as a .reset- backup, not deleted")
+    }
+
+    /// The same shape, but the store still holds services → preserve it. Only a
+    /// store proved empty across all three tables licenses a fresh start; rows in
+    /// any of them are the user's.
+    func testLoadContainerPreservesAnEmptiedStoreThatStillHoldsServices() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-load-keepsvc-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let suite = "chorus-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        try makePopulatedStore(at: storeURL, spaces: 2)
+        // A service with no space is exactly the shape a half-lost store takes.
+        try Self.runSQLite(storeURL, "INSERT INTO ZSERVICEINSTANCE (Z_PK, Z_ENT, Z_OPT) VALUES (99, 1, 1);")
+        try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
+        defaults.set(true, forKey: AppState.hasEverHadDataKey)
+
+        let config = ModelConfiguration(schema: Self.storeSchema, url: storeURL)
+        let (_, outcome) = AppState.loadContainer(schema: Self.storeSchema, config: config, defaults: defaults)
+
         guard case .inMemoryFallback = outcome else {
-            return XCTFail("expected .inMemoryFallback, got \(outcome)")
+            return XCTFail("a store still holding services must never be started over; got \(outcome)")
         }
-        XCTAssertEqual(StoreRepair.spaceCount(at: storeURL), 0, "on-disk store must be left untouched (not seeded)")
+    }
+
+    /// A snapshot on disk, even one too damaged to restore from, stops the
+    /// fresh start. `hasAnyPreservedCopy` is deliberately weaker than
+    /// `newestRestorableSnapshot`: a file the user might salvage by hand still
+    /// counts as something to protect.
+    func testLoadContainerPreservesWhenAnUnusableSnapshotExists() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-load-keepsnap-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let suite = "chorus-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        try makePopulatedStore(at: storeURL, spaces: 2)
+        try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
+        // Not a readable store, so newestRestorableSnapshot skips it — but it is
+        // still a file bearing the user's data's name.
+        try Data("not a database".utf8).write(
+            to: dir.appendingPathComponent("store.sqlite\(StoreRepair.snapshotInfix)1700000000_1.0.0.bak")
+        )
+        defaults.set(true, forKey: AppState.hasEverHadDataKey)
+
+        let config = ModelConfiguration(schema: Self.storeSchema, url: storeURL)
+        let (_, outcome) = AppState.loadContainer(schema: Self.storeSchema, config: config, defaults: defaults)
+
+        guard case .inMemoryFallback = outcome else {
+            return XCTFail("a snapshot on disk must stop a fresh start; got \(outcome)")
+        }
+    }
+
+    /// A `.prepick-` aside is the user's own data, set aside when they restored
+    /// a backup, and it must stop the fresh start exactly as a `.snapshot-` does.
+    /// The check reads every backup family but one, so pick a family that is
+    /// neither the snapshot it started life matching nor the `.reset-` exception.
+    func testLoadContainerPreservesWhenAnyOtherBackupFamilyExists() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-load-keepfam-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let suite = "chorus-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        try makePopulatedStore(at: storeURL, spaces: 2)
+        try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
+        try Data("not a database".utf8).write(
+            to: dir.appendingPathComponent("store.sqlite\(StoreRepair.pickAsideInfix)1700000000_1.0.0.bak")
+        )
+        defaults.set(true, forKey: AppState.hasEverHadDataKey)
+
+        let config = ModelConfiguration(schema: Self.storeSchema, url: storeURL)
+        let (_, outcome) = AppState.loadContainer(schema: Self.storeSchema, config: config, defaults: defaults)
+
+        guard case .inMemoryFallback = outcome else {
+            return XCTFail("a .prepick- aside must stop a fresh start; got \(outcome)")
+        }
+    }
+
+    /// A `.reset-` aside is the one family that must NOT stop a fresh start.
+    /// It is the copy an earlier fresh start already made, so counting it would
+    /// let the user's own first fresh start veto the automatic fix and push
+    /// every repeat of issue #20 back to the button. Nothing is lost by going
+    /// again: the second fresh start sets its own copy aside beside the first,
+    /// and the picker lists both.
+    func testLoadContainerStartsFreshDespiteAnEarlierResetAside() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-load-resetaside-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let suite = "chorus-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        try makePopulatedStore(at: storeURL, spaces: 2)
+        try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
+        // What an earlier fresh start left behind.
+        try Data("not a database".utf8).write(
+            to: dir.appendingPathComponent("store.sqlite\(StoreRepair.resetAsideInfix)1700000000.bak")
+        )
+        defaults.set(true, forKey: AppState.hasEverHadDataKey)
+
+        let config = ModelConfiguration(schema: Self.storeSchema, url: storeURL)
+        let (_, outcome) = AppState.loadContainer(schema: Self.storeSchema, config: config, defaults: defaults)
+
+        XCTAssertEqual(outcome, .openedClean, "an earlier fresh start must not veto this one")
+
+        // And this fresh start kept its own copy, beside the older one.
+        let asides = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .filter { $0.hasPrefix("store.sqlite" + StoreRepair.resetAsideInfix) && $0.hasSuffix(".bak") }
+        XCTAssertEqual(asides.count, 2, "the earlier aside must survive and the new one must join it")
+    }
+
+    /// `storeIsProvablyEmpty` must answer no for a file it cannot read. Unknown
+    /// is not empty, and this is the direction that matters: an unreadable store
+    /// is the one that might still hold everything.
+    func testStoreIsProvablyEmptyRefusesToGuessAboutAnUnreadableFile() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-provably-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let garbage = dir.appendingPathComponent("garbage.sqlite")
+        try Data("not a database".utf8).write(to: garbage)
+        XCTAssertFalse(StoreRepair.storeIsProvablyEmpty(at: garbage))
+
+        // A file that isn't there at all is likewise not proof of emptiness.
+        XCTAssertFalse(StoreRepair.storeIsProvablyEmpty(at: dir.appendingPathComponent("absent.sqlite")))
+
+        let empty = dir.appendingPathComponent("empty.sqlite")
+        try makePopulatedStore(at: empty, spaces: 1)
+        try Self.runSQLite(empty, "DELETE FROM ZSPACE;")
+        XCTAssertTrue(StoreRepair.storeIsProvablyEmpty(at: empty))
+    }
+
+    /// Setting the store aside copies it before removing it, and a caller that
+    /// then opens a fresh store finds the old one still on disk under its own
+    /// backup family.
+    func testMoveStoreAsideKeepsTheOldBytes() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-aside-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        try makePopulatedStore(at: storeURL, spaces: 3)
+
+        XCTAssertTrue(StoreRepair.moveStoreAside(at: storeURL, stamp: "1700000000"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: storeURL.path), "the live store must be gone")
+
+        let aside = dir.appendingPathComponent("store.sqlite\(StoreRepair.resetAsideInfix)1700000000.bak")
+        XCTAssertEqual(StoreRepair.spaceCount(at: aside), 3, "the aside copy must still hold the data")
+
+        // A missing store is success: the postcondition already holds.
+        XCTAssertTrue(StoreRepair.moveStoreAside(at: storeURL, stamp: "1700000001"))
+    }
+
+    /// The aside a fresh start leaves must be listed in the picker — that is the
+    /// promise the confirmation dialog makes, and the reason starting fresh is
+    /// safe to offer at all — while never being what Chorus proposes by itself.
+    ///
+    /// Both halves matter. Drop it from the picker and the user cannot undo a
+    /// fresh start. Let it reach `best` and the launch right after one greets
+    /// them with an offer to restore the store they just chose to leave, since
+    /// that launch is precisely when the live store is the untouched seed and
+    /// preselection is licensed.
+    func testResetAsideIsListedInThePickerButNeverProposed() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-reset-listed-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // Four spaces set aside by a fresh start, and a live store holding
+        // nothing — the shape of the launch straight after the button is used.
+        try makePopulatedStore(at: storeURL, spaces: 4)
+        try Self.copyStoreTriple(
+            from: storeURL,
+            to: dir.appendingPathComponent("store.sqlite\(StoreRepair.resetAsideInfix)1700000000.bak")
+        )
+        _ = try Self.runSQLite(storeURL, "DELETE FROM ZSPACE;")
+
+        let live = try XCTUnwrap(StoreInventory.readContent(at: storeURL))
+        let found = StoreInventory.candidates(for: storeURL, liveContent: live)
+
+        let aside = try XCTUnwrap(
+            found.first { $0.kind == .reset },
+            "the .reset- family must be recognized as its own kind and listed in the picker"
+        )
+        XCTAssertEqual(aside.content?.spaces, 4, "and it must read back the data it holds")
+        XCTAssertTrue(aside.isRestorable, "the user must be able to choose it")
+
+        // But Chorus must not choose it for them.
+        XCTAssertNil(StoreInventory.best(among: found), "a .reset- aside must never be proposed")
+        XCTAssertNil(
+            StoreInventory.preselection(among: found, liveContent: live),
+            "and never preselected, least of all on the launch right after a fresh start"
+        )
+        XCTAssertNil(
+            StoreInventory.offer(
+                liveContent: live,
+                best: StoreInventory.best(among: found),
+                record: StoreContent(spaces: 4, services: 0, links: 0, spaceNames: [], serviceLabels: []),
+                declinedKeys: []
+            ),
+            "so no banner offers to undo what the user just asked for"
+        )
+    }
+
+    /// The pending-reset key is consumed exactly once, so a crash mid-move can't
+    /// make every later launch repeat it.
+    func testApplyPendingResetRunsOnceAndOnlyWhenAsked() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-pendingreset-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        try makePopulatedStore(at: storeURL, spaces: 1)
+        let suite = "chorus-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertFalse(StoreRepair.applyPendingReset(at: storeURL, defaults: defaults), "no request, no move")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: storeURL.path))
+
+        defaults.set(true, forKey: StoreRepair.pendingResetKey)
+        XCTAssertTrue(StoreRepair.applyPendingReset(at: storeURL, defaults: defaults))
+        XCTAssertFalse(defaults.bool(forKey: StoreRepair.pendingResetKey), "the key must be cleared")
+        XCTAssertFalse(StoreRepair.applyPendingReset(at: storeURL, defaults: defaults), "and not run again")
     }
 
     /// Opening a store that already holds data must record `hasEverHadData`, so

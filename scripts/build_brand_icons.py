@@ -45,6 +45,8 @@ SLUGS = {
     "sentry":"sentry","clickup":"clickup","evernote":"evernote",
     "feedly":"feedly","medium":"medium","apple-music":"apple-music",
     "soundcloud":"soundcloud","replit":"replit","calendly":"calendly",
+    # Added 2026-08 (issue #19).
+    "google-keep":"google-keep",
 }
 
 def fetch(slug):
