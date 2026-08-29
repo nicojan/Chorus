@@ -326,10 +326,10 @@ final class ChorusTests: XCTestCase {
             let doomed = try context.fetch(
                 FetchDescriptor<Space>(predicate: #Predicate { $0.id == workID })
             ).first!
-            let linkedServices = doomed.serviceLinks.map(\.service)
+            let linkedServices = doomed.serviceLinks.compactMap(\.service)
             var memberships: [UUID: Set<UUID>] = [:]
             for service in linkedServices {
-                memberships[service.id] = Set(service.spaceLinks.map { $0.space.id })
+                memberships[service.id] = Set(service.spaceLinks.compactMap { $0.space?.id })
             }
             // The inverse must be wired for this to be non-empty — the bug was
             // that it read 0, so nothing was reclaimed and the space's links
@@ -360,8 +360,8 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(links.count, 2, "Only Personal's two links should remain")
         for l in links {
             XCTAssertNotNil(l.modelContext)
-            XCTAssertNotNil(l.space.modelContext, "Link's space must not dangle")
-            XCTAssertNotNil(l.service.modelContext, "Link's service must not dangle")
+            XCTAssertNotNil(l.space?.modelContext, "Link's space must not dangle")
+            XCTAssertNotNil(l.service?.modelContext, "Link's service must not dangle")
         }
 
         let spaces = try context.fetch(FetchDescriptor<Space>())
@@ -448,8 +448,8 @@ final class ChorusTests: XCTestCase {
         let links = try context.fetch(FetchDescriptor<SpaceServiceLink>())
         XCTAssertEqual(links.count, 2, "only Personal's two links should survive")
         for l in links {
-            _ = l.space.id     // the badge-sweep read that crashed pre-fix
-            _ = l.service.id
+            _ = l.space?.id    // the badge-sweep read that crashed pre-fix
+            _ = l.service?.id
         }
         let spaces = try context.fetch(FetchDescriptor<Space>())
         XCTAssertEqual(spaces.map(\.name), ["Personal"], "the live space must be intact")
@@ -458,15 +458,64 @@ final class ChorusTests: XCTestCase {
 
         // The store must remain writable (bookkeeping/history survived): create
         // and remove a link, then save with no error.
+        //
+        // Delete the service alone and let the cascade take the link with it.
+        // Deleting both by hand is what the app never does and what SwiftData
+        // will not always survive: on the Xcode 26.3 SDK, removing the link
+        // first and then its service traps with "Cannot remove
+        // Chorus.ServiceInstance from relationship service on
+        // Chorus.SpaceServiceLink because an appropriate default value is not
+        // configured", because `service` is non-optional and there is nothing
+        // to put in its place. Newer SDKs let it pass, which is why this stood
+        // until CI ran it.
         let probeSpace = spaces[0]
         let probeSvc = ServiceInstance(label: "probe", url: "https://probe.example", catalogEntryID: "probe")
         context.insert(probeSvc)
         let probeLink = SpaceServiceLink(sortOrder: 9, space: probeSpace, service: probeSvc)
         context.insert(probeLink)
         try context.save()
-        context.delete(probeLink)
         context.delete(probeSvc)
         try context.save()
+
+        let remaining = try context.fetch(FetchDescriptor<SpaceServiceLink>())
+        XCTAssertEqual(remaining.count, 2, "the cascade must take the probe's link with it")
+    }
+
+    /// `deleteSpace` deletes a Space and the services that space orphaned in one
+    /// batch, and both models cascade to the same `SpaceServiceLink` rows. Two
+    /// cascades converging on one link is the shape that trapped a test on the
+    /// Xcode 26.3 SDK, so pin the app's own ordering rather than trusting that
+    /// the shape only ever appears in test code.
+    ///
+    /// A crash here means `AppState.deleteSpace` would take the app down on that
+    /// SwiftData version, which is issue #3 returning by another route.
+    func testDeletingASpaceAndItsOrphanedServiceTogetherDoesNotTrap() throws {
+        let schema = Schema([
+            ServiceInstance.self,
+            Space.self,
+            SpaceServiceLink.self,
+            AppPreferences.self,
+        ])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+
+        let space = Space(name: "Doomed", emoji: "🗑️", sortOrder: 0)
+        let onlyHere = ServiceInstance(label: "only-here", url: "https://a.example", catalogEntryID: "a")
+        context.insert(space)
+        context.insert(onlyHere)
+        context.insert(SpaceServiceLink(sortOrder: 0, space: space, service: onlyHere))
+        try context.save()
+
+        // The exact ordering AppState.deleteSpace uses: the orphaned services
+        // first, then the space, then one save.
+        context.delete(onlyHere)
+        context.delete(space)
+        try context.save()
+
+        XCTAssertTrue(try context.fetch(FetchDescriptor<SpaceServiceLink>()).isEmpty)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<Space>()).isEmpty)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<ServiceInstance>()).isEmpty)
     }
 
     /// The launch gate's detector must flag a store that still holds a dangling
@@ -2877,20 +2926,20 @@ final class ChorusTests: XCTestCase {
         // Replicate moveService: compute the target's tail order *before*
         // repointing, then reassign the link's space.
         let before = try ctx.fetch(FetchDescriptor<SpaceServiceLink>())
-        let targetOrders = before.filter { $0.space.id == spaceB.id }.map(\.sortOrder)
+        let targetOrders = before.filter { $0.space?.id == spaceB.id }.map(\.sortOrder)
         movingLink.sortOrder = (targetOrders.max() ?? -1) + 1
         movingLink.space = spaceB
         try ctx.save()
 
         let after = try ctx.fetch(FetchDescriptor<SpaceServiceLink>())
-        let inA = after.filter { $0.space.id == spaceA.id }
-        let inB = after.filter { $0.space.id == spaceB.id }.sorted { $0.sortOrder < $1.sortOrder }
+        let inA = after.filter { $0.space?.id == spaceA.id }
+        let inB = after.filter { $0.space?.id == spaceB.id }.sorted { $0.sortOrder < $1.sortOrder }
 
         XCTAssertTrue(inA.isEmpty, "source space should hold no links after the move")
-        XCTAssertEqual(inB.map { $0.service.label }, ["Gmail", "Slack"], "moved service lands at the tail of the target")
+        XCTAssertEqual(inB.map { $0.service?.label }, ["Gmail", "Slack"], "moved service lands at the tail of the target")
         XCTAssertEqual(inB.last?.sortOrder, 1)
         // The service keeps exactly one link: no orphan, no double-link.
-        XCTAssertEqual(after.filter { $0.service.id == moving.id }.count, 1)
+        XCTAssertEqual(after.filter { $0.service?.id == moving.id }.count, 1)
     }
 
     // MARK: - Media permission resolution
@@ -3214,11 +3263,40 @@ final class ChorusTests: XCTestCase {
             ["id", "name", "emoji", "sortOrder", "isMuted", "createdAt"],
             "Space stored attributes changed without a new schema version"
         )
+        let link = try entity("SpaceServiceLink")
         XCTAssertEqual(
-            Set(try entity("SpaceServiceLink").attributes.map(\.name)),
+            Set(link.attributes.map(\.name)),
             ["id", "sortOrder"],
             "SpaceServiceLink stored attributes changed without a new schema version"
         )
+        // Both ends must stay optional. Non-optional is what made a cascade
+        // delete trap on macOS 15 and kill the app on deleting a space, and the
+        // attribute set above cannot see it because a relationship is not an
+        // attribute — so assert it directly.
+        for name in ["space", "service"] {
+            let relationship = try XCTUnwrap(
+                link.relationships.first { $0.name == name },
+                "SpaceServiceLink lost its \(name) relationship"
+            )
+            XCTAssertTrue(
+                relationship.isOptional,
+                "SpaceServiceLink.\(name) must stay optional: a .cascade delete has to clear it, and SwiftData traps on macOS 15 when it cannot"
+            )
+        }
+
+        // Control, so the check above cannot pass vacuously: the frozen 1.5.13
+        // shape is the same relationships NOT optional, and `isOptional` has to
+        // tell them apart or it is measuring nothing.
+        let frozenLink = try XCTUnwrap(
+            Schema(versionedSchema: ChorusSchemaV1_5_13.self).entities.first { $0.name == "SpaceServiceLink" }
+        )
+        for name in ["space", "service"] {
+            let relationship = try XCTUnwrap(frozenLink.relationships.first { $0.name == name })
+            XCTAssertFalse(
+                relationship.isOptional,
+                "the frozen 1.5.13 shape is meant to be the non-optional one"
+            )
+        }
         XCTAssertEqual(
             Set(try entity("AppPreferences").attributes.map(\.name)),
             [
@@ -3344,8 +3422,8 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(links.count, 1)
         let l = try XCTUnwrap(links.first)
         XCTAssertEqual(l.sortOrder, 5)
-        XCTAssertEqual(l.space.id, spaceID)
-        XCTAssertEqual(l.service.id, serviceID)
+        XCTAssertEqual(l.space?.id, spaceID)
+        XCTAssertEqual(l.service?.id, serviceID)
     }
 
     /// The second stage (1.5.12 → current). A 1.5.12 store already has
@@ -3383,6 +3461,127 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(s.staysActiveInBackgroundEffective)
         XCTAssertNil(s.hibernationPolicyRaw)
         XCTAssertNil(s.hibernateAfterMinutes)
+    }
+
+    /// 1.5.13 (the shape 1.5.13 to 1.5.18 shipped) opens at the current shape
+    /// with its links intact, and both ends of every link still resolve.
+    ///
+    /// This is the stage that relaxes `SpaceServiceLink.space` and `.service` to
+    /// optional. Dropping a constraint should carry every row across untouched,
+    /// and the assertions below are about the ends specifically, because a
+    /// migration that quietly nulled them would leave a store full of links
+    /// pointing at nothing — which reads exactly like the data loss this project
+    /// has already had twice.
+    func testMigratesFrom1_5_13PreservingLinkEnds() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: "chorus-migr-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appending(path: "default.store")
+
+        let serviceID = UUID(), spaceID = UUID(), linkID = UUID()
+
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: ChorusSchemaV1_5_13.self)
+            let config = ModelConfiguration(schema: schema, url: url)
+            let container = try ModelContainer(for: schema, configurations: [config])
+            let ctx = container.mainContext
+            let space = ChorusSchemaV1_5_13.Space(id: spaceID, name: "Work", emoji: "🏢", sortOrder: 3)
+            let service = ChorusSchemaV1_5_13.ServiceInstance(id: serviceID, label: "Slack", url: "https://slack.com")
+            service.hibernationPolicyRaw = "never"
+            service.hibernateAfterMinutes = 42
+            let link = ChorusSchemaV1_5_13.SpaceServiceLink(id: linkID, sortOrder: 7, space: space, service: service)
+            ctx.insert(space); ctx.insert(service); ctx.insert(link)
+            try ctx.save()
+        }
+
+        let schema = Schema(versionedSchema: ChorusSchemaVCurrent.self)
+        let config = ModelConfiguration(schema: schema, url: url)
+        let container = try ModelContainer(for: schema, migrationPlan: ChorusMigrationPlan.self, configurations: [config])
+        let ctx = container.mainContext
+
+        let link = try XCTUnwrap(try ctx.fetch(FetchDescriptor<SpaceServiceLink>()).first)
+        XCTAssertEqual(link.id, linkID)
+        XCTAssertEqual(link.sortOrder, 7)
+        XCTAssertEqual(link.space?.id, spaceID, "the migration must not drop the link's space")
+        XCTAssertEqual(link.service?.id, serviceID, "the migration must not drop the link's service")
+        XCTAssertNotNil(link.liveEnds, "both ends must still resolve after the migration")
+
+        let service = try XCTUnwrap(try ctx.fetch(FetchDescriptor<ServiceInstance>()).first)
+        XCTAssertEqual(service.hibernationPolicyRaw, "never")
+        XCTAssertEqual(service.hibernateAfterMinutes, 42)
+        XCTAssertEqual(service.spaceLinks.count, 1, "the inverse must survive too")
+    }
+
+    /// Deleting either end of a link must not trap, on any OS.
+    ///
+    /// `Space.serviceLinks` and `ServiceInstance.spaceLinks` both cascade, so a
+    /// delete has to clear the link's reference first. While those references
+    /// were non-optional there was nothing to clear them to, and macOS 15
+    /// trapped —
+    ///
+    ///   Cannot remove Chorus.Space from relationship space on
+    ///   Chorus.SpaceServiceLink because an appropriate default value is not
+    ///   configured
+    ///
+    /// — so deleting a space killed the app for anyone not on macOS 26. This
+    /// covers both ends and both orders, since the trap fired on whichever end
+    /// went first.
+    func testDeletingEitherEndOfALinkNeverTraps() throws {
+        let schema = Schema([
+            ServiceInstance.self,
+            Space.self,
+            SpaceServiceLink.self,
+            AppPreferences.self,
+        ])
+
+        // Hold each container: `mainContext` does not keep its container alive,
+        // and a released container leaves the context pointing at nothing.
+        var containers: [ModelContainer] = []
+        func freshContext() throws -> ModelContext {
+            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            let container = try ModelContainer(for: schema, configurations: [config])
+            containers.append(container)
+            return container.mainContext
+        }
+
+        // Space first, then the service it orphaned — AppState.deleteSpace.
+        let a = try freshContext()
+        let spaceA = Space(name: "A", emoji: "🅰️", sortOrder: 0)
+        let serviceA = ServiceInstance(label: "a", url: "https://a.example", catalogEntryID: "a")
+        a.insert(spaceA); a.insert(serviceA)
+        a.insert(SpaceServiceLink(sortOrder: 0, space: spaceA, service: serviceA))
+        try a.save()
+        a.delete(spaceA)
+        try a.save()
+        XCTAssertTrue(try a.fetch(FetchDescriptor<SpaceServiceLink>()).isEmpty, "the space's cascade must take the link")
+        a.delete(serviceA)
+        try a.save()
+
+        // Service first, then the space — the rail's deleteService.
+        let b = try freshContext()
+        let spaceB = Space(name: "B", emoji: "🅱️", sortOrder: 0)
+        let serviceB = ServiceInstance(label: "b", url: "https://b.example", catalogEntryID: "b")
+        b.insert(spaceB); b.insert(serviceB)
+        b.insert(SpaceServiceLink(sortOrder: 0, space: spaceB, service: serviceB))
+        try b.save()
+        b.delete(serviceB)
+        try b.save()
+        XCTAssertTrue(try b.fetch(FetchDescriptor<SpaceServiceLink>()).isEmpty, "the service's cascade must take the link")
+
+        // Both in one batch, which is the shape that trapped first.
+        let c = try freshContext()
+        let spaceC = Space(name: "C", emoji: "🇨", sortOrder: 0)
+        let serviceC = ServiceInstance(label: "c", url: "https://c.example", catalogEntryID: "c")
+        c.insert(spaceC); c.insert(serviceC)
+        c.insert(SpaceServiceLink(sortOrder: 0, space: spaceC, service: serviceC))
+        try c.save()
+        c.delete(serviceC)
+        c.delete(spaceC)
+        try c.save()
+        XCTAssertTrue(try c.fetch(FetchDescriptor<SpaceServiceLink>()).isEmpty)
+
+        XCTAssertEqual(containers.count, 3)
     }
 
     /// The REAL production provenance. Every field store today was written by the

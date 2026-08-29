@@ -5,8 +5,10 @@ are all welcome.
 
 ## Build and test
 
-You will need macOS 14 or later, Xcode 15 or newer, and XcodeGen
-(`brew install xcodegen`).
+You will need macOS 14 or later, Xcode 16 or newer, and XcodeGen
+(`brew install xcodegen`). Xcode 15 cannot open the project: the file is in the
+format Xcode 16 introduced, and older versions refuse it outright rather than
+warning you.
 
 ```sh
 xcodegen generate

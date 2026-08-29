@@ -1,0 +1,78 @@
+name: Test
+
+# Runs the suite on every pull request and on main. Until this existed, the
+# only workflow here published the appcast, so nothing checked a merge and
+# every decision rested on someone remembering to run xcodebuild locally.
+# This repo takes pull requests from strangers, which is exactly the case
+# where remembering is not a plan.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A new push to a pull request makes the run in flight pointless, so drop it.
+# main is not cancelled: its runs are the record of what passed.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The checked-in .pbxproj is object format 77, which Xcode 16 introduced.
+      # The runner image's default is older than that and refuses to open the
+      # project at all ("a future Xcode project file format"), so pick the
+      # newest Xcode installed rather than trusting the default.
+      - name: Use the newest installed Xcode
+        run: |
+          newest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Selecting $newest"
+          sudo xcode-select -s "$newest/Contents/Developer"
+          xcodebuild -version
+          swift --version
+
+      # project.yml globs the whole directory, but the checked-in .pbxproj
+      # names every file one by one, so a .swift file added on disk without
+      # running xcodegen belongs to no target. The build does not fail on it —
+      # the file is simply not compiled, and the symptom is "cannot find X in
+      # scope" for something you can plainly read on disk.
+      #
+      # This greps the .pbxproj for each file rather than regenerating and
+      # diffing, on purpose: a diff would also fire whenever the runner's
+      # xcodegen differs from the contributor's, which is noise, not drift.
+      - name: Every Swift file belongs to a target
+        run: |
+          missing=0
+          while IFS= read -r file; do
+            if ! grep -qF "$(basename "$file")" Chorus.xcodeproj/project.pbxproj; then
+              echo "::error file=$file::$file is not in Chorus.xcodeproj, so it will not be compiled. Run 'xcodegen generate' and commit the result."
+              missing=1
+            fi
+          done < <(find Chorus ChorusTests -name '*.swift')
+          exit $missing
+
+      # Debug on purpose, never Release. ChorusTests is app-hosted and
+      # ChorusApp.init builds an AppState, so every run executes the launch
+      # path, including StoreRepair.applyPendingRestore, which writes files.
+      # Under Debug those land in Chorus-debug and the .debug defaults domain.
+      # Under Release they would aim at the real store. See CLAUDE.md.
+      #
+      # Signing is left alone rather than switched off: Debug carries no
+      # DEVELOPMENT_TEAM so the app signs ad-hoc and shares a Team ID with the
+      # ad-hoc xctest bundle. Forcing CODE_SIGNING_ALLOWED=NO breaks that
+      # pairing and the tests fail to load.
+      - name: Test
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Chorus.xcodeproj \
+            -scheme Chorus \
+            -configuration Debug \
+            -destination 'platform=macOS'
