@@ -1508,61 +1508,23 @@ final class AppState {
         // after they're deleted would fault the freed backing data and trap.
         let reclaimedServiceIDs = reclaimed.map(\.id)
         let orphanedDataStoreIDs = reclaimed.map(\.dataStoreIdentifier)
-
-        // Two saves, deliberately, and the order matters. Deleting the space and
-        // the services it orphans in one batch aims two cascades at the same
-        // `SpaceServiceLink` rows: the space's cascade removes a link while the
-        // service delete asks SwiftData to unset that link's `service`, which is
-        // non-optional with nothing to put in its place. On macOS 15 that traps —
-        //
-        //   Cannot remove Chorus.ServiceInstance from relationship service on
-        //   Chorus.SpaceServiceLink because an appropriate default value is not
-        //   configured
-        //
-        // — and takes the app down on the ordinary act of deleting a space. It
-        // does not trap on macOS 26, which is why it survived a dev machine and
-        // was caught by CI on an older runner instead.
-        //
-        // Deleting the space alone first lets its cascade clear the links. By the
-        // second save nothing references the services, so removing them unsets
-        // nothing.
+        for service in reclaimed { context.delete(service) }
         context.delete(space)
+
         do {
             try context.save()
+            AppLogger.dataStore.info("Deleted space \(spaceID); reclaimed \(reclaimed.count) orphaned service(s)")
         } catch {
-            // Undo the pending delete so the store, web views, and data stores
+            // Undo the pending deletes so the store, web views, and data stores
             // stay consistent with each other; nothing destructive has run yet.
             context.rollback()
             AppLogger.dataStore.error("Failed to delete space \(spaceID); rolled back: \(error.localizedDescription)")
             return
         }
 
-        // The space is gone and committed. If reclaiming its orphans fails now,
-        // the space delete stands and the services simply stay: they have no
-        // links, so `reapOrphanedServices` collects them at the next launch.
-        // Roll back only the orphan deletes and skip the destructive cleanup,
-        // because those services still exist and must keep their data stores.
-        var reclaimCommitted = true
-        if !reclaimed.isEmpty {
-            for service in reclaimed { context.delete(service) }
-            do {
-                try context.save()
-            } catch {
-                context.rollback()
-                reclaimCommitted = false
-                AppLogger.dataStore.error("Deleted space \(spaceID) but could not reclaim its orphaned service(s); the launch reap will: \(error.localizedDescription)")
-            }
-        }
-
-        if reclaimCommitted {
-            AppLogger.dataStore.info("Deleted space \(spaceID); reclaimed \(reclaimed.count) orphaned service(s)")
-        }
-
-        // Saves committed — now the destructive cleanup is safe.
-        if reclaimCommitted {
-            for serviceID in reclaimedServiceIDs { webViewPool.removeWebView(for: serviceID) }
-            for dataStoreID in orphanedDataStoreIDs { markDataStoreOrphaned(dataStoreID) }
-        }
+        // Save committed — now the destructive cleanup is safe.
+        for serviceID in reclaimedServiceIDs { webViewPool.removeWebView(for: serviceID) }
+        for dataStoreID in orphanedDataStoreIDs { markDataStoreOrphaned(dataStoreID) }
 
         // Fix up selection: clear a selected service that was just reclaimed,
         // and move off the deleted space to the first remaining one.
