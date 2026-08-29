@@ -131,7 +131,9 @@ Everything for the release is on `release/1.5.19`: the version bumped in `projec
 
 **The macOS 14 pass `CLAUDE.md` asks for is done, by CI rather than by hand.** It was written off at first on the assumption the `macos-14` runner image only carries Xcode 15.4, which cannot open a project in object format 77. It also carries 16.1 and 16.2, and the workflow already picks the newest installed, so the only obstacle was the assumption. `testMigratesFrom1_5_13PreservingLinkEnds` is the test that pass was really about, and it runs there now.
 
-What is left is the build itself: DMG, notarise, staple, `gh release`, appcast, Homebrew cask. See `release/DISTRIBUTION.md`. Nothing has been published.
+**The real store migrates too.** `testMigratesARealStoreCopy` (skipped unless `/tmp/chorus-real-store-copy` names a directory) ran against a copy of this machine's live 1.5.18 store: 4 spaces, 15 services, 15 links, every link keeping both ends. That is the check synthetic fixtures cannot make, since they only prove the stages are right about stores the test file wrote. The original was untouched; the copy is what migrates.
+
+What is left is the build itself: DMG, notarise, staple, `gh release`, appcast, Homebrew cask. See `release/DISTRIBUTION.md`. Nothing has been published, and the last step nobody has done is the one 1.5.18 got — install the stapled DMG over `/Applications`, launch, and see the spaces and services come through on a real run rather than in a test harness.
 
 ### What the release is for
 
