@@ -20,16 +20,25 @@ concurrency:
 
 jobs:
   test:
-    runs-on: macos-15
+    # Both OSes on purpose, and macOS 14 is the one that matters most: it is the
+    # deployment target, and the SwiftData behaviour this suite guards differs by
+    # OS. A cascade delete that traps on 15 passes on 26, which is how a crash
+    # lived through five releases. Testing only the newest is how that happens.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
 
       # The checked-in .pbxproj is object format 77, which Xcode 16 introduced.
-      # The runner image's default is older than that and refuses to open the
-      # project at all ("a future Xcode project file format"), so pick the
-      # newest Xcode installed rather than trusting the default.
+      # Both images default to something older and refuse to open the project at
+      # all ("a future Xcode project file format") — macos-14 defaults to 15.4 —
+      # so pick the newest Xcode installed rather than trusting the default.
+      # macos-14 carries 16.2 and macos-15 carries 26.3, and both can open it.
       - name: Use the newest installed Xcode
         run: |
           newest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
