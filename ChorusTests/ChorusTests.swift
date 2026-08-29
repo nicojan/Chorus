@@ -337,6 +337,11 @@ final class ChorusTests: XCTestCase {
             XCTAssertEqual(doomed.serviceLinks.count, 2, "Space.serviceLinks inverse must be populated")
             let orphaned = AppState.servicesOrphaned(byDeletingSpace: workID, memberships: memberships)
             XCTAssertEqual(orphaned.count, 2, "Both of Work's services should be reclaimed")
+            // Mirrors AppState.deleteSpace: the links go explicitly, because
+            // the .cascade rule does not take them on macOS 14.
+            for link in doomed.serviceLinks where link.modelContext != nil {
+                context.delete(link)
+            }
             for service in linkedServices where orphaned.contains(service.id) {
                 context.delete(service)
             }
@@ -474,11 +479,16 @@ final class ChorusTests: XCTestCase {
         let probeLink = SpaceServiceLink(sortOrder: 9, space: probeSpace, service: probeSvc)
         context.insert(probeLink)
         try context.save()
+        // Delete the link explicitly, the way the app does. The .cascade rule
+        // would take it on macOS 15 and 26 and leave it behind on macOS 14, so
+        // relying on it here would make this a reading of the OS rather than a
+        // check that the store stayed writable.
+        context.delete(probeLink)
         context.delete(probeSvc)
         try context.save()
 
         let remaining = try context.fetch(FetchDescriptor<SpaceServiceLink>())
-        XCTAssertEqual(remaining.count, 2, "the cascade must take the probe's link with it")
+        XCTAssertEqual(remaining.count, 2, "only Personal's two links should be left")
     }
 
     /// `deleteSpace` deletes a Space and the services that space orphaned in one
@@ -1430,7 +1440,26 @@ final class ChorusTests: XCTestCase {
     /// Runs one SQL statement against a SwiftData store via the sqlite3 CLI and
     /// returns stdout. Used to manufacture on-disk corruption a fixed schema
     /// can't produce through the normal delete path.
+    /// Runs `sql` against the store with the sqlite3 CLI, then checkpoints.
+    ///
+    /// The checkpoint is not decoration. These stores are in WAL mode, and
+    /// whether the CLI leaves a write sitting in the -wal or folds it into the
+    /// main file before exiting differs by OS: macOS 26 lands it, macOS 14 does
+    /// not. Tests that then delete the -wal sibling — several here do, to make
+    /// the store readable through a read-only directory — silently lost the
+    /// write on macOS 14 and read the ORIGINAL row count back. TRUNCATE forces
+    /// the write into the main file first, so the sibling is safe to remove and
+    /// the test measures the same thing everywhere.
+    @discardableResult
     private static func runSQLite(_ url: URL, _ sql: String) throws -> String {
+        let output = try sqlite3(url, sql)
+        // Checkpoint separately so its own output ("0|2|2") cannot land in the
+        // string callers parse.
+        _ = try? sqlite3(url, "PRAGMA wal_checkpoint(TRUNCATE);")
+        return output
+    }
+
+    private static func sqlite3(_ url: URL, _ sql: String) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
         process.arguments = [url.path, sql]
@@ -3513,21 +3542,27 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(service.spaceLinks.count, 1, "the inverse must survive too")
     }
 
-    /// Deleting either end of a link must not trap, on any OS.
+    /// Deleting either end of a link must not trap, and the app must leave no
+    /// link behind, on any OS this ships to.
     ///
+    /// Two things are pinned here, learned in this order. The trap came first:
     /// `Space.serviceLinks` and `ServiceInstance.spaceLinks` both cascade, so a
-    /// delete has to clear the link's reference first. While those references
-    /// were non-optional there was nothing to clear them to, and macOS 15
-    /// trapped —
+    /// delete has to clear the link's reference, and while those references were
+    /// non-optional macOS 15 trapped rather than allow it —
     ///
     ///   Cannot remove Chorus.Space from relationship space on
     ///   Chorus.SpaceServiceLink because an appropriate default value is not
     ///   configured
     ///
-    /// — so deleting a space killed the app for anyone not on macOS 26. This
-    /// covers both ends and both orders, since the trap fired on whichever end
-    /// went first.
-    func testDeletingEitherEndOfALinkNeverTraps() throws {
+    /// — which killed the app on deleting a space. Optional ends fixed that.
+    ///
+    /// Then macOS 14 showed the second thing. With optional ends it does not
+    /// trap, but it does not take the link either: the row survives with its
+    /// `space` nulled, the dangling state `reapDanglingLinks` cleans up after.
+    /// So the app deletes links explicitly and does not lean on the rule, and
+    /// this asserts the end state rather than the mechanism — the mechanism is
+    /// exactly what differs between 14, 15 and 26.
+    func testDeletingEitherEndOfALinkLeavesNothingBehind() throws {
         let schema = Schema([
             ServiceInstance.self,
             Space.self,
@@ -3545,41 +3580,50 @@ final class ChorusTests: XCTestCase {
             return container.mainContext
         }
 
-        // Space first, then the service it orphaned — AppState.deleteSpace.
+        func seed(_ ctx: ModelContext, _ name: String) -> (Space, ServiceInstance, SpaceServiceLink) {
+            let space = Space(name: name, emoji: "📦", sortOrder: 0)
+            let service = ServiceInstance(label: name, url: "https://\(name).example", catalogEntryID: name)
+            let link = SpaceServiceLink(sortOrder: 0, space: space, service: service)
+            ctx.insert(space); ctx.insert(service); ctx.insert(link)
+            return (space, service, link)
+        }
+
+        // AppState.deleteSpace: the links, the orphaned service, then the space.
         let a = try freshContext()
-        let spaceA = Space(name: "A", emoji: "🅰️", sortOrder: 0)
-        let serviceA = ServiceInstance(label: "a", url: "https://a.example", catalogEntryID: "a")
-        a.insert(spaceA); a.insert(serviceA)
-        a.insert(SpaceServiceLink(sortOrder: 0, space: spaceA, service: serviceA))
+        let (spaceA, serviceA, linkA) = seed(a, "a")
         try a.save()
+        a.delete(linkA)
+        a.delete(serviceA)
         a.delete(spaceA)
         try a.save()
-        XCTAssertTrue(try a.fetch(FetchDescriptor<SpaceServiceLink>()).isEmpty, "the space's cascade must take the link")
-        a.delete(serviceA)
-        try a.save()
+        XCTAssertTrue(try a.fetch(FetchDescriptor<SpaceServiceLink>()).isEmpty)
+        XCTAssertTrue(try a.fetch(FetchDescriptor<Space>()).isEmpty)
+        XCTAssertTrue(try a.fetch(FetchDescriptor<ServiceInstance>()).isEmpty)
 
-        // Service first, then the space — the rail's deleteService.
+        // UnifiedRailView.deleteService: the service's links, then the service,
+        // with the space left standing.
         let b = try freshContext()
-        let spaceB = Space(name: "B", emoji: "🅱️", sortOrder: 0)
-        let serviceB = ServiceInstance(label: "b", url: "https://b.example", catalogEntryID: "b")
-        b.insert(spaceB); b.insert(serviceB)
-        b.insert(SpaceServiceLink(sortOrder: 0, space: spaceB, service: serviceB))
+        let (_, serviceB, linkB) = seed(b, "b")
         try b.save()
+        b.delete(linkB)
         b.delete(serviceB)
         try b.save()
-        XCTAssertTrue(try b.fetch(FetchDescriptor<SpaceServiceLink>()).isEmpty, "the service's cascade must take the link")
+        XCTAssertTrue(try b.fetch(FetchDescriptor<SpaceServiceLink>()).isEmpty)
+        XCTAssertEqual(try b.fetch(FetchDescriptor<Space>()).count, 1, "the space must survive its service")
 
-        // Both in one batch, which is the shape that trapped first.
+        // The bare deletes must still not trap, whatever they leave behind, and
+        // anything left has to read as dangling rather than fault. This is the
+        // regression guard for the macOS 15 crash itself.
         let c = try freshContext()
-        let spaceC = Space(name: "C", emoji: "🇨", sortOrder: 0)
-        let serviceC = ServiceInstance(label: "c", url: "https://c.example", catalogEntryID: "c")
-        c.insert(spaceC); c.insert(serviceC)
-        c.insert(SpaceServiceLink(sortOrder: 0, space: spaceC, service: serviceC))
+        let (spaceC, serviceC, _) = seed(c, "c")
         try c.save()
-        c.delete(serviceC)
         c.delete(spaceC)
         try c.save()
-        XCTAssertTrue(try c.fetch(FetchDescriptor<SpaceServiceLink>()).isEmpty)
+        c.delete(serviceC)
+        try c.save()
+        for link in try c.fetch(FetchDescriptor<SpaceServiceLink>()) {
+            XCTAssertNil(link.liveEnds, "a link that outlived both ends must read as dangling, not fault")
+        }
 
         XCTAssertEqual(containers.count, 3)
     }
