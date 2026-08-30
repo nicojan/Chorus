@@ -1338,6 +1338,70 @@ final class ChorusTests: XCTestCase {
     /// aside is the store as it stood before the user began trying candidates at
     /// all, so it must survive alongside the newest few, not be pruned away by
     /// a purely newest-first rule the way a run of several restores would.
+    /// The fresh-start family had no reaper at all: every fresh start left a
+    /// full triple on disk for good. It is bounded the way `.prepick-` is, and
+    /// for the same reason — `StoreInventory` lists these as candidates, so
+    /// undoing a fresh start is a click, and the OLDEST one is the store as it
+    /// stood before the user ever started over.
+    func testPruneResetAsidesKeepsNewestPlusOldest() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-prune-reset-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let stamps = ["1700000010", "1700000020", "1700000030", "1700000040", "1700000050"]
+        for stamp in stamps {
+            for suffix in ["", "-wal", "-shm"] {
+                let path = storeURL.path + ".reset-\(stamp).bak" + suffix
+                try Data("aside \(stamp)\(suffix)".utf8).write(to: URL(fileURLWithPath: path))
+            }
+        }
+
+        StoreRepair.pruneResetAsides(at: storeURL, keeping: 3)
+
+        let left = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        let primaries = left.filter { $0.hasPrefix("store.sqlite.reset-") && $0.hasSuffix(".bak") }.sorted()
+        XCTAssertEqual(
+            primaries,
+            ["store.sqlite.reset-1700000010.bak",
+             "store.sqlite.reset-1700000030.bak",
+             "store.sqlite.reset-1700000040.bak",
+             "store.sqlite.reset-1700000050.bak"],
+            "the newest three plus the oldest must survive, got \(primaries)"
+        )
+        for suffix in ["", "-wal", "-shm"] {
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: storeURL.path + ".reset-1700000020.bak" + suffix),
+                "the pruned aside must take its whole triple with it"
+            )
+        }
+    }
+
+    /// A family at or under the bound is left entirely alone. The reaper runs on
+    /// every fresh start, and the first one must not delete the only copy of what
+    /// the user just started over from.
+    func testPruneResetAsidesSparesASmallFamilyEntirely() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-prune-reset-small-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        for stamp in ["1700000010", "1700000020"] {
+            for suffix in ["", "-wal", "-shm"] {
+                let path = storeURL.path + ".reset-\(stamp).bak" + suffix
+                try Data("aside".utf8).write(to: URL(fileURLWithPath: path))
+            }
+        }
+
+        StoreRepair.pruneResetAsides(at: storeURL, keeping: 3)
+
+        let left = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        let primaries = left.filter { $0.hasPrefix("store.sqlite.reset-") && $0.hasSuffix(".bak") }.sorted()
+        XCTAssertEqual(primaries, ["store.sqlite.reset-1700000010.bak", "store.sqlite.reset-1700000020.bak"])
+    }
+
     func testPrunePickAsidesKeepsNewestPlusOldest() throws {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("chorus-prune-pick-\(UUID().uuidString)", isDirectory: true)

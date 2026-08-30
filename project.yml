@@ -3,7 +3,7 @@ options:
   bundleIdPrefix: com.nicojan
   deploymentTarget:
     macOS: "14.0"
-  xcodeVersion: "15.0"
+  xcodeVersion: "16.0"
   createIntermediateGroups: true
 
 packages:

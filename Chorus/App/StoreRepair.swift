@@ -430,6 +430,36 @@ enum StoreRepair {
     /// container faults deleted models and traps.
     static let resetAsideInfix = ".reset-"
 
+    /// The fresh-start way-back copies. Each fresh start writes one full triple,
+    /// and until 1.5.19 nothing bounded the family, so every start-over left a
+    /// store on disk permanently.
+    ///
+    /// Bounded exactly as `prunePickAsides` is, for exactly its reasons rather
+    /// than by analogy. These are live recovery material — `StoreInventory`
+    /// lists the `.reset-` family, which is what makes undoing a fresh start one
+    /// click — so a purely-recency rule would reap a candidate the picker is
+    /// offering. And the OLDEST aside is the store as it stood before the user
+    /// started over at all, which a run of several fresh starts would otherwise
+    /// prune away first. So: the newest few, plus the single oldest.
+    ///
+    /// A family at or under the bound is left alone entirely, which is what
+    /// keeps the first fresh start from deleting the only copy of what it just
+    /// set aside.
+    static func pruneResetAsides(at url: URL, keeping keep: Int) {
+        let dir = url.deletingLastPathComponent()
+        let primaries = primariesNewestFirst(in: dir, prefix: url.lastPathComponent + resetAsideInfix)
+        guard let oldest = primaries.last else { return }
+
+        var retain = Set(primaries.prefix(keep))
+        retain.insert(oldest)
+
+        for name in primaries where !retain.contains(name) {
+            for suffix in ["", "-wal", "-shm"] {
+                try? FileManager.default.removeItem(at: dir.appending(path: name + suffix))
+            }
+        }
+    }
+
     /// UserDefaults key holding a request to start fresh, written by the banner
     /// and consumed by `applyPendingReset` at the next launch.
     ///
@@ -524,6 +554,9 @@ enum StoreRepair {
     ) -> Bool {
         guard defaults.bool(forKey: pendingResetKey) else { return false }
         defaults.removeObject(forKey: pendingResetKey)
+        // Bound the family after this start-over adds to it, matching how a
+        // user-chosen restore prunes its own asides on the way out.
+        defer { pruneResetAsides(at: storeURL, keeping: 3) }
         return moveStoreAside(at: storeURL)
     }
 
