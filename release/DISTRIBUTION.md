@@ -130,6 +130,18 @@ Check the changelog date as well. The heading records the day the release was
 cut, and a release held for a week ships with a date that is a week wrong, in a
 file users read.
 
+### Test builds while a release is held
+
+A held release can absorb more work, and each round of it wants an artifact someone can install and try. Three things keep those from being mistaken for the release.
+
+Move `CURRENT_PROJECT_VERSION` and leave `MARKETING_VERSION` alone. Nothing was published under any of these numbers, so the version does not need to move, but the About panel has to be able to tell one build from another when a tester reports something.
+
+Name the file `Chorus-X.Y.Z-bNN.dmg`. The published artifact is `Chorus-X.Y.Z.dmg`, and a test build that reuses the name overwrites the one already notarised and stapled.
+
+Package with `hdiutil` rather than `create-dmg`. The layout tool drives Finder through AppleScript, so it takes the screen for as long as it runs, which is a poor trade on a machine someone is working on. The published artifact should still be built the documented way, since that is the one people see.
+
+A test build is still a branch build. Merge before cutting anything from it, and rebuild from the merged commit.
+
 6. **Push `main` first, then publish the DMG as a GitHub Release** (the DMG host):
    ```sh
    git push origin main                      # do this BEFORE the next command
