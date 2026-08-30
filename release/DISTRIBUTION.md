@@ -110,6 +110,26 @@ Run from the repo root. Replace `X.Y.Z` with the new version.
    xcrun stapler staple build/Chorus-X.Y.Z.dmg
    ```
 
+### If you stop here, the DMG has a shelf life
+
+Steps 2 to 5 publish nothing, so it is reasonable to build the artifact, check it
+by hand, and leave the rest for later. Chorus 1.5.19 was held that way on
+2026-08-29.
+
+The cost is that the DMG is a build of one commit, and `main` keeps moving.
+Publishing a stale one does not fail: it works, and ships code nobody reviewed as
+the release. So before step 6, either confirm `main` is where it was when you
+built, or build again.
+
+Rebuilding is cheap. Steps 2 to 5 run in a few minutes, most of it waiting on the
+notary service, and the version and build numbers do not need touching if nothing
+was published under them. The sha256 changes, which matters at step 9 because the
+Homebrew cask carries it.
+
+Check the changelog date as well. The heading records the day the release was
+cut, and a release held for a week ships with a date that is a week wrong, in a
+file users read.
+
 6. **Push `main` first, then publish the DMG as a GitHub Release** (the DMG host):
    ```sh
    git push origin main                      # do this BEFORE the next command

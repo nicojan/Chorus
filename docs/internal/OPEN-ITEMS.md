@@ -125,15 +125,33 @@ The radius collapse, the target sizes and the icon sizes are mechanical. The sel
 
 **What the file does not cover.** The store banner, recovery banner and lock screen were built from source rather than traced, because producing them needs a damaged database. The offline banner is the same, since catching it needs the network to drop. Service icons are tinted placeholders. No automated pixel diff was run against the captures.
 
-## Ready: 1.5.19 is cut, tested on macOS 14 and 15, and not yet built
+## Held: 1.5.19 is built and notarised, and deliberately not published
 
-Everything for the release is on `release/1.5.19`: the version bumped in `project.yml` and the `.pbxproj` together (build 28), and the changelog's Unreleased section closed. 239 tests, 0 failures on macOS 26.6 locally, on macOS 15 under Xcode 26.3, and on macOS 14 under Xcode 16.2.
+**More is going into 1.5.19 before it ships**, so the artifact below is a checkpoint rather than the thing that goes out. Read the staleness note at the end of this section before publishing anything.
+
+Everything for the release is on `main`: the version bumped in `project.yml` and the `.pbxproj` together (build 28), and the changelog's Unreleased section closed. 239 tests, 0 failures on macOS 26.6 locally, on macOS 15 under Xcode 26.3, and on macOS 14 under Xcode 16.2.
 
 **The macOS 14 pass `CLAUDE.md` asks for is done, by CI rather than by hand.** It was written off at first on the assumption the `macos-14` runner image only carries Xcode 15.4, which cannot open a project in object format 77. It also carries 16.1 and 16.2, and the workflow already picks the newest installed, so the only obstacle was the assumption. `testMigratesFrom1_5_13PreservingLinkEnds` is the test that pass was really about, and it runs there now.
 
 **The real store migrates too.** `testMigratesARealStoreCopy` (skipped unless `/tmp/chorus-real-store-copy` names a directory) ran against a copy of this machine's live 1.5.18 store: 4 spaces, 15 services, 15 links, every link keeping both ends. That is the check synthetic fixtures cannot make, since they only prove the stages are right about stores the test file wrote. The original was untouched; the copy is what migrates.
 
-What is left is the build itself: DMG, notarise, staple, `gh release`, appcast, Homebrew cask. See `release/DISTRIBUTION.md`. Nothing has been published, and the last step nobody has done is the one 1.5.18 got — install the stapled DMG over `/Applications`, launch, and see the spaces and services come through on a real run rather than in a test harness.
+**Steps 2 to 5 of `release/DISTRIBUTION.md` are done.** `build/Chorus-1.5.19.dmg` is signed, notarised (`Accepted`) and stapled, and the stapled app sits at the repo root where the doc expects it. Mounted and checked: the app inside reports 1.5.19 (28), the staple validates, and `spctl` reads `source=Notarized Developer ID`.
+
+    sha256  9a912a9e49b16a097207ec2b214ab81105af1f9aa582d4dff0758ed93706390e
+
+The 1.5.18 app that used to be at the repo root was moved to `/tmp/chorus-app-1.5.18-*.app` rather than deleted, because the guard blocks a recursive delete there. It ages out on its own.
+
+**Steps 6 to 9 are not done and should not be done yet**: `gh release create`, `sign_update`, the appcast item, and the Homebrew cask in both repos.
+
+Two things are still owed before any of that. The install pass 1.5.18 got — put the stapled DMG over `/Applications`, launch, and watch the 4 spaces and 15 services come through on a real run rather than in a test harness — and whatever changes are still going into this release.
+
+### That DMG goes stale the moment `main` moves
+
+It is built from `c5af295`. Any commit after that makes it a build of something that is no longer what 1.5.19 means, and the danger is not that publishing fails — it is that publishing *works* and ships code nobody reviewed as the release.
+
+So before step 6, either confirm `main` has not moved since the build, or rebuild. Rebuilding is cheap: steps 2 to 5 took a few minutes, most of it waiting on the notary service. The version and build numbers do not need touching, since nothing was published under them; the sha256 changes, which matters only because the Homebrew cask carries it.
+
+Check the changelog's date too. `## [1.5.19] - 2026-08-29` is the day it was cut, and if it ships later that line is simply wrong in a public file.
 
 ### What the release is for
 
