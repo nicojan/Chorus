@@ -9,40 +9,33 @@ enum AppPresenceMode: String, Codable {
 
 /// Where the rail sits relative to the web content.
 ///
-/// Two cases, not three. Three existed because two rails can be arranged three
-/// ways; concept C drops the second rail, and with one rail there are only two
-/// arrangements left. `hybrid` is retired and its users are mapped onto
-/// `topBars` — see `resolving(_:)`, which is the only correct way to read a
-/// stored value.
+/// Three arrangements: one rail down the left, one rail along the top, or the
+/// spaces down the left with that space's services along the top. `hybrid` was
+/// retired when one rail replaced two and is back because the two-rail
+/// arrangement is worth having; the raw value never changed, and the build that
+/// retired it never shipped, so a store that still says `hybrid` lands back on
+/// the layout its owner picked.
 enum RailLayout: String, Codable, CaseIterable {
     /// The rail down the left (the default).
     case sidebar
     /// The rail along the top, as a bar of tabs.
     case topBars
+    /// Spaces down the left, the current space's services along the top.
+    case hybrid
 
     var displayName: String {
         switch self {
         case .sidebar: return "Rail on the left"
         case .topBars: return "Bar along the top"
+        case .hybrid: return "Spaces on the left, services on top"
         }
     }
 
-    /// The raw value of the retired third case. Anyone still storing it chose a
-    /// layout with the services in a bar along the top, so that is where they
-    /// land.
-    static let retiredHybridRawValue = "hybrid"
-
-    /// Reads a stored raw value, mapping the retired `hybrid` forward.
-    ///
-    /// The forward-map has to be explicit. A plain
-    /// `RailLayout(rawValue:) ?? .sidebar` would send every `hybrid` user to
-    /// the sidebar, which is the layout furthest from the one they picked —
-    /// they chose tabs along the top and would get a rail down the left.
+    /// Reads a stored raw value, falling back to the default for anything
+    /// unrecognized.
     static func resolving(_ raw: String?) -> RailLayout {
-        guard let raw else { return .sidebar }
-        if let known = RailLayout(rawValue: raw) { return known }
-        if raw == retiredHybridRawValue { return .topBars }
-        return .sidebar
+        guard let raw, let known = RailLayout(rawValue: raw) else { return .sidebar }
+        return known
     }
 }
 

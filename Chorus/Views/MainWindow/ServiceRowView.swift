@@ -26,6 +26,12 @@ struct ServiceRowView: View {
     var micActive: Bool = false
     var micMuted: Bool = false
     var health: ServiceHealth = .live
+    /// Whether the row carries the service's name. Off, it is the icon alone in
+    /// a compact cell — the pre-audit shape, offered back as a setting for
+    /// people who know their own services by their icons and would rather have
+    /// the room. Nothing becomes unreachable: the name is still in the tooltip
+    /// and the spoken label, and so is every accessory the compact cell drops.
+    var showsName: Bool = true
     /// Whether the keyboard is on this row. Drawn as a ring, never as the fill
     /// selection uses — see `RowMark`.
     var isFocused: Bool = false
@@ -42,6 +48,11 @@ struct ServiceRowView: View {
     static let rowHeight: CGFloat = 34
     /// Tab height in the horizontal bar.
     static let tabHeight: CGFloat = 32
+    /// The nameless cell: the icon plus its 8 point gutters. Square in the
+    /// vertical rail, and the tab's width in the horizontal bar.
+    static let compactCellWidth: CGFloat = 36
+    /// Width of the vertical rail when the rows carry no name.
+    static let compactRailWidth: CGFloat = 52
     /// Roughly what a labelled tab measures. Used only as the drop-midpoint
     /// fallback before the first geometry pass records a real width.
     static let tabTypicalWidth: CGFloat = 120
@@ -71,11 +82,19 @@ struct ServiceRowView: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
-        // The name is on the row now, so the tooltip is only there for the case
-        // the row truncates it.
-        .help(instance.label)
+        // With a name on the row the tooltip is only there for the case the row
+        // truncates it. Without one it is carrying the whole cell — the name and
+        // the accessories the compact form has no room to draw — so it speaks
+        // the full spoken label instead.
+        .help(showsName ? instance.label : spokenLabel)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(ServiceAccessibility.label(
+        .accessibilityLabel(spokenLabel)
+        .accessibilityAddTraits([.isButton, isSelected ? .isSelected : []])
+    }
+
+    /// What VoiceOver reads, and what the compact cell's tooltip borrows.
+    private var spokenLabel: String {
+        ServiceAccessibility.label(
             name: instance.label,
             badgeCount: badgeCount,
             isHibernated: isHibernated,
@@ -84,11 +103,45 @@ struct ServiceRowView: View {
             micActive: micActive,
             micMuted: micMuted,
             health: health
-        ))
-        .accessibilityAddTraits([.isButton, isSelected ? .isSelected : []])
+        )
     }
 
+    @ViewBuilder
     private var content: some View {
+        if showsName {
+            namedContent
+        } else {
+            compactContent
+        }
+    }
+
+    /// The icon alone, with the badge back on its corner where it lived before
+    /// the row grew a name. The moon, the bell and the media glyph do not come
+    /// with it: four things on a 20 point icon is what the audit called
+    /// unreadable, and all three are still in the tooltip and the spoken label.
+    private var compactContent: some View {
+        ServiceIconSquare(
+            instance: instance,
+            size: Self.iconSize,
+            cornerRadius: Self.iconCornerRadius
+        )
+        .overlay(alignment: .bottomTrailing) {
+            ServiceHealthDot(health: health)
+                .offset(x: 3, y: 3)
+        }
+        .overlay(alignment: .topTrailing) {
+            if badgeCount > 0 && instance.showBadge {
+                BadgeCountView(count: badgeCount)
+                    .offset(x: 8, y: -6)
+            }
+        }
+        .frame(
+            width: Self.compactCellWidth,
+            height: axis == .vertical ? Self.rowHeight : Self.tabHeight
+        )
+    }
+
+    private var namedContent: some View {
         HStack(spacing: Self.gutter) {
             ServiceIconSquare(
                 instance: instance,

@@ -26,6 +26,10 @@ struct UnifiedRailView: View {
     /// horizontal bar) to clear the window traffic lights, kept inside so the
     /// background and dividers still run full-length.
     var contentInset: CGFloat = 0
+    /// Whether the rail draws the current space as its header. False in the
+    /// hybrid layout, where a strip of spaces sits down the left and saying
+    /// where you are twice would only cost the tabs their room.
+    var showsSpaceHeader: Bool = true
 
     @Query private var allLinks: [SpaceServiceLink]
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
@@ -33,9 +37,8 @@ struct UnifiedRailView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Read only to size the gap the donation button needs at the far right of
-    /// the horizontal bar; `ContentView` owns the button itself.
-    @AppStorage(SupportButtonVisibility.defaultsKey) private var showSupportButton = true
+    /// Whether service cells carry their names. See `ServiceNameVisibility`.
+    @AppStorage(ServiceNameVisibility.defaultsKey) private var showServiceNames = true
 
     @State private var showingPalette = false
     @State private var showingAddService = false
@@ -59,6 +62,8 @@ struct UnifiedRailView: View {
     // axis resolve `.before` and leave the last slot unreachable.
     private static let serviceDropMidpoint: CGFloat = ServiceRowView.rowHeight / 2
     private static let serviceDropMidpointHorizontal: CGFloat = ServiceRowView.tabTypicalWidth / 2
+    /// The same fallback for a bar of nameless tabs, which are a fixed width.
+    private static let compactDropMidpointHorizontal: CGFloat = ServiceRowView.compactCellWidth / 2
     /// Measured size of each drop cell, so the before/after split uses the target's
     /// true midpoint instead of a hardcoded guess.
     @State private var cellSizes: [UUID: CGSize] = [:]
@@ -183,19 +188,26 @@ struct UnifiedRailView: View {
             addServiceButton
                 .padding(.vertical, 6)
         }
-        .frame(width: ServiceRowView.railWidth)
+        .frame(width: showServiceNames ? ServiceRowView.railWidth : ServiceRowView.compactRailWidth)
         .background(.background)
     }
 
     private var horizontalBody: some View {
         HStack(spacing: 8) {
-            spaceHeader
-                // 72 points of traffic light, then 8, puts the header at x 80.
-                .padding(.leading, 8 + contentInset)
+            if showsSpaceHeader {
+                spaceHeader
+                    // 72 points of traffic light, then 8, puts the header at x 80.
+                    .padding(.leading, 8 + contentInset)
 
-            Divider().frame(width: 1, height: 20)
+                Divider().frame(width: 1, height: 20)
 
-            tabStrip
+                tabStrip
+            } else {
+                // No header to spend the inset, so the tabs clear whatever the
+                // traffic lights overhang onto this bar themselves.
+                tabStrip
+                    .padding(.leading, 8 + contentInset)
+            }
 
             // Empty stretch between the tabs and the nav buttons. It draws
             // nothing and takes no hit of its own, so a click here falls through
@@ -208,10 +220,8 @@ struct UnifiedRailView: View {
                 // Room for the donation button, which ContentView overlays on the
                 // window's top-right corner — the same corner this row ends in.
                 // Without the reserve the two sit on top of each other as soon as
-                // the Home button appears and widens this group. Settings can hide
-                // the button, and then the reserve would only be a hole, so it
-                // falls back to the plain trailing gap.
-                .padding(.trailing, showSupportButton ? SupportButtonVisibility.reservedWidth : 10)
+                // the Home button appears and widens this group.
+                .padding(.trailing, SupportButtonMetrics.reservedWidth)
         }
         .frame(height: Self.barHeight)
         // The OS window drag is off in the bar layout, so tab drags reorder
@@ -238,6 +248,7 @@ struct UnifiedRailView: View {
             axis: axis,
             badgeCount: badgeCount,
             isMuted: muted,
+            showsName: axis == .horizontal || showServiceNames,
             isPaletteOpen: showingPalette
         ) {
             showingPalette = true
@@ -349,7 +360,8 @@ struct UnifiedRailView: View {
                         let mid = (size?.height).map { $0 / 2 } ?? Self.serviceDropMidpoint
                         return location.y < mid ? .before : .after
                     }
-                    let mid = (size?.width).map { $0 / 2 } ?? Self.serviceDropMidpointHorizontal
+                    let fallback = showServiceNames ? Self.serviceDropMidpointHorizontal : Self.compactDropMidpointHorizontal
+                    let mid = (size?.width).map { $0 / 2 } ?? fallback
                     return location.x < mid ? .before : .after
                 }()
                 return reorderService(
@@ -405,6 +417,7 @@ struct UnifiedRailView: View {
             micActive: media?.micActive ?? false,
             micMuted: media?.micMuted ?? false,
             health: health,
+            showsName: showServiceNames,
             isFocused: focused
         ) {
             selectService(link)

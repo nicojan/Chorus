@@ -2512,21 +2512,50 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(AppPreferences(railLayoutRaw: "garbage").railLayout, .sidebar)
     }
 
-    /// The retired third case maps forward, and it must not take the `.sidebar`
-    /// fallback. A `hybrid` user picked their services as tabs along the top; the
-    /// fallback would hand them a rail down the left, which is the layout
-    /// furthest from what they chose.
-    func testRetiredHybridLayoutMapsForwardToTheBarRatherThanTheFallback() {
-        XCTAssertEqual(AppPreferences(railLayoutRaw: "hybrid").railLayout, .topBars)
-        XCTAssertEqual(RailLayout.resolving("hybrid"), .topBars)
-        XCTAssertNotEqual(RailLayout.resolving("hybrid"), .sidebar)
+    /// `hybrid` reads as `hybrid` again. The build that retired it never
+    /// shipped, so any store holding this raw value belongs to someone who
+    /// picked the two-rail arrangement and never left it — resolving it to
+    /// anything else would move them off a layout they chose.
+    func testHybridReadsAsItselfRatherThanTheLayoutThatReplacedIt() {
+        XCTAssertEqual(AppPreferences(railLayoutRaw: "hybrid").railLayout, .hybrid)
+        XCTAssertEqual(RailLayout.resolving("hybrid"), .hybrid)
     }
 
-    /// The enum is down to two cases, so the Settings picker offers two. If a
-    /// third ever comes back it needs its own forward-map story.
-    func testRailLayoutHasExactlyTheTwoSurvivingCases() {
-        XCTAssertEqual(RailLayout.allCases.map(\.rawValue), ["sidebar", "topBars"])
-        XCTAssertNil(RailLayout(rawValue: RailLayout.retiredHybridRawValue))
+    /// Three cases, so the Settings picker offers three.
+    func testRailLayoutHasThreeCases() {
+        XCTAssertEqual(RailLayout.allCases.map(\.rawValue), ["sidebar", "topBars", "hybrid"])
+    }
+
+    // MARK: - Space strip width (hybrid layout)
+
+    func testSpaceStripWidthClampsToItsBounds() {
+        XCTAssertEqual(SpaceStripMetrics.clamped(10), SpaceStripMetrics.minimum)
+        XCTAssertEqual(SpaceStripMetrics.clamped(9_999), SpaceStripMetrics.maximum)
+        XCTAssertEqual(SpaceStripMetrics.clamped(180), 180)
+    }
+
+    /// A stored width that is not a number would pass straight through `min`
+    /// and `max` and become the strip's frame, which lays out as nothing at all.
+    func testSpaceStripWidthRejectsNaN() {
+        XCTAssertEqual(SpaceStripMetrics.clamped(.nan), SpaceStripMetrics.defaultWidth)
+    }
+
+    func testSpaceStripShowsNamesOnlyOnceItIsWideEnough() {
+        XCTAssertFalse(SpaceStripMetrics.showsNames(atWidth: SpaceStripMetrics.minimum))
+        XCTAssertFalse(SpaceStripMetrics.showsNames(atWidth: SpaceStripMetrics.nameThreshold - 1))
+        XCTAssertTrue(SpaceStripMetrics.showsNames(atWidth: SpaceStripMetrics.nameThreshold))
+        XCTAssertTrue(SpaceStripMetrics.showsNames(atWidth: SpaceStripMetrics.defaultWidth))
+    }
+
+    /// The traffic lights sit over the strip. A strip narrower than they are
+    /// lets them overhang onto the service bar, so the bar has to start clear of
+    /// what is left — the fix the retired hybrid layout already had, restated
+    /// for a strip whose width the user drags.
+    func testServiceBarClearsTheTrafficLightsOverhangingANarrowStrip() {
+        let lights: CGFloat = 72
+        XCTAssertEqual(SpaceStripMetrics.barLeadingInset(stripWidth: 52, lightsWidth: lights), 20)
+        XCTAssertEqual(SpaceStripMetrics.barLeadingInset(stripWidth: 72, lightsWidth: lights), 0)
+        XCTAssertEqual(SpaceStripMetrics.barLeadingInset(stripWidth: 180, lightsWidth: lights), 0)
     }
 
     // MARK: - Notice shape, radius scale, selection against focus (build step 7)

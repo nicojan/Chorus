@@ -4,10 +4,9 @@ import SwiftData
 struct ContentView: View {
     @Environment(AppState.self) private var appState
 
-    /// Settings switches the donation button off here. See
-    /// `SupportButtonVisibility` for why this is a default rather than a
-    /// stored preference.
-    @AppStorage(SupportButtonVisibility.defaultsKey) private var showSupportButton = true
+    /// The hybrid layout's strip width, read here because the service bar
+    /// beside it has to start clear of whatever the traffic lights overhang.
+    @AppStorage(SpaceStripMetrics.defaultsKey) private var spaceStripWidth = SpaceStripMetrics.defaultWidth
 
     /// Gates the fresh-start confirmation. Local to the view rather than on
     /// `AppState`: nothing outside this banner presents it.
@@ -123,11 +122,9 @@ struct ContentView: View {
             // The traffic lights hold the top-left, so the donation button takes
             // the top-right of whichever bar the layout puts up there.
             .overlay(alignment: .topTrailing) {
-                if showSupportButton {
-                    SupportButton()
-                        .padding(.trailing, 10 - SupportButtonVisibility.targetOverhang)
-                        .padding(.top, supportButtonTopInset)
-                }
+                SupportButton()
+                    .padding(.trailing, 10 - SupportButtonMetrics.targetOverhang)
+                    .padding(.top, supportButtonTopInset)
             }
             // Extend up into the (hidden) title-bar area so the tab bar sits at
             // the very top of the window; the traffic-light insets keep the
@@ -229,13 +226,13 @@ struct ContentView: View {
         }
     }
 
-    /// Arranges the rail and the web content per the chosen layout: the rail
-    /// down the left, or along the top as a bar of tabs.
+    /// Arranges the rails and the web content per the chosen layout: one rail
+    /// down the left, one along the top as a bar of tabs, or the spaces down the
+    /// left with that space's services along the top.
     ///
-    /// One rail, so two arrangements. The three-way choice this used to make
-    /// only existed because there were two rails to arrange, and concept C put
-    /// the space on the rail as its header instead of giving it a rail of its
-    /// own.
+    /// The first two draw one rail, with the current space as its header. The
+    /// third is the only one that still puts two rails on screen, and there the
+    /// header comes off — the strip beside it is already saying where you are.
     @ViewBuilder
     private func mainLayout(
         spaceSelection: Binding<UUID?>,
@@ -259,6 +256,31 @@ struct ContentView: View {
                 Divider()
                 webContent
             }
+        case .hybrid:
+            HStack(spacing: 0) {
+                SpaceStripView(selectedSpaceID: spaceSelection, contentInset: lightsHeight)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Spaces")
+                Divider()
+                VStack(spacing: 0) {
+                    // The traffic lights sit over the strip. Only what they
+                    // overhang lands on this bar, so only that much is spent
+                    // clearing them — a wide strip swallows them whole and the
+                    // tabs start flush.
+                    rail(
+                        axis: .horizontal,
+                        spaceSelection: spaceSelection,
+                        serviceSelection: serviceSelection,
+                        contentInset: SpaceStripMetrics.barLeadingInset(
+                            stripWidth: spaceStripWidth,
+                            lightsWidth: lightsWidth
+                        ),
+                        showsSpaceHeader: false
+                    )
+                    Divider()
+                    webContent
+                }
+            }
         }
     }
 
@@ -266,13 +288,15 @@ struct ContentView: View {
         axis: Axis,
         spaceSelection: Binding<UUID?>,
         serviceSelection: Binding<UUID?>,
-        contentInset: CGFloat = 0
+        contentInset: CGFloat = 0,
+        showsSpaceHeader: Bool = true
     ) -> some View {
         UnifiedRailView(
             selectedSpaceID: spaceSelection,
             selectedServiceID: serviceSelection,
             axis: axis,
-            contentInset: contentInset
+            contentInset: contentInset,
+            showsSpaceHeader: showsSpaceHeader
         )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Space and services")
@@ -291,10 +315,12 @@ struct ContentView: View {
     /// 40 point bars are gone. The overhang comes off because the chip is
     /// centred inside a larger click target.
     private var supportButtonTopInset: CGFloat {
-        let overhang = SupportButtonVisibility.targetOverhang
+        let overhang = SupportButtonMetrics.targetOverhang
         switch appState.railLayout {
         case .sidebar: return 6 - overhang
-        case .topBars: return (UnifiedRailView.barHeight - SupportButtonVisibility.chipSize) / 2 - overhang
+        // The hybrid layout puts the same 42 point bar along the top, so the
+        // button is centred in it the same way.
+        case .topBars, .hybrid: return (UnifiedRailView.barHeight - SupportButtonMetrics.chipSize) / 2 - overhang
         }
     }
 
@@ -308,16 +334,14 @@ enum SupportLink {
     static let url = URL(string: "https://buymeacoffee.com/0xff.r4bbit")!
 }
 
-/// The donation button's visibility and geometry, in one place because three
-/// views need them: `ContentView` draws the button, `ServiceSidebarView` keeps
-/// its corner clear, and Settings switches it off.
-enum SupportButtonVisibility {
-    /// Whether the window draws the button at all. This is chrome visibility
-    /// rather than user data, so it lives in defaults instead of
-    /// `AppPreferences`: a stored property there is a new schema version and a
-    /// migration (see CLAUDE.md), which a cosmetic toggle does not earn.
-    static let defaultsKey = "showSupportButton"
-
+/// The donation button's geometry, in one place because two views need it:
+/// `ContentView` draws the button and `UnifiedRailView` keeps its corner clear.
+///
+/// There is no visibility half any more. The button used to be switchable from
+/// Settings; it is one 20 point chip that only takes colour under the pointer,
+/// and the switch cost every layout a second code path for a hole where it
+/// would have been.
+enum SupportButtonMetrics {
     /// The painted chip. Below the 44 point target the UX audit asks for
     /// everywhere else, and deliberately so: this is a permanent request for
     /// money in a mouse-only app, and at 44 it reads as a control rather than a
@@ -339,8 +363,8 @@ enum SupportButtonVisibility {
 /// A small link to the donation page, in the top-right of the window. Chorus
 /// asks for money nowhere else, so this stands all the time, which is the reason
 /// it is drawn quietly: it paints 20 points of chrome and only takes colour
-/// under the pointer. The pointer gets 28 points to hit, and Settings can hide
-/// it outright — see `SupportButtonVisibility`.
+/// under the pointer. The pointer gets 28 points to hit — see
+/// `SupportButtonMetrics`.
 private struct SupportButton: View {
     @State private var isHovering = false
 
@@ -351,14 +375,14 @@ private struct SupportButton: View {
             Image(systemName: "cup.and.saucer.fill")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(isHovering ? Color.accentColor : Color.secondary)
-                .frame(width: SupportButtonVisibility.chipSize, height: SupportButtonVisibility.chipSize)
+                .frame(width: SupportButtonMetrics.chipSize, height: SupportButtonMetrics.chipSize)
                 // The rails scroll under this button when a space holds enough
                 // services to overflow, so it needs its own fill to stay legible.
                 .background(Color(nsColor: .windowBackgroundColor))
                 // The paint stops at the chip; the pointer gets a wider target
                 // around it. Growing the fill instead would make the button
                 // louder, which is the thing the 20 points are buying.
-                .frame(width: SupportButtonVisibility.targetSize, height: SupportButtonVisibility.targetSize)
+                .frame(width: SupportButtonMetrics.targetSize, height: SupportButtonMetrics.targetSize)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

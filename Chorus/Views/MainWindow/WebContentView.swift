@@ -28,11 +28,11 @@ struct WebContentView: View {
                     passkeyNoticeBanner
                 }
 
-                // The bar layout hosts the nav buttons in the top bar itself; the
-                // sidebar layout has no bar, so they get a slim row above the
-                // content. Still keyed off `.sidebar` after the enum dropped to
-                // two cases, and still right: those are the only two places the
-                // buttons can go.
+                // Both bar layouts host the nav buttons in the top bar itself;
+                // the sidebar layout has no bar, so they get a slim row above
+                // the content. Keyed off `.sidebar` rather than listing the
+                // other two: a bar or a row are the only two places the buttons
+                // can go, and only one layout has no bar.
                 if appState.railLayout == .sidebar {
                     WebNavButtons(webViewState: webViewState, homeURL: URL(string: service.url))
                         .padding(.horizontal, 12)

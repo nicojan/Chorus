@@ -10,16 +10,16 @@ All notable changes to Chorus are documented here. Format loosely follows
 ### Added
 
 - A small button in the top right of the window opens the donation page, and the About panel carries the same link. Chorus stays free. This is here if you want to pay for it anyway.
-- Settings › General can hide that button. The window gives its corner back to the navigation buttons, and the About panel keeps the link.
-
 - A service that is still loading, or that failed to load, now says so in the rail. A grey ring on its icon means the page is coming up; an orange dot means it did not. Nothing shows when the page is fine. The three marks differ in shape as well as colour, so they still read if you cannot tell the colours apart, and a screen reader says which one it is.
 
 - Google Keep is in the service catalog, with its own logo rather than a letter tile.
 
+- Settings can turn the service names off. A service is then its icon alone in a narrower rail, and the name stays in the tooltip. Turn it off if you know your services by sight and would rather give the width to the page.
+
 ### Changed
 
-- The strip of spaces is gone, and the space you are in is now a header at the top of the service rail. Click it to switch spaces, add one, rename one or delete one. The width that strip used to take goes to the page you are reading.
-- Three window layouts become two: the rail down the left, or a bar along the top. The third was one of two ways to put your services along the top, and with a single rail there is only one way left. If you were using it, your services stay along the top.
+- In the rail-on-the-left and bar-along-the-top layouts the strip of spaces is gone, and the space you are in is a header at the top of the service rail. Click it to switch spaces, add one, rename one or delete one. The width that strip used to take goes to the page you are reading.
+- The layout with your spaces down the left and your services along the top is still here. Its strip of spaces is as wide as you drag it: narrow for the emoji on their own, wider to read the names beside them.
 - The messages that appear across the top of the window all look like one thing now. There were three of them and they were drawn three different ways, including a solid red bar for being offline that shouted louder than the problem. They share one shape, and how serious it is comes through the icon and a thin rule rather than the colour of the whole strip.
 - Keyboard focus is visible in the rail again. The service you are on and the service the keyboard is on are two different things, and they are now drawn two different ways: a filled row for the one you picked, an outline for the one the arrow keys will move from. A fix in 1.5.10 had removed the outline rather than reshaping it, because the old rail was too narrow to hold it.
 - Every service in the rail now carries its name. It used to be an icon and nothing else, so two Slack workspaces were two identical squares and the only way to tell them apart was to hover one and wait for the tooltip. The unread count, the mute bell, the sleep moon and the camera dot move off the icon's corners and sit beside the name.

@@ -109,3 +109,53 @@ enum ServiceReorder {
         return reordered
     }
 }
+
+/// Whether the rail draws service names, and where that answer is kept.
+///
+/// This is chrome visibility rather than user data, so it lives in defaults
+/// instead of `AppPreferences`: a stored property there is a new schema version
+/// and a migration (see CLAUDE.md), which a cosmetic toggle does not earn.
+enum ServiceNameVisibility {
+    static let defaultsKey = "showServiceNames"
+}
+
+/// The width of the space strip in the hybrid layout, and what that width
+/// means.
+///
+/// The strip is the one piece of rail chrome the user drags, so the two numbers
+/// that decide what it draws live here rather than inside the view: a test can
+/// pin them, and the strip and the service bar beside it both need to agree on
+/// the width.
+enum SpaceStripMetrics {
+    static let defaultsKey = "spaceStripWidth"
+
+    /// Narrow enough to be a column of emoji, wide enough to hold a name.
+    static let minimum: CGFloat = 52
+    static let maximum: CGFloat = 320
+    /// Wide enough to read a name next to the emoji without truncating most of
+    /// them; below this the strip draws the emoji alone.
+    static let nameThreshold: CGFloat = 120
+    /// What a fresh install gets: the named form, because a column of
+    /// unlabelled emoji is the finding that retired this strip in the first
+    /// place.
+    static let defaultWidth: CGFloat = 180
+
+    static func clamped(_ width: CGFloat) -> CGFloat {
+        // NaN survives min/max — an unusable width would silently become the
+        // strip's frame — so it is answered before the bounds are applied.
+        guard width.isFinite else { return defaultWidth }
+        return Swift.min(Swift.max(width, minimum), maximum)
+    }
+
+    static func showsNames(atWidth width: CGFloat) -> Bool {
+        clamped(width) >= nameThreshold
+    }
+
+    /// Leading inset the service bar needs so the window's traffic lights,
+    /// which sit over the strip, do not land on the first tab. The lights are
+    /// 72 points wide; a strip wider than that swallows them whole and the bar
+    /// starts flush.
+    static func barLeadingInset(stripWidth: CGFloat, lightsWidth: CGFloat) -> CGFloat {
+        Swift.max(0, lightsWidth - clamped(stripWidth))
+    }
+}
