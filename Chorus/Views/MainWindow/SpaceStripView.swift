@@ -6,11 +6,10 @@ import SwiftData
 ///
 /// Restored from the two-rail layouts rather than rewritten: the reorder maths,
 /// drag and drop, arrow keys and VoiceOver move actions are the parts the UX
-/// audit rated severity 0, and they come back as they were. Two things are new.
-/// The strip's width is dragged rather than fixed at 52 points, and the width
-/// decides what a cell draws — an emoji tile when it is narrow, an emoji and a
-/// name when it is wide. That answers the finding that retired the strip: a
-/// column of unlabelled emoji, with the name only in a tooltip.
+/// audit rated severity 0, and they come back as they were. What is new is that
+/// a cell can carry its space's name, which answers the finding that retired the
+/// strip: a column of unlabelled emoji, with the name only in a tooltip. The
+/// setting that turns the names on widens the strip to fit them.
 ///
 /// Only the vertical arrangement survives. Spaces along the top was the third
 /// of the three old arrangements and `UnifiedRailView` draws that one now, with
@@ -26,14 +25,11 @@ struct SpaceStripView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
 
-    @AppStorage(SpaceStripMetrics.defaultsKey) private var storedWidth = SpaceStripMetrics.defaultWidth
+    @AppStorage(SpaceStripMetrics.defaultsKey) private var showsNames = true
 
     @State private var showingAddSpace = false
     @State private var editingSpace: Space?
     @State private var confirmingDeleteSpace: Space?
-    /// Width the strip had when the current resize drag began. The drag reports
-    /// a translation, not a position, so the start has to be held somewhere.
-    @State private var dragStartWidth: CGFloat?
     /// The space cell that currently holds keyboard focus. Two-way bound to each
     /// cell's `.focused` so the arrow keys move relative to it.
     @FocusState private var focusedSpaceID: UUID?
@@ -43,14 +39,8 @@ struct SpaceStripView: View {
     /// geometry pass records a size.
     @State private var cellSizes: [UUID: CGSize] = [:]
     private static let spaceDropMidpoint: CGFloat = 22
-    /// Width of the grip along the strip's trailing edge. Wider than the divider
-    /// it sits on, because a 1 point drag target is not one.
-    private static let gripWidth: CGFloat = 6
-    /// How much one VoiceOver adjustment moves the width.
-    private static let adjustmentStep: CGFloat = 20
 
-    private var width: CGFloat { SpaceStripMetrics.clamped(storedWidth) }
-    private var showsNames: Bool { SpaceStripMetrics.showsNames(atWidth: storedWidth) }
+    private var width: CGFloat { SpaceStripMetrics.width(showingNames: showsNames) }
 
     var body: some View {
         content
@@ -106,42 +96,6 @@ struct SpaceStripView: View {
         // would be the one part of the window's top edge that could not move it.
         .background(WindowDragHandle())
         .background(Color(nsColor: .windowBackgroundColor))
-        .overlay(alignment: .trailing) { resizeGrip }
-    }
-
-    /// The drag target on the trailing edge. It draws nothing: the divider
-    /// `ContentView` puts between the strip and the content is the line, and
-    /// this is the grip on it.
-    private var resizeGrip: some View {
-        Color.clear
-            .frame(width: Self.gripWidth)
-            .contentShape(Rectangle())
-            .onHover { inside in
-                if inside {
-                    NSCursor.resizeLeftRight.push()
-                } else {
-                    NSCursor.pop()
-                }
-            }
-            .gesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { value in
-                        let start = dragStartWidth ?? width
-                        dragStartWidth = start
-                        storedWidth = SpaceStripMetrics.clamped(start + value.translation.width)
-                    }
-                    .onEnded { _ in dragStartWidth = nil }
-            )
-            .accessibilityElement()
-            .accessibilityLabel("Space strip width")
-            .accessibilityValue("\(Int(width)) points")
-            .accessibilityAdjustableAction { direction in
-                switch direction {
-                case .increment: storedWidth = SpaceStripMetrics.clamped(width + Self.adjustmentStep)
-                case .decrement: storedWidth = SpaceStripMetrics.clamped(width - Self.adjustmentStep)
-                @unknown default: break
-                }
-            }
     }
 
     @ViewBuilder

@@ -4,9 +4,10 @@ import SwiftData
 struct ContentView: View {
     @Environment(AppState.self) private var appState
 
-    /// The hybrid layout's strip width, read here because the service bar
-    /// beside it has to start clear of whatever the traffic lights overhang.
-    @AppStorage(SpaceStripMetrics.defaultsKey) private var spaceStripWidth = SpaceStripMetrics.defaultWidth
+    /// Whether the hybrid layout's space strip carries names, read here because
+    /// it sets the strip's width, and the service bar beside it has to start
+    /// clear of whatever the traffic lights overhang.
+    @AppStorage(SpaceStripMetrics.defaultsKey) private var showSpaceNames = true
 
     /// Gates the fresh-start confirmation. Local to the view rather than on
     /// `AppState`: nothing outside this banner presents it.
@@ -272,7 +273,7 @@ struct ContentView: View {
                         spaceSelection: spaceSelection,
                         serviceSelection: serviceSelection,
                         contentInset: SpaceStripMetrics.barLeadingInset(
-                            stripWidth: spaceStripWidth,
+                            stripWidth: SpaceStripMetrics.width(showingNames: showSpaceNames),
                             lightsWidth: lightsWidth
                         ),
                         showsSpaceHeader: false

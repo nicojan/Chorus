@@ -72,6 +72,8 @@ struct GeneralSettingsView: View {
     /// Window chrome rather than user data, so it sits in defaults instead of
     /// `AppPreferences` — see `ServiceNameVisibility`.
     @AppStorage(ServiceNameVisibility.defaultsKey) private var showServiceNames = true
+    /// The same, for the hybrid layout's strip of spaces — see `SpaceStripMetrics`.
+    @AppStorage(SpaceStripMetrics.defaultsKey) private var showSpaceNames = true
 
     private let presenceManager = AppPresenceManager()
 
@@ -138,6 +140,16 @@ struct GeneralSettingsView: View {
                 Text("Turn this off and a service is its icon alone, in a rail narrow enough to leave the page more room. The name stays in the tooltip.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                // Only the layout with a strip of spaces down the left has
+                // anything to apply this to, so it appears with that layout
+                // rather than sitting inert under the other two.
+                if prefs.railLayout == .hybrid {
+                    Toggle("Show space names in the strip", isOn: $showSpaceNames)
+                    Text("The same, for the strip of spaces down the left. Off, it is a narrow column of emoji.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("Web Content") {
