@@ -4,6 +4,21 @@ What scripted input and the test suite cannot check, in the order that finds pro
 
 Record the result next to each item. An unrun item is not a passing item.
 
+## Start here: what is left before 1.5.19 can be published
+
+Where it stands on 2026-08-31. `main` is at `bc45237` and carries everything. The artifact is `build/Chorus-1.5.19.dmg`: 1.5.19, build 31, signed, notarised, stapled, sha256 `05bb501a0ed65bbe9846ac1cb03c6f6db10d30f6553959853661a5027cda9adb`. Nothing is published. No tag, no GitHub release, no appcast item, no cask bump. The suite is green on macOS 14 and 15.
+
+Do these in order. None of them needs a rebuild unless one fails.
+
+1. Eject the mounted Chorus disk image if one is still there. Build 30's was left at `/Volumes/Chorus`, and dragging from it puts the old build back without saying so.
+2. Install `build/Chorus-1.5.19.dmg` over `/Applications`, launch it, and check About says 1.5.19 (31). Items 16, 17 and 19 below are ticked against build 30, which is a different binary, so run them again.
+3. Item 5, then item 11. The 240 point rail with service names on. This is the layout most people will be in and nobody has looked at it.
+4. Item 12's other half: the 180 point space strip with space names on.
+5. Item 10, then item 8, then all of block 4.
+6. Block 6, then steps 6 to 9 of `release/DISTRIBUTION.md`.
+
+If something fails, write it next to the item before fixing it.
+
 ## Block 1 — the palette's ⌘ digits — RUN 2026-08-31, FAILED, FIXED
 
 `SpacePaletteView` drew `⌘1`, `⌘2` down the trailing edge of its rows. Pressing them switched **services**, not spaces.
@@ -40,12 +55,14 @@ Settings › Appearance, one pass per layout, in both appearances.
 
 ## Block 5 — the install check (gates publishing)
 
+**Ticked against build 30. The artifact is build 31, so items 16, 17 and 19 are owed again.**
+
 The one 1.5.18 skipped. Everything about the schema change is verified, including against a copy of a real store, but nothing has run the actual app over the actual store.
 
 16. Put the stapled DMG's app over `/Applications`, replacing the installed copy. ✅ 2026-08-31.
 17. Launch it. Confirm the spaces and services all come through, with their names, icons and badges. ✅ 2026-08-31 — ran for an hour, no errors in the log, no crash reports.
 18. Delete a space. It should go, its services should stay, and the app should still be running — this is the macOS 15 crash that shipped in five releases. ✅ 2026-08-31, a test space created and deleted, no crash. On macOS 26, which cannot show the macOS 15 fault; the green macOS 15 CI job is the only evidence for that one.
-19. Check About says 1.5.19 and the expected build number. ✅ 1.5.19 (30).
+19. Check About says 1.5.19 and the expected build number. ⚠️ 1.5.19 (30) was confirmed. The artifact is now build 31.
 
 ## Block 6 — before step 6 of DISTRIBUTION.md
 
