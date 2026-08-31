@@ -2726,26 +2726,12 @@ final class ChorusTests: XCTestCase {
 
     // MARK: - Space header and palette (build step 4)
 
-    /// The palette labels its rows ⌘1 upward. Only the first nine get a digit —
-    /// there is no ⌘0 row, and a tenth space is reached by arrow or click.
-    func testSpacePaletteAssignsCommandDigitsToTheFirstNineRowsOnly() {
-        XCTAssertEqual(SpacePalette.shortcutDigit(forIndex: 0), 1)
-        XCTAssertEqual(SpacePalette.shortcutDigit(forIndex: 8), 9)
-        XCTAssertNil(SpacePalette.shortcutDigit(forIndex: 9))
-        XCTAssertNil(SpacePalette.shortcutDigit(forIndex: 40))
-    }
-
-    /// The digits are palette-local (decided 2026-08-17): they resolve to a row
-    /// only while the palette is open, and only when a row is actually there. A
-    /// digit past the end is not handled, so it never swallows the keystroke.
-    func testSpacePaletteResolvesADigitOnlyWithinTheRowCount() {
-        XCTAssertEqual(SpacePalette.index(forDigit: 1, rowCount: 3), 0)
-        XCTAssertEqual(SpacePalette.index(forDigit: 3, rowCount: 3), 2)
-        XCTAssertNil(SpacePalette.index(forDigit: 4, rowCount: 3))
-        XCTAssertNil(SpacePalette.index(forDigit: 0, rowCount: 3))
-        XCTAssertNil(SpacePalette.index(forDigit: 10, rowCount: 12))
-        XCTAssertNil(SpacePalette.index(forDigit: 1, rowCount: 0))
-    }
+    // The two tests that pinned the palette's ⌘ digits are gone with the digits
+    // themselves (1.5.19). They pinned arithmetic that was never reached: the
+    // menu owns ⌘1–⌘9 for service switching and dispatches first, so the
+    // palette's key handler never saw them. Both tests passed the whole time,
+    // which is the point worth remembering — a green test over a function
+    // nothing calls says nothing about the feature.
 
     func testSpacePaletteSubtitleCountsServices() {
         XCTAssertEqual(SpacePalette.subtitle(serviceCount: 0), "No services")

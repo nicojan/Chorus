@@ -5,25 +5,16 @@ import SwiftData
 /// from the view so both can be pinned by a test, the same way
 /// `ServiceAccessibility` is.
 enum SpacePalette {
-    /// The digit that picks the row at `index`, or nil past the ninth. There is
-    /// no ⌘0 row; a tenth space is reached by arrow or by click.
-    static func shortcutDigit(forIndex index: Int) -> Int? {
-        guard (0..<9).contains(index) else { return nil }
-        return index + 1
-    }
-
-    /// The row a digit picks, or nil when the digit reaches past the last row.
-    ///
-    /// Returning nil matters as much as returning an index. The digits are
-    /// palette-local (decided 2026-08-17): `⌘1`–`⌘9` still switches services
-    /// globally through `KeyboardShortcutManager`, and the palette only borrows
-    /// them while it is open. A digit with no row behind it has to go
-    /// unhandled rather than be swallowed.
-    static func index(forDigit digit: Int, rowCount: Int) -> Int? {
-        guard (1...9).contains(digit) else { return nil }
-        let index = digit - 1
-        return index < rowCount ? index : nil
-    }
+    // The rows carried ⌘1, ⌘2 down their trailing edge until 1.5.19, and the
+    // digits never worked. `KeyboardShortcutManager` binds ⌘1–⌘9 to service
+    // switching as menu command key equivalents, and the menu dispatches a key
+    // equivalent before the event reaches the first responder, so the palette's
+    // `.onKeyPress` was never asked. The plan of borrowing the digits while the
+    // palette is open (decided 2026-08-17) cannot be done from `.onKeyPress` at
+    // all; it would have to be done in the menu command, which is where the key
+    // actually lands. Rather than ship a label for a shortcut that switches
+    // services, the labels are gone. Arrows, Return, Escape and click are the
+    // ways through the palette.
 
     static func subtitle(serviceCount: Int) -> String {
         switch serviceCount {
@@ -146,8 +137,7 @@ struct SpacePaletteView: View {
             badgeCount: badgeCount,
             isMuted: muted,
             isCurrent: space.id == selectedSpaceID,
-            isHighlighted: index == highlightedIndex,
-            shortcutDigit: SpacePalette.shortcutDigit(forIndex: index)
+            isHighlighted: index == highlightedIndex
         ) {
             select(space)
         }
@@ -239,17 +229,11 @@ struct SpacePaletteView: View {
 
     // MARK: - Keyboard
 
-    /// Arrows move the highlight, Return picks it, Escape closes, and ⌘1–⌘9 pick
-    /// a row outright. The digits are borrowed only while this is open; anything
-    /// else is left unhandled so it reaches the shortcuts underneath.
+    /// Arrows move the highlight, Return picks it, Escape closes. Anything
+    /// carrying Command is left alone: those are the app's shortcuts, and the
+    /// menu has already had them by the time this runs.
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
-        if press.modifiers.contains(.command) {
-            guard let digit = Int(press.characters),
-                  let index = SpacePalette.index(forDigit: digit, rowCount: spaces.count)
-            else { return .ignored }
-            select(spaces[index])
-            return .handled
-        }
+        if press.modifiers.contains(.command) { return .ignored }
 
         switch press.key {
         case .upArrow:
@@ -338,7 +322,6 @@ private struct SpacePaletteRow: View {
     /// Where the keyboard is. A separate, lighter mark, so the two never read as
     /// the same thing — the spec's selection-against-focus rule.
     let isHighlighted: Bool
-    let shortcutDigit: Int?
     let action: () -> Void
 
     var body: some View {
@@ -374,12 +357,6 @@ private struct SpacePaletteRow: View {
                         .accessibilityHidden(true)
                 }
 
-                if let shortcutDigit {
-                    Text("⌘\(shortcutDigit)")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
-                }
             }
             .padding(.horizontal, 10)
             .frame(height: 38)
