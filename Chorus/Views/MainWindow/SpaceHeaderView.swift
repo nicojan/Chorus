@@ -34,6 +34,11 @@ struct SpaceHeaderView: View {
     var axis: Axis = .vertical
     var badgeCount: Int = 0
     var isMuted: Bool = false
+    /// Whether the header carries the space's name. It follows the rail's
+    /// service rows: a 224 point header cannot sit above a 52 point column of
+    /// icons. Only the vertical rail ever asks for this — the horizontal bar has
+    /// the room and keeps its name.
+    var showsName: Bool = true
     /// True while the palette this header opens is on screen. Held by the owner
     /// so the header can draw itself as pressed for as long as it is.
     var isPaletteOpen: Bool = false
@@ -45,6 +50,9 @@ struct SpaceHeaderView: View {
     /// the services below it line up on both edges.
     static let headerWidth: CGFloat = 224
     static let headerHeight: CGFloat = 36
+    /// The nameless header: the emoji alone, matching the compact service cell
+    /// under it.
+    static let compactWidth: CGFloat = 36
     /// The horizontal bar's header is a fixed width rather than hugging its
     /// name: it is the leftmost thing in the bar and a header that resized on
     /// every space switch would shove every service tab sideways.
@@ -76,7 +84,33 @@ struct SpaceHeaderView: View {
         .accessibilityAddTraits(.isButton)
     }
 
+    @ViewBuilder
     private var content: some View {
+        if showsName {
+            namedContent
+        } else {
+            compactContent
+        }
+    }
+
+    /// The emoji alone, with the badge on its corner. The chevron goes: at this
+    /// size it would be most of the cell, and the header is still the only thing
+    /// in the rail that opens on click.
+    private var compactContent: some View {
+        Text(emoji)
+            .font(.system(size: 18))
+            .opacity(isMuted ? 0.5 : 1.0)
+            .accessibilityHidden(true)
+            .overlay(alignment: .topTrailing) {
+                if badgeCount > 0 {
+                    BadgeCountView(count: badgeCount)
+                        .offset(x: 10, y: -6)
+                }
+            }
+            .frame(width: Self.compactWidth, height: Self.headerHeight)
+    }
+
+    private var namedContent: some View {
         HStack(spacing: Self.gutter) {
             Text(emoji)
                 .font(.system(size: axis == .vertical ? 16 : 15))

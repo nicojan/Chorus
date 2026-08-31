@@ -10,11 +10,31 @@ Blocks 1 and 2 of `docs/internal/VERIFY-BY-HAND.md` passed by hand on 2026-08-29
 
 ### Still open, not blocking
 
-- **Nothing reaps the `.reset-` family.** `pruneSnapshots` and `prunePickAsides` bound every other family. Each fresh start leaves a full store triple on disk for good. Rare by nature, so the cost is disk space.
+- ~~**Nothing reaps the `.reset-` family.**~~ Closed on 2026-08-29 by `pruneResetAsides`, which bounds it the way `prunePickAsides` bounds its own: the newest three plus the single oldest. The family is live recovery material — `StoreInventory` lists it, which is what makes undoing a fresh start one click — so a purely-recency rule would have reaped a candidate the picker was offering, and the oldest aside is the store as it stood before the user started over at all.
 - **#17 is still one-tenant.** The contributor has a single Entra tenant and said so. Nobody has confirmed it elsewhere; issue #14's reporter is on Teams and was responsive once.
 - **#15's flake never reproduced here.** Twelve full-suite runs on the branch and twelve on `main` as a control both came back clean, so it went in on its reasoning rather than a measurement. Test-only, so the downside is bounded.
 
 **Gotcha for whoever runs `build_brand_icons.py` next:** `--write` also reclassifies `brand-notion` and `brand-mattermost` as template-rendering, and both are set to `original` on purpose. Revert those two after any run.
+
+## Open: the two-rail layout is back, and the names can be turned off
+
+Built on `feat/hybrid-layout-and-name-visibility` on 2026-08-29, from three notes taken while testing the held 1.5.19 by hand. The branch is pushed and `main` has not moved, so none of it is merged.
+
+`RailLayout` has three cases again, under the raw value it always had. Retiring `hybrid` never reached anyone: no tag contains `5e01986`, so no store was ever rewritten, and a store still holding that value belongs to someone who picked the layout and never left it. The forward-map `resolving(_:)` carried while the case was gone is deleted, along with the test that pinned it.
+
+`SpaceStripView` is restored from `5e01986^` rather than rewritten, because the reorder maths, drag and drop, arrow keys and VoiceOver move actions are what the audit rated severity 0. Only the vertical arrangement comes back; `UnifiedRailView` draws spaces-along-the-top now, so the axis parameter and about a third of the restored code went with it. Its delete already routed through `AppState.deleteSpace`, which is what keeps the macOS 15 crash from riding back in with it. It also gains a `WindowDragHandle` it never had: the OS window drag is off in this layout, so the strip was the one part of the window's top edge that could not move it.
+
+The strip has two widths and a toggle to pick between them. A drag handle was built first and thrown away after a by-hand test: the strip is 40-odd points of chrome, the useful range between its ends is short, and a live gesture spent on a two-answer choice felt bad in the hand. The toggle sits beside the service-names one and lands on the right width every time.
+
+The traffic lights stay the strip's problem. The retired hybrid gave the service bar `lightsWidth - railWidth` of leading inset so the lights could overhang a 52 point strip; `SpaceStripMetrics.barLeadingInset` is that same arithmetic, now that the width has two values.
+
+Turning service names off narrows the vertical rail to 52 and collapses the space header to its emoji, because a 224 point header cannot sit above a column of icons. The horizontal bar has the room and keeps its name, so the rule is geometry rather than preference. Nothing becomes unreachable: the compact cell's tooltip speaks the full accessibility label, including the moon, the bell and the media glyph it has no room to draw.
+
+Both settings live in defaults rather than `AppPreferences`, for the reason the donation button's used to: a stored property there is a schema version and a migration, which chrome visibility does not earn. The cost is the same one, that a restore from backup does not carry them.
+
+Three things came in with it that 1.5.19 was being held for. The top bar's add button is pinned outside the scrolling row now, where the vertical rail has always kept it, and the overflow branch softens its trailing edge. `pruneResetAsides` bounds the `.reset-` family. `project.yml` asks for Xcode 16, which is what the object format needs and what `CONTRIBUTING.md` already told contributors to install.
+
+None of it has been seen by eye. `docs/internal/VERIFY-BY-HAND.md` is the pass it needs, and its first block is the one worth running first: the space palette draws `⌘1` and `⌘2` on its rows and nothing has ever confirmed the shortcut fires. `handleKey` reads `Int(press.characters)` with Command held, which is the open question from build step 4. If it does not fire, the release ships a claim that is not true, and the fix is to read `press.key` instead.
 
 ## Open: the donation button is built and unreleased
 
@@ -22,11 +42,11 @@ A button 20 points across, in a 28 point target, sits in the top right of the ma
 
 Both things that were open here are now settled, on 2026-08-16.
 
-The paint stays at 20 points and the click target grew to 28. The audit asks for 44 everywhere else and this is a deliberate exception: a permanent request for money that reads as a control is louder than the ask was, and the pointer, not the finger, is what hits it. `SupportButtonVisibility` in `ContentView.swift` holds both sizes and the arithmetic that keeps the chip where it was drawn when the target grows around it.
+The paint stays at 20 points and the click target grew to 28. The audit asks for 44 everywhere else and this is a deliberate exception: a permanent request for money that reads as a control is louder than the ask was, and the pointer, not the finger, is what hits it. `SupportButtonMetrics` in `ContentView.swift` holds both sizes and the arithmetic that keeps the chip where it was drawn when the target grows around it.
 
-Settings › General can hide the button. It writes `showSupportButton` to `UserDefaults`, not to `AppPreferences`, because a stored property there is a new schema version and a migration, which button visibility does not earn — see the SwiftData section of `CLAUDE.md`. The cost of that choice is that the setting sits outside the store, so a restore from backup does not carry it, and it is the one General setting not in `AppPreferences`.
+**The switch that hid it is gone, as of 2026-08-29.** It was one 20 point chip that only takes colour under the pointer, and the switch cost every layout a second code path for a hole where the button would have been. `showSupportButton` and its Settings toggle are deleted, and `SupportButtonVisibility` is now `SupportButtonMetrics`, which is all it ever was once the key came out. The two settings that replaced it — the service names and the space names — sit in defaults for the reason this one did.
 
-The nav buttons in `hybrid` and `topBars` end in the same corner, so `ServiceSidebarView` reserves `SupportButtonVisibility.reservedWidth` (44 points) of trailing padding for the button, and falls back to 10 when the button is hidden. Cut that reserve and the two overlap as soon as the Home button appears.
+The nav buttons in `hybrid` and `topBars` end in the same corner, so `UnifiedRailView` reserves `SupportButtonMetrics.reservedWidth` (44 points) of trailing padding for the button. The fallback to 10 went with the toggle. Cut that reserve and the two overlap as soon as the Home button appears.
 
 All three states were verified in the running Debug build on 2026-08-16: the button drawn with the nav buttons clear of it, the corner with the button hidden and the nav buttons moved into the space, and the cup taking its hover colour with the pointer 4 points outside the painted chip, which is what proves the wider target is live.
 
@@ -51,7 +71,7 @@ The design that follows from it is written up in `docs/superpowers/specs/2026-08
 Three things about it are worth knowing before picking it up.
 
 - **How it looks was checked on 2026-08-17 and it holds.** Debug build, `Chorus-debug` store, all three layouts, both appearances. The drawn geometry is the built geometry: rows stack at a 36pt pitch, a row is 224 wide inside the 240pt rail, the icon sits 8 points in and the label 36. Each trailing accessory was turned on live rather than reasoned about. Muting a service puts the bell on the trailing edge. Hibernating one puts the moon there and drops the row to 60% opacity. A name long enough to overrun the row truncates with an ellipsis, and the bell stays put. Hover fill reads, and so do the selected row's tint fill and border. The screenshots are in the session scratchpad; none of them went into the repo.
-- **A tab bar that overflows says nothing about it.** With names on the tabs, five services and a 1000pt window already fill the bar. At the 800pt minimum width the last tab is cut mid-icon and the add button sits off the end. The strip does scroll, through `ScrollView(.horizontal, showsIndicators: false)` in `ServiceSidebarView.tabStrip`, but nothing on screen says so, and a clipped icon reads as broken. That setting predates this step; labelled tabs are what make it easy to reach. Step 5 rebuilds this strip, so the fix belongs there.
+- **A tab bar that overflows says nothing about it.** *(Fixed 2026-08-29, in the two-rail work above: the add button is pinned outside the scrolling row and the overflow branch softens its trailing edge.)* With names on the tabs, five services and a 1000pt window already fill the bar. At the 800pt minimum width the last tab is cut mid-icon and the add button sits off the end. The strip does scroll, through `ScrollView(.horizontal, showsIndicators: false)` in `ServiceSidebarView.tabStrip`, but nothing on screen says so, and a clipped icon reads as broken. That setting predates this step; labelled tabs are what make it easy to reach. Step 5 rebuilds this strip, so the fix belongs there.
 - **In `sidebar` this step alone costs chrome.** 52pt space rail plus 240pt service rail is 292 points before content, against today's 104. Step 5 takes the second rail out and lands it at 240, so the cost is an artifact of shipping step 3 on its own. The horizontal layouts have no such cost.
 - **The horizontal tab has no width cap, on purpose.** A `maxWidth` only bites when something proposes an unbounded width, which the strip's fallback scroll view does, and there it stretches every short tab to the cap instead of trimming the long ones. `ViewThatFits` already hands overflow to that scroll view, so a long name costs scrolling rather than layout.
 
@@ -65,7 +85,7 @@ Step 6 puts a 9 point mark on a service icon's bottom-right corner: nothing when
 
 Step 7 is the baseline's own list. `NoticeStrip` replaces the two raw yellows and the solid red bar with one shape at three severities, carrying the tone in the icon and the rule rather than the fill, and carrying the window-drag handle each notice needs. `ChorusRadius` takes eight radii down to three. `RowMark` splits selection from focus: a fill for one, a ring for the other, which is the reshape the audit asked for rather than the switch-off 1.5.10 did.
 
-**Steps 5 and 2 are built and merged, and half of concept C has now been seen running.** `UnifiedRailView` replaces `ServiceSidebarView` and `SpaceStripView`, both deleted. `RailLayout` is down to two cases. 205 tests, 0 failures.
+**Steps 5 and 2 are built and merged, and half of concept C has now been seen running.** `UnifiedRailView` replaces `ServiceSidebarView` and `SpaceStripView`, both deleted. `RailLayout` went down to two cases here and back to three on 2026-08-29, before either shipped — see the two-rail section above. 205 tests, 0 failures.
 
 What the by-eye pass on 2026-08-17 did establish, in the Debug build against `Chorus-debug`:
 
@@ -127,9 +147,21 @@ The radius collapse, the target sizes and the icon sizes are mechanical. The sel
 
 ## Held: 1.5.19 is built and notarised, and deliberately not published
 
-**More is going into 1.5.19 before it ships**, so the artifact below is a checkpoint rather than the thing that goes out. Read the staleness note at the end of this section before publishing anything.
+**More is going into 1.5.19 before it ships**, so every artifact here is a checkpoint rather than the thing that goes out. Read the staleness note at the end of this section before publishing any of them.
 
-Everything for the release is on `main`: the version bumped in `project.yml` and the `.pbxproj` together (build 28), and the changelog's Unreleased section closed. 239 tests, 0 failures on macOS 26.6 locally, on macOS 15 under Xcode 26.3, and on macOS 14 under Xcode 16.2.
+Three builds exist, all 1.5.19, and none of them is publishable as it stands:
+
+| Build | Commit | What it is |
+|---|---|---|
+| 28 | `c5af295` on `main` | The original hold. `build/Chorus-1.5.19.dmg`, sha256 `9a912a9e…6390e`. |
+| 29 | `4c32087` on the two-rail branch | The first test build of the layout work. Superseded. |
+| 30 | `c2598f6` on the two-rail branch | `build/Chorus-1.5.19-b30.dmg`, sha256 `e27b30c4…575bc`. What the by-hand pass runs against. |
+
+The marketing version has not moved and should not: nothing was published under any of these. The build number moves so the About panel can tell them apart. **Builds 29 and 30 are branch builds** — `main` is still at build 28, and the branch has to merge before anything is cut from it.
+
+The test builds are named `Chorus-1.5.19-bNN.dmg` so they cannot overwrite the held `Chorus-1.5.19.dmg`, and they are packaged with the `hdiutil` fallback rather than `create-dmg`, which drives Finder with AppleScript and takes the screen while it does. The published artifact should still be built the documented way.
+
+239 tests at build 28, 0 failures on macOS 26.6 locally, on macOS 15 under Xcode 26.3, and on macOS 14 under Xcode 16.2. 244 at build 30, locally only — CI runs on pull requests and pushes to `main`, and the branch has had neither.
 
 **The macOS 14 pass `CLAUDE.md` asks for is done, by CI rather than by hand.** It was written off at first on the assumption the `macos-14` runner image only carries Xcode 15.4, which cannot open a project in object format 77. It also carries 16.1 and 16.2, and the workflow already picks the newest installed, so the only obstacle was the assumption. `testMigratesFrom1_5_13PreservingLinkEnds` is the test that pass was really about, and it runs there now.
 

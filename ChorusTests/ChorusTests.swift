@@ -1338,6 +1338,70 @@ final class ChorusTests: XCTestCase {
     /// aside is the store as it stood before the user began trying candidates at
     /// all, so it must survive alongside the newest few, not be pruned away by
     /// a purely newest-first rule the way a run of several restores would.
+    /// The fresh-start family had no reaper at all: every fresh start left a
+    /// full triple on disk for good. It is bounded the way `.prepick-` is, and
+    /// for the same reason — `StoreInventory` lists these as candidates, so
+    /// undoing a fresh start is a click, and the OLDEST one is the store as it
+    /// stood before the user ever started over.
+    func testPruneResetAsidesKeepsNewestPlusOldest() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-prune-reset-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let stamps = ["1700000010", "1700000020", "1700000030", "1700000040", "1700000050"]
+        for stamp in stamps {
+            for suffix in ["", "-wal", "-shm"] {
+                let path = storeURL.path + ".reset-\(stamp).bak" + suffix
+                try Data("aside \(stamp)\(suffix)".utf8).write(to: URL(fileURLWithPath: path))
+            }
+        }
+
+        StoreRepair.pruneResetAsides(at: storeURL, keeping: 3)
+
+        let left = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        let primaries = left.filter { $0.hasPrefix("store.sqlite.reset-") && $0.hasSuffix(".bak") }.sorted()
+        XCTAssertEqual(
+            primaries,
+            ["store.sqlite.reset-1700000010.bak",
+             "store.sqlite.reset-1700000030.bak",
+             "store.sqlite.reset-1700000040.bak",
+             "store.sqlite.reset-1700000050.bak"],
+            "the newest three plus the oldest must survive, got \(primaries)"
+        )
+        for suffix in ["", "-wal", "-shm"] {
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: storeURL.path + ".reset-1700000020.bak" + suffix),
+                "the pruned aside must take its whole triple with it"
+            )
+        }
+    }
+
+    /// A family at or under the bound is left entirely alone. The reaper runs on
+    /// every fresh start, and the first one must not delete the only copy of what
+    /// the user just started over from.
+    func testPruneResetAsidesSparesASmallFamilyEntirely() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-prune-reset-small-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        for stamp in ["1700000010", "1700000020"] {
+            for suffix in ["", "-wal", "-shm"] {
+                let path = storeURL.path + ".reset-\(stamp).bak" + suffix
+                try Data("aside".utf8).write(to: URL(fileURLWithPath: path))
+            }
+        }
+
+        StoreRepair.pruneResetAsides(at: storeURL, keeping: 3)
+
+        let left = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        let primaries = left.filter { $0.hasPrefix("store.sqlite.reset-") && $0.hasSuffix(".bak") }.sorted()
+        XCTAssertEqual(primaries, ["store.sqlite.reset-1700000010.bak", "store.sqlite.reset-1700000020.bak"])
+    }
+
     func testPrunePickAsidesKeepsNewestPlusOldest() throws {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("chorus-prune-pick-\(UUID().uuidString)", isDirectory: true)
@@ -2512,21 +2576,48 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(AppPreferences(railLayoutRaw: "garbage").railLayout, .sidebar)
     }
 
-    /// The retired third case maps forward, and it must not take the `.sidebar`
-    /// fallback. A `hybrid` user picked their services as tabs along the top; the
-    /// fallback would hand them a rail down the left, which is the layout
-    /// furthest from what they chose.
-    func testRetiredHybridLayoutMapsForwardToTheBarRatherThanTheFallback() {
-        XCTAssertEqual(AppPreferences(railLayoutRaw: "hybrid").railLayout, .topBars)
-        XCTAssertEqual(RailLayout.resolving("hybrid"), .topBars)
-        XCTAssertNotEqual(RailLayout.resolving("hybrid"), .sidebar)
+    /// `hybrid` reads as `hybrid` again. The build that retired it never
+    /// shipped, so any store holding this raw value belongs to someone who
+    /// picked the two-rail arrangement and never left it — resolving it to
+    /// anything else would move them off a layout they chose.
+    func testHybridReadsAsItselfRatherThanTheLayoutThatReplacedIt() {
+        XCTAssertEqual(AppPreferences(railLayoutRaw: "hybrid").railLayout, .hybrid)
+        XCTAssertEqual(RailLayout.resolving("hybrid"), .hybrid)
     }
 
-    /// The enum is down to two cases, so the Settings picker offers two. If a
-    /// third ever comes back it needs its own forward-map story.
-    func testRailLayoutHasExactlyTheTwoSurvivingCases() {
-        XCTAssertEqual(RailLayout.allCases.map(\.rawValue), ["sidebar", "topBars"])
-        XCTAssertNil(RailLayout(rawValue: RailLayout.retiredHybridRawValue))
+    /// Three cases, so the Settings picker offers three.
+    func testRailLayoutHasThreeCases() {
+        XCTAssertEqual(RailLayout.allCases.map(\.rawValue), ["sidebar", "topBars", "hybrid"])
+    }
+
+    // MARK: - Space strip width (hybrid layout)
+
+    func testSpaceStripHasAWidthForEachNameSetting() {
+        XCTAssertEqual(SpaceStripMetrics.width(showingNames: true), SpaceStripMetrics.namedWidth)
+        XCTAssertEqual(SpaceStripMetrics.width(showingNames: false), SpaceStripMetrics.compactWidth)
+        XCTAssertGreaterThan(SpaceStripMetrics.namedWidth, SpaceStripMetrics.compactWidth)
+    }
+
+    /// The traffic lights sit over the strip. The compact strip is narrower than
+    /// they are, so they overhang onto the service bar and it has to start clear
+    /// of what is left — the fix the retired hybrid layout already had. The named
+    /// strip swallows them, and the bar starts flush.
+    func testServiceBarClearsTheTrafficLightsOverhangingTheCompactStrip() {
+        let lights: CGFloat = 72
+        XCTAssertEqual(
+            SpaceStripMetrics.barLeadingInset(
+                stripWidth: SpaceStripMetrics.width(showingNames: false),
+                lightsWidth: lights
+            ),
+            20
+        )
+        XCTAssertEqual(
+            SpaceStripMetrics.barLeadingInset(
+                stripWidth: SpaceStripMetrics.width(showingNames: true),
+                lightsWidth: lights
+            ),
+            0
+        )
     }
 
     // MARK: - Notice shape, radius scale, selection against focus (build step 7)

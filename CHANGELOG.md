@@ -5,25 +5,26 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
-## [1.5.19] - 2026-08-29
+## [1.5.19] - 2026-08-31
 
 ### Added
 
 - A small button in the top right of the window opens the donation page, and the About panel carries the same link. Chorus stays free. This is here if you want to pay for it anyway.
-- Settings › General can hide that button. The window gives its corner back to the navigation buttons, and the About panel keeps the link.
-
 - A service that is still loading, or that failed to load, now says so in the rail. A grey ring on its icon means the page is coming up; an orange dot means it did not. Nothing shows when the page is fine. The three marks differ in shape as well as colour, so they still read if you cannot tell the colours apart, and a screen reader says which one it is.
 
 - Google Keep is in the service catalog, with its own logo rather than a letter tile.
 
+- Settings can turn the service names off. A service is then its icon alone in a narrower rail, and the name stays in the tooltip. Turn it off if you know your services by sight and would rather give the width to the page.
+
 ### Changed
 
-- The strip of spaces is gone, and the space you are in is now a header at the top of the service rail. Click it to switch spaces, add one, rename one or delete one. The width that strip used to take goes to the page you are reading.
-- Three window layouts become two: the rail down the left, or a bar along the top. The third was one of two ways to put your services along the top, and with a single rail there is only one way left. If you were using it, your services stay along the top.
+- In the rail-on-the-left and bar-along-the-top layouts the strip of spaces is gone, and the space you are in is a header at the top of the service rail. Click it to switch spaces, add one, rename one or delete one. The width that strip used to take goes to the page you are reading.
+- The layout with your spaces down the left and your services along the top is still here. Its strip of spaces carries their names, and a setting turns those off for a narrow column of emoji.
 - The messages that appear across the top of the window all look like one thing now. There were three of them and they were drawn three different ways, including a solid red bar for being offline that shouted louder than the problem. They share one shape, and how serious it is comes through the icon and a thin rule rather than the colour of the whole strip.
 - Keyboard focus is visible in the rail again. The service you are on and the service the keyboard is on are two different things, and they are now drawn two different ways: a filled row for the one you picked, an outline for the one the arrow keys will move from. A fix in 1.5.10 had removed the outline rather than reshaping it, because the old rail was too narrow to hold it.
 - Every service in the rail now carries its name. It used to be an icon and nothing else, so two Slack workspaces were two identical squares and the only way to tell them apart was to hover one and wait for the tooltip. The unread count, the mute bell, the sleep moon and the camera dot move off the icon's corners and sit beside the name.
 - The rail down the left side is wider, to fit those names.
+- The bar along the top no longer loses its add button when there are more services than fit. The button now sits at the end of the bar and stays there, the tabs scroll under it, and the edge they run past is softened so you can see the row keeps going. Before this the last tab was cut through its icon and the add button was somewhere off the end.
 
 ### Fixed
 
@@ -32,6 +33,7 @@ All notable changes to Chorus are documented here. Format loosely follows
 - Microsoft Teams and other services behind a company sign-in can stay signed in. Teams would show its own "sign in again" banner, the button led nowhere, and the state came back about a day after every successful sign-in. Chorus was blocking the hidden frame Teams reads its session from. Each service still keeps its cookies to itself.
 - Signing in to a service no longer sends you a stream of approval requests. When a sleeping service needed signing in again, the background check that reads its unread count kept reloading it, and every reload asked your authenticator to approve. One person got 68 prompts in 14 hours. Chorus now stops checking a service that needs you, and picks it up again when you open it.
 - Closing a window opened from a link leaves the service alone. It used to reload the page behind it, losing your place and anything you had typed and not sent. A sign-in window still reloads the service when it closes, which is the point of it.
+- Starting fresh no longer leaves a copy of your old data on disk for good. Chorus keeps the last few, plus the very first one, and clears the rest. The first is the one worth keeping: it is your data as it stood before you started over at all.
 - A service that opens a window through a script gets a real one. Some sign-in flows check whether the window opened and give up quietly if it did not, which looked like nothing happening at all.
 
 ## [1.5.18] - 2026-08-06

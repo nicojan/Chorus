@@ -54,6 +54,7 @@
 		BAA5421430BDF6F9B918B7B5 /* WebViewPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608B27F538D778C6FC4B1697 /* WebViewPool.swift */; };
 		BD6B6CD0E903780B610BD6B5 /* StoreRecoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E05727F83BFEFB338D97E4DF /* StoreRecoveryView.swift */; };
 		C14E7A689411E8DCCC20ED74 /* fanboy-annoyance.json in Resources */ = {isa = PBXBuildFile; fileRef = 0D9CBE47687FB4FF2EF6BED5 /* fanboy-annoyance.json */; };
+		C1E4CE7879BB117DBA721C35 /* SpaceStripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 537DF7ABA3D6DED64273776A /* SpaceStripView.swift */; };
 		C4ADA7C24E806E00FF4709D1 /* ChorusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBA2B8A19B41207F66E51CC3 /* ChorusTests.swift */; };
 		C65C95AB514FF50CEE9A75D6 /* ServiceCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30F23AFD0B5D81AF103BF37 /* ServiceCatalog.swift */; };
 		C87E607C9406DB3117992594 /* SpaceEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEE60F6F23AE3708B57614F2 /* SpaceEditorSheet.swift */; };
@@ -105,6 +106,7 @@
 		4D2B28970B7AEF9B0EB53AFD /* UnifiedRailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedRailView.swift; sourceTree = "<group>"; };
 		50260A359445D2B4C556E1E6 /* ChorusStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChorusStyle.swift; sourceTree = "<group>"; };
 		52D93229EEC510DC0850005E /* SpaceHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceHeaderView.swift; sourceTree = "<group>"; };
+		537DF7ABA3D6DED64273776A /* SpaceStripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceStripView.swift; sourceTree = "<group>"; };
 		538A1641C210F10E3CD43E14 /* WebToolbarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebToolbarView.swift; sourceTree = "<group>"; };
 		542BCDA03CE248BE3E75D814 /* RailSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailSupport.swift; sourceTree = "<group>"; };
 		54BC620E896A6DD5CB16AF6D /* CookieConsentManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookieConsentManager.swift; sourceTree = "<group>"; };
@@ -307,6 +309,7 @@
 				B44B9AB3EC52D565BFB46183 /* ServiceRowView.swift */,
 				52D93229EEC510DC0850005E /* SpaceHeaderView.swift */,
 				03E9D5B98CFDDD0B2E7FD42C /* SpacePaletteView.swift */,
+				537DF7ABA3D6DED64273776A /* SpaceStripView.swift */,
 				E05727F83BFEFB338D97E4DF /* StoreRecoveryView.swift */,
 				4D2B28970B7AEF9B0EB53AFD /* UnifiedRailView.swift */,
 				DA4617D503719C1701307F28 /* WebContentView.swift */,
@@ -430,7 +433,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1500;
+				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 				};
 			};
@@ -521,6 +524,7 @@
 				1CC3A629AEC1BBF9ACDC5FB0 /* SpaceHeaderView.swift in Sources */,
 				8325C3DEC3242E7E2C19EB07 /* SpacePaletteView.swift in Sources */,
 				CF6CC3C4CC580F7733D24212 /* SpaceServiceLink.swift in Sources */,
+				C1E4CE7879BB117DBA721C35 /* SpaceStripView.swift in Sources */,
 				3C5338A54D7C824BCF6C642C /* StoreInventory.swift in Sources */,
 				BD6B6CD0E903780B610BD6B5 /* StoreRecoveryView.swift in Sources */,
 				68FE172BCA70FBB55022F7B1 /* StoreRelocation.swift in Sources */,
@@ -637,7 +641,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Chorus/Chorus.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 28;
+				CURRENT_PROJECT_VERSION = 30;
 				DEVELOPMENT_TEAM = 3CY4DX3K45;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -726,7 +730,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Chorus/Chorus.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 28;
+				CURRENT_PROJECT_VERSION = 30;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Chorus/Info.plist;

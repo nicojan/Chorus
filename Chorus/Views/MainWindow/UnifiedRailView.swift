@@ -26,6 +26,10 @@ struct UnifiedRailView: View {
     /// horizontal bar) to clear the window traffic lights, kept inside so the
     /// background and dividers still run full-length.
     var contentInset: CGFloat = 0
+    /// Whether the rail draws the current space as its header. False in the
+    /// hybrid layout, where a strip of spaces sits down the left and saying
+    /// where you are twice would only cost the tabs their room.
+    var showsSpaceHeader: Bool = true
 
     @Query private var allLinks: [SpaceServiceLink]
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
@@ -33,9 +37,8 @@ struct UnifiedRailView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Read only to size the gap the donation button needs at the far right of
-    /// the horizontal bar; `ContentView` owns the button itself.
-    @AppStorage(SupportButtonVisibility.defaultsKey) private var showSupportButton = true
+    /// Whether service cells carry their names. See `ServiceNameVisibility`.
+    @AppStorage(ServiceNameVisibility.defaultsKey) private var showServiceNames = true
 
     @State private var showingPalette = false
     @State private var showingAddService = false
@@ -59,6 +62,8 @@ struct UnifiedRailView: View {
     // axis resolve `.before` and leave the last slot unreachable.
     private static let serviceDropMidpoint: CGFloat = ServiceRowView.rowHeight / 2
     private static let serviceDropMidpointHorizontal: CGFloat = ServiceRowView.tabTypicalWidth / 2
+    /// The same fallback for a bar of nameless tabs, which are a fixed width.
+    private static let compactDropMidpointHorizontal: CGFloat = ServiceRowView.compactCellWidth / 2
     /// Measured size of each drop cell, so the before/after split uses the target's
     /// true midpoint instead of a hardcoded guess.
     @State private var cellSizes: [UUID: CGSize] = [:]
@@ -66,6 +71,9 @@ struct UnifiedRailView: View {
     /// The horizontal bar: a 32 point header and 32 point tabs with 5 points
     /// clear above and below. The drawn frame says 42.
     static let barHeight: CGFloat = 42
+    /// How much of the scrolling tab row's trailing edge is softened to say the
+    /// row runs past the window.
+    private static let overflowFadeFraction: CGFloat = 0.06
 
     private var filteredLinks: [SpaceServiceLink] {
         guard let spaceID = selectedSpaceID else { return [] }
@@ -183,19 +191,26 @@ struct UnifiedRailView: View {
             addServiceButton
                 .padding(.vertical, 6)
         }
-        .frame(width: ServiceRowView.railWidth)
+        .frame(width: showServiceNames ? ServiceRowView.railWidth : ServiceRowView.compactRailWidth)
         .background(.background)
     }
 
     private var horizontalBody: some View {
         HStack(spacing: 8) {
-            spaceHeader
-                // 72 points of traffic light, then 8, puts the header at x 80.
-                .padding(.leading, 8 + contentInset)
+            if showsSpaceHeader {
+                spaceHeader
+                    // 72 points of traffic light, then 8, puts the header at x 80.
+                    .padding(.leading, 8 + contentInset)
 
-            Divider().frame(width: 1, height: 20)
+                Divider().frame(width: 1, height: 20)
 
-            tabStrip
+                tabStrip
+            } else {
+                // No header to spend the inset, so the tabs clear whatever the
+                // traffic lights overhang onto this bar themselves.
+                tabStrip
+                    .padding(.leading, 8 + contentInset)
+            }
 
             // Empty stretch between the tabs and the nav buttons. It draws
             // nothing and takes no hit of its own, so a click here falls through
@@ -208,10 +223,8 @@ struct UnifiedRailView: View {
                 // Room for the donation button, which ContentView overlays on the
                 // window's top-right corner — the same corner this row ends in.
                 // Without the reserve the two sit on top of each other as soon as
-                // the Home button appears and widens this group. Settings can hide
-                // the button, and then the reserve would only be a hole, so it
-                // falls back to the plain trailing gap.
-                .padding(.trailing, showSupportButton ? SupportButtonVisibility.reservedWidth : 10)
+                // the Home button appears and widens this group.
+                .padding(.trailing, SupportButtonMetrics.reservedWidth)
         }
         .frame(height: Self.barHeight)
         // The OS window drag is off in the bar layout, so tab drags reorder
@@ -238,6 +251,7 @@ struct UnifiedRailView: View {
             axis: axis,
             badgeCount: badgeCount,
             isMuted: muted,
+            showsName: axis == .horizontal || showServiceNames,
             isPaletteOpen: showingPalette
         ) {
             showingPalette = true
@@ -263,32 +277,62 @@ struct UnifiedRailView: View {
     /// fit. `ViewThatFits` picks the plain (hugging) row first and falls back to
     /// the scrolling row, which is deterministic where measuring the content
     /// width and capping the scroll view was not.
+    ///
+    /// The add button sits outside both, pinned to the trailing edge, the way the
+    /// vertical rail has always pinned it below its scroll view. Inside the row
+    /// it scrolled off the end with the tabs, so the one control that is not a
+    /// tab was the first thing an overflowing bar took away.
     private var tabStrip: some View {
-        ViewThatFits(in: .horizontal) {
-            tabRow
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    tabRow
-                }
-                // Keep the active service visible when it's selected off-screen
-                // (⌘1–9, quick switcher, or a routed link).
-                .onChange(of: selectedServiceID) { _, newID in
-                    guard let newID else { return }
-                    if reduceMotion {
+        HStack(spacing: 4) {
+            ViewThatFits(in: .horizontal) {
+                tabRow
+                scrollingTabRow
+            }
+            addServiceButton
+        }
+        .padding(.trailing, 8)
+        .padding(.vertical, 2)
+    }
+
+    /// The overflow case. It is reached only when the tabs do not fit, so the
+    /// softened trailing edge appears only when there is in fact more bar than
+    /// window — it says the row runs on, next to the pinned add button that no
+    /// longer moves. Before this, an overflowing bar cut the last tab mid-icon
+    /// with nothing to say it scrolled, and a clipped icon reads as broken.
+    private var scrollingTabRow: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                tabRow
+            }
+            .mask(
+                LinearGradient(
+                    stops: [
+                        .init(color: .black, location: 0),
+                        .init(color: .black, location: 1 - Self.overflowFadeFraction),
+                        .init(color: .black.opacity(0.15), location: 1)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            // Keep the active service visible when it's selected off-screen
+            // (⌘1–9, quick switcher, or a routed link).
+            .onChange(of: selectedServiceID) { _, newID in
+                guard let newID else { return }
+                if reduceMotion {
+                    proxy.scrollTo(newID, anchor: .center)
+                } else {
+                    withAnimation(.easeOut(duration: 0.2)) {
                         proxy.scrollTo(newID, anchor: .center)
-                    } else {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            proxy.scrollTo(newID, anchor: .center)
-                        }
                     }
                 }
             }
         }
     }
 
-    /// The row of service tabs plus the add button. A plain `HStack` (not lazy)
-    /// so `ViewThatFits` can measure its width to decide whether the tabs fit.
-    /// The traffic-light inset is spent by the header now, so this starts flush.
+    /// The row of service tabs. A plain `HStack` (not lazy) so `ViewThatFits`
+    /// can measure its width to decide whether the tabs fit. The traffic-light
+    /// inset is spent by the header now, so this starts flush.
     private var tabRow: some View {
         HStack(spacing: 4) {
             ForEach(filteredLinks) { link in
@@ -299,10 +343,7 @@ struct UnifiedRailView: View {
                         .id(service.id)
                 }
             }
-            addServiceButton
         }
-        .padding(.trailing, 8)
-        .padding(.vertical, 2)
     }
 
     /// Home URL of the currently selected service, for the nav home button.
@@ -349,7 +390,8 @@ struct UnifiedRailView: View {
                         let mid = (size?.height).map { $0 / 2 } ?? Self.serviceDropMidpoint
                         return location.y < mid ? .before : .after
                     }
-                    let mid = (size?.width).map { $0 / 2 } ?? Self.serviceDropMidpointHorizontal
+                    let fallback = showServiceNames ? Self.serviceDropMidpointHorizontal : Self.compactDropMidpointHorizontal
+                    let mid = (size?.width).map { $0 / 2 } ?? fallback
                     return location.x < mid ? .before : .after
                 }()
                 return reorderService(
@@ -405,6 +447,7 @@ struct UnifiedRailView: View {
             micActive: media?.micActive ?? false,
             micMuted: media?.micMuted ?? false,
             health: health,
+            showsName: showServiceNames,
             isFocused: focused
         ) {
             selectService(link)
@@ -456,13 +499,15 @@ struct UnifiedRailView: View {
 
     /// In the wide vertical rail this is a labelled row like the services above
     /// it, with the plus sitting in a 20 point box so its text starts on the same
-    /// x as theirs. The horizontal bar has no width to spare, so it stays a plus.
+    /// x as theirs. Everywhere else it is the plus alone: the horizontal bar has
+    /// no width to spare, and a nameless rail is 52 points wide, so the 224 point
+    /// labelled row would hang out of it.
     private var addServiceButton: some View {
         Button {
             showingAddService = true
         } label: {
             Group {
-                if axis == .vertical {
+                if axis == .vertical && showServiceNames {
                     HStack(spacing: 8) {
                         Image(systemName: "plus")
                             .font(.system(size: 12, weight: .medium))
@@ -476,7 +521,10 @@ struct UnifiedRailView: View {
                 } else {
                     Image(systemName: "plus")
                         .font(.system(size: 12, weight: .medium))
-                        .frame(width: 36, height: ServiceRowView.tabHeight)
+                        .frame(
+                            width: ServiceRowView.compactCellWidth,
+                            height: axis == .vertical ? ServiceRowView.rowHeight : ServiceRowView.tabHeight
+                        )
                 }
             }
             .foregroundStyle(.secondary)

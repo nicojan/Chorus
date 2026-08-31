@@ -109,3 +109,40 @@ enum ServiceReorder {
         return reordered
     }
 }
+
+/// Whether the rail draws service names, and where that answer is kept.
+///
+/// This is chrome visibility rather than user data, so it lives in defaults
+/// instead of `AppPreferences`: a stored property there is a new schema version
+/// and a migration (see CLAUDE.md), which a cosmetic toggle does not earn.
+enum ServiceNameVisibility {
+    static let defaultsKey = "showServiceNames"
+}
+
+/// The width of the space strip in the hybrid layout, and what that width
+/// means.
+///
+/// The strip has two widths rather than a dragged range. A drag handle was
+/// tried first and felt bad: the strip is 40-odd points of chrome, the useful
+/// range is short, and the two widths that matter are the two ends of it.
+/// A toggle says the same thing and lands on the right width every time.
+enum SpaceStripMetrics {
+    static let defaultsKey = "showSpaceNames"
+
+    /// Wide enough to read a name beside the emoji.
+    static let namedWidth: CGFloat = 180
+    /// The emoji on their own.
+    static let compactWidth: CGFloat = 52
+
+    static func width(showingNames: Bool) -> CGFloat {
+        showingNames ? namedWidth : compactWidth
+    }
+
+    /// Leading inset the service bar needs so the window's traffic lights,
+    /// which sit over the strip, do not land on the first tab. The lights are
+    /// 72 points wide; the named strip swallows them whole and the bar starts
+    /// flush, while the compact one leaves 20 points of them overhanging.
+    static func barLeadingInset(stripWidth: CGFloat, lightsWidth: CGFloat) -> CGFloat {
+        Swift.max(0, lightsWidth - stripWidth)
+    }
+}

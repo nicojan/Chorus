@@ -3,7 +3,7 @@ options:
   bundleIdPrefix: com.nicojan
   deploymentTarget:
     macOS: "14.0"
-  xcodeVersion: "15.0"
+  xcodeVersion: "16.0"
   createIntermediateGroups: true
 
 packages:
@@ -33,7 +33,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.nicojan.Chorus
         PRODUCT_NAME: Chorus
         MARKETING_VERSION: "1.5.19"
-        CURRENT_PROJECT_VERSION: "28"
+        CURRENT_PROJECT_VERSION: "30"
         SWIFT_VERSION: "6.0"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         INFOPLIST_FILE: Chorus/Info.plist

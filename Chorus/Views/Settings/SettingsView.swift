@@ -70,8 +70,10 @@ struct GeneralSettingsView: View {
     @Environment(\.openWindow) private var openWindow
 
     /// Window chrome rather than user data, so it sits in defaults instead of
-    /// `AppPreferences` — see `SupportButtonVisibility`.
-    @AppStorage(SupportButtonVisibility.defaultsKey) private var showSupportButton = true
+    /// `AppPreferences` — see `ServiceNameVisibility`.
+    @AppStorage(ServiceNameVisibility.defaultsKey) private var showServiceNames = true
+    /// The same, for the hybrid layout's strip of spaces — see `SpaceStripMetrics`.
+    @AppStorage(SpaceStripMetrics.defaultsKey) private var showSpaceNames = true
 
     private let presenceManager = AppPresenceManager()
 
@@ -134,10 +136,20 @@ struct GeneralSettingsView: View {
                     }
                 }
 
-                Toggle("Show the coffee cup in the window", isOn: $showSupportButton)
-                Text("The cup opens the page where you can buy me a coffee. Chorus asks for money nowhere else. Hide it and the link stays in the About panel.")
+                Toggle("Show service names in the rail", isOn: $showServiceNames)
+                Text("Turn this off and a service is its icon alone, in a rail narrow enough to leave the page more room. The name stays in the tooltip.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                // Only the layout with a strip of spaces down the left has
+                // anything to apply this to, so it appears with that layout
+                // rather than sitting inert under the other two.
+                if prefs.railLayout == .hybrid {
+                    Toggle("Show space names in the strip", isOn: $showSpaceNames)
+                    Text("The same, for the strip of spaces down the left. Off, it is a narrow column of emoji.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("Web Content") {
