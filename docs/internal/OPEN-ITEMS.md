@@ -34,7 +34,11 @@ Both settings live in defaults rather than `AppPreferences`, for the reason the 
 
 Three things came in with it that 1.5.19 was being held for. The top bar's add button is pinned outside the scrolling row now, where the vertical rail has always kept it, and the overflow branch softens its trailing edge. `pruneResetAsides` bounds the `.reset-` family. `project.yml` asks for Xcode 16, which is what the object format needs and what `CONTRIBUTING.md` already told contributors to install.
 
-None of it has been seen by eye. `docs/internal/VERIFY-BY-HAND.md` is the pass it needs, and its first block is the one worth running first: the space palette draws `⌘1` and `⌘2` on its rows and nothing has ever confirmed the shortcut fires. `handleKey` reads `Int(press.characters)` with Command held, which is the open question from build step 4. If it does not fire, the release ships a claim that is not true, and the fix is to read `press.key` instead.
+Part of it has now been seen by eye, on 2026-08-31, against the stapled build 30 over `/Applications`. `docs/internal/VERIFY-BY-HAND.md` carries the result item by item. The short version: the bar layout and the two-rail layout are right in both appearances, service names off gives the narrow rail and the collapsed header as designed, and creating and deleting a space did not crash.
+
+**Block 1 failed, and the digits are gone.** The palette drew `⌘1` and `⌘2` and pressing them switched *services*. The cause was not the `KeyPress.characters` question this file had been carrying since step 4 — `KeyboardShortcutManager.swift:16` binds `⌘1`–`⌘9` as menu command key equivalents, and the menu dispatches those before the event reaches the first responder, so `SpacePaletteView`'s `.onKeyPress` was never asked and `press.key` would have changed nothing. The labels, the two helpers and their two unit tests are removed. Both tests had passed the whole time, over arithmetic nothing called, which is the lesson worth keeping: a green test on a pure helper says nothing about whether the feature is reachable.
+
+**Still unseen, and the first is the default:** the 240 point rail with service names *on*, the 180 point space strip with names on, dragging the window by the top edge in each layout, and all of block 4 — the tab bar overrunning at the 800 point minimum.
 
 ## Open: the donation button is built and unreleased
 
@@ -106,6 +110,8 @@ Three decisions inside it worth not relitigating:
 Two things about it are unverified by construction. `⌘`-digit resolution reads `KeyPress.characters`, which is untested against a live command-modified keystroke, and the palette takes `focusEffectDisabled()` on its container so the popover does not draw a ring around everything. Step 7 is the specimen that settles focus, and it should look at that.
 
 **The product call that gated step 4 is answered: the digits are palette-local.** The palette on page `08` labels its rows `⌘1` to `⌘4`, and `⌘1`–`⌘9` currently switches services (`KeyboardShortcutManager.swift:16`), an accelerator set the audit rates severity 0 and says to protect. `SpacePaletteView` binds the digits itself while it is open; `KeyboardShortcutManager` is left alone, so nothing shipped breaks. Reassigning them globally was the alternative and it is rejected: it breaks a shipped accelerator to solve a problem nobody reported. Step 4 is unblocked.
+
+> **Overtaken by events, 2026-08-31.** "`SpacePaletteView` binds the digits itself while it is open" is not something `.onKeyPress` can do. A menu command key equivalent is dispatched before the first responder sees the key, so the palette never got the event and `⌘1` kept switching services. The digits were removed rather than reworked. The decision above is still the right one on its merits — do not reassign the accelerator globally — but making the palette borrow the digits would have to happen inside `KeyboardShortcutCommands.switchToService(at:)`, branching on a palette-open flag, not in the palette.
 
 The price, accepted with the pick: always-visible per-space badges and drag-to-reorder move into a palette. A and B are closed. A never answered the severity 4 finding, which is the product's core loop; B answered it and spent 400 points of sidebar before content to do it.
 
