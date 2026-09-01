@@ -1,6 +1,6 @@
 # Open items
 
-## Open: the click-swallowing snapshot, and the favicon after a redirect
+## Merged: the click-swallowing snapshot, and the favicon after a redirect (PR #33, verified on build 32)
 
 Reported on 2026-08-31 against 1.5.19: TD EasyWeb added by custom URL showed its login screen and accepted no clicks, and it drew a letter tile rather than TD's icon. Two separate causes, both fixed on `fix/td-login-click-swallow`.
 
@@ -8,7 +8,11 @@ Reported on 2026-08-31 against 1.5.19: TD EasyWeb added by custom URL showed its
 
 `FaviconFetcher.fetchFromHTMLLinks` resolved a page's relative icon `href` against the requested URL rather than the one the response came from. `easyweb.td.com` 302s every path to a generic error page, so all six direct candidates fail, and the HTML fallback then resolved `href="favicon.ico"` against `easyweb.td.com` when the document was `authentication.td.com/uap-ui/`. `fetchURL` returns the final URL alongside the body now and `resolvedIconLinks` uses it. Verified against the live site: `https://authentication.td.com/uap-ui/favicon.ico`, 200, a valid ICO. It is 16×16, which is all TD publishes on either host — checked all six candidate paths against both — so the icon will look soft and there is nothing better to fetch.
 
-**The freeze itself was never reproduced.** The TD login page loads clean in a harness carrying Chorus's user scripts, the Hagezi list and the Safari user agent; `isLoading` settles to false, no full-viewport overlay appears, and the username field, the password field and the Login button all hit-test and take input. The snapshot is the one thing in the app that eats clicks, and its stale-retention path matches the report exactly, but that is reasoning rather than a reproduction. Block 7 of `docs/internal/VERIFY-BY-HAND.md` is what closes it.
+**Closed by hand on build 32.** TD was added from scratch, left for over five minutes on another service, and still took clicks on the login fields when it came back — the path that matters, because five minutes is long enough to soft-hibernate the view and store the snapshot. Its icon is TD's own mark in the top bar, not a letter tile.
+
+The freeze was never reproduced *before* the fix, which is the caveat worth carrying. The TD login page loads clean in a harness carrying Chorus's user scripts, the Hagezi list and the Safari user agent: `isLoading` settles to false, no full-viewport overlay appears, and every field hit-tests and takes input. So this went in on its reasoning, not on a red-to-green observation, and the by-hand pass confirms the symptom is gone rather than that this was its only cause.
+
+One trap for the next person testing a click bug: adding the service from scratch and clicking straight away proves nothing. A service created seconds earlier has no stored snapshot, so `transitionSnapshot` is nil and no image is ever drawn. The first pass did exactly that and read as a pass.
 
 Rounded squares stay. The reporter asked about circular icons and then chose to keep the current shape, because a circle clips the corners off square brand marks like Slack and Gmail.
 

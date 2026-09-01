@@ -17,7 +17,7 @@ Do these in order.
 3. Item 5, then item 11. The 240 point rail with service names on. This is the layout most people will be in and nobody has looked at it.
 4. Item 12's other half: the 180 point space strip with space names on.
 5. Item 10, then item 8, then all of block 4.
-6. Block 7, then block 6, then steps 6 to 9 of `release/DISTRIBUTION.md`.
+6. ~~Block 7~~ passed on build 32. Then block 6, then steps 6 to 9 of `release/DISTRIBUTION.md`.
 
 If something fails, write it next to the item before fixing it.
 
@@ -66,14 +66,16 @@ The one 1.5.18 skipped. Everything about the schema change is verified, includin
 18. Delete a space. It should go, its services should stay, and the app should still be running — this is the macOS 15 crash that shipped in five releases. ✅ 2026-08-31, a test space created and deleted, no crash. On macOS 26, which cannot show the macOS 15 fault; the green macOS 15 CI job is the only evidence for that one.
 19. Check About says 1.5.19 and the expected build number. ⚠️ 1.5.19 (30) was confirmed. The artifact is now build 31.
 
-## Block 7 — the click-swallowing snapshot (new, unverified)
+## Block 7 — the click-swallowing snapshot — RUN 2026-08-31 ON BUILD 32, PASSED
 
-The TD EasyWeb report: added by custom URL, the login screen showed and took no clicks. Chorus was holding a picture of the page past the load it stood in for, and it came back over the live page on the next navigation. It never took hit tests either. Both are fixed and a unit test pins the retention rule, but nobody has reproduced the freeze itself — the login page loads clean in a harness carrying Chorus's user scripts, blocklist and user agent, and every field on it hit-tests and accepts input. So this one needs a person.
+The TD EasyWeb report: added by custom URL, the login screen showed and took no clicks. Chorus was holding a picture of the page past the load it stood in for, and it came back over the live page on the next navigation. It never took hit tests either. Both are fixed and a unit test pins the retention rule. The freeze was never reproduced before the fix — the login page loads clean in a harness carrying Chorus's user scripts, blocklist and user agent, and every field on it hit-tests and accepts input — so the fix went in on its reasoning rather than on a red-to-green observation.
 
-23. Add `https://easyweb.td.com/` as a custom service. The login screen should come up.
-24. Switch to another service and back, then click a field and the Login button. Both must respond. This is where the page went dead.
-25. While a page is genuinely loading, click through the covering image. The click should reach the page under it.
-26. Check the TD service's icon in the rail. It should be TD's own icon, not a letter tile. TD publishes nothing bigger than 16×16, so expect it to look soft.
+A first pass on build 32 added TD from scratch and clicked straight away, which proves nothing: a service created seconds earlier has no stored snapshot, so `transitionSnapshot` is nil, no image is drawn, and that path was never broken. The pass that counts is item 24.
+
+23. Add `https://easyweb.td.com/` as a custom service. The login screen should come up. ✅ 2026-08-31, build 32, a service created from scratch.
+24. Switch to another service and back, then click a field and the Login button. Both must respond. This is where the page went dead. ✅ 2026-08-31, build 32, away for over five minutes and still responding on return.
+25. While a page is genuinely loading, click through the covering image. The click should reach the page under it. ⚠️ NOT RUN ON ITS OWN. Item 24's five-minute absence is the closest thing: long enough to soft-hibernate the view, which is what stores the snapshot in the first place, and the clicks on return landed. A short load is still unwatched.
+26. Check the TD service's icon in the rail. It should be TD's own icon, not a letter tile. TD publishes nothing bigger than 16×16, so expect it to look soft. ✅ 2026-08-31, build 32, TD's green mark in the top bar, and it holds up better at that size than the 16×16 source suggested.
 
 ## Block 6 — before step 6 of DISTRIBUTION.md
 
