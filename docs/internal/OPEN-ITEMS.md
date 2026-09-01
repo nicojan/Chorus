@@ -34,9 +34,9 @@ Blocks 1 and 2 of `docs/internal/VERIFY-BY-HAND.md` passed by hand on 2026-08-29
 
 **Gotcha for whoever runs `build_brand_icons.py` next:** `--write` also reclassifies `brand-notion` and `brand-mattermost` as template-rendering, and both are set to `original` on purpose. Revert those two after any run.
 
-## Open: the two-rail layout is back, and the names can be turned off
+## Merged: the two-rail layout is back, and the names can be turned off
 
-Built on `feat/hybrid-layout-and-name-visibility` on 2026-08-29, from three notes taken while testing the held 1.5.19 by hand. The branch is pushed and `main` has not moved, so none of it is merged.
+Built on `feat/hybrid-layout-and-name-visibility` on 2026-08-29, from three notes taken while testing the held 1.5.19 by hand. Merged to `main` as PR #31, and it rides in 1.5.19. All three layouts have now been looked at by eye on build 32 — see blocks 2 and 3 of `docs/internal/VERIFY-BY-HAND.md`, where the only thing left unrun is the tooltip with service names off.
 
 `RailLayout` has three cases again, under the raw value it always had. Retiring `hybrid` never reached anyone: no tag contains `5e01986`, so no store was ever rewritten, and a store still holding that value belongs to someone who picked the layout and never left it. The forward-map `resolving(_:)` carried while the case was gone is deleted, along with the test that pinned it.
 
@@ -173,15 +173,17 @@ The radius collapse, the target sizes and the icon sizes are mechanical. The sel
 
 **More is going into 1.5.19 before it ships**, so every artifact here is a checkpoint rather than the thing that goes out. Read the staleness note at the end of this section before publishing any of them.
 
-Three builds exist, all 1.5.19, and none of them is publishable as it stands:
+Six builds exist, all 1.5.19. Build 32 is the one to publish:
 
 | Build | Commit | What it is |
 |---|---|---|
 | 28 | `c5af295` on `main` | The original hold. `build/Chorus-1.5.19.dmg`, sha256 `9a912a9e…6390e`. |
 | 29 | `4c32087` on the two-rail branch | The first test build of the layout work. Superseded. |
-| 30 | `c2598f6` on the two-rail branch | `build/Chorus-1.5.19-b30.dmg`, sha256 `e27b30c4…575bc`. What the by-hand pass runs against. |
+| 30 | `c2598f6` on the two-rail branch | `build/Chorus-1.5.19-b30.dmg`, sha256 `e27b30c4…575bc`. Superseded. |
+| 31 | `bc45237` on `main` | The palette fix. Superseded, kept as `build/Chorus-1.5.19-b31-stale.dmg`. |
+| **32** | **`eeaec53` on `main`** | **`build/Chorus-1.5.19.dmg`, sha256 `ec276f7b…dbb73`, 8,883,765 bytes. Signed, notarised, stapled, Gatekeeper-accepted, installed, and the one the by-hand pass now runs against.** |
 
-The marketing version has not moved and should not: nothing was published under any of these. The build number moves so the About panel can tell them apart. **Builds 29 and 30 are branch builds** — `main` is still at build 28, and the branch has to merge before anything is cut from it.
+The marketing version has not moved and should not: nothing was published under any of these. The build number moves so the About panel can tell them apart. Builds 29 and 30 were branch builds; everything is merged now, and build 32 is cut from `main`.
 
 The test builds are named `Chorus-1.5.19-bNN.dmg` so they cannot overwrite the held `Chorus-1.5.19.dmg`, and they are packaged with the `hdiutil` fallback rather than `create-dmg`, which drives Finder with AppleScript and takes the screen while it does. The published artifact should still be built the documented way.
 
@@ -191,23 +193,25 @@ The test builds are named `Chorus-1.5.19-bNN.dmg` so they cannot overwrite the h
 
 **The real store migrates too.** `testMigratesARealStoreCopy` (skipped unless `/tmp/chorus-real-store-copy` names a directory) ran against a copy of this machine's live 1.5.18 store: 4 spaces, 15 services, 15 links, every link keeping both ends. That is the check synthetic fixtures cannot make, since they only prove the stages are right about stores the test file wrote. The original was untouched; the copy is what migrates.
 
-**Steps 2 to 5 of `release/DISTRIBUTION.md` are done.** `build/Chorus-1.5.19.dmg` is signed, notarised (`Accepted`) and stapled, and the stapled app sits at the repo root where the doc expects it. Mounted and checked: the app inside reports 1.5.19 (28), the staple validates, and `spctl` reads `source=Notarized Developer ID`.
+**Steps 2 to 5 of `release/DISTRIBUTION.md` are done, on build 32.** `build/Chorus-1.5.19.dmg` is signed, notarised (`Accepted`) and stapled — the app on its own first, then the image — and the stapled app sits at the repo root where the doc expects it. Mounted and checked: the app inside reports 1.5.19 (32), the staple validates, and `spctl` reads `source=Notarized Developer ID`.
 
-    sha256  9a912a9e49b16a097207ec2b214ab81105af1f9aa582d4dff0758ed93706390e
+    sha256  ec276f7b38269a1f379d2f5d009b920557d1b12db455b00e025d323da30dbb73
+
+**Eject before you check a mounted image.** A build-31 image left at `/Volumes/Chorus` took a scripted check meant for build 32: `hdiutil` mounted the new one at `/Volumes/Chorus 1` and said so only in its own output, so the check read the stale volume, answered build 31, and looked for a moment like a bad build. Read the mount point out of `hdiutil attach` rather than assuming `/Volumes/Chorus`.
 
 The 1.5.18 app that used to be at the repo root was moved to `/tmp/chorus-app-1.5.18-*.app` rather than deleted, because the guard blocks a recursive delete there. It ages out on its own.
 
 **Steps 6 to 9 are not done and should not be done yet**: `gh release create`, `sign_update`, the appcast item, and the Homebrew cask in both repos.
 
-Two things are still owed before any of that. The install pass 1.5.18 got — put the stapled DMG over `/Applications`, launch, and watch the 4 spaces and 15 services come through on a real run rather than in a test harness — and whatever changes are still going into this release.
+The install pass is done: build 32 went over `/Applications` on 2026-08-31 and has been in ordinary use since, with nine services across four spaces answering clicks and drawing badges. What is still owed is block 4 of `docs/internal/VERIFY-BY-HAND.md` — the tab bar at the 800 point minimum — and the tooltip in item 10.
 
 ### That DMG goes stale the moment `main` moves
 
-It is built from `c5af295`. Any commit after that makes it a build of something that is no longer what 1.5.19 means, and the danger is not that publishing fails — it is that publishing *works* and ships code nobody reviewed as the release.
+It is built from `eeaec53`. Any commit after that makes it a build of something that is no longer what 1.5.19 means, and the danger is not that publishing fails — it is that publishing *works* and ships code nobody reviewed as the release. As of the end of 2026-08-31 the commits after it touch only `docs/internal/`, so the binary still stands; check again before step 6.
 
 So before step 6, either confirm `main` has not moved since the build, or rebuild. Rebuilding is cheap: steps 2 to 5 took a few minutes, most of it waiting on the notary service. The version and build numbers do not need touching, since nothing was published under them; the sha256 changes, which matters only because the Homebrew cask carries it.
 
-Check the changelog's date too. `## [1.5.19] - 2026-08-29` is the day it was cut, and if it ships later that line is simply wrong in a public file.
+Check the changelog's date too. The heading reads `## [1.5.19] - 2026-08-31`, which is right only if it ships that day. It is a public file, so a heading a week wrong is a heading users read.
 
 ### What the release is for
 
