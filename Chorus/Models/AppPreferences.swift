@@ -9,8 +9,9 @@ enum AppPresenceMode: String, Codable {
 
 /// Where the rail sits relative to the web content.
 ///
-/// Three arrangements: one rail down the left, one rail along the top, or the
-/// spaces down the left with that space's services along the top. `hybrid` was
+/// Four arrangements: one rail down the left, one rail along the top, the
+/// spaces down the left with that space's services along the top, or every
+/// space's services grouped in one compact rail down the left. `hybrid` was
 /// retired when one rail replaced two and is back because the two-rail
 /// arrangement is worth having; the raw value never changed, and the build that
 /// retired it never shipped, so a store that still says `hybrid` lands back on
@@ -22,13 +23,21 @@ enum RailLayout: String, Codable, CaseIterable {
     case topBars
     /// Spaces down the left, the current space's services along the top.
     case hybrid
+    /// Every service grouped by space in one compact rail down the left.
+    case allServices
 
     var displayName: String {
         switch self {
         case .sidebar: return "Rail on the left"
         case .topBars: return "Bar along the top"
         case .hybrid: return "Spaces on the left, services on top"
+        case .allServices: return "All services on the left"
         }
+    }
+
+    /// Whether this layout puts navigation controls inside a top bar.
+    var hasTopBar: Bool {
+        self == .topBars || self == .hybrid
     }
 
     /// Reads a stored raw value, falling back to the default for anything
@@ -185,8 +194,8 @@ final class AppPreferences {
     /// Materialises the storage-optional default zoom (nil → 1.0).
     var defaultZoomEffective: Double { defaultZoom ?? 1.0 }
 
-    /// Resolves the stored rail layout. `hybrid` maps onto `.topBars`; anything
-    /// else unknown falls back to `.sidebar`. See `RailLayout.resolving(_:)`.
+    /// Resolves the stored rail layout. Unknown values fall back to `.sidebar`.
+    /// See `RailLayout.resolving(_:)`.
     var railLayout: RailLayout {
         RailLayout.resolving(railLayoutRaw)
     }
