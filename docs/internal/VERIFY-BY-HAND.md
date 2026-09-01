@@ -6,14 +6,14 @@ Record the result next to each item. An unrun item is not a passing item.
 
 ## Start here: what is left before 1.5.19 can be published
 
-Where it stands on 2026-08-31. `main` is at `bc45237` and carries everything. The artifact is `build/Chorus-1.5.19.dmg`: 1.5.19, build 31, signed, notarised, stapled, sha256 `05bb501a0ed65bbe9846ac1cb03c6f6db10d30f6553959853661a5027cda9adb`. Nothing is published. No tag, no GitHub release, no appcast item, no cask bump. The suite is green on macOS 14 and 15.
+Where it stands at the end of 2026-08-31. `main` carries everything, through PR #33. Nothing is published: no tag, no GitHub release, no appcast item, no cask bump, and the newest release anywhere is still v1.5.18. The suite is green on macOS 14 and 15.
 
-**Superseded on 2026-08-31 by the click-swallowing snapshot fix.** The build-31 DMG predates it, so it is no longer the artifact to publish: rebuild as build 32 before step 6, and run block 5 and block 7 against that. Steps 1 and 2 below still apply, against the rebuilt DMG.
+**There is no artifact yet.** The build-31 DMG at `build/Chorus-1.5.19.dmg` predates PR #33, so it holds the click-swallowing snapshot and must not be published. The project is bumped to build 32; the signed, notarised, stapled DMG for it still has to be cut. Every tick against builds 30 and 31 below is against a different binary from the one that ships.
 
 Do these in order.
 
 1. Eject the mounted Chorus disk image if one is still there. Build 30's was left at `/Volumes/Chorus`, and dragging from it puts the old build back without saying so.
-2. Install `build/Chorus-1.5.19.dmg` over `/Applications`, launch it, and check About says 1.5.19 (31). Items 16, 17 and 19 below are ticked against build 30, which is a different binary, so run them again.
+2. Cut the build-32 DMG (steps 1 to 5 of `release/DISTRIBUTION.md`), install it over `/Applications`, launch it, and check About says 1.5.19 (32). Items 16, 17 and 19 below are ticked against build 30, so run them again.
 3. Item 5, then item 11. The 240 point rail with service names on. This is the layout most people will be in and nobody has looked at it.
 4. Item 12's other half: the 180 point space strip with space names on.
 5. Item 10, then item 8, then all of block 4.
