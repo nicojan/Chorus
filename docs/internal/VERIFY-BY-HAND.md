@@ -8,12 +8,12 @@ Record the result next to each item. An unrun item is not a passing item.
 
 Where it stands at the end of 2026-08-31. `main` carries everything, through PR #33. Nothing is published: no tag, no GitHub release, no appcast item, no cask bump, and the newest release anywhere is still v1.5.18. The suite is green on macOS 14 and 15.
 
-**There is no artifact yet.** The build-31 DMG at `build/Chorus-1.5.19.dmg` predates PR #33, so it holds the click-swallowing snapshot and must not be published. The project is bumped to build 32; the signed, notarised, stapled DMG for it still has to be cut. Every tick against builds 30 and 31 below is against a different binary from the one that ships.
+The artifact is `build/Chorus-1.5.19.dmg`: 1.5.19, build 32, signed, notarised, stapled, Gatekeeper-accepted, sha256 `ec276f7b38269a1f379d2f5d009b920557d1b12db455b00e025d323da30dbb73`, 8,883,765 bytes. It is the first build carrying PR #33, so builds 30 and 31 both hold the click-swallowing snapshot and every tick below against either of them is a tick against a different binary. The build-31 DMG is kept as `build/Chorus-1.5.19-b31-stale.dmg`.
 
 Do these in order.
 
-1. Eject the mounted Chorus disk image if one is still there. Build 30's was left at `/Volumes/Chorus`, and dragging from it puts the old build back without saying so.
-2. Cut the build-32 DMG (steps 1 to 5 of `release/DISTRIBUTION.md`), install it over `/Applications`, launch it, and check About says 1.5.19 (32). Items 16, 17 and 19 below are ticked against build 30, so run them again.
+1. Eject any mounted Chorus disk image before installing. This is not hypothetical twice over: build 30's was left at `/Volumes/Chorus` and dragging from it puts the old build back without saying so, and on 2026-08-31 a build-31 image still mounted there sent a scripted check for build 32 to the stale volume, which reported build 31 and looked like a broken build. `hdiutil attach` mounts the second image at `/Volumes/Chorus 1` and says so only in its own output.
+2. Install `build/Chorus-1.5.19.dmg` over `/Applications`, launch it, and check About says 1.5.19 (32). Items 16, 17 and 19 below are ticked against build 30, so run them again.
 3. Item 5, then item 11. The 240 point rail with service names on. This is the layout most people will be in and nobody has looked at it.
 4. Item 12's other half: the 180 point space strip with space names on.
 5. Item 10, then item 8, then all of block 4.
