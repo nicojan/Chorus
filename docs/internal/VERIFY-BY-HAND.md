@@ -8,14 +8,16 @@ Record the result next to each item. An unrun item is not a passing item.
 
 Where it stands on 2026-08-31. `main` is at `bc45237` and carries everything. The artifact is `build/Chorus-1.5.19.dmg`: 1.5.19, build 31, signed, notarised, stapled, sha256 `05bb501a0ed65bbe9846ac1cb03c6f6db10d30f6553959853661a5027cda9adb`. Nothing is published. No tag, no GitHub release, no appcast item, no cask bump. The suite is green on macOS 14 and 15.
 
-Do these in order. None of them needs a rebuild unless one fails.
+**Superseded on 2026-08-31 by the click-swallowing snapshot fix.** The build-31 DMG predates it, so it is no longer the artifact to publish: rebuild as build 32 before step 6, and run block 5 and block 7 against that. Steps 1 and 2 below still apply, against the rebuilt DMG.
+
+Do these in order.
 
 1. Eject the mounted Chorus disk image if one is still there. Build 30's was left at `/Volumes/Chorus`, and dragging from it puts the old build back without saying so.
 2. Install `build/Chorus-1.5.19.dmg` over `/Applications`, launch it, and check About says 1.5.19 (31). Items 16, 17 and 19 below are ticked against build 30, which is a different binary, so run them again.
 3. Item 5, then item 11. The 240 point rail with service names on. This is the layout most people will be in and nobody has looked at it.
 4. Item 12's other half: the 180 point space strip with space names on.
 5. Item 10, then item 8, then all of block 4.
-6. Block 6, then steps 6 to 9 of `release/DISTRIBUTION.md`.
+6. Block 7, then block 6, then steps 6 to 9 of `release/DISTRIBUTION.md`.
 
 If something fails, write it next to the item before fixing it.
 
@@ -63,6 +65,15 @@ The one 1.5.18 skipped. Everything about the schema change is verified, includin
 17. Launch it. Confirm the spaces and services all come through, with their names, icons and badges. ✅ 2026-08-31 — ran for an hour, no errors in the log, no crash reports.
 18. Delete a space. It should go, its services should stay, and the app should still be running — this is the macOS 15 crash that shipped in five releases. ✅ 2026-08-31, a test space created and deleted, no crash. On macOS 26, which cannot show the macOS 15 fault; the green macOS 15 CI job is the only evidence for that one.
 19. Check About says 1.5.19 and the expected build number. ⚠️ 1.5.19 (30) was confirmed. The artifact is now build 31.
+
+## Block 7 — the click-swallowing snapshot (new, unverified)
+
+The TD EasyWeb report: added by custom URL, the login screen showed and took no clicks. Chorus was holding a picture of the page past the load it stood in for, and it came back over the live page on the next navigation. It never took hit tests either. Both are fixed and a unit test pins the retention rule, but nobody has reproduced the freeze itself — the login page loads clean in a harness carrying Chorus's user scripts, blocklist and user agent, and every field on it hit-tests and accepts input. So this one needs a person.
+
+23. Add `https://easyweb.td.com/` as a custom service. The login screen should come up.
+24. Switch to another service and back, then click a field and the Login button. Both must respond. This is where the page went dead.
+25. While a page is genuinely loading, click through the covering image. The click should reach the page under it.
+26. Check the TD service's icon in the rail. It should be TD's own icon, not a letter tile. TD publishes nothing bigger than 16×16, so expect it to look soft.
 
 ## Block 6 — before step 6 of DISTRIBUTION.md
 

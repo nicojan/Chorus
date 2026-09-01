@@ -1,5 +1,19 @@
 # Open items
 
+## Open: the click-swallowing snapshot, and the favicon after a redirect
+
+Reported on 2026-08-31 against 1.5.19: TD EasyWeb added by custom URL showed its login screen and accepted no clicks, and it drew a letter tile rather than TD's icon. Two separate causes, both fixed on `fix/td-login-click-swallow`.
+
+`WebContentView` stacks a cached snapshot over the live web view while a page loads. It carried no `allowsHitTesting(false)`, so it swallowed every click for as long as a navigation ran. Worse, the only thing that cleared it was an `isLoading` transition, and switching to an already-loaded service starts no navigation — so the snapshot sat in state until the page's *next* load put it back on screen. `retainedSnapshot` now drops a snapshot that has no load behind it, and the image never takes hit tests.
+
+`FaviconFetcher.fetchFromHTMLLinks` resolved a page's relative icon `href` against the requested URL rather than the one the response came from. `easyweb.td.com` 302s every path to a generic error page, so all six direct candidates fail, and the HTML fallback then resolved `href="favicon.ico"` against `easyweb.td.com` when the document was `authentication.td.com/uap-ui/`. `fetchURL` returns the final URL alongside the body now and `resolvedIconLinks` uses it. Verified against the live site: `https://authentication.td.com/uap-ui/favicon.ico`, 200, a valid ICO. It is 16×16, which is all TD publishes on either host — checked all six candidate paths against both — so the icon will look soft and there is nothing better to fetch.
+
+**The freeze itself was never reproduced.** The TD login page loads clean in a harness carrying Chorus's user scripts, the Hagezi list and the Safari user agent; `isLoading` settles to false, no full-viewport overlay appears, and the username field, the password field and the Login button all hit-test and take input. The snapshot is the one thing in the app that eats clicks, and its stale-retention path matches the report exactly, but that is reasoning rather than a reproduction. Block 7 of `docs/internal/VERIFY-BY-HAND.md` is what closes it.
+
+Rounded squares stay. The reporter asked about circular icons and then chose to keep the current shape, because a circle clips the corners off square brand marks like Slack and Gmail.
+
+**This supersedes the build-31 DMG.** 1.5.19 needs rebuilding as build 32 before it is published.
+
 ## Merged: PR #23, and five contributor PRs, all riding in 1.5.19
 
 Five PRs from `marcioviniciusspiridigliozzi-dot` were merged to `main` on 2026-08-19 (`366745a` to `43d590f`): the store-fixture race (#15), the badge sweep's SSO approval storm (#16), ITP off per data store so an SSO service can read its session from its provider's frame (#17), a real window for a same-service `window.open` (#18), and a link popup no longer reloading the service behind it (#21).

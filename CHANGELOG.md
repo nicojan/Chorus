@@ -35,6 +35,8 @@ All notable changes to Chorus are documented here. Format loosely follows
 - Closing a window opened from a link leaves the service alone. It used to reload the page behind it, losing your place and anything you had typed and not sent. A sign-in window still reloads the service when it closes, which is the point of it.
 - Starting fresh no longer leaves a copy of your old data on disk for good. Chorus keeps the last few, plus the very first one, and clears the rest. The first is the one worth keeping: it is your data as it stood before you started over at all.
 - A service that opens a window through a script gets a real one. Some sign-in flows check whether the window opened and give up quietly if it did not, which looked like nothing happening at all.
+- Clicks could stop landing on a page, most often after switching to a service and back. While a page loads, Chorus covers it with a picture of how it last looked, so the wait is not a blank rectangle. Chorus was not clearing that picture when there was no wait to fill, and it came back over the page on its next load. You were then clicking a still image of the page you wanted, which is why it read as frozen rather than broken. Found on TD EasyWeb's sign-in screen.
+- A service you add by typing its address gets its icon from the site more often. Sites name their icon in the page, usually by a path relative to the page itself. Chorus resolved that path against the address you typed rather than the address you ended up at, looked in the wrong place, found nothing, and drew a letter. Typing easyweb.td.com lands you on authentication.td.com, and TD's icon is only on the second one.
 
 ## [1.5.18] - 2026-08-06
 

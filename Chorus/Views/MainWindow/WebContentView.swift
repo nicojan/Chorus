@@ -56,6 +56,13 @@ struct WebContentView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .clipped()
                             .transition(.opacity)
+                            // The snapshot is a picture, never a shield. Without
+                            // this it sits over the live web view and eats every
+                            // click for as long as a navigation runs — a page
+                            // that looks exactly like the one underneath but
+                            // answers nothing (reported on TD EasyWeb: click
+                            // Login and the app appears to freeze).
+                            .allowsHitTesting(false)
                             .accessibilityHidden(true)
                     }
 
@@ -103,6 +110,13 @@ struct WebContentView: View {
         }
     }
 
+    /// The snapshot to keep after binding to a service's web view: one only
+    /// while the load it stands in for is actually running. A snapshot held past
+    /// that is stale, and the next navigation would paint it over a live page.
+    static func retainedSnapshot(_ captured: NSImage?, isLoading: Bool) -> NSImage? {
+        isLoading ? captured : nil
+    }
+
     private func loadWebViewForSelectedService() {
         // Stop the outgoing service's active poll — but only if the pool still
         // regards it as the active service. On a deep-link switch AppState has
@@ -128,7 +142,7 @@ struct WebContentView: View {
 
         // Grab the snapshot before loading — if the service was soft-hibernated,
         // this gives us an instant preview to show while the web view wakes up.
-        transitionSnapshot = appState.webViewPool.snapshot(for: service.id)
+        let captured = appState.webViewPool.snapshot(for: service.id)
 
         let webView = appState.webViewPool.webView(for: service)
         // Apply the effective zoom (per-service if set, else the Chorus-wide
@@ -137,6 +151,12 @@ struct WebContentView: View {
         webView.pageZoom = CGFloat(appState.effectiveZoom(for: service))
         currentWebView = webView
         webViewState.attach(to: webView)
+        // Only hold the snapshot if there is a load for it to cover. Switching
+        // to a service that is already loaded starts no navigation, so the
+        // `isLoading` observer never fires and the old clear-on-finish path
+        // never runs — the image would sit in state until the page's next
+        // navigation put it back on screen.
+        transitionSnapshot = Self.retainedSnapshot(captured, isLoading: webView.isLoading)
         previousServiceID = service.id
 
         // Passive one-time notice: WKWebView can't use passkeys for sign-in, so
