@@ -40,31 +40,31 @@ Settings › Appearance, one pass per layout, in both appearances.
 5. **Rail on the left.** 240 point rail, space header at the top, rows at an even pitch under it. ❌ STILL UNSEEN — every screenshot from the 2026-08-31 pass had service names off, so the wide rail, which is the default, has never been looked at.
 6. **Bar along the top.** Header at x 80, clear of the traffic lights; divider; tabs; nav buttons and the cup at the far right. ✅ 2026-08-31, both appearances.
 7. **Spaces on the left, services on top.** Strip down the left, tabs along the top, no space header in the bar. The traffic lights sit over the strip. ✅ 2026-08-31, both appearances, with space names off.
-8. In each, drag an empty part of the top edge. The window should move. In the third layout that includes blank space in the strip itself, which had no drag handle before this release. ❌ NOT RUN.
+8. In each, drag an empty part of the top edge. The window should move. In the third layout that includes blank space in the strip itself, which had no drag handle before this release. ✅ 2026-08-31, build 32, all three layouts.
 
 ## Block 3 — the two name settings
 
 9. Turn **Show service names** off. The left rail should narrow to a column of icons, the space header should collapse to its emoji, and the add button should become a plus that fits the narrow rail. ✅ 2026-08-31, both appearances.
 10. With names off, hover a service. The tooltip should say the name **and** its state — muted, asleep, camera on — because the compact cell has no room to draw those. ❌ NOT RUN.
 11. Turn it back on. Everything should return to the wide rail. ❌ NOT RUN — see item 5.
-12. In the third layout, turn **Show space names** off and on. The strip should switch between 180 and 52 points, and the tabs beside it should shift to clear the traffic lights when it is narrow. ⚠️ HALF — the 52 point strip is confirmed, the 180 point one is not.
+12. In the third layout, turn **Show space names** off and on. The strip should switch between 180 and 52 points, and the tabs beside it should shift to clear the traffic lights when it is narrow. ✅ 2026-08-31, build 32. The 180 point strip carries four space names with their badges, the traffic lights sit over it, and the tabs start clear of them. The 52 point strip was confirmed earlier.
 
 ## Block 4 — the overflowing tab bar
 
-13. In a bar layout, put enough services in one space to overrun the window, then narrow the window to its 800 point minimum.
-14. The add button must stay put at the end of the bar. The tabs should scroll under it, and the edge they run past should be soft rather than a tab cut through its icon.
-15. Select an off-screen service with `⌘1`–`⌘9`. The bar should scroll it into view.
+13. In a bar layout, put enough services in one space to overrun the window, then narrow the window to its 800 point minimum. ❌ NOT RUN.
+14. The add button must stay put at the end of the bar. The tabs should scroll under it, and the edge they run past should be soft rather than a tab cut through its icon. ❌ NOT RUN.
+15. Select an off-screen service with `⌘1`–`⌘9`. The bar should scroll it into view. ❌ NOT RUN.
 
 ## Block 5 — the install check (gates publishing)
 
-**Ticked against build 30. The artifact is build 31, so items 16, 17 and 19 are owed again.**
+**Items 16 and 19 are ticked against build 32, the shipping artifact. Item 17 is against build 30 and item 18 against build 31, so both are owed again — 17 in particular, since it is the hour-long run that would surface a launch or store fault.**
 
 The one 1.5.18 skipped. Everything about the schema change is verified, including against a copy of a real store, but nothing has run the actual app over the actual store.
 
-16. Put the stapled DMG's app over `/Applications`, replacing the installed copy. ✅ 2026-08-31.
+16. Put the stapled DMG's app over `/Applications`, replacing the installed copy. ✅ 2026-08-31, build 32.
 17. Launch it. Confirm the spaces and services all come through, with their names, icons and badges. ✅ 2026-08-31 — ran for an hour, no errors in the log, no crash reports.
 18. Delete a space. It should go, its services should stay, and the app should still be running — this is the macOS 15 crash that shipped in five releases. ✅ 2026-08-31, a test space created and deleted, no crash. On macOS 26, which cannot show the macOS 15 fault; the green macOS 15 CI job is the only evidence for that one.
-19. Check About says 1.5.19 and the expected build number. ⚠️ 1.5.19 (30) was confirmed. The artifact is now build 31.
+19. Check About says 1.5.19 and the expected build number. ✅ 2026-08-31, 1.5.19 (32), on the installed stapled DMG.
 
 ## Block 7 — the click-swallowing snapshot — RUN 2026-08-31 ON BUILD 32, PASSED
 
