@@ -37,7 +37,7 @@ The digits and their two unit tests are gone (both tests passed the whole time, 
 
 Settings › Appearance, one pass per layout, in both appearances.
 
-5. **Rail on the left.** 240 point rail, space header at the top, rows at an even pitch under it. ❌ STILL UNSEEN — every screenshot from the 2026-08-31 pass had service names off, so the wide rail, which is the default, has never been looked at.
+5. **Rail on the left.** 240 point rail, space header at the top, rows at an even pitch under it. ✅ 2026-08-31, build 32, dark. Nine rows at a 36 point pitch, icons and labels aligned, nothing truncated, the space header clear above them with its badge and chevron, and the accessories right-aligned: badges on WhatsApp and Gmail, a sleep moon on Reddit, a moon and a mute bell on TikTok. The one combination not on screen is a hibernated service that also carries a badge, which `HibernatedBadgePoller` makes a real state; it cannot collide, because the label is `lineLimit(1)` with tail truncation behind a `Spacer`, so the name gives way first.
 6. **Bar along the top.** Header at x 80, clear of the traffic lights; divider; tabs; nav buttons and the cup at the far right. ✅ 2026-08-31, both appearances.
 7. **Spaces on the left, services on top.** Strip down the left, tabs along the top, no space header in the bar. The traffic lights sit over the strip. ✅ 2026-08-31, both appearances, with space names off.
 8. In each, drag an empty part of the top edge. The window should move. In the third layout that includes blank space in the strip itself, which had no drag handle before this release. ✅ 2026-08-31, build 32, all three layouts.
