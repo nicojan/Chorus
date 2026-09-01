@@ -110,6 +110,32 @@ enum ServiceReorder {
     }
 }
 
+/// Places a service membership in an ordered target group. Unlike
+/// `ServiceReorder`, the moving id may come from another group and therefore
+/// may not be present in `targetIDs` yet.
+enum ServicePlacement {
+    static func orderedIDs(
+        _ targetIDs: [UUID],
+        moving droppedID: UUID,
+        relativeTo targetID: UUID?,
+        placement: ServiceReorderPlacement
+    ) -> [UUID]? {
+        guard targetID != droppedID else { return nil }
+
+        var reordered = targetIDs.filter { $0 != droppedID }
+        let insertionIndex: Int
+        if let targetID {
+            guard let targetIndex = reordered.firstIndex(of: targetID) else { return nil }
+            insertionIndex = placement == .after ? targetIndex + 1 : targetIndex
+        } else {
+            insertionIndex = 0
+        }
+
+        reordered.insert(droppedID, at: insertionIndex)
+        return reordered == targetIDs ? nil : reordered
+    }
+}
+
 /// Whether the rail draws service names, and where that answer is kept.
 ///
 /// This is chrome visibility rather than user data, so it lives in defaults

@@ -186,6 +186,134 @@ final class ChorusTests: XCTestCase {
         XCTAssertNil(ServiceReorder.reorderedIDs(ids, moving: first, relativeTo: missing, placement: .before))
     }
 
+    func testServicePlacementInsertsCrossSpaceDropAtExactPosition() {
+        let first = UUID(), second = UUID(), moving = UUID()
+
+        XCTAssertEqual(
+            ServicePlacement.orderedIDs(
+                [first, second],
+                moving: moving,
+                relativeTo: second,
+                placement: .before
+            ),
+            [first, moving, second]
+        )
+        XCTAssertEqual(
+            ServicePlacement.orderedIDs(
+                [first, second],
+                moving: moving,
+                relativeTo: second,
+                placement: .after
+            ),
+            [first, second, moving]
+        )
+    }
+
+    func testServicePlacementUsesFirstSlotForSeparatorAndEmptySpaceDrops() {
+        let first = UUID(), moving = UUID()
+
+        XCTAssertEqual(
+            ServicePlacement.orderedIDs(
+                [first],
+                moving: moving,
+                relativeTo: nil,
+                placement: .before
+            ),
+            [moving, first]
+        )
+        XCTAssertEqual(
+            ServicePlacement.orderedIDs(
+                [],
+                moving: moving,
+                relativeTo: nil,
+                placement: .before
+            ),
+            [moving]
+        )
+    }
+
+    func testServicePlacementAlsoReordersWithinOneSpace() {
+        let first = UUID(), second = UUID(), third = UUID()
+
+        XCTAssertEqual(
+            ServicePlacement.orderedIDs(
+                [first, second, third],
+                moving: first,
+                relativeTo: second,
+                placement: .after
+            ),
+            [second, first, third]
+        )
+        XCTAssertNil(
+            ServicePlacement.orderedIDs(
+                [first, second, third],
+                moving: first,
+                relativeTo: second,
+                placement: .before
+            )
+        )
+    }
+
+    func testAllServicesShortcutNavigationFollowsFlattenedMembershipOrder() {
+        let work = UUID(), personal = UUID()
+        let slack = UUID(), gmail = UUID(), sharedCalendar = UUID()
+        let destinations = [
+            ServiceShortcutDestination(spaceID: work, serviceID: slack),
+            ServiceShortcutDestination(spaceID: work, serviceID: sharedCalendar),
+            ServiceShortcutDestination(spaceID: personal, serviceID: gmail),
+            ServiceShortcutDestination(spaceID: personal, serviceID: sharedCalendar),
+        ]
+
+        XCTAssertEqual(
+            ServiceShortcutNavigation.destination(
+                movingBy: 1,
+                fromSpaceID: work,
+                serviceID: sharedCalendar,
+                in: destinations
+            ),
+            destinations[2]
+        )
+        XCTAssertEqual(
+            ServiceShortcutNavigation.destination(
+                movingBy: 1,
+                fromSpaceID: personal,
+                serviceID: sharedCalendar,
+                in: destinations
+            ),
+            destinations[0]
+        )
+        XCTAssertEqual(
+            ServiceShortcutNavigation.destination(at: 2, in: destinations),
+            destinations[2]
+        )
+    }
+
+    func testAllServicesShortcutNavigationStartsAtNearestEndWithoutSelection() {
+        let destinations = [
+            ServiceShortcutDestination(spaceID: UUID(), serviceID: UUID()),
+            ServiceShortcutDestination(spaceID: UUID(), serviceID: UUID()),
+        ]
+
+        XCTAssertEqual(
+            ServiceShortcutNavigation.destination(
+                movingBy: 1,
+                fromSpaceID: nil,
+                serviceID: nil,
+                in: destinations
+            ),
+            destinations.first
+        )
+        XCTAssertEqual(
+            ServiceShortcutNavigation.destination(
+                movingBy: -1,
+                fromSpaceID: nil,
+                serviceID: nil,
+                in: destinations
+            ),
+            destinations.last
+        )
+    }
+
     // MARK: - BadgeManager
 
     @MainActor
@@ -2615,6 +2743,7 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(AppPreferences(railLayoutRaw: nil).railLayout, .sidebar)
         XCTAssertEqual(AppPreferences(railLayoutRaw: "sidebar").railLayout, .sidebar)
         XCTAssertEqual(AppPreferences(railLayoutRaw: "topBars").railLayout, .topBars)
+        XCTAssertEqual(AppPreferences(railLayoutRaw: "allServices").railLayout, .allServices)
         XCTAssertEqual(AppPreferences(railLayoutRaw: "garbage").railLayout, .sidebar)
     }
 
@@ -2627,9 +2756,19 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(RailLayout.resolving("hybrid"), .hybrid)
     }
 
-    /// Three cases, so the Settings picker offers three.
-    func testRailLayoutHasThreeCases() {
-        XCTAssertEqual(RailLayout.allCases.map(\.rawValue), ["sidebar", "topBars", "hybrid"])
+    /// Four cases, so the Settings picker offers four.
+    func testRailLayoutHasFourCases() {
+        XCTAssertEqual(
+            RailLayout.allCases.map(\.rawValue),
+            ["sidebar", "topBars", "hybrid", "allServices"]
+        )
+    }
+
+    func testOnlyBarLayoutsHostNavigationInTheRail() {
+        XCTAssertFalse(RailLayout.sidebar.hasTopBar)
+        XCTAssertFalse(RailLayout.allServices.hasTopBar)
+        XCTAssertTrue(RailLayout.topBars.hasTopBar)
+        XCTAssertTrue(RailLayout.hybrid.hasTopBar)
     }
 
     // MARK: - Space strip width (hybrid layout)

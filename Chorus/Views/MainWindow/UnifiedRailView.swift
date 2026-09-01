@@ -3,8 +3,9 @@ import SwiftData
 import UniformTypeIdentifiers
 import os
 
-/// One rail, in either axis, holding the current space as its header and that
-/// space's services under it.
+/// The service rail. Its ordinary modes hold the current space as a header and
+/// that space's services beneath or beside it; the compact all-services mode
+/// draws every space as a separator followed by its service icons.
 ///
 /// This is build step 5 of concept C, and it replaces two views rather than
 /// bending either into shape: `ServiceSidebarView` drew the services in two
@@ -30,6 +31,8 @@ struct UnifiedRailView: View {
     /// hybrid layout, where a strip of spaces sits down the left and saying
     /// where you are twice would only cost the tabs their room.
     var showsSpaceHeader: Bool = true
+    /// Draw every space and its services in one compact vertical rail.
+    var showsAllSpaces: Bool = false
 
     @Query private var allLinks: [SpaceServiceLink]
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
@@ -55,6 +58,9 @@ struct UnifiedRailView: View {
     /// each cell's `.focused`, so a click or Tab that focuses a cell records it
     /// here and the arrow keys move relative to it.
     @FocusState private var focusedServiceID: UUID?
+    /// The all-services rail can show one service in more than one space, so
+    /// focus follows the membership link rather than the shared service id.
+    @FocusState private var focusedAllServicesLinkID: UUID?
     // Fallback drop midpoints, used only until the first geometry pass records a
     // cell's real size. Both are half of what `ServiceRowView` draws: a 34 point
     // row in the vertical rail, and a labelled tab of roughly 120 points in the
@@ -67,6 +73,7 @@ struct UnifiedRailView: View {
     /// Measured size of each drop cell, so the before/after split uses the target's
     /// true midpoint instead of a hardcoded guess.
     @State private var cellSizes: [UUID: CGSize] = [:]
+    @State private var spaceSeparatorSizes: [UUID: CGSize] = [:]
 
     /// The horizontal bar: a 32 point header and 32 point tabs with 5 points
     /// clear above and below. The drawn frame says 42.
@@ -77,7 +84,11 @@ struct UnifiedRailView: View {
 
     private var filteredLinks: [SpaceServiceLink] {
         guard let spaceID = selectedSpaceID else { return [] }
-        return allLinks
+        return links(in: spaceID)
+    }
+
+    private func links(in spaceID: UUID) -> [SpaceServiceLink] {
+        allLinks
             // Both ends have to be live before reading the space's id: a link
             // whose Space or ServiceInstance is gone would fault the freed model
             // and trap on this hot render path. Matches `AppState.servicesForSpace`.
@@ -158,10 +169,372 @@ struct UnifiedRailView: View {
 
     @ViewBuilder
     private var content: some View {
-        if axis == .vertical {
+        if showsAllSpaces {
+            allServicesBody
+        } else if axis == .vertical {
             verticalBody
         } else {
             horizontalBody
+        }
+    }
+
+    /// Every space in sort order, followed by its services in link order.
+    /// Separators stay identical for full and empty spaces; an empty space puts
+    /// its status in the service area beneath the separator.
+    private var allServicesBody: some View {
+        VStack(spacing: 0) {
+            Spacer().frame(height: 6 + contentInset)
+
+            ScrollView {
+                // A plain VStack, not lazy: a membership that moves between
+                // spaces would keep the same `link.id`, and a lazy stack
+                // matches that id across groups and reuses the cell. The cell
+                // then keeps the old selection/focus marks, so the moved icon
+                // stays highlighted after another service is actually in use.
+                VStack(spacing: 0) {
+                    ForEach(spaces) { space in
+                        let spaceLinks = links(in: space.id)
+                        allServicesSeparator(for: space)
+
+                        if spaceLinks.isEmpty {
+                            emptySpaceCell(for: space)
+                        } else {
+                            ForEach(spaceLinks) { link in
+                                if let service = link.liveService {
+                                    allServicesRow(for: link, service: service, in: space)
+                                        .id("\(space.id.uuidString)-\(link.id.uuidString)")
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.bottom, 8)
+            }
+
+            Divider()
+            allServicesAddButtons
+                .padding(.vertical, 6)
+        }
+        .frame(width: showServiceNames ? ServiceRowView.railWidth : ServiceRowView.compactRailWidth)
+        .background(.background)
+    }
+
+    private func allServicesSeparator(for space: Space) -> some View {
+        let selected = selectedSpaceID == space.id
+
+        return Button {
+            selectSpaceFromAllServicesRail(space)
+        } label: {
+            HStack(spacing: 3) {
+                separatorLine(selected: selected)
+                Text(space.emoji)
+                    .font(.system(size: 12))
+                    .opacity(space.isMutedEffective ? 0.5 : 1)
+                    .accessibilityHidden(true)
+                if showServiceNames {
+                    Text(space.name)
+                        .font(.caption)
+                        .fontWeight(selected ? .semibold : .regular)
+                        .foregroundStyle(selected ? .primary : .secondary)
+                        .lineLimit(1)
+                }
+                separatorLine(selected: selected)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 24)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(space.isMutedEffective ? "\(space.name) (muted)" : space.name)
+        .accessibilityLabel(space.name)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .draggable(space.id.uuidString) {
+            Text(space.emoji)
+                .font(.title3)
+                .padding(6)
+                .background(.ultraThickMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: ChorusRadius.control))
+        }
+        .dropDestination(for: String.self) { items, location in
+            guard let raw = items.first, let droppedID = UUID(uuidString: raw) else { return false }
+
+            if spaces.contains(where: { $0.id == droppedID }) {
+                let midpoint = (spaceSeparatorSizes[space.id]?.height).map { $0 / 2 } ?? 12
+                let placement: ServiceReorderPlacement = location.y < midpoint ? .before : .after
+                return reorderSpace(
+                    droppedSpaceID: droppedID,
+                    relativeTo: space,
+                    placement: placement
+                )
+            }
+
+            return placeService(
+                droppedLinkID: droppedID,
+                in: space,
+                relativeTo: nil,
+                placement: .before
+            )
+        }
+        .background(
+            GeometryReader { proxy in
+                Color.clear.onChange(of: proxy.size, initial: true) {
+                    spaceSeparatorSizes[space.id] = proxy.size
+                }
+            }
+        )
+        .contextMenu { spaceContextMenu(for: space) }
+        .accessibilityAction(named: "Move up") { moveSpace(space, forward: false) }
+        .accessibilityAction(named: "Move down") { moveSpace(space, forward: true) }
+    }
+
+    private func separatorLine(selected: Bool) -> some View {
+        Rectangle()
+            .fill(selected ? Color.accentColor.opacity(0.65) : Color(nsColor: .separatorColor))
+            .frame(height: 1)
+    }
+
+    private func emptySpaceCell(for space: Space) -> some View {
+        Button {
+            selectedSpaceID = space.id
+            selectedServiceID = nil
+        } label: {
+            Text("Empty")
+                .font(showServiceNames ? .subheadline : .caption2)
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity, alignment: showServiceNames ? .leading : .center)
+                .padding(.horizontal, showServiceNames ? 36 : 0)
+                .frame(height: ServiceRowView.rowHeight)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("\(space.name), empty")
+        .accessibilityLabel("\(space.name), empty")
+        .dropDestination(for: String.self) { items, _ in
+            guard let raw = items.first, let droppedID = UUID(uuidString: raw) else { return false }
+            return placeService(
+                droppedLinkID: droppedID,
+                in: space,
+                relativeTo: nil,
+                placement: .before
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func allServicesRow(
+        for link: SpaceServiceLink,
+        service: ServiceInstance,
+        in space: Space
+    ) -> some View {
+        let isSelected = selectedSpaceID == space.id && selectedServiceID == service.id
+        let badge = appState.badgeManager.badgeCount(for: service.id)
+        let hibernated = !isSelected && appState.webViewPool.isHibernated(service.id)
+        let muted = service.isEffectivelyMuted
+        let media = appState.webViewPool.mediaCaptureStates[service.id]
+        let health = hibernated ? ServiceHealth.live : appState.webViewPool.health(for: service.id)
+
+        cell(
+            for: link,
+            service: service,
+            isSelected: isSelected,
+            badge: badge,
+            hibernated: hibernated,
+            muted: muted,
+            media: media,
+            health: health,
+            focused: focusedAllServicesLinkID == link.id,
+            showsName: showServiceNames,
+            spaceName: space.name,
+            selectionAction: {
+                selectedSpaceID = space.id
+                selectedServiceID = service.id
+                focusedAllServicesLinkID = link.id
+            }
+        )
+        .draggable(link.id.uuidString) {
+            Text(service.label)
+                .font(.caption)
+                .padding(6)
+                .background(.ultraThickMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: ChorusRadius.control))
+        }
+        .dropDestination(for: String.self) { items, location in
+            guard let raw = items.first,
+                  let droppedID = UUID(uuidString: raw),
+                  droppedID != link.id
+            else { return false }
+
+            let midpoint = (cellSizes[link.id]?.height).map { $0 / 2 } ?? Self.serviceDropMidpoint
+            return placeService(
+                droppedLinkID: droppedID,
+                in: space,
+                relativeTo: link,
+                placement: location.y < midpoint ? .before : .after
+            )
+        }
+        .background(
+            GeometryReader { proxy in
+                Color.clear.onChange(of: proxy.size, initial: true) {
+                    cellSizes[link.id] = proxy.size
+                }
+            }
+        )
+        .accessibilityAction(named: "Move up") { moveServiceWithinSpace(link, forward: false) }
+        .accessibilityAction(named: "Move down") { moveServiceWithinSpace(link, forward: true) }
+        .contextMenu { serviceContextMenu(for: link) }
+        .focusable()
+        .focused($focusedAllServicesLinkID, equals: link.id)
+        .focusEffectDisabled()
+        .onKeyPress(keys: [.upArrow, .downArrow]) { press in
+            handleAllServicesKey(press, for: link)
+        }
+    }
+
+    private var allServicesAddButtons: some View {
+        Group {
+            if showServiceNames {
+                VStack(spacing: 2) {
+                    allServicesAddButton(
+                        title: "Add service",
+                        systemImage: "plus",
+                        disabled: selectedSpaceID == nil
+                    ) {
+                        showingAddService = true
+                    }
+                    allServicesAddButton(
+                        title: "Add space",
+                        systemImage: "folder.badge.plus",
+                        disabled: false
+                    ) {
+                        showingAddSpace = true
+                    }
+                }
+            } else {
+                HStack(spacing: 0) {
+                    allServicesAddButton(
+                        title: "Add service",
+                        systemImage: "plus",
+                        disabled: selectedSpaceID == nil
+                    ) {
+                        showingAddService = true
+                    }
+                    allServicesAddButton(
+                        title: "Add space",
+                        systemImage: "folder.badge.plus",
+                        disabled: false
+                    ) {
+                        showingAddSpace = true
+                    }
+                }
+            }
+        }
+        .foregroundStyle(.secondary)
+    }
+
+    private func allServicesAddButton(
+        title: String,
+        systemImage: String,
+        disabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Group {
+                if showServiceNames {
+                    HStack(spacing: 8) {
+                        Image(systemName: systemImage)
+                            .font(.system(size: 12, weight: .medium))
+                            .frame(width: 20, height: 20)
+                        Text(title)
+                            .font(.subheadline)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(width: ServiceRowView.rowWidth, height: 30)
+                } else {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 12, weight: .medium))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 28)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(title)
+        .accessibilityLabel(title)
+        .disabled(disabled)
+    }
+
+    private func selectSpaceFromAllServicesRail(_ space: Space) {
+        let spaceLinks = links(in: space.id)
+        selectedSpaceID = space.id
+
+        if let selectedServiceID,
+           spaceLinks.contains(where: { $0.liveService?.id == selectedServiceID }) {
+            return
+        }
+        selectedServiceID = spaceLinks.first?.liveService?.id
+    }
+
+    private func handleAllServicesKey(
+        _ press: KeyPress,
+        for link: SpaceServiceLink
+    ) -> KeyPress.Result {
+        let forward: Bool
+        switch press.key {
+        case .upArrow: forward = false
+        case .downArrow: forward = true
+        default: return .ignored
+        }
+
+        if press.modifiers.contains(.option) {
+            moveServiceWithinSpace(link, forward: forward)
+            focusedAllServicesLinkID = link.id
+            return .handled
+        }
+
+        let orderedLinks = spaces.flatMap { links(in: $0.id) }
+        guard let index = orderedLinks.firstIndex(where: { $0.id == link.id }) else {
+            return .handled
+        }
+        let neighborIndex = forward ? index + 1 : index - 1
+        guard orderedLinks.indices.contains(neighborIndex),
+              let destination = orderedLinks[neighborIndex].liveEnds
+        else { return .handled }
+
+        selectedSpaceID = destination.space.id
+        selectedServiceID = destination.service.id
+        focusedAllServicesLinkID = orderedLinks[neighborIndex].id
+        return .handled
+    }
+
+    @ViewBuilder
+    private func spaceContextMenu(for space: Space) -> some View {
+        Button("Add Service…") {
+            selectedSpaceID = space.id
+            showingAddService = true
+        }
+
+        Toggle("Mute Notifications", isOn: Binding(
+            get: { space.isMutedEffective },
+            set: { newValue in
+                space.isMuted = newValue
+                guard save("toggle space mute") else { return }
+                for serviceID in appState.servicesForSpace(space.id).map(\.id) {
+                    appState.refreshBadgeState(for: serviceID)
+                }
+            }
+        ))
+
+        Divider()
+        Button("Edit Space…") {
+            editingSpace = space
+        }
+
+        if spaces.count > 1 {
+            Button("Delete Space", role: .destructive) {
+                confirmingDeleteSpace = space
+            }
         }
     }
 
@@ -434,7 +807,10 @@ struct UnifiedRailView: View {
         muted: Bool,
         media: WebViewPool.MediaCaptureState?,
         health: ServiceHealth,
-        focused: Bool
+        focused: Bool,
+        showsName: Bool? = nil,
+        spaceName: String? = nil,
+        selectionAction: (() -> Void)? = nil
     ) -> some View {
         ServiceRowView(
             instance: service,
@@ -447,10 +823,15 @@ struct UnifiedRailView: View {
             micActive: media?.micActive ?? false,
             micMuted: media?.micMuted ?? false,
             health: health,
-            showsName: showServiceNames,
+            showsName: showsName ?? showServiceNames,
+            spaceName: spaceName,
             isFocused: focused
         ) {
-            selectService(link)
+            if let selectionAction {
+                selectionAction()
+            } else {
+                selectService(link)
+            }
         }
     }
 
@@ -680,6 +1061,7 @@ struct UnifiedRailView: View {
               let currentSpace = link.liveSpace, currentSpace.id != targetSpace.id,
               let serviceID = link.liveService?.id
         else { return }
+        let wasSelectedMembership = selectedSpaceID == currentSpace.id && selectedServiceID == serviceID
 
         // Compute the tail order before repointing, so the link's old order in
         // its current space doesn't count toward the target's max.
@@ -693,7 +1075,7 @@ struct UnifiedRailView: View {
         if followToSpace {
             selectedSpaceID = targetSpace.id
             selectedServiceID = serviceID
-        } else if selectedServiceID == serviceID {
+        } else if wasSelectedMembership {
             selectedServiceID = nil
         }
     }
@@ -707,8 +1089,9 @@ struct UnifiedRailView: View {
             return
         }
         let serviceID = service.id
+        let wasSelectedMembership = selectedSpaceID == link.liveSpace?.id && selectedServiceID == serviceID
 
-        if selectedServiceID == serviceID {
+        if wasSelectedMembership {
             selectedServiceID = nil
         }
 
@@ -800,6 +1183,143 @@ struct UnifiedRailView: View {
                 }
             }
         }
+    }
+
+    private func moveSpace(_ space: Space, forward: Bool) {
+        var orderedSpaces = Array(spaces)
+        guard let index = orderedSpaces.firstIndex(where: { $0.id == space.id }) else { return }
+        let destination = forward ? index + 1 : index - 1
+        guard orderedSpaces.indices.contains(destination) else { return }
+
+        orderedSpaces.swapAt(index, destination)
+        for (order, item) in orderedSpaces.enumerated() {
+            item.sortOrder = order
+        }
+        save(forward ? "move space down" : "move space up")
+    }
+
+    @discardableResult
+    private func reorderSpace(
+        droppedSpaceID: UUID,
+        relativeTo target: Space,
+        placement: ServiceReorderPlacement
+    ) -> Bool {
+        let spacesByID = Dictionary(uniqueKeysWithValues: spaces.map { ($0.id, $0) })
+        guard let reorderedIDs = ServiceReorder.reorderedIDs(
+            spaces.map(\.id),
+            moving: droppedSpaceID,
+            relativeTo: target.id,
+            placement: placement
+        ) else {
+            return false
+        }
+
+        for (order, id) in reorderedIDs.enumerated() {
+            spacesByID[id]?.sortOrder = order
+        }
+        return save("reorder spaces")
+    }
+
+    private func moveServiceWithinSpace(_ link: SpaceServiceLink, forward: Bool) {
+        guard let spaceID = link.liveSpace?.id else { return }
+        var spaceLinks = links(in: spaceID)
+        guard let index = spaceLinks.firstIndex(where: { $0.id == link.id }) else { return }
+        let destination = forward ? index + 1 : index - 1
+        guard spaceLinks.indices.contains(destination) else { return }
+
+        spaceLinks.swapAt(index, destination)
+        for (order, item) in spaceLinks.enumerated() {
+            item.sortOrder = order
+        }
+        save(forward ? "move service down" : "move service up")
+    }
+
+    /// Reorders a membership inside one group or repoints it into another. A
+    /// cross-space drop keeps the service instance and its web data intact.
+    /// When the service is already a member of the target space the drop is
+    /// rejected, because two identical links in one space are invalid.
+    @discardableResult
+    private func placeService(
+        droppedLinkID: UUID,
+        in targetSpace: Space,
+        relativeTo targetLink: SpaceServiceLink?,
+        placement: ServiceReorderPlacement
+    ) -> Bool {
+        guard let droppedLink = allLinks.first(where: { $0.id == droppedLinkID }),
+              let droppedEnds = droppedLink.liveEnds,
+              targetSpace.modelContext != nil
+        else { return false }
+
+        let sourceSpace = droppedEnds.space
+        let service = droppedEnds.service
+        let sourceLinks = links(in: sourceSpace.id)
+        let targetLinks = sourceSpace.id == targetSpace.id
+            ? sourceLinks
+            : links(in: targetSpace.id)
+
+        if sourceSpace.id != targetSpace.id,
+           targetLinks.contains(where: { $0.liveService?.id == service.id }) {
+            return false
+        }
+
+        guard let reorderedIDs = ServicePlacement.orderedIDs(
+            targetLinks.map(\.id),
+            moving: droppedLink.id,
+            relativeTo: targetLink?.id,
+            placement: placement
+        ) else { return false }
+
+        if sourceSpace.id == targetSpace.id {
+            let linksByID = Dictionary(uniqueKeysWithValues: targetLinks.map { ($0.id, $0) })
+            for (order, id) in reorderedIDs.enumerated() {
+                linksByID[id]?.sortOrder = order
+            }
+            return save("reorder services")
+        }
+
+        return commitServicePlacement(
+            droppedLink: droppedLink,
+            service: service,
+            sourceSpace: sourceSpace,
+            targetSpace: targetSpace,
+            sourceLinks: sourceLinks,
+            targetLinks: targetLinks,
+            orderedTargetIDs: reorderedIDs
+        )
+    }
+
+    private func commitServicePlacement(
+        droppedLink: SpaceServiceLink,
+        service: ServiceInstance,
+        sourceSpace: Space,
+        targetSpace: Space,
+        sourceLinks: [SpaceServiceLink],
+        targetLinks: [SpaceServiceLink],
+        orderedTargetIDs: [UUID]
+    ) -> Bool {
+        let wasSelected = selectedSpaceID == sourceSpace.id && selectedServiceID == service.id
+        let targetByID = Dictionary(
+            uniqueKeysWithValues: (targetLinks + [droppedLink]).map { ($0.id, $0) }
+        )
+
+        droppedLink.space = targetSpace
+        for (order, item) in sourceLinks.filter({ $0.id != droppedLink.id }).enumerated() {
+            item.sortOrder = order
+        }
+        for (order, id) in orderedTargetIDs.enumerated() {
+            targetByID[id]?.sortOrder = order
+        }
+
+        guard save("move service to space") else { return false }
+        // Drop the keyboard focus before the cell is recreated in the new
+        // group. Holding it on the same link id is what left a ring on the
+        // moved icon after another service was selected.
+        focusedAllServicesLinkID = nil
+        if wasSelected {
+            selectedSpaceID = targetSpace.id
+            selectedServiceID = service.id
+        }
+        return true
     }
 
     private func moveServiceUp(_ link: SpaceServiceLink) {
