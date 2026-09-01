@@ -32,7 +32,7 @@ actor FaviconFetcher {
         ]
 
         for candidate in candidates {
-            if let data = await fetchURL(candidate), isValidImage(data) {
+            if let data = await fetchURL(candidate)?.data, isValidImage(data) {
                 AppLogger.favicon.debug("Favicon found at \(candidate, privacy: .private)")
                 return data
             }
@@ -49,7 +49,7 @@ actor FaviconFetcher {
         // the ones a user would least expect to leak off-device.
         if googleFallbackEnabled, !Self.isLikelyPrivateHost(host) {
             let googleAPI = "https://www.google.com/s2/favicons?domain=\(host)&sz=128"
-            if let data = await fetchURL(googleAPI), isValidImage(data) {
+            if let data = await fetchURL(googleAPI)?.data, isValidImage(data) {
                 AppLogger.favicon.debug("Favicon from Google API for \(host, privacy: .private)")
                 return data
             }
@@ -60,11 +60,16 @@ actor FaviconFetcher {
     }
 
     private func fetchFromHTMLLinks(url: URL) async -> Data? {
-        guard let htmlData = await fetchURL(url.absoluteString),
+        let fetched = await fetchURL(url.absoluteString)
+        guard let htmlData = fetched?.data,
               let html = String(data: htmlData, encoding: .utf8)
         else { return nil }
 
-        let iconURLs = Self.parseIconLinks(from: html, baseURL: url)
+        let iconURLs = Self.resolvedIconLinks(
+            from: html,
+            requestedURL: url,
+            finalURL: fetched?.finalURL
+        )
 
         // Sort by size descending — prefer largest icon
         let sorted = iconURLs.sorted { $0.size > $1.size }
@@ -78,7 +83,7 @@ actor FaviconFetcher {
             guard let iconURL = URL(string: iconInfo.url), Self.isFetchableIconURL(iconURL) else {
                 continue
             }
-            if let data = await fetchURL(iconInfo.url), isValidImage(data) {
+            if let data = await fetchURL(iconInfo.url)?.data, isValidImage(data) {
                 AppLogger.favicon.debug("Favicon from HTML link: \(iconInfo.url, privacy: .private)")
                 return data
             }
@@ -146,6 +151,24 @@ actor FaviconFetcher {
         let size: Int
     }
 
+    /// Icon links from a page's HTML, resolved against the URL the response
+    /// actually came from rather than the one that was asked for.
+    ///
+    /// A relative `href` is relative to the document, and after a redirect the
+    /// document is not where the request went. `easyweb.td.com` 302s to
+    /// `authentication.td.com/uap-ui/`, whose only icon link is
+    /// `href="favicon.ico"`; resolved against the requested host that becomes
+    /// `easyweb.td.com/favicon.ico`, which TD answers with another redirect to a
+    /// 404 page — so Chorus found no icon at all and drew a letter tile for a
+    /// site that has a perfectly good favicon.
+    nonisolated static func resolvedIconLinks(
+        from html: String,
+        requestedURL: URL,
+        finalURL: URL?
+    ) -> [IconLink] {
+        parseIconLinks(from: html, baseURL: finalURL ?? requestedURL)
+    }
+
     nonisolated static func parseIconLinks(from html: String, baseURL: URL) -> [IconLink] {
         var results: [IconLink] = []
 
@@ -202,7 +225,15 @@ actor FaviconFetcher {
     /// guard only ever sees the first URL. Stateless, so one shared instance.
     private static let redirectGuard = FaviconRedirectGuard()
 
-    private func fetchURL(_ urlString: String) async -> Data? {
+    /// A fetched body together with the URL it was finally served from, which
+    /// differs from the requested one whenever a redirect was followed. The
+    /// caller needs the final URL to resolve a document's relative icon hrefs.
+    struct FetchedBody {
+        let data: Data
+        let finalURL: URL?
+    }
+
+    private func fetchURL(_ urlString: String) async -> FetchedBody? {
         guard let url = URL(string: urlString) else { return nil }
         do {
             var request = URLRequest(url: url, timeoutInterval: 10)
@@ -224,7 +255,8 @@ actor FaviconFetcher {
                 data.append(byte)
                 if data.count > Self.maxFetchBytes { return nil }
             }
-            return data.isEmpty ? nil : data
+            guard !data.isEmpty else { return nil }
+            return FetchedBody(data: data, finalURL: http.url)
         } catch {
             AppLogger.favicon.debug("Fetch failed for \(urlString, privacy: .private): \(error.localizedDescription)")
         }

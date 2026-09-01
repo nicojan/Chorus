@@ -64,6 +64,48 @@ final class ChorusTests: XCTestCase {
         )
     }
 
+    /// A snapshot only earns its place while a load is in flight. Holding one
+    /// past that leaves a stale image of the old page that the *next* navigation
+    /// paints over a live one — the TD EasyWeb report: switch to an
+    /// already-loaded service, click Login, and a picture of the login screen
+    /// covers the page and eats every click.
+    func testSnapshotIsDroppedWhenNothingIsLoading() {
+        let image = NSImage(size: NSSize(width: 2, height: 2))
+
+        XCTAssertNil(
+            WebContentView.retainedSnapshot(image, isLoading: false),
+            "A snapshot with no load behind it must be dropped, not held for the next navigation"
+        )
+        XCTAssertTrue(
+            WebContentView.retainedSnapshot(image, isLoading: true) === image,
+            "A snapshot must survive while the load it covers is still running"
+        )
+        XCTAssertNil(WebContentView.retainedSnapshot(nil, isLoading: true))
+    }
+
+    /// Resolve a page's relative icon href against the URL the response actually
+    /// came from, not the one that was requested. easyweb.td.com 302s to
+    /// authentication.td.com and its `<link rel=icon href="favicon.ico">` only
+    /// resolves on the second host; against the requested one it points at a
+    /// path TD answers with a redirect to a 404 page, so Chorus found no icon
+    /// and fell back to a letter tile.
+    func testFaviconLinksResolveAgainstTheFinalURLAfterARedirect() {
+        let html = #"<html><head><link rel="icon" href="favicon.ico"></head></html>"#
+        let requested = URL(string: "https://easyweb.td.com/")!
+        let final = URL(string: "https://authentication.td.com/uap-ui/?consumer=easyweb&locale=en_CA")!
+
+        XCTAssertEqual(
+            FaviconFetcher.resolvedIconLinks(from: html, requestedURL: requested, finalURL: final),
+            [FaviconFetcher.IconLink(url: "https://authentication.td.com/uap-ui/favicon.ico", size: 0)]
+        )
+
+        // No redirect: the requested URL is still the base.
+        XCTAssertEqual(
+            FaviconFetcher.resolvedIconLinks(from: html, requestedURL: requested, finalURL: nil),
+            [FaviconFetcher.IconLink(url: "https://easyweb.td.com/favicon.ico", size: 0)]
+        )
+    }
+
     func testFaviconParserHandlesAttributeOrderAndRelativeURLs() {
         let html = """
         <html><head>
