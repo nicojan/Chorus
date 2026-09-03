@@ -20,7 +20,7 @@ same Sparkle signing key):
 |---|---|---|
 | `SUPublicEDKey` | `Chorus/Info.plist` | `6/h2Pfjbo39vHie8JIt/kY7h0wQvmQxj9Ea0W3gnH0w=` — verified to match the ed25519 private key in your login Keychain |
 | `teamID` | `release/ExportOptions.plist` | `3CY4DX3K45` |
-| `SUFeedURL` | `Chorus/Info.plist` | `https://nicojan.github.io/Chorus/appcast.xml` |
+| `SUFeedURL` | `Chorus/Info.plist` | `https://updates.nicojan.com/chorus/appcast.xml` (1.5.20 and later; earlier builds use `https://nicojan.github.io/Chorus/appcast.xml`) |
 
 ### Hosting (GitHub)
 
@@ -28,7 +28,13 @@ The `nicojan/Chorus` repo is **public**. Updates are hosted from it:
 
 - **Appcast** — `docs/appcast.xml` in this repo, served by **GitHub Pages**
   (source: `main` branch, `/docs` folder) at
-  `https://nicojan.github.io/Chorus/appcast.xml`. This is the stable `SUFeedURL`.
+  `https://nicojan.github.io/Chorus/appcast.xml`.
+- **Appcast, again** — a Cloudflare Worker (`release/appcast-worker`) passes that
+  same file through at `https://updates.nicojan.com/chorus/appcast.xml` and counts
+  how many copies of Chorus check each day. That is the `SUFeedURL` from 1.5.20 on.
+  Releasing does not change: commit `docs/appcast.xml` as before and the Worker
+  picks it up within five minutes. **Never take the Pages URL down** — every build
+  up to 1.5.19 asks it for updates and always will.
 - **DMGs** — attached as **GitHub Release assets** (one release per version,
   tag `vX.Y.Z`). The appcast's `<enclosure>` URLs point at the release download
   URLs. Binaries don't bloat the git repo.

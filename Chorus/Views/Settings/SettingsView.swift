@@ -608,6 +608,16 @@ struct AboutSettingsView: View {
     let updater: SPUUpdater
     #endif
 
+    #if canImport(Sparkle)
+    /// Writes straight through to Sparkle, which persists the choice itself.
+    private var automaticChecks: Binding<Bool> {
+        Binding(
+            get: { updater.automaticallyChecksForUpdates },
+            set: { updater.automaticallyChecksForUpdates = $0 }
+        )
+    }
+    #endif
+
     private let repoURL = URL(string: "https://github.com/nicojan/Chorus")!
     private let licenseURL = URL(string: "https://github.com/nicojan/Chorus/blob/main/LICENSE")!
     private let authorURL = URL(string: "https://nicojan.com/")!
@@ -631,6 +641,10 @@ struct AboutSettingsView: View {
                 }
                 #if canImport(Sparkle)
                 CheckForUpdatesView(updater: updater)
+                Toggle("Automatically check for updates", isOn: automaticChecks)
+                Text("The daily check tells the update server your IP address and which version you run, and it is counted there. Turn it off and Chorus asks only when you press the button.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 #endif
             }
 

@@ -1,0 +1,29 @@
+# Chorus appcast feed — Cloudflare Worker (free plan).
+#
+# Serves https://updates.nicojan.com/chorus/appcast.xml and counts distinct
+# installations per day. See README.md in this folder for the setup steps.
+
+name = "chorus-appcast"
+main = "src/index.js"
+compatibility_date = "2026-09-02"
+
+# Binds the hostname and creates its DNS record. updates.nicojan.com must be
+# free — this takes over the whole hostname, not just a path.
+[[routes]]
+pattern = "updates.nicojan.com"
+custom_domain = true
+
+# Holds one marker per installation per day (expiring after 48 hours) plus the
+# rolled-up daily totals under "agg:daily". Fill in the id printed by
+#   npx wrangler kv namespace create PINGS
+[[kv_namespaces]]
+binding = "PINGS"
+id = "PUT_THE_KV_NAMESPACE_ID_HERE"
+
+# Rolls up yesterday's markers into the aggregate, every day at 00:15 UTC.
+[triggers]
+crons = ["15 0 * * *"]
+
+# Two secrets, set with `npx wrangler secret put <name>` — never in this file:
+#   PING_SALT    long random string; salts the per-day installation hash
+#   STATS_TOKEN  bearer token that guards /chorus/stats.json

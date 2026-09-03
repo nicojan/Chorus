@@ -5,6 +5,14 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- A switch in Settings turns the daily update check off. It was always on before, with no way to stop it.
+
+### Changed
+
+- Chorus now asks a server I run whether an update is out, rather than asking GitHub. I count those requests. It is the only way I can tell how many people use Chorus, and GitHub kept no record of them. What I keep is a number per day and a breakdown by version, and I do not store your IP address. The README says what the request carries and how to switch it off.
+
 ## [1.5.19] - 2026-08-31
 
 ### Added
