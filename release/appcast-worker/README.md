@@ -60,8 +60,9 @@ One thing makes them read high. A machine that reaches the feed over IPv4 one da
 Reading the numbers:
 
 ```sh
-curl -s -H "Authorization: Bearer $(security find-generic-password -s chorus-stats-token -w)" \
-  https://updates.nicojan.com/chorus/stats.json
+./stats.sh          # last 14 days, as a table
+./stats.sh 60       # a longer window
+./stats.sh --json   # raw, for piping somewhere else
 ```
 
 The token lives in the login Keychain. This repo is public, so it stays out of here. Cloudflare stores secrets write-only, so a lost token cannot be read back; generate a new one and upload it with `wrangler secret put STATS_TOKEN`.

@@ -35,6 +35,7 @@ The `nicojan/Chorus` repo is **public**. Updates are hosted from it:
   Releasing does not change: commit `docs/appcast.xml` as before and the Worker
   picks it up within five minutes. **Never take the Pages URL down** — every build
   up to 1.5.19 asks it for updates and always will.
+  To see how many people are running Chorus, run `release/appcast-worker/stats.sh`.
 - **DMGs** — attached as **GitHub Release assets** (one release per version,
   tag `vX.Y.Z`). The appcast's `<enclosure>` URLs point at the release download
   URLs. Binaries don't bloat the git repo.
