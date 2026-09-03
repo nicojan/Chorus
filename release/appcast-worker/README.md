@@ -18,20 +18,19 @@ Counting never blocks an update. The KV work runs after the response is on its w
 
 You need to do this once, and only you can: it needs your Cloudflare login.
 
+The KV namespace and both secrets already exist, so this is only for rebuilding from scratch. `wrangler.toml` carries the namespace id; a fresh `kv namespace create` prints a new one that has to replace it, or the deploy fails with `code: 10042`.
+
 ```sh
 cd release/appcast-worker
 npm install
 npx wrangler login
-npx wrangler kv namespace create PINGS
-```
-
-Put the id it prints into `wrangler.toml`, then set the two secrets and deploy:
-
-```sh
-npx wrangler secret put PING_SALT      # paste: openssl rand -hex 32
-npx wrangler secret put STATS_TOKEN    # paste: openssl rand -hex 24
+npx wrangler kv namespace create PINGS   # only when starting over; paste the id into wrangler.toml
+npx wrangler secret put PING_SALT        # paste: openssl rand -hex 32
+npx wrangler secret put STATS_TOKEN      # paste: openssl rand -hex 24
 npx wrangler deploy
 ```
+
+Secrets live in Cloudflare, never in this repo. Changing `PING_SALT` later is harmless: it only makes yesterday's keys stop matching today's, so one day double-counts machines that check on both sides of the change.
 
 Deploying creates the DNS record for `updates.nicojan.com` as well. Check it:
 

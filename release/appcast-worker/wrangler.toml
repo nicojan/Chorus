@@ -14,11 +14,10 @@ pattern = "updates.nicojan.com"
 custom_domain = true
 
 # Holds one marker per installation per day (expiring after 48 hours) plus the
-# rolled-up daily totals under "agg:daily". Fill in the id printed by
-#   npx wrangler kv namespace create PINGS
+# rolled-up daily totals under "agg:daily".
 [[kv_namespaces]]
 binding = "PINGS"
-id = "PUT_THE_KV_NAMESPACE_ID_HERE"
+id = "063c1aebdc0e4a878b5c03c924664e8f"
 
 # Rolls up yesterday's markers into the aggregate, every day at 00:15 UTC.
 [triggers]
