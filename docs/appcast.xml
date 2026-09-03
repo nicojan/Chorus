@@ -3,6 +3,45 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.19</title>
+            <pubDate>Thu, 03 Sep 2026 01:03:00 -0700</pubDate>
+            <sparkle:version>32</sparkle:version>
+            <sparkle:shortVersionString>1.5.19</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Added</h3>
+<ul>
+<li>A small button in the top right of the window opens the donation page, and the About panel carries the same link. Chorus stays free. This is here if you want to pay for it anyway.</li>
+<li>A service that is still loading, or that failed to load, now says so in the rail. A grey ring on its icon means the page is coming up; an orange dot means it did not. Nothing shows when the page is fine. The three marks differ in shape as well as colour, so they still read if you cannot tell the colours apart, and a screen reader says which one it is.</li>
+<li>Google Keep is in the service catalog, with its own logo rather than a letter tile.</li>
+<li>Settings can turn the service names off. A service is then its icon alone in a narrower rail, and the name stays in the tooltip. Turn it off if you know your services by sight and would rather give the width to the page.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>In the rail-on-the-left and bar-along-the-top layouts the strip of spaces is gone, and the space you are in is a header at the top of the service rail. Click it to switch spaces, add one, rename one or delete one. The width that strip used to take goes to the page you are reading.</li>
+<li>The layout with your spaces down the left and your services along the top is still here. Its strip of spaces carries their names, and a setting turns those off for a narrow column of emoji.</li>
+<li>The messages that appear across the top of the window all look like one thing now. There were three of them and they were drawn three different ways, including a solid red bar for being offline that shouted louder than the problem. They share one shape, and how serious it is comes through the icon and a thin rule rather than the colour of the whole strip.</li>
+<li>Keyboard focus is visible in the rail again. The service you are on and the service the keyboard is on are two different things, and they are now drawn two different ways: a filled row for the one you picked, an outline for the one the arrow keys will move from. A fix in 1.5.10 had removed the outline rather than reshaping it, because the old rail was too narrow to hold it.</li>
+<li>Every service in the rail now carries its name. It used to be an icon and nothing else, so two Slack workspaces were two identical squares and the only way to tell them apart was to hover one and wait for the tooltip. The unread count, the mute bell, the sleep moon and the camera dot move off the icon's corners and sit beside the name.</li>
+<li>The rail down the left side is wider, to fit those names.</li>
+<li>The bar along the top no longer loses its add button when there are more services than fit. The button now sits at the end of the bar and stays there, the tabs scroll under it, and the edge they run past is softened so you can see the row keeps going. Before this the last tab was cut through its icon and the add button was somewhere off the end.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Deleting a space could quit Chorus on macOS 15. The space went, and Chorus closed with it. Whether your data survived depended on when it stopped, which is not a question you should have to ask about deleting a space. It happens on macOS 15 and not on macOS 26, so the machine Chorus is built on could never show it; a test run on an older system is what found it. Nothing about your spaces or services changes, and Chorus updates the shape of its data file when it first opens, keeping a backup before it does.</li>
+<li>A fresh install that took an update before you had set anything up could get stuck on temporary storage. Chorus said your saved data could not be loaded, offered no backup to restore, and came back the same way at every launch. Deleting Chorus and installing it again did not clear it, because neither your data file nor the marker Chorus keeps beside it lives inside the app. Chorus now starts you on a new, empty file when it can see there is nothing to lose, and the warning has a Start fresh button for the times it cannot tell. Your old file is kept as a backup either way, and the backup list shows it, so you can go back.</li>
+<li>Microsoft Teams and other services behind a company sign-in can stay signed in. Teams would show its own "sign in again" banner, the button led nowhere, and the state came back about a day after every successful sign-in. Chorus was blocking the hidden frame Teams reads its session from. Each service still keeps its cookies to itself.</li>
+<li>Signing in to a service no longer sends you a stream of approval requests. When a sleeping service needed signing in again, the background check that reads its unread count kept reloading it, and every reload asked your authenticator to approve. One person got 68 prompts in 14 hours. Chorus now stops checking a service that needs you, and picks it up again when you open it.</li>
+<li>Closing a window opened from a link leaves the service alone. It used to reload the page behind it, losing your place and anything you had typed and not sent. A sign-in window still reloads the service when it closes, which is the point of it.</li>
+<li>Starting fresh no longer leaves a copy of your old data on disk for good. Chorus keeps the last few, plus the very first one, and clears the rest. The first is the one worth keeping: it is your data as it stood before you started over at all.</li>
+<li>A service that opens a window through a script gets a real one. Some sign-in flows check whether the window opened and give up quietly if it did not, which looked like nothing happening at all.</li>
+<li>Clicks could stop landing on a page, most often after switching to a service and back. While a page loads, Chorus covers it with a picture of how it last looked, so the wait is not a blank rectangle. Chorus was not clearing that picture when there was no wait to fill, and it came back over the page on its next load. You were then clicking a still image of the page you wanted, which is why it read as frozen rather than broken. Found on TD EasyWeb's sign-in screen.</li>
+<li>A service you add by typing its address gets its icon from the site more often. Sites name their icon in the page, usually by a path relative to the page itself. Chorus resolved that path against the address you typed rather than the address you ended up at, looked in the wrong place, found nothing, and drew a letter. Typing easyweb.td.com lands you on authentication.td.com, and TD's icon is only on the second one.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.19/Chorus-1.5.19.dmg" length="8883765" type="application/octet-stream" sparkle:edSignature="fGsoAYq7zeD0NGwwAHD5ZCZonp42yxmN/QODvQhwRopO0rNQl1e8kwUza4LgyWpJmbdsp5f8uwZgIXLgotbnCw=="/>
+        </item>
+        <item>
             <title>1.5.18</title>
             <pubDate>Thu, 06 Aug 2026 14:20:00 -0700</pubDate>
             <sparkle:version>27</sparkle:version>
