@@ -2,7 +2,7 @@
 
 ## Held for 1.5.20: counting how many people run Chorus
 
-On `feat/appcast-feed-counting`, pushed, five commits, not merged. **Deliberately off `main`** — `main` is the tree the 1.5.19 build-32 artifact was built from, and this branch edits `Chorus/Info.plist`, so merging it before 1.5.19 ships would break the "binary still matches `main`" check that publishing depends on.
+On `feat/appcast-feed-counting`, pushed, five commits, not merged. **The hold is over**: 1.5.19 shipped on 2026-09-03, so the reason this stayed off `main` (it edits `Chorus/Info.plist`, which would have broken the "binary still matches `main`" check) is gone. Merge it, bump to 1.5.20, and release. Watch the version row on the first real ping: no genuine Sparkle build has checked in yet, and if its user-agent does not parse, every version reads `unknown` and only the daily total survives.
 
 There was no way to tell how many people use Chorus. The daily Sparkle check is one request per installation per day, but it went to GitHub Pages, which keeps no request logs, so every one of them was thrown away. Release asset download counts were the only signal, and they mix new installs with Sparkle updaters pulling the same DMG.
 
@@ -39,7 +39,7 @@ One trap for the next person testing a click bug: adding the service from scratc
 
 Rounded squares stay. The reporter asked about circular icons and then chose to keep the current shape, because a circle clips the corners off square brand marks like Slack and Gmail.
 
-**This supersedes the build-31 DMG.** 1.5.19 needs rebuilding as build 32 before it is published.
+**This superseded the build-31 DMG.** Build 32 is what shipped.
 
 ## Merged: PR #23, and five contributor PRs, all riding in 1.5.19
 
@@ -192,11 +192,22 @@ The radius collapse, the target sizes and the icon sizes are mechanical. The sel
 
 **What the file does not cover.** The store banner, recovery banner and lock screen were built from source rather than traced, because producing them needs a damaged database. The offline banner is the same, since catching it needs the network to drop. Service icons are tinted placeholders. No automated pixel diff was run against the captures.
 
-## Held: 1.5.19 is built and notarised, and deliberately not published
+## Shipped: 1.5.19, published 2026-09-03
 
-**More is going into 1.5.19 before it ships**, so every artifact here is a checkpoint rather than the thing that goes out. Read the staleness note at the end of this section before publishing any of them.
+Build 32 went out as `v1.5.19` on 2026-09-03. The release carries `Chorus-1.5.19.dmg`, sha256 `ec276f7b…dbb73`, 8,883,765 bytes. The tag sits on `6833544`, and `project.yml` at that tag reads 1.5.19 and build 32. Both feeds serve the new item and the Homebrew cask is on 1.5.19 in this repo and in the tap.
 
-Six builds exist, all 1.5.19. Build 32 is the one to publish:
+Steps 6 to 9 ran in order, each against a check:
+
+- **Step 6.** `main` pushed first, then `gh release create`. The tag landed on `6833544`, which was remote HEAD at the time. That is the check 1.5.11 and 1.5.15 both failed.
+- **Step 7.** `sign_update` on the stapled image printed `length="8883765"`, the same size as the uploaded asset.
+- **Step 8.** The Pages run for the appcast commit was missing from `gh run list` on the first look, which is what 1.5.18 looked like when its feed stayed on the old version. Here it was in progress rather than absent. Poll for it, and do not touch the cask until a `curl` of the feed shows the new version.
+- **Step 9.** `brew style` clean, `brew livecheck` reads 1.5.19, and the online cask audit exits 0.
+
+**`sed -i ''` in step 9 does not work on this machine.** `sed` on the PATH is GNU sed 4.10 from `gnu-sed`, not BSD sed, so it reads the empty string as the script and the `s///` expression as a filename, prints "can't read", and changes nothing. The runbook's command is written for BSD sed. Edit the cask with `python3` or `perl -pi -e`. This is the same class of surprise as `ls` being `eza` here.
+
+Next is 1.5.20, which is `feat/appcast-feed-counting`. It was held off `main` only until this shipped, and it is the first build that reports a user count.
+
+Six builds existed, all 1.5.19. Build 32 is the one that shipped:
 
 | Build | Commit | What it is |
 |---|---|---|
@@ -206,7 +217,7 @@ Six builds exist, all 1.5.19. Build 32 is the one to publish:
 | 31 | `bc45237` on `main` | The palette fix. Superseded, kept as `build/Chorus-1.5.19-b31-stale.dmg`. |
 | **32** | **`eeaec53` on `main`** | **`build/Chorus-1.5.19.dmg`, sha256 `ec276f7b…dbb73`, 8,883,765 bytes. Signed, notarised, stapled, Gatekeeper-accepted, installed, and the one the by-hand pass now runs against.** |
 
-The marketing version has not moved and should not: nothing was published under any of these. The build number moves so the About panel can tell them apart. Builds 29 and 30 were branch builds; everything is merged now, and build 32 is cut from `main`.
+The marketing version stayed at 1.5.19 across all six, and only build 32 was ever published. The build number moves so the About panel can tell them apart. Builds 29 and 30 were branch builds; everything is merged now, and build 32 is cut from `main`.
 
 The test builds are named `Chorus-1.5.19-bNN.dmg` so they cannot overwrite the held `Chorus-1.5.19.dmg`, and they are packaged with the `hdiutil` fallback rather than `create-dmg`, which drives Finder with AppleScript and takes the screen while it does. The published artifact should still be built the documented way.
 
@@ -224,9 +235,7 @@ The test builds are named `Chorus-1.5.19-bNN.dmg` so they cannot overwrite the h
 
 The 1.5.18 app that used to be at the repo root was moved to `/tmp/chorus-app-1.5.18-*.app` rather than deleted, because the guard blocks a recursive delete there. It ages out on its own.
 
-**Steps 6 to 9 are not done and should not be done yet**: `gh release create`, `sign_update`, the appcast item, and the Homebrew cask in both repos.
-
-The install pass is done: build 32 went over `/Applications` on 2026-08-31 and has been in ordinary use since, with nine services across four spaces answering clicks and drawing badges. What is still owed is block 4 of `docs/internal/VERIFY-BY-HAND.md` — the tab bar at the 800 point minimum — and the tooltip in item 10.
+The by-hand pass is complete. Build 32 went over `/Applications` on 2026-08-31 and has been in ordinary use since, with nine services across four spaces answering clicks and drawing badges. Block 4 and the tooltip in item 10 both passed on 2026-09-03; item 25 is closed on the code rather than on a click, and `docs/internal/VERIFY-BY-HAND.md` records why.
 
 ### That DMG goes stale the moment `main` moves
 

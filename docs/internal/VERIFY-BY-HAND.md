@@ -6,7 +6,7 @@ Record the result next to each item. An unrun item is not a passing item.
 
 ## Start here: what is left before 1.5.19 can be published
 
-Where it stands on 2026-09-03. **Every item in this file has passed or is closed.** What is left is block 6 and then steps 6 to 9 of `release/DISTRIBUTION.md`. `main` carries everything, through PR #33. Nothing is published: no tag, no GitHub release, no appcast item, no cask bump, and the newest release anywhere is still v1.5.18. The suite is green on macOS 14 and 15.
+**Done. 1.5.19 published on 2026-09-03** as `v1.5.19`, build 32, from tag commit `6833544`. Every item in this file passed or was closed, block 6 was checked, and steps 6 to 9 of `release/DISTRIBUTION.md` all ran. Kept as the record of what was actually looked at, and for the traps in it. `main` carries everything, through PR #33. Nothing is published: no tag, no GitHub release, no appcast item, no cask bump, and the newest release anywhere is still v1.5.18. The suite is green on macOS 14 and 15.
 
 The artifact is `build/Chorus-1.5.19.dmg`: 1.5.19, build 32, signed, notarised, stapled, Gatekeeper-accepted, sha256 `ec276f7b38269a1f379d2f5d009b920557d1b12db455b00e025d323da30dbb73`, 8,883,765 bytes. It is the first build carrying PR #33, so builds 30 and 31 both hold the click-swallowing snapshot and every tick below against either of them is a tick against a different binary. The build-31 DMG is kept as `build/Chorus-1.5.19-b31-stale.dmg`.
 
@@ -17,7 +17,7 @@ Do these in order.
 3. ~~Item 5, then item 11~~ both passed on build 32.
 4. ~~Item 12's other half~~ passed on build 32.
 5. ~~Item 10~~, ~~item 8~~, ~~block 4~~ all passed.
-6. ~~Block 7~~ passed on build 32, item 25 closed on the code. Then block 6, then steps 6 to 9 of `release/DISTRIBUTION.md`.
+6. ~~Block 7~~ passed on build 32, item 25 closed on the code. ~~Block 6~~ and ~~steps 6 to 9~~ both done.
 
 If something fails, write it next to the item before fixing it.
 

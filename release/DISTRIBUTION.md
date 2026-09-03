@@ -210,8 +210,11 @@ A test build is still a branch build. Merge before cutting anything from it, and
    ```sh
    shasum -a 256 build/Chorus-X.Y.Z.dmg          # the stapled DMG you uploaded
 
-   # In this repo — release/homebrew/chorus.rb is the source of truth:
-   sed -i '' -E 's/version "[^"]+"/version "X.Y.Z"/; s/sha256 "[^"]+"/sha256 "NEW_SHA"/' \
+   # In this repo — release/homebrew/chorus.rb is the source of truth.
+   # Not `sed -i ''`: `sed` on this machine's PATH is GNU sed from `gnu-sed`,
+   # which reads the empty string as the script and the s/// as a filename,
+   # prints "can't read", and changes nothing. That form is BSD sed only.
+   perl -pi -e 's/version "[^"]+"/version "X.Y.Z"/; s/sha256 "[^"]+"/sha256 "NEW_SHA"/' \
      release/homebrew/chorus.rb
 
    # Copy into the tap clone and check it before pushing:
