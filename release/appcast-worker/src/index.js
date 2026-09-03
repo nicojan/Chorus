@@ -101,7 +101,7 @@ async function recordPing(request, env) {
   try {
     const day = dayStamp(new Date());
     const version = versionFromUserAgent(request.headers.get("user-agent"));
-    const address = request.headers.get("cf-connecting-ip") || "";
+    const address = normalizeAddress(request.headers.get("cf-connecting-ip"));
     const marker = await installationHash(env.PING_SALT, day, address, request.headers.get("user-agent") || "");
     const key = `u:${day}:${version}:${marker}`;
 
@@ -114,6 +114,41 @@ async function recordPing(request, env) {
   } catch (error) {
     // Counting is best-effort. Never surface this.
   }
+}
+
+// IPv6 privacy extensions rotate the host half of the address every day or so,
+// which is the same cadence Sparkle checks on: left alone, one machine would
+// look like a new one each time it rotated and inflate the count. Only the /64
+// network prefix is stable, so that is what gets hashed. IPv4 addresses are
+// already stable and pass through whole.
+//
+// The cost is that machines sharing a /64 count once, which is what already
+// happens to machines sharing an IPv4 address behind NAT.
+export function normalizeAddress(address) {
+  if (!address) {
+    return "";
+  }
+  if (!address.includes(":")) {
+    return address;
+  }
+
+  const bare = address.split("%")[0].toLowerCase();
+  const [head, tail] = bare.split("::");
+  const headGroups = head ? head.split(":") : [];
+  const tailGroups = tail ? tail.split(":") : [];
+
+  const groups = bare.includes("::")
+    ? [
+        ...headGroups,
+        ...new Array(Math.max(8 - headGroups.length - tailGroups.length, 0)).fill("0"),
+        ...tailGroups,
+      ]
+    : bare.split(":");
+
+  return groups
+    .slice(0, 4)
+    .map((group) => (group === "" ? "0" : group))
+    .join(":") + "::/64";
 }
 
 async function installationHash(salt, day, address, userAgent) {

@@ -47,11 +47,32 @@ curl -s -H "Authorization: Bearer $STATS_TOKEN" \
 
 One record per day, newest first: the total distinct installations and a breakdown by app version. Today's record is marked `partial`, because the day is still running and it is counted live rather than read from the rollup.
 
+A ping takes up to a minute to show up in today's `partial` record. KV listings are eventually consistent, so a check run seconds after a request will under-report and look like a bug. The rollup is unaffected: it runs at 00:15 UTC over a day that ended at 00:00.
+
 ## What the numbers mean
 
 A day's total counts machines that checked for an update that day, which is close to but not the same as people who opened the app. A machine left running for a week checks every day, whether or not anyone touches it. A laptop that stays shut is not counted until it wakes.
 
-Two things make the early numbers read low. Only builds from 1.5.20 on point at this feed, so every earlier copy still checks GitHub Pages and is invisible here; the count climbs as people update, and it is not growth. And several machines behind one address with the same app version hash to the same key and count once.
+Two things make the early numbers read low. Only builds from 1.5.20 on point at this feed, so every earlier copy still checks GitHub Pages and is invisible here; the count climbs as people update, and it is not growth. And several machines behind one address, or on one IPv6 network, with the same app version hash to the same key and count once.
+
+One thing makes them read high. A machine that reaches the feed over IPv4 one day and IPv6 the next hashes to two different keys, so it counts twice. Merging the two would need something that identifies the installation across both, which is exactly the thing this deliberately does not have. Treat a day's total as accurate to within a few percent.
+
+Reading the numbers:
+
+```sh
+curl -s -H "Authorization: Bearer $(security find-generic-password -s chorus-stats-token -w)" \
+  https://updates.nicojan.com/chorus/stats.json
+```
+
+The token lives in the login Keychain. This repo is public, so it stays out of here. Cloudflare stores secrets write-only, so a lost token cannot be read back; generate a new one and upload it with `wrangler secret put STATS_TOKEN`.
+
+## Tests
+
+```sh
+npm test
+```
+
+Covers the address normalization, which is where the counting is easiest to get quietly wrong: a rotating IPv6 address must collapse to one key, and two networks must stay two.
 
 ## Free-plan limits
 
