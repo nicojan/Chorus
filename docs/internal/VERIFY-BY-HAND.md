@@ -6,7 +6,7 @@ Record the result next to each item. An unrun item is not a passing item.
 
 ## Start here: what is left before 1.5.19 can be published
 
-Where it stands at the end of 2026-08-31. `main` carries everything, through PR #33. Nothing is published: no tag, no GitHub release, no appcast item, no cask bump, and the newest release anywhere is still v1.5.18. The suite is green on macOS 14 and 15.
+Where it stands on 2026-09-03. Block 4 is the only unrun item; everything else in this file has passed or is closed. `main` carries everything, through PR #33. Nothing is published: no tag, no GitHub release, no appcast item, no cask bump, and the newest release anywhere is still v1.5.18. The suite is green on macOS 14 and 15.
 
 The artifact is `build/Chorus-1.5.19.dmg`: 1.5.19, build 32, signed, notarised, stapled, Gatekeeper-accepted, sha256 `ec276f7b38269a1f379d2f5d009b920557d1b12db455b00e025d323da30dbb73`, 8,883,765 bytes. It is the first build carrying PR #33, so builds 30 and 31 both hold the click-swallowing snapshot and every tick below against either of them is a tick against a different binary. The build-31 DMG is kept as `build/Chorus-1.5.19-b31-stale.dmg`.
 
@@ -14,10 +14,10 @@ Do these in order.
 
 1. Eject any mounted Chorus disk image before installing. This is not hypothetical twice over: build 30's was left at `/Volumes/Chorus` and dragging from it puts the old build back without saying so, and on 2026-08-31 a build-31 image still mounted there sent a scripted check for build 32 to the stale volume, which reported build 31 and looked like a broken build. `hdiutil attach` mounts the second image at `/Volumes/Chorus 1` and says so only in its own output.
 2. Install `build/Chorus-1.5.19.dmg` over `/Applications`, launch it, and check About says 1.5.19 (32). Items 16, 17 and 19 below are ticked against build 30, so run them again.
-3. Item 5, then item 11. The 240 point rail with service names on. This is the layout most people will be in and nobody has looked at it.
-4. Item 12's other half: the 180 point space strip with space names on.
-5. Item 10, then item 8, then all of block 4.
-6. ~~Block 7~~ passed on build 32. Then block 6, then steps 6 to 9 of `release/DISTRIBUTION.md`.
+3. ~~Item 5, then item 11~~ both passed on build 32.
+4. ~~Item 12's other half~~ passed on build 32.
+5. ~~Item 10~~, ~~item 8~~ both passed. **Block 4 is the one thing left**, and it needs six or more services in one space before it tests anything — see the note on that block.
+6. ~~Block 7~~ passed on build 32, item 25 closed on the code. Then block 6, then steps 6 to 9 of `release/DISTRIBUTION.md`.
 
 If something fails, write it next to the item before fixing it.
 
@@ -45,15 +45,17 @@ Settings › Appearance, one pass per layout, in both appearances.
 ## Block 3 — the two name settings
 
 9. Turn **Show service names** off. The left rail should narrow to a column of icons, the space header should collapse to its emoji, and the add button should become a plus that fits the narrow rail. ✅ 2026-08-31, both appearances.
-10. With names off, hover a service. The tooltip should say the name **and** its state — muted, asleep, camera on — because the compact cell has no room to draw those. ❌ NOT RUN.
-11. Turn it back on. Everything should return to the wide rail. ❌ NOT RUN — see item 5.
+10. With names off, hover a service. The tooltip should say the name **and** its state — muted, asleep, camera on — because the compact cell has no room to draw those. ✅ 2026-09-03, build 32. Behaved as expected.
+11. Turn it back on. Everything should return to the wide rail. ✅ 2026-09-03, build 32.
 12. In the third layout, turn **Show space names** off and on. The strip should switch between 180 and 52 points, and the tabs beside it should shift to clear the traffic lights when it is narrow. ✅ 2026-08-31, build 32. The 180 point strip carries four space names with their badges, the traffic lights sit over it, and the tabs start clear of them. The 52 point strip was confirmed earlier.
 
-## Block 4 — the overflowing tab bar
+## Block 4 — the overflowing tab bar — ATTEMPTED 2026-09-03, OVERFLOW NEVER REACHED
 
-13. In a bar layout, put enough services in one space to overrun the window, then narrow the window to its 800 point minimum. ❌ NOT RUN.
-14. The add button must stay put at the end of the bar. The tabs should scroll under it, and the edge they run past should be soft rather than a tab cut through its icon. ❌ NOT RUN.
-15. Select an off-screen service with `⌘1`–`⌘9`. The bar should scroll it into view. ❌ NOT RUN.
+A first pass on 2026-09-03 never reached the overflow. Three services in the space at 800 points fit, so `ViewThatFits` picked `tabRow`, the hugging row, and there was empty draggable bar left over. Nothing in that state exercises this block: no scroll, no gradient, and the add button follows the last tab instead of holding the right edge. Tabs with names are 120 points wide (`ServiceRowView.tabTypicalWidth`) and the header and nav buttons take the rest, so about four fit at the 800 point minimum. **Six or more services in one space.** The tell that the path has flipped is the soft trailing edge, and the add button parting company with the last tab.
+
+13. In a bar layout, put enough services in one space to overrun the window, then narrow the window to its 800 point minimum. ❌ NOT RUN — the 2026-09-03 attempt fit three tabs and never overran.
+14. The add button must stay put at the end of the bar. The tabs should scroll under it, and the edge they run past should be soft rather than a tab cut through its icon. ❌ NOT RUN — what was looked at on 2026-09-03 was the hugging row, which has neither behaviour.
+15. Select an off-screen service with `⌘1`–`⌘9`. The bar should scroll it into view. ❌ NOT RUN — nothing was off screen on 2026-09-03.
 
 ## Block 5 — the install check (gates publishing)
 
@@ -74,7 +76,7 @@ A first pass on build 32 added TD from scratch and clicked straight away, which 
 
 23. Add `https://easyweb.td.com/` as a custom service. The login screen should come up. ✅ 2026-08-31, build 32, a service created from scratch.
 24. Switch to another service and back, then click a field and the Login button. Both must respond. This is where the page went dead. ✅ 2026-08-31, build 32, away for over five minutes and still responding on return.
-25. While a page is genuinely loading, click through the covering image. The click should reach the page under it. ⚠️ NOT RUN ON ITS OWN. Item 24's five-minute absence is the closest thing: long enough to soft-hibernate the view, which is what stores the snapshot in the first place, and the clicks on return landed. A short load is still unwatched.
+25. While a page is genuinely loading, click through the covering image. The click should reach the page under it. ✅ CLOSED 2026-09-03 on the code rather than on a click. `.allowsHitTesting(false)` sits unconditionally on the only branch that draws the image (`WebContentView.swift:65`); no path draws it without the modifier. A click test cannot tell a passed-through click from an image that was never drawn, which is the blind spot that made the first build-32 pass read as a pass. Reaching the overlay at all now needs a soft-hibernated service still mid-load on return: every switch-away soft-hibernates and keeps a snapshot but starts no load, while the policy timers call `hibernate(_:)`, whose `teardownWebView` drops the snapshot (`WebViewPool.swift:576`) and reloads from the URL. So a service left to hibernate on its policy comes back grey and then paints. That was observed on 2026-09-03 with the policy set to switch-away, and it is correct for that path. The grey is not new either: the snapshot removal dates to `061a047`, Phase 6. Item 24's five-minute absence remains the passing observation.
 26. Check the TD service's icon in the rail. It should be TD's own icon, not a letter tile. TD publishes nothing bigger than 16×16, so expect it to look soft. ✅ 2026-08-31, build 32, TD's green mark in the top bar, and it holds up better at that size than the 16×16 source suggested.
 
 ## Block 6 — before step 6 of DISTRIBUTION.md

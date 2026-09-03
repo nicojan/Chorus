@@ -5,7 +5,7 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
-## [1.5.19] - 2026-08-31
+## [1.5.19] - 2026-09-03
 
 ### Added
 
