@@ -1,5 +1,28 @@
 # Open items
 
+## Held for 1.5.20: counting how many people run Chorus
+
+On `feat/appcast-feed-counting`, pushed, five commits, not merged. **Deliberately off `main`** — `main` is the tree the 1.5.19 build-32 artifact was built from, and this branch edits `Chorus/Info.plist`, so merging it before 1.5.19 ships would break the "binary still matches `main`" check that publishing depends on.
+
+There was no way to tell how many people use Chorus. The daily Sparkle check is one request per installation per day, but it went to GitHub Pages, which keeps no request logs, so every one of them was thrown away. Release asset download counts were the only signal, and they mix new installs with Sparkle updaters pulling the same DMG.
+
+`release/appcast-worker` is a Cloudflare Worker at `updates.nicojan.com`, deployed and live. It passes the same `docs/appcast.xml` through — releasing does not change — and stores one KV key per installation per day, hashed from the address, user-agent, date and a secret salt, expiring after 48 hours. A cron at 00:15 UTC rolls each day up. `release/appcast-worker/stats.sh` prints the table. Counting can never block an update: the KV work runs after the response is on its way and swallows its own errors.
+
+`SUFeedURL` moves to the Worker in this branch. **The Pages URL must stay up forever** — every build up to 1.5.19 asks it for updates and always will. Settings gains a switch to turn the daily check off, which is what makes the README's claim true, and the README now says what the request carries.
+
+**Two bugs found and fixed by testing rather than reasoning, both worth knowing:**
+
+- A dual-stack machine counted twice, because the whole address went into the hash. The deeper problem behind it: IPv6 privacy extensions rotate the host half of an address roughly daily, which is exactly Sparkle's cadence, so one laptop would have looked like a new user on every rotation and drifted the count upward for no reason. Only the `/64` prefix is hashed now, pinned by `release/appcast-worker/test/address.test.mjs` and confirmed live — six IPv6 requests, one key.
+- KV listings are eventually consistent, so a ping takes up to a minute to appear in today's `partial` record. A check run seconds after a request under-reports and looks exactly like a broken counter. It cost ten minutes before the cause was clear.
+
+### Still open
+
+- **The Sparkle user-agent is confirmed only against a synthetic one.** A request sent as `Chorus/1.5.20 Sparkle/2.6.4` parsed to `1.5.20`, so the parser handles that shape. What a real Sparkle build actually sends has not been seen. If it differs, every row reads `unknown` and only the daily total stays right — check the first genuine ping after 1.5.20 ships.
+- **Known skew, not a defect to fix.** Machines sharing a `/64` or an IPv4 address count once; a machine that uses IPv4 one day and IPv6 the next counts twice. Closing that needs an identifier for the installation across both, which is the thing this design deliberately does not have. A daily total is good to a few percent.
+- **Free-tier ceiling of 1,000 distinct machines a day**, that being Cloudflare's KV write limit. Past it, extra machines go uncounted silently. 1.5.18 has 52 downloads, so this is far off; the fix when it arrives is Workers Paid and Analytics Engine.
+- **Numbers will read low for weeks and it is not a bug.** Only 1.5.20 and later report. Early growth is people updating, not new users.
+
+
 ## Merged: the click-swallowing snapshot, and the favicon after a redirect (PR #33, verified on build 32)
 
 Reported on 2026-08-31 against 1.5.19: TD EasyWeb added by custom URL showed its login screen and accepted no clicks, and it drew a letter tile rather than TD's icon. Two separate causes, both fixed on `fix/td-login-click-swallow`.
