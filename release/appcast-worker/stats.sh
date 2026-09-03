@@ -46,25 +46,26 @@ if not shown:
     sys.exit(0)
 
 versions = sorted({v for d in shown for v in d["byVersion"]}, reverse=True)
-width = max(9, *(len(v) for v in versions))
 
-print()
-print(f"{"Day":<12}{"Total":>6}   versions")
-print("-" * 12 + "-" * 6 + "   " + "-" * 40)
+print("")
+print("Day".ljust(12) + "Total".rjust(6) + "   versions")
+print("-" * 18 + "   " + "-" * 40)
 for d in shown:
-    split = "  ".join(f"{v} {d["byVersion"][v]}" for v in versions if v in d["byVersion"])
+    counts = d["byVersion"]
+    split = "  ".join(v + " " + str(counts[v]) for v in versions if v in counts)
     mark = "  (still counting)" if d.get("partial") else ""
-    print(f"{d["day"]:<12}{d["total"]:>6}   {split}{mark}")
+    print(d["day"].ljust(12) + str(d["total"]).rjust(6) + "   " + split + mark)
 
 finals = [d for d in shown if not d.get("partial")]
 if finals:
     peak = max(finals, key=lambda d: d["total"])
     mean = sum(d["total"] for d in finals) / len(finals)
-    print()
-    print(f"{len(finals)} full days: {mean:.0f} a day on average, peak {peak["total"]} on {peak["day"]}.")
-print()
+    print("")
+    print("%d full days: %.0f a day on average, peak %d on %s." % (
+        len(finals), mean, peak["total"], peak["day"]))
+print("")
 print("A day counts machines that checked for an update, which is close to but not")
 print("the same as people who opened the app. Accurate to within a few percent:")
 print("see the caveats in README.md.")
-print()
+print("")
 ' <<<"$RESPONSE"
