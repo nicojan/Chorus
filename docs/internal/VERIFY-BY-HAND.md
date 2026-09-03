@@ -6,7 +6,7 @@ Record the result next to each item. An unrun item is not a passing item.
 
 ## Start here: what is left before 1.5.19 can be published
 
-Where it stands on 2026-09-03. Block 4 is the only unrun item; everything else in this file has passed or is closed. `main` carries everything, through PR #33. Nothing is published: no tag, no GitHub release, no appcast item, no cask bump, and the newest release anywhere is still v1.5.18. The suite is green on macOS 14 and 15.
+Where it stands on 2026-09-03. **Every item in this file has passed or is closed.** What is left is block 6 and then steps 6 to 9 of `release/DISTRIBUTION.md`. `main` carries everything, through PR #33. Nothing is published: no tag, no GitHub release, no appcast item, no cask bump, and the newest release anywhere is still v1.5.18. The suite is green on macOS 14 and 15.
 
 The artifact is `build/Chorus-1.5.19.dmg`: 1.5.19, build 32, signed, notarised, stapled, Gatekeeper-accepted, sha256 `ec276f7b38269a1f379d2f5d009b920557d1b12db455b00e025d323da30dbb73`, 8,883,765 bytes. It is the first build carrying PR #33, so builds 30 and 31 both hold the click-swallowing snapshot and every tick below against either of them is a tick against a different binary. The build-31 DMG is kept as `build/Chorus-1.5.19-b31-stale.dmg`.
 
@@ -16,7 +16,7 @@ Do these in order.
 2. Install `build/Chorus-1.5.19.dmg` over `/Applications`, launch it, and check About says 1.5.19 (32). Items 16, 17 and 19 below are ticked against build 30, so run them again.
 3. ~~Item 5, then item 11~~ both passed on build 32.
 4. ~~Item 12's other half~~ passed on build 32.
-5. ~~Item 10~~, ~~item 8~~ both passed. **Block 4 is the one thing left**, and it needs six or more services in one space before it tests anything — see the note on that block.
+5. ~~Item 10~~, ~~item 8~~, ~~block 4~~ all passed.
 6. ~~Block 7~~ passed on build 32, item 25 closed on the code. Then block 6, then steps 6 to 9 of `release/DISTRIBUTION.md`.
 
 If something fails, write it next to the item before fixing it.
@@ -49,13 +49,15 @@ Settings › Appearance, one pass per layout, in both appearances.
 11. Turn it back on. Everything should return to the wide rail. ✅ 2026-09-03, build 32.
 12. In the third layout, turn **Show space names** off and on. The strip should switch between 180 and 52 points, and the tabs beside it should shift to clear the traffic lights when it is narrow. ✅ 2026-08-31, build 32. The 180 point strip carries four space names with their badges, the traffic lights sit over it, and the tabs start clear of them. The 52 point strip was confirmed earlier.
 
-## Block 4 — the overflowing tab bar — ATTEMPTED 2026-09-03, OVERFLOW NEVER REACHED
+## Block 4 — the overflowing tab bar — RUN 2026-09-03 ON BUILD 32, PASSED
 
-A first pass on 2026-09-03 never reached the overflow. Three services in the space at 800 points fit, so `ViewThatFits` picked `tabRow`, the hugging row, and there was empty draggable bar left over. Nothing in that state exercises this block: no scroll, no gradient, and the add button follows the last tab instead of holding the right edge. Tabs with names are 120 points wide (`ServiceRowView.tabTypicalWidth`) and the header and nav buttons take the rest, so about four fit at the 800 point minimum. **Six or more services in one space.** The tell that the path has flipped is the soft trailing edge, and the add button parting company with the last tab.
+It passed on the second attempt, with nine services in one space. The first attempt never reached the overflow, and that is the thing to carry: the hugging row looks fine too, so "the bar looks right at 800 points" is not evidence. The tell that `ViewThatFits` fell through to `scrollingTabRow` is the add button holding the right edge on its own, away from the last tab.
 
-13. In a bar layout, put enough services in one space to overrun the window, then narrow the window to its 800 point minimum. ❌ NOT RUN — the 2026-09-03 attempt fit three tabs and never overran.
-14. The add button must stay put at the end of the bar. The tabs should scroll under it, and the edge they run past should be soft rather than a tab cut through its icon. ❌ NOT RUN — what was looked at on 2026-09-03 was the hugging row, which has neither behaviour.
-15. Select an off-screen service with `⌘1`–`⌘9`. The bar should scroll it into view. ❌ NOT RUN — nothing was off screen on 2026-09-03.
+ Three services in the space at 800 points fit, so `ViewThatFits` picked `tabRow`, the hugging row, and there was empty draggable bar left over. Nothing in that state exercises this block: no scroll, no gradient, and the add button follows the last tab instead of holding the right edge. Tabs with names are 120 points wide (`ServiceRowView.tabTypicalWidth`) and the header and nav buttons take the rest, so about four fit at the 800 point minimum. **Six or more services in one space.** The tell that the path has flipped is the soft trailing edge, and the add button parting company with the last tab.
+
+13. In a bar layout, put enough services in one space to overrun the window, then narrow the window to its 800 point minimum. ✅ 2026-09-03, build 32, nine services. A first attempt with three fit and never overran.
+14. The add button must stay put at the end of the bar. The tabs should scroll under it, and the edge they run past should be soft rather than a tab cut through its icon. ✅ 2026-09-03, build 32. The add button holds the trailing edge clear of the last tab, which is what says the scrolling row is the one on screen.
+15. Select an off-screen service with `⌘1`–`⌘9`. The bar should scroll it into view. ✅ 2026-09-03, build 32.
 
 ## Block 5 — the install check (gates publishing)
 
