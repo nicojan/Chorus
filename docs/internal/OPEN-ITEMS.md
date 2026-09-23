@@ -1,6 +1,6 @@
 # Open items
 
-## Held for 1.5.20: counting how many people run Chorus
+## Shipped in 1.5.20: counting how many people run Chorus
 
 **Shipped in 1.5.20 on 2026-09-23.** Merged (`3033b9a`), released as `v1.5.20` on build 33, appcast live on both feeds, cask bumped. **The user-agent question is closed**: the first real pings parsed, and `stats.sh` reads `1.5.20 5` within the hour of release. Nothing about the counter is outstanding except watching the numbers. Watch the version row on the first real ping: no genuine Sparkle build has checked in yet, and if its user-agent does not parse, every version reads `unknown` and only the daily total survives.
 
@@ -23,9 +23,9 @@ There was no way to tell how many people use Chorus. The daily Sparkle check is 
 - **Numbers will read low for weeks and it is not a bug.** Only 1.5.20 and later report. Early growth is people updating, not new users.
 
 
-## Open: the share menu, built and unverified (rides in 1.5.20)
+## Shipped in 1.5.20: the share menu
 
-Built 2026-09-22 on `main`, uncommitted. `WebNavButtons` in `Chorus/Views/MainWindow/WebToolbarView.swift` gained a fifth control after Home: a `square.and.arrow.up` menu holding Copy Link, Open in Browser and Share. Share is a SwiftUI `ShareLink`, which presents the system sheet without needing an AppKit anchor view. The address comes from `webViewState.currentURL`, falling back to `webView.url` when the observer has not caught up, and the whole menu disables itself when both are nil. Build clean, 244 passed / 1 skipped / 0 failures on 2026-09-22.
+Built 2026-09-22, released in 1.5.20 on 2026-09-23. `WebNavButtons` in `Chorus/Views/MainWindow/WebToolbarView.swift` gained a fifth control after Home: a `square.and.arrow.up` menu holding Copy Link, Open in Browser and Share. Share is a SwiftUI `ShareLink`, which presents the system sheet without needing an AppKit anchor view. The address comes from `webViewState.currentURL`, falling back to `webView.url` when the observer has not caught up, and the whole menu disables itself when both are nil. Build clean, 244 passed / 1 skipped / 0 failures on 2026-09-22.
 
 It started as a single copy-link button. Two things changed it. Open in Browser closes a real gap — `NSWorkspace.shared.open` appears twice in the app and both are outbound link routing, so nothing ever handed the page you are on to a real browser. And a menu keeps the cluster at five controls rather than seven, which matters for the overlap below.
 
@@ -144,9 +144,9 @@ Part of it has now been seen by eye, on 2026-08-31, against the stapled build 30
 
 **Still unseen, and the first is the default:** the 240 point rail with service names *on*, the 180 point space strip with names on, dragging the window by the top edge in each layout, and all of block 4 — the tab bar overrunning at the 800 point minimum.
 
-## Open: the donation button is built and unreleased
+## Shipped in 1.5.19: the donation button
 
-A button 20 points across, in a 28 point target, sits in the top right of the main window and opens `https://buymeacoffee.com/0xff.r4bbit`; the About panel carries the same link in its credits field, through `CommandGroup(replacing: .appInfo)` in `ChorusApp.swift`. Verified by hand in all three layouts and in the panel. `SupportLink.url` in `ContentView.swift` is the single definition both use.
+Released in 1.5.19 on 2026-09-03. A button 20 points across, in a 28 point target, sits in the top right of the main window and opens `https://buymeacoffee.com/0xff.r4bbit`; the About panel carries the same link in its credits field, through `CommandGroup(replacing: .appInfo)` in `ChorusApp.swift`. Verified by hand in all three layouts and in the panel. `SupportLink.url` in `ContentView.swift` is the single definition both use.
 
 Both things that were open here are now settled, on 2026-08-16.
 
@@ -254,6 +254,16 @@ Measuring turned up seven things worth fixing, ranked by cost. Eight corner radi
 The radius collapse, the target sizes and the icon sizes are mechanical. The selection signal, the caption style and the banner shape are decisions somebody has to make first.
 
 **What the file does not cover.** The store banner, recovery banner and lock screen were built from source rather than traced, because producing them needs a damaged database. The offline banner is the same, since catching it needs the network to drop. Service icons are tinted placeholders. No automated pixel diff was run against the captures.
+
+## Shipped: 1.5.20, published 2026-09-23
+
+Build 33 went out as `v1.5.20`. The release carries `Chorus-1.5.20.dmg`, sha256 `ca8c7dd436c35cb3241c15b45ee36c169a6e0f3cee4308da5faf277de24a82c6`, 8,932,297 bytes. The tag sits on `4eee4e8`, and `project.yml` at that tag reads 1.5.20 and build 33. Both feeds serve the new item and the Homebrew cask is on 1.5.20 here and in the tap.
+
+Four changes: the appcast feed counter (merged from `feat/appcast-feed-counting`, with the Settings switch that turns the daily check off), the share menu, the snapshot cap, and the caption warning that a hand-added service goes quiet when it hibernates.
+
+**The counter's one unknown closed on release day.** Real Sparkle builds check in and parse — `stats.sh` read `1.5.20 5` within the hour. The `unknown` rows alongside them were `curl` requests made while verifying the feed, which is what an unparseable agent looks like; `unknown` is not by itself a broken parser.
+
+**What could not be checked, and it is not the cask's fault.** `brew style`, `brew livecheck` and `brew audit` all died in `bundle install`, timing out on rubygems.org while `curl` to that host returned 200 in 0.4 seconds. That gap is the local-firewall signature rather than a network fault. The cask was verified directly instead: the published asset downloads and hashes to the sha256 in the file, its size matches the enclosure length, and `ruby -c` parses it. Re-run the three commands once portable-ruby is allowed out, and note the trap in `release/DISTRIBUTION.md`.
 
 ## Shipped: 1.5.19, published 2026-09-03
 

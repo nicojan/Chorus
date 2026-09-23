@@ -234,6 +234,26 @@ A test build is still a branch build. Merge before cutting anything from it, and
    tap. Hash the **stapled** DMG — the one attached to the release — not the
    pre-notarization build, since stapling changes the bytes.
 
+   **If all three `brew` commands die the same way, it is not the cask.** On
+   1.5.20 every one of them failed inside `bundle install` with
+   `Gem::Net::OpenTimeout` against rubygems.org, while `curl` to that same host
+   returned 200 in 0.4 seconds. A timeout for one binary and a fast 200 for
+   another is the local-firewall signature, not a network fault: Little Snitch
+   drops an unfamiliar binary with no prompt, and Homebrew's portable-ruby
+   `bundle` is exactly that. Allow it out and re-run. Until then the cask can be
+   verified directly, which covers what those commands would have caught that
+   can actually break an install:
+   ```sh
+   curl -sSL -o /tmp/published.dmg \
+     https://github.com/nicojan/Chorus/releases/download/vX.Y.Z/Chorus-X.Y.Z.dmg
+   shasum -a 256 /tmp/published.dmg          # must equal the cask's sha256
+   wc -c < /tmp/published.dmg                # must equal the appcast enclosure length
+   ruby -c "$(brew --repo nicojan/tap)/Casks/chorus.rb"
+   curl -s https://nicojan.github.io/Chorus/appcast.xml | grep -m1 "<title>"
+   ```
+   Hash the asset **as published**, downloaded back from the release, rather than
+   the local file — that is the one the cask sends people to.
+
 ---
 
 ## Homebrew
