@@ -246,6 +246,27 @@ final class ChorusTests: XCTestCase {
     }
 
     @MainActor
+    func testSnapshotCapDropsTheOldestAndKeepsTheRecent() {
+        let ids = (0..<5).map { _ in UUID() }
+
+        // Under the cap nothing goes.
+        XCTAssertEqual(WebViewPool.snapshotEvictions(order: Array(ids.prefix(3)), cap: 3), [])
+
+        // Past it, the oldest go first — the services you have not been near.
+        let dropped = WebViewPool.snapshotEvictions(order: ids, cap: 3)
+        XCTAssertEqual(dropped, [ids[0], ids[1]], "the two oldest go, in order")
+        XCTAssertFalse(dropped.contains(ids[4]), "the one just stored is never dropped")
+    }
+
+    @MainActor
+    func testSnapshotCapHandlesDegenerateCaps() {
+        let ids = (0..<2).map { _ in UUID() }
+        XCTAssertEqual(WebViewPool.snapshotEvictions(order: [], cap: 3), [])
+        XCTAssertEqual(WebViewPool.snapshotEvictions(order: ids, cap: 0), ids, "a zero cap keeps none")
+        XCTAssertEqual(WebViewPool.snapshotEvictions(order: ids, cap: -1), [], "a negative cap is not a licence to drop")
+    }
+
+    @MainActor
     func testUpdateBadgeClampsOutOfRangeCounts() {
         let manager = BadgeManager()
         let negative = UUID()

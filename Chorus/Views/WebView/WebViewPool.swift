@@ -10,6 +10,16 @@ final class WebViewPool {
     private var coordinators: [UUID: WebViewCoordinator] = [:]
     private var suspendedURLs: [UUID: String] = [:]
     private var snapshots: [UUID: NSImage] = [:]
+    /// Snapshot ids in the order they were stored, oldest first. Drives the cap
+    /// below; `snapshots` alone has no order to evict by.
+    private var snapshotOrder: [UUID] = []
+    /// How many switch-away snapshots to keep. Each one is a full-window bitmap
+    /// at backing scale — on a 1080 point window at 2x, about 13 MB — and before
+    /// this cap every service you had ever switched away from held one for the
+    /// life of the process. Three covers going back and forth between the
+    /// services you are actually working in; a service older than that shows a
+    /// plain load, which is what a fully hibernated one already does.
+    private static let maxSnapshots: Int = 3
     private let maxLoaded: Int = 15
 
     /// Guard set: IDs currently being evaluated for eviction.
@@ -321,7 +331,7 @@ final class WebViewPool {
         evictionInFlight.remove(instanceID)
         userScriptManager.removeHandler(for: instanceID)
         onServiceRemoved?(instanceID)
-        snapshots.removeValue(forKey: instanceID)
+        dropSnapshot(for: instanceID)
     }
 
     func hasWebView(for instanceID: UUID) -> Bool {
@@ -461,7 +471,7 @@ final class WebViewPool {
                 // removed (deleted) meanwhile, don't re-insert a snapshot for a
                 // dead id — that would be a small permanent leak.
                 guard self.webViews[id] != nil else { return }
-                self.snapshots[id] = image
+                self.storeSnapshot(image, for: id)
             }
         }
         AppLogger.webView.debug("Soft-hibernated service \(id)")
@@ -472,8 +482,47 @@ final class WebViewPool {
     private func wakeService(_ id: UUID) {
         guard let webView = webViews[id] else { return }
         webView.setAllMediaPlaybackSuspended(false)
+        // The snapshot exists to cover the wake, so it has done its job here.
+        // WebContentView reads it before asking for the web view and holds its
+        // own reference until the page finishes loading, so this cannot blank
+        // the transition. Left in place it would keep one window-sized NSImage
+        // per service resident until teardown.
+        dropSnapshot(for: id)
         AppLogger.webView.debug("Woke service \(id)")
         onServiceSoftWoke?(id)
+    }
+
+    /// Stores a switch-away snapshot and trims the oldest past the cap.
+    private func storeSnapshot(_ image: NSImage, for id: UUID) {
+        snapshots[id] = image
+        snapshotOrder.removeAll { $0 == id }
+        snapshotOrder.append(id)
+        for stale in Self.snapshotEvictions(order: snapshotOrder, cap: Self.maxSnapshots) {
+            snapshots.removeValue(forKey: stale)
+            snapshotOrder.removeAll { $0 == stale }
+        }
+        let megabytes = snapshots.values.reduce(0) { $0 + Self.approximateBytes($1) } / 1_048_576
+        AppLogger.webView.debug("Snapshots: \(self.snapshots.count) holding about \(megabytes) MB")
+    }
+
+    /// Forgets a service's snapshot, keeping the order list in step.
+    private func dropSnapshot(for id: UUID) {
+        snapshots.removeValue(forKey: id)
+        snapshotOrder.removeAll { $0 == id }
+    }
+
+    /// The ids to drop, oldest first, once `order` runs past `cap`. Pure so the
+    /// cap can be tested without a web view to snapshot.
+    static func snapshotEvictions(order: [UUID], cap: Int) -> [UUID] {
+        guard cap >= 0, order.count > cap else { return [] }
+        return Array(order.prefix(order.count - cap))
+    }
+
+    /// Roughly what a snapshot costs in memory: its representations at four
+    /// bytes a pixel. `NSImage` reports no byte count of its own, so this is for
+    /// the log line rather than for any decision the code makes.
+    static func approximateBytes(_ image: NSImage) -> Int {
+        image.representations.reduce(0) { $0 + $1.pixelsWide * $1.pixelsHigh * 4 }
     }
 
     // MARK: - Private
@@ -573,7 +622,7 @@ final class WebViewPool {
         webViews.removeValue(forKey: instanceID)
         lastAccessTimes.removeValue(forKey: instanceID)
         coordinators.removeValue(forKey: instanceID)
-        snapshots.removeValue(forKey: instanceID)
+        dropSnapshot(for: instanceID)
         onServiceTornDown?(instanceID)
     }
 
