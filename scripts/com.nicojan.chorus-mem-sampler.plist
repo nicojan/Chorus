@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Keeps sample_memory.sh running across logout, sleep and reboot. Run by hand it
+  dies with the shell that started it, which is how a three-hour sample ended up
+  standing in for an overnight one.
+
+  Install:  launchctl bootstrap gui/$UID scripts/com.nicojan.chorus-mem-sampler.plist
+  Remove:   launchctl bootout gui/$UID/com.nicojan.chorus-mem-sampler
+
+  REPO_PATH below is rewritten by scripts/install_mem_sampler.sh; edit that
+  script rather than this file if the paths move.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.nicojan.chorus-mem-sampler</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>REPO_PATH/scripts/sample_memory.sh</string>
+        <string>HOME_PATH/Library/Logs/chorus-mem.csv</string>
+        <string>300</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardErrorPath</key>
+    <string>HOME_PATH/Library/Logs/chorus-mem-sampler.err</string>
+</dict>
+</plist>
