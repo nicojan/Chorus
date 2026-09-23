@@ -3,6 +3,27 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.20</title>
+            <pubDate>Mon, 22 Sep 2026 23:55:00 -0700</pubDate>
+            <sparkle:version>33</sparkle:version>
+            <sparkle:shortVersionString>1.5.20</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Added</h3>
+<ul>
+<li>A switch in Settings turns the daily update check off. It was always on before, with no way to stop it.</li>
+<li>The navigation buttons gained a share button. It copies the address of the page you are on, opens that page in your usual browser, or hands it to the system share sheet. Until a service has finished loading for the first time there is no address to work with, and the button stays greyed out.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Chorus now asks a server I run whether an update is out, rather than asking GitHub. I count those requests. It is the only way I can tell how many people use Chorus, and GitHub kept no record of them. What I keep is a number per day and a breakdown by version, and I do not store your IP address. The README says what the request carries and how to switch it off.</li>
+<li>Chorus holds on to less memory over a long run. When you switch away from a service it keeps a picture of how the page looked, so coming back does not show you a blank rectangle while it loads. It was keeping one of those for every service you had ever left, at full window size, for as long as Chorus stayed open. It now keeps the last three and drops each one the moment the page it covers is back.</li>
+<li>A service you added by typing its address now says what hibernating it costs. Chorus keeps chat apps from its own list loaded so their messages reach you at once, but it cannot tell what a service you typed in is, so it hibernates that one like any other page and its notifications stop arriving until you open it. The setting says so now instead of leaving you to find out.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.20/Chorus-1.5.20.dmg" length="8932297" type="application/octet-stream" sparkle:edSignature="cxrVL5UyVYq6Q6bg+Vz+LsgMUsyF1rk+4J6jpeFEeoeKtwKdECIvVPS8AwsbxBap+iKK1PjlYod/oUM/J76TAw=="/>
+        </item>
+        <item>
             <title>1.5.19</title>
             <pubDate>Thu, 03 Sep 2026 01:03:00 -0700</pubDate>
             <sparkle:version>32</sparkle:version>
