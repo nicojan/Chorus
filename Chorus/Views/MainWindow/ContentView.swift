@@ -137,7 +137,7 @@ struct ContentView: View {
         // would otherwise move the window instead of reordering) and let the
         // WindowDragHandles move the window instead. The sidebar keeps the
         // normal title-bar drag.
-        .background(WindowMovableConfigurator(isMovable: appState.railLayout == .sidebar))
+        .background(WindowMovableConfigurator(isMovable: !appState.railLayout.hasTopBar))
         // Ask for macOS notification permission here, not in AppState.init:
         // requesting during App.init (before the scene exists) can fail with
         // "Notifications are not allowed for this application" and leave the app
@@ -227,13 +227,12 @@ struct ContentView: View {
         }
     }
 
-    /// Arranges the rails and the web content per the chosen layout: one rail
-    /// down the left, one along the top as a bar of tabs, or the spaces down the
-    /// left with that space's services along the top.
+    /// Arranges the rails and web content for the chosen layout, including the
+    /// compact left rail that groups every service by space.
     ///
-    /// The first two draw one rail, with the current space as its header. The
-    /// third is the only one that still puts two rails on screen, and there the
-    /// header comes off — the strip beside it is already saying where you are.
+    /// The ordinary left and top rails show the current space as their header.
+    /// The hybrid and all-services layouts already show spaces in the rail, so
+    /// they omit that header.
     @ViewBuilder
     private func mainLayout(
         spaceSelection: Binding<UUID?>,
@@ -248,6 +247,19 @@ struct ContentView: View {
         case .sidebar:
             HStack(spacing: 0) {
                 rail(axis: .vertical, spaceSelection: spaceSelection, serviceSelection: serviceSelection, contentInset: lightsHeight)
+                Divider()
+                webContent
+            }
+        case .allServices:
+            HStack(spacing: 0) {
+                rail(
+                    axis: .vertical,
+                    spaceSelection: spaceSelection,
+                    serviceSelection: serviceSelection,
+                    contentInset: lightsHeight,
+                    showsSpaceHeader: false,
+                    showsAllSpaces: true
+                )
                 Divider()
                 webContent
             }
@@ -290,14 +302,16 @@ struct ContentView: View {
         spaceSelection: Binding<UUID?>,
         serviceSelection: Binding<UUID?>,
         contentInset: CGFloat = 0,
-        showsSpaceHeader: Bool = true
+        showsSpaceHeader: Bool = true,
+        showsAllSpaces: Bool = false
     ) -> some View {
         UnifiedRailView(
             selectedSpaceID: spaceSelection,
             selectedServiceID: serviceSelection,
             axis: axis,
             contentInset: contentInset,
-            showsSpaceHeader: showsSpaceHeader
+            showsSpaceHeader: showsSpaceHeader,
+            showsAllSpaces: showsAllSpaces
         )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Space and services")
@@ -318,7 +332,7 @@ struct ContentView: View {
     private var supportButtonTopInset: CGFloat {
         let overhang = SupportButtonMetrics.targetOverhang
         switch appState.railLayout {
-        case .sidebar: return 6 - overhang
+        case .sidebar, .allServices: return 6 - overhang
         // The hybrid layout puts the same 42 point bar along the top, so the
         // button is centred in it the same way.
         case .topBars, .hybrid: return (UnifiedRailView.barHeight - SupportButtonMetrics.chipSize) / 2 - overhang

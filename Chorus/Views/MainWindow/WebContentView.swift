@@ -28,12 +28,10 @@ struct WebContentView: View {
                     passkeyNoticeBanner
                 }
 
-                // Both bar layouts host the nav buttons in the top bar itself;
-                // the sidebar layout has no bar, so they get a slim row above
-                // the content. Keyed off `.sidebar` rather than listing the
-                // other two: a bar or a row are the only two places the buttons
-                // can go, and only one layout has no bar.
-                if appState.railLayout == .sidebar {
+                // Both bar layouts host the nav buttons in the top bar itself.
+                // The two left-rail layouts have no top bar, so they get a slim
+                // navigation row above the content.
+                if !appState.railLayout.hasTopBar {
                     WebNavButtons(webViewState: webViewState, homeURL: URL(string: service.url))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)

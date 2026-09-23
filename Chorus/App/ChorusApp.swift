@@ -100,8 +100,12 @@ struct ChorusApp: App {
                     get: { appState.selectedSpaceID },
                     set: { appState.selectedSpaceID = $0 }
                 ),
+                railLayout: appState.railLayout,
                 getServicesForSpace: { spaceID in
                     servicesForSpace(spaceID)
+                },
+                getAllServiceDestinations: {
+                    allServiceDestinations()
                 },
                 getSpaces: {
                     allSpaces()
@@ -179,6 +183,15 @@ struct ChorusApp: App {
         } catch {
             AppLogger.dataStore.error("Failed to fetch spaces: \(error.localizedDescription)")
             return []
+        }
+    }
+
+    @MainActor
+    private func allServiceDestinations() -> [ServiceShortcutDestination] {
+        allSpaces().flatMap { space in
+            appState.servicesForSpace(space.id).map { service in
+                ServiceShortcutDestination(spaceID: space.id, serviceID: service.id)
+            }
         }
     }
 

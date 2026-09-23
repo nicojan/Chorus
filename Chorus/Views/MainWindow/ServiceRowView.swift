@@ -32,6 +32,9 @@ struct ServiceRowView: View {
     /// the room. Nothing becomes unreachable: the name is still in the tooltip
     /// and the spoken label, and so is every accessory the compact cell drops.
     var showsName: Bool = true
+    /// Optional group context for layouts that show the same service in more
+    /// than one space. Compact tooltips and VoiceOver include it.
+    var spaceName: String? = nil
     /// Whether the keyboard is on this row. Drawn as a ring, never as the fill
     /// selection uses — see `RowMark`.
     var isFocused: Bool = false
@@ -94,7 +97,7 @@ struct ServiceRowView: View {
 
     /// What VoiceOver reads, and what the compact cell's tooltip borrows.
     private var spokenLabel: String {
-        ServiceAccessibility.label(
+        let label = ServiceAccessibility.label(
             name: instance.label,
             badgeCount: badgeCount,
             isHibernated: isHibernated,
@@ -104,6 +107,8 @@ struct ServiceRowView: View {
             micMuted: micMuted,
             health: health
         )
+        guard let spaceName else { return label }
+        return "\(label), \(spaceName)"
     }
 
     @ViewBuilder
