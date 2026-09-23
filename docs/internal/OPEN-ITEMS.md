@@ -23,6 +23,69 @@ There was no way to tell how many people use Chorus. The daily Sparkle check is 
 - **Numbers will read low for weeks and it is not a bug.** Only 1.5.20 and later report. Early growth is people updating, not new users.
 
 
+## Open: the share menu, built and unverified (rides in 1.5.20)
+
+Built 2026-09-22 on `main`, uncommitted. `WebNavButtons` in `Chorus/Views/MainWindow/WebToolbarView.swift` gained a fifth control after Home: a `square.and.arrow.up` menu holding Copy Link, Open in Browser and Share. Share is a SwiftUI `ShareLink`, which presents the system sheet without needing an AppKit anchor view. The address comes from `webViewState.currentURL`, falling back to `webView.url` when the observer has not caught up, and the whole menu disables itself when both are nil. Build clean, 244 passed / 1 skipped / 0 failures on 2026-09-22.
+
+It started as a single copy-link button. Two things changed it. Open in Browser closes a real gap — `NSWorkspace.shared.open` appears twice in the app and both are outbound link routing, so nothing ever handed the page you are on to a real browser. And a menu keeps the cluster at five controls rather than seven, which matters for the overlap below.
+
+**A layout bug turned up on the way and is fixed here.** Swapping an SF Symbol for one of a different width re-lays the whole `HStack` out and shifts every button beside it. The copy button showed it first (`link` for `checkmark`), but the reload button has had it since the cluster was written: `arrow.clockwise` for `xmark` on every navigation. Every glyph in the row now sits in a fixed 16 by 14 box, which fixes both.
+
+**Checked in the running app on 2026-09-22, and it holds.** Debug build, `hybrid` at the 800 point window minimum: five nav buttons and the donation cup with clear air between them. The menu opens with all three items drawn, and Copy Link put the exact address of the page on screen onto the pasteboard — a Teams sign-in redirect, which is the awkward case worth knowing about (see below). `topBars` was not captured separately and does not need to be: `UnifiedRailView` is the two layouts collapsed into one view, and `hybrid` is the tighter of the two because it also spends width on the strip of spaces down the left.
+
+The geometry argument behind it, which is what makes the single capture enough: `UnifiedRailView.swift:227` reserves `SupportButtonMetrics.reservedWidth` — 44 points — as trailing *padding on the whole nav group*, not as a width budget the group spends. So a fifth button grows the cluster leftward into the `Spacer(minLength: 40)` and cannot eat the cup's clearance at all. The reserve being "sized for four buttons" was the wrong way to read it.
+
+**What a copied link is worth is a separate question.** On a service mid-sign-in the address is the OAuth redirect, which is the page you are on and useless to send anyone. Correct behaviour, and not obviously the behaviour a user wants. Nothing to do about it without the service knowing its own canonical URL, which most do not expose.
+
+**No test covers it.** `currentPageURL`, `copyCurrentURL()` and `openInDefaultBrowser()` are private members of the view, so nothing can reach them. Lifting the URL choice into a testable helper would cover the fallback and the nil case; about ten minutes, and it is the difference between a green suite and a green suite that says anything about this feature.
+
+## Open: memory grows over a long run — it ramps for a day, then flattens
+
+Measured 2026-09-22 against `~/Library/Logs/chorus-mem.csv`: 1,689 rows across 15 launches, collected 2026-08-24 to 2026-09-03. Split by pid, which is the trap that produced the wrong reading last time. Three runs are long enough to say anything:
+
+| run | span | main process | slope |
+|---|---|---|---|
+| pid 74112 | 33.1h | 157 → 266 MB | +3.3 MB/h |
+| pid 1607 | 56.9h | 181 → 291 MB | +2.2 MB/h |
+| pid 88262 | 17.9h | 172 → 256 MB | +3.6 MB/h |
+
+The 57 hour run carries the finding, being the only one long enough to show a shape. In six-hour means the main process climbs 173 → 258 MB over the first day and then holds: 258, 260, 265, 265, 273 MB across hours 24 to 60. That is a ramp to a steady state around 260–270 MB rather than the unbounded climb this was filed as. The old 10 MB/h figure came from a single 3 hour sample that sat entirely inside the ramp.
+
+`webcontent_mb` shows no trend at all. It swings between 0.8 and 7.8 GB with what is open, and the sign of its slope flips from run to run — that is page content, not a leak.
+
+**A candidate for the ramp, found in the code on 2026-09-22.** `WebViewPool.softHibernateService` (`WebViewPool.swift:456`) calls `takeSnapshot(with: nil)`, which means the full view bounds at backing scale — roughly 2160 by 1520 by 4 bytes, about 13 MB, for a 1080 point window on a 2x display. The image goes into `snapshots[id]` and only `teardownWebView` ever removes it, so every service you switch away from leaves one resident for the life of the process.
+
+It fits the curve. `web_procs` is flat from the first sample of the 57 hour run — every service is already live inside the first hour — so the ramp is not services loading. The main process climbs about 90 MB across a day and stops, against 16 services you would visit at least once in that day. That is 6 to 13 MB a service.
+
+**It is a hypothesis with a good fit, not a measurement**, so what went in on 2026-09-22 both bounds the cost and measures it:
+
+- **`wakeService` releases the snapshot.** This is `b2ef7c3`'s change from `feat/spaces-presentation`, never merged until now. The ordering it relies on still holds: `WebContentView.swift:145` reads the snapshot before line 146 asks the pool for the web view, and holds its own reference until the load finishes, so dropping it on wake cannot blank the transition. PR #33 reworked that area without breaking the assumption.
+- **A cap of three**, oldest dropped first, through `storeSnapshot` / `dropSnapshot` and the pure `WebViewPool.snapshotEvictions(order:cap:)`, which two tests cover. Worst case goes from one bitmap per service ever visited to three.
+- **A debug log line** at every capture: how many snapshots are held and roughly what they cost, via `approximateBytes`. That is the discriminating measurement — if the plateau falls by about what the log says the snapshots were, the hypothesis is confirmed; if it does not, this was the wrong suspect and the next run says so.
+
+**Two further reductions deliberately not taken.** Capturing at half width through `WKSnapshotConfiguration.snapshotWidth` is four times less memory, but the image is drawn full-size over a loading page and half-resolution text upscales visibly — that is a real cost to a user, not a free win, and the cap already bounds the total. Holding JPEG data and decoding on reveal is the bigger saving and the bigger change; it is worth doing only if the measurement says three full-size snapshots are still too much.
+
+**The far bigger number is `webcontent_mb`, and there is no cheap lever on it.** It runs 2 to 7 GB across 15 to 17 live WebContent processes. `autoHibernateIdleEnabledEffective` (`AppPreferences.swift:208`) defaults to false, so the auto-idle hibernation shipped in 1.5.9 is off for almost everyone, and turning it on by default looks like free memory. It is not. **Do not make that change in its current shape**; an earlier draft of this section recommended it and was wrong.
+
+A fully hibernated service is torn down, so no page script runs and it fires no notifications at all — only the badge moves, on the poller's sweep (`ServiceInstance.swift:284` says so). The exemption that is supposed to protect against this is `isNotificationCritical`, and it is one catalog category, `Messaging`: 13 of the 74 catalog services. **Email is not in it.** Neither is Productivity nor Developer. So defaulting the setting on would silence Gmail, Outlook, Fastmail, ProtonMail, every calendar reminder, every Figma comment, every Sentry alert and every GitHub mention, an hour after you last looked at them. A mail service that stops reporting mail is a broken mail service, and a badge that catches up on the next sweep is not the same product.
+
+Two further edges in the same rule, both live in shipped code:
+
+- **A service added by typing its address is never exempt.** `isNotificationCritical` returns false when `catalogEntryID` is nil, so a self-hosted Mattermost, a second Slack added by hand, or any chat app outside the 74 hibernates like any other page and goes quiet. Anyone who turned the setting on has been silencing those with nothing to tell them: the reassuring "chat apps stay loaded" note in `EditServiceSheet` only draws for catalog services. **A caption for the custom case is added on `main` as of 2026-09-22**, which is the honest minimum; it does not make the behaviour right, it stops it being silent.
+- **The rule is over-inclusive too.** LinkedIn and Zoom sit in `Messaging`, so they stay resident for the life of the process whatever you set, which is memory spent for very little alert value.
+
+What would make a default-on defensible is a behavioural exemption rather than a categorical one: the app already sees every notification a page posts through the `chorusNotification` handler, so "this service actually pushed something in the last week" is a fact it can hold, and it covers custom services, which no category ever will. That needs the data collected first and is not 1.5.20 work.
+
+And soft hibernation does not help here. It suspends media and lets WebKit drop GPU and compositor resources while the WebContent process stays up, so the multi-GB figure is untouched. The page has to stop running for that memory to come back, and a page that has stopped running cannot notify you. That trade is real and cannot be designed away.
+
+**Still open:**
+
+- **The plateau is 36 hours of evidence from one run.** Confirm it holds past 60 hours before closing this.
+- **The sampler has been dead since 2026-09-03 at 00:58, and the cause is now known.** `launchctl list` reports exit 127 and `~/Library/Logs/chorus-mem-sampler.err` says `/bin/zsh: can't open input file: /Users/nicojan/dev/Chorus/scripts/sample_memory.sh`, repeated. The script was never on `main`: it and `install_mem_sampler.sh` live only on `feat/spaces-presentation`, so checking `main` out deleted them from the working tree while the LaunchAgent kept firing at the absolute path. Both scripts were restored to `main` on 2026-09-22 and the agent is loaded again (`launchctl list` shows it running, exit 0). No data for the 19 days between, and none will appear until the release app runs — the sampler only samples `/Applications/Chorus.app`.
+- **Two short runs read +83 and +93 MB/h** (pids 71512 and 2287, 2.2h and 4.6h). Both sit inside the first hours of a launch, so they are the ramp seen close up rather than a second phenomenon, but neither ran long enough to prove that.
+
+This supersedes the "Open: memory grows over a long run" section on `feat/spaces-presentation`, which predates the multi-day data.
+
 ## Merged: the click-swallowing snapshot, and the favicon after a redirect (PR #33, verified on build 32)
 
 Reported on 2026-08-31 against 1.5.19: TD EasyWeb added by custom URL showed its login screen and accepted no clicks, and it drew a letter tile rather than TD's icon. Two separate causes, both fixed on `fix/td-login-click-swallow`.

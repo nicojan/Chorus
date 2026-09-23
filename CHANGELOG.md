@@ -5,6 +5,15 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+
+- Chorus holds on to less memory over a long run. When you switch away from a service it keeps a picture of how the page looked, so coming back does not show you a blank rectangle while it loads. It was keeping one of those for every service you had ever left, at full window size, for as long as Chorus stayed open. It now keeps the last three and drops each one the moment the page it covers is back.
+- A service you added by typing its address now says what hibernating it costs. Chorus keeps chat apps from its own list loaded so their messages reach you at once, but it cannot tell what a service you typed in is, so it hibernates that one like any other page and its notifications stop arriving until you open it. The setting says so now instead of leaving you to find out.
+
+### Added
+
+- The navigation buttons gained a share button. It copies the address of the page you are on, opens that page in your usual browser, or hands it to the system share sheet. Until a service has finished loading for the first time there is no address to work with, and the button stays greyed out.
+
 ## [1.5.19] - 2026-09-03
 
 ### Added
