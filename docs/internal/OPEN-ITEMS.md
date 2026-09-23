@@ -2,7 +2,7 @@
 
 ## Held for 1.5.20: counting how many people run Chorus
 
-On `feat/appcast-feed-counting`, pushed, five commits, not merged. **The hold is over**: 1.5.19 shipped on 2026-09-03, so the reason this stayed off `main` (it edits `Chorus/Info.plist`, which would have broken the "binary still matches `main`" check) is gone. Merge it, bump to 1.5.20, and release. Watch the version row on the first real ping: no genuine Sparkle build has checked in yet, and if its user-agent does not parse, every version reads `unknown` and only the daily total survives.
+**Merged into `main` on 2026-09-22** (`3033b9a`), version bumped to 1.5.20 build 33, and pushed. Only `CHANGELOG.md` conflicted and it resolved as the handoff predicted. What is left is the release run itself — `release/DISTRIBUTION.md` from step 1, including the Homebrew cask at step 9. Watch the version row on the first real ping: no genuine Sparkle build has checked in yet, and if its user-agent does not parse, every version reads `unknown` and only the daily total survives.
 
 There was no way to tell how many people use Chorus. The daily Sparkle check is one request per installation per day, but it went to GitHub Pages, which keeps no request logs, so every one of them was thrown away. Release asset download counts were the only signal, and they mix new installs with Sparkle updaters pulling the same DMG.
 
@@ -17,6 +17,7 @@ There was no way to tell how many people use Chorus. The daily Sparkle check is 
 
 ### Still open
 
+- **Nothing reports until 1.5.20 is actually out.** The merge and the bump are done; the DMG, the GitHub release and the appcast are not.
 - **The Sparkle user-agent is confirmed only against a synthetic one.** A request sent as `Chorus/1.5.20 Sparkle/2.6.4` parsed to `1.5.20`, so the parser handles that shape. What a real Sparkle build actually sends has not been seen. If it differs, every row reads `unknown` and only the daily total stays right — check the first genuine ping after 1.5.20 ships.
 - **Known skew, not a defect to fix.** Machines sharing a `/64` or an IPv4 address count once; a machine that uses IPv4 one day and IPv6 the next counts twice. Closing that needs an identifier for the installation across both, which is the thing this design deliberately does not have. A daily total is good to a few percent.
 - **Free-tier ceiling of 1,000 distinct machines a day**, that being Cloudflare's KV write limit. Past it, extra machines go uncounted silently. 1.5.18 has 52 downloads, so this is far off; the fix when it arrives is Workers Paid and Analytics Engine.
