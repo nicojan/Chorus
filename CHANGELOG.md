@@ -5,14 +5,16 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
-### Changed
-
-- Chorus holds on to less memory over a long run. When you switch away from a service it keeps a picture of how the page looked, so coming back does not show you a blank rectangle while it loads. It was keeping one of those for every service you had ever left, at full window size, for as long as Chorus stayed open. It now keeps the last three and drops each one the moment the page it covers is back.
-- A service you added by typing its address now says what hibernating it costs. Chorus keeps chat apps from its own list loaded so their messages reach you at once, but it cannot tell what a service you typed in is, so it hibernates that one like any other page and its notifications stop arriving until you open it. The setting says so now instead of leaving you to find out.
-
 ### Added
 
+- A switch in Settings turns the daily update check off. It was always on before, with no way to stop it.
 - The navigation buttons gained a share button. It copies the address of the page you are on, opens that page in your usual browser, or hands it to the system share sheet. Until a service has finished loading for the first time there is no address to work with, and the button stays greyed out.
+
+### Changed
+
+- Chorus now asks a server I run whether an update is out, rather than asking GitHub. I count those requests. It is the only way I can tell how many people use Chorus, and GitHub kept no record of them. What I keep is a number per day and a breakdown by version, and I do not store your IP address. The README says what the request carries and how to switch it off.
+- Chorus holds on to less memory over a long run. When you switch away from a service it keeps a picture of how the page looked, so coming back does not show you a blank rectangle while it loads. It was keeping one of those for every service you had ever left, at full window size, for as long as Chorus stayed open. It now keeps the last three and drops each one the moment the page it covers is back.
+- A service you added by typing its address now says what hibernating it costs. Chorus keeps chat apps from its own list loaded so their messages reach you at once, but it cannot tell what a service you typed in is, so it hibernates that one like any other page and its notifications stop arriving until you open it. The setting says so now instead of leaving you to find out.
 
 ## [1.5.19] - 2026-09-03
 

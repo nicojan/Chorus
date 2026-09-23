@@ -124,6 +124,23 @@ version and the stapled DMG's sha256 into `release/homebrew/chorus.rb`, copy it 
 Skipping it leaves `brew` users on the old version; Sparkle still updates them, so
 it's cosmetic, not a break.
 
+## The two update feeds (never take the old one down)
+
+From 1.5.20 `SUFeedURL` is `https://updates.nicojan.com/chorus/appcast.xml`, a
+Cloudflare Worker in `release/appcast-worker` that passes `docs/appcast.xml`
+through and counts how many copies check each day. Releasing does not change:
+commit the appcast as before and the Worker serves it within five minutes.
+
+**`https://nicojan.github.io/Chorus/appcast.xml` must stay up forever.** Every
+build up to 1.5.19 asks it for updates and always will. Taking the Pages site
+down, or pointing `/docs` elsewhere, strands those users on the version they
+have with no way to tell them.
+
+To see how many people run Chorus, run `release/appcast-worker/stats.sh`. Only
+1.5.20 and later report, so the number climbs as people update and that is not
+growth. The rest of the caveats are in that folder's README; read them before
+quoting a figure.
+
 ## Ending a session
 
 When I say I am starting a new session, or ask to wrap up, update the docs first:

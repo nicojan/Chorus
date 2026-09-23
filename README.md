@@ -82,6 +82,14 @@ it ships with more than seventy preset services where Rambox lists several hundr
 though you can add any site by its URL. It also keeps your data on your Mac rather
 than syncing across devices.
 
+## What Chorus sends
+
+Once a day Chorus asks `updates.nicojan.com` whether a new version is out. That request carries what any web request carries: your IP address, and a line naming the app and its version. I run that server, and I count those requests, because it is the only way I can tell how many people use Chorus.
+
+What I keep is a number per day and a breakdown by version. I do not store your address. It goes into a hash along with the date and a secret, and I keep the result for two days so that one machine is not counted twice. The next day the same machine hashes to an unrelated value, which means the records cannot be joined into a history of one person. Everything else stays on your Mac: your accounts, the services you use, and what you do in the app.
+
+To stop the daily check, turn off **Automatically check for updates** in Settings. Chorus then contacts that server only when you press the button yourself.
+
 ## Requirements
 
 - macOS 14 (Sonoma) or later
