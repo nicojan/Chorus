@@ -5,6 +5,8 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.5.20] - 2026-09-22
+
 ### Added
 
 - A switch in Settings turns the daily update check off. It was always on before, with no way to stop it.
