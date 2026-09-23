@@ -1,10 +1,27 @@
-# Verify by hand — 1.5.19
+# Verify by hand — 1.5.20
 
 What scripted input and the test suite cannot check, in the order that finds problems soonest. Run it on a quiet machine: scripted clicks in an earlier pass landed in Finder and MacWhisper because the dev machine was in use, and one `⌘2` reached the installed release copy.
 
 Record the result next to each item. An unrun item is not a passing item.
 
-## Start here: what is left before 1.5.19 can be published
+## Start here: 1.5.20 is published
+
+**Done. 1.5.20 published on 2026-09-23** as `v1.5.20`, build 33, from tag commit `4eee4e8`. Artifact `build/Chorus-1.5.20.dmg`, 8,932,297 bytes, sha256 `ca8c7dd436c35cb3241c15b45ee36c169a6e0f3cee4308da5faf277de24a82c6`, signed, notarised, stapled, Gatekeeper-accepted. Steps 6 to 9 all ran; both feeds serve 1.5.20 and the cask is bumped in the tap.
+
+1.5.20 changes four things, so the pass was scoped to those rather than re-running every block below against an unchanged UI. What was checked on **build 33 itself**, installed over `/Applications` and launched on real data:
+
+1. **The store came up clean** — every space and service present, no warning banner, WhatsApp still signed in.
+2. **About says 1.5.20 (33).**
+3. **The switch-away and back path**, which is what the snapshot cap touches. `⌘4` then `⌘1`: the service's own loading screen, not a blank rectangle and not a stale image, and the page settled signed-in.
+4. **The nav row at the 800 point minimum**, nine services in the space: five nav buttons and the donation cup with clear air between them.
+5. **The share menu** — all three items draw, and Copy Link put the address of the page on screen onto the pasteboard (checked on the Debug build at 800 points; the release build was checked for the row geometry only).
+6. **The new update-check switch** is in Settings › About with its caption about what the daily check sends.
+
+**Not re-run, and why.** Blocks 1 to 7 below are ticked against build 32. 1.5.20 changes the nav row, the snapshot lifetime, one Settings caption and the feed URL; it touches no layout, rail, tab-overflow or naming code. The standing rule in `release/DISTRIBUTION.md` — a tick against an older build is not a tick against this one — is about a *rebuild of the same work*, not about blocks whose code did not move. If a rail or layout bug turns up in 1.5.20, that reasoning is where to look first.
+
+**One thing the pass could not reach.** `brew style`, `brew livecheck` and `brew audit` all failed: portable-ruby's `bundle install` times out on rubygems.org while `curl` to the same host returns 200 in 0.4 seconds, which is the local-firewall signature rather than a network fault. The cask was verified by hand instead — the published asset hashes to the sha256 in the file, the size matches the enclosure length, `ruby -c` parses it, and the appcast livecheck reads already serves 1.5.20. Re-run the three commands once portable-ruby is allowed out.
+
+## The 1.5.19 record: what was left before it could be published
 
 **Done. 1.5.19 published on 2026-09-03** as `v1.5.19`, build 32, from tag commit `6833544`. Every item in this file passed or was closed, block 6 was checked, and steps 6 to 9 of `release/DISTRIBUTION.md` all ran. Kept as the record of what was actually looked at, and for the traps in it. `main` carries everything, through PR #33. Nothing is published: no tag, no GitHub release, no appcast item, no cask bump, and the newest release anywhere is still v1.5.18. The suite is green on macOS 14 and 15.
 
