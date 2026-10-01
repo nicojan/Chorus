@@ -190,6 +190,14 @@ What would make a default-on defensible is a behavioural exemption rather than a
 
 And soft hibernation does not help here. It suspends media and lets WebKit drop GPU and compositor resources while the WebContent process stays up, so the multi-GB figure is untouched. The page has to stop running for that memory to come back, and a page that has stopped running cannot notify you. That trade is real and cannot be designed away.
 
+**Recycling pages that keep growing, built 2026-10-01.** The section above reads `webcontent_mb` as a sum across every WebContent process, and in that sum one page's growth vanishes into the swings of the others. Read one process at a time and it shows. On 2026-10-01 a single Chorus WebContent process went from 154 MB at 18:00 to 1.6 GB at 18:28 and 2.2 GB at 18:30, 1.5 GB of it `WebKit Malloc` (`footprint -p`) and 41 MB of WebAssembly. The WebKit logs hide the URL, so which service it held is inferred rather than proven, but WhatsApp Web is the only one of the six that fits: it is the WebAssembly user, and the Teams process had just been rebuilt. The WhatsApp app sat at about 460 MB on the same machine.
+
+This is option 3 from the old list, recycling instead of exempting, keyed on size rather than time. `AppState.startMemoryRecycleTimer` runs every five minutes. `WebViewPool.recycleCandidates` reads each page's footprint with `proc_pid_rusage` on the pid from `_webProcessIdentifier` (SPI, probed; if it is missing nothing recycles). A page more than five minutes old gets a baseline, its footprint at that moment. `recycleIfStillOversized` tears a page down and preloads it at once when it is past both 1.5 GB and twice its baseline, and only if it has been out of sight ten minutes, is not pinned, Keep Loaded, capturing, audible, or in a call. The call probe is a suspension point, so every guard is read again after it, the same as `hibernateIfStillIdle`.
+
+The baseline is what stops a page that just needs a lot of memory from being rebuilt over and over: a fresh load settles near its own baseline, so only growth trips the rule. A pure fixed limit would have looped on such a page every ten minutes. The test pins that, along with an overflow case it caught (`baseline × 2` wrapping to a small number).
+
+Checked by hand in a Debug build with the limits turned down (floor 1 MB, growth factor 0, settle 20 s, idle 30 s, sweep 30 s): five background services recycled in one pass, each old WebContent process exited, a new one came up and loaded back to its earlier size, and the service on screen was left alone. With the growth factor back at 2, five minutes of the same services (none signed in) stayed within a few MB of their baselines and none recycled. **Not yet seen against a signed-in WhatsApp over hours on a release build**, which is the case it exists for.
+
 **Still open:**
 
 - **The plateau is 36 hours of evidence from one run.** Confirm it holds past 60 hours before closing this.

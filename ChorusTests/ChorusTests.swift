@@ -387,6 +387,43 @@ final class ChorusTests: XCTestCase {
         XCTAssertFalse(dropped.contains(ids[4]), "the one just stored is never dropped")
     }
 
+    func testRecycleTakesOnlyAPageThatKeptGrowingAndNobodyIsUsing() {
+        let mb: UInt64 = 1_048_576
+        let floor = WebViewPool.recycleFootprintFloor
+        let idle = WebViewPool.recycleMinimumIdle
+        func recycle(
+            footprint: UInt64? = 2_000 * 1_048_576, baseline: UInt64? = 300 * 1_048_576,
+            idle: TimeInterval = idle, isActive: Bool = false,
+            isPinned: Bool = false, keepLoaded: Bool = false,
+            isCapturing: Bool = false, isPlayingAudio: Bool = false
+        ) -> Bool {
+            WebViewPool.shouldRecycle(
+                footprint: footprint, baseline: baseline, idle: idle, isActive: isActive,
+                isPinned: isPinned, keepLoaded: keepLoaded,
+                isCapturing: isCapturing, isPlayingAudio: isPlayingAudio
+            )
+        }
+
+        XCTAssertTrue(recycle(), "a page that grew past the floor, out of sight long enough, goes")
+        XCTAssertFalse(recycle(footprint: floor), "at the floor is not past it")
+        XCTAssertFalse(recycle(footprint: nil), "a size that cannot be read is left alone")
+        XCTAssertFalse(recycle(baseline: nil), "nor a page that has not settled yet")
+
+        // A page that needs a lot of memory just to run is not a leak. A fresh
+        // load lands near its baseline, so recycling it cannot loop.
+        XCTAssertFalse(recycle(footprint: 1_900 * mb, baseline: 1_800 * mb), "big but steady stays")
+        XCTAssertFalse(recycle(footprint: 3_600 * mb, baseline: 1_800 * mb), "exactly twice is not past it")
+        XCTAssertTrue(recycle(footprint: 3_700 * mb, baseline: 1_800 * mb), "past twice its own size goes")
+        XCTAssertFalse(recycle(footprint: .max, baseline: .max), "an absurd baseline cannot overflow into a recycle")
+
+        XCTAssertFalse(recycle(idle: idle - 1), "a page left moments ago may hold a draft")
+        XCTAssertFalse(recycle(isActive: true), "never the page on screen")
+        XCTAssertFalse(recycle(isPinned: true))
+        XCTAssertFalse(recycle(keepLoaded: true), "Keep Loaded means keep it as it is")
+        XCTAssertFalse(recycle(isCapturing: true), "never in the middle of a call")
+        XCTAssertFalse(recycle(isPlayingAudio: true))
+    }
+
     @MainActor
     func testSnapshotCapHandlesDegenerateCaps() {
         let ids = (0..<2).map { _ in UUID() }

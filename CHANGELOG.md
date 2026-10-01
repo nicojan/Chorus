@@ -5,6 +5,10 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A service you are not looking at no longer holds on to memory for as long as Chorus runs. Chat apps never sleep, so nothing ever made their pages let go of what they built up. WhatsApp Web grew from 154 MB to 1.6 GB in under half an hour; the WhatsApp app holds about 460 MB. Chorus now loads a fresh copy of a page once it reaches twice the size it settled at and passes 1.5 GB. The page comes straight back, so it keeps sending notifications. Chorus leaves a service alone while it is on screen, in a call, playing sound, set to Keep Loaded, or left less than ten minutes ago.
+
 ## [1.5.25] - 2026-10-01
 
 ### Fixed

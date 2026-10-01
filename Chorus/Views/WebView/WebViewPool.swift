@@ -10,6 +10,10 @@ final class WebViewPool {
     private var coordinators: [UUID: WebViewCoordinator] = [:]
     private var suspendedURLs: [UUID: String] = [:]
     private var snapshots: [UUID: NSImage] = [:]
+    /// When each live page was created, and its footprint once it settled.
+    /// Both drive memory recycling; see `recycleCandidates`.
+    private var loadedAt: [UUID: Date] = [:]
+    private var baselineFootprints: [UUID: UInt64] = [:]
     /// Snapshot ids in the order they were stored, oldest first. Drives the cap
     /// below; `snapshots` alone has no order to evict by.
     private var snapshotOrder: [UUID] = []
@@ -231,6 +235,7 @@ final class WebViewPool {
 
         webViews[instance.id] = webView
         lastAccessTimes[instance.id] = Date()
+        loadedAt[instance.id] = Date()
         observeCaptureState(webView, id: instance.id)
 
         // Restore the last-visited URL when waking from full hibernation
@@ -277,6 +282,7 @@ final class WebViewPool {
 
         webViews[instance.id] = webView
         lastAccessTimes[instance.id] = Date()
+        loadedAt[instance.id] = Date()
         observeCaptureState(webView, id: instance.id)
 
         // Register the hibernation-exemption flags now, not just on first
@@ -683,6 +689,8 @@ final class WebViewPool {
         webViews.removeValue(forKey: instanceID)
         lastAccessTimes.removeValue(forKey: instanceID)
         coordinators.removeValue(forKey: instanceID)
+        loadedAt.removeValue(forKey: instanceID)
+        baselineFootprints.removeValue(forKey: instanceID)
         dropSnapshot(for: instanceID)
         onServiceTornDown?(instanceID)
     }
@@ -889,6 +897,127 @@ final class WebViewPool {
         }
 
         hibernate(id)
+        return true
+    }
+
+    // MARK: - Memory recycling
+
+    /// The floor under which no page is ever recycled, however much it grew.
+    ///
+    /// Chat services are never hibernated, so nothing ever made them let go of
+    /// what their scripts pile up. WhatsApp Web was measured going from 154 MB
+    /// to 1.6 GB in 28 minutes in one WebContent process, almost all of it
+    /// WebKit malloc, while the native app holds about 460 MB.
+    nonisolated static let recycleFootprintFloor: UInt64 = 1536 * 1_048_576
+
+    /// How many times its own settled size a page must reach before it is
+    /// recycled. The limit is relative so that a page which simply needs a lot
+    /// of memory is not rebuilt over and over: a fresh page sits near its
+    /// baseline, so the rebuild cannot trip the rule again by itself. Only
+    /// growth can.
+    nonisolated static let recycleGrowthFactor: UInt64 = 2
+
+    /// How long after it loads a page is measured for its baseline. Sampled
+    /// earlier, a page still loading would read small and set the bar too low.
+    nonisolated static let recycleSettleTime: TimeInterval = 5 * 60
+
+    /// How long a service must have been out of sight before it is rebuilt, so
+    /// the page the user just left, perhaps with a half-typed message, is
+    /// never reloaded under them.
+    nonisolated static let recycleMinimumIdle: TimeInterval = 10 * 60
+
+    /// Whether a service's page should be rebuilt to return its memory.
+    ///
+    /// It has to be past both the floor and `recycleGrowthFactor` times its own
+    /// baseline. Everything that makes a teardown cost the user something rules
+    /// it out: the service on screen, one pinned by a caller, one the user asked
+    /// to keep loaded, one using the camera or microphone, one playing sound, or
+    /// one left only moments ago. A footprint or baseline that could not be read
+    /// leaves the page alone.
+    nonisolated static func shouldRecycle(
+        footprint: UInt64?,
+        baseline: UInt64?,
+        idle: TimeInterval,
+        isActive: Bool,
+        isPinned: Bool,
+        keepLoaded: Bool,
+        isCapturing: Bool,
+        isPlayingAudio: Bool
+    ) -> Bool {
+        guard let footprint, let baseline else { return false }
+        let (grown, overflow) = baseline.multipliedReportingOverflow(by: recycleGrowthFactor)
+        let limit = max(recycleFootprintFloor, overflow ? .max : grown)
+        return footprint > limit
+            && idle >= recycleMinimumIdle
+            && !isActive && !isPinned && !keepLoaded && !isCapturing && !isPlayingAudio
+    }
+
+    /// The physical footprint of the WebContent process behind a service, the
+    /// figure Activity Monitor shows as Memory.
+    ///
+    /// The process id comes from `_webProcessIdentifier`, which is SPI, so it is
+    /// probed before use. If a macOS release drops it, this returns nil and no
+    /// service is ever recycled, which is how Chorus behaved before.
+    func webContentFootprint(for id: UUID) -> UInt64? {
+        let key = "_webProcessIdentifier"
+        guard let webView = webViews[id],
+              webView.responds(to: NSSelectorFromString(key)),
+              let pid = (webView.value(forKey: key) as? NSNumber)?.int32Value,
+              pid > 0
+        else { return nil }
+        var info = rusage_info_v4()
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
+                proc_pid_rusage(pid, RUSAGE_INFO_V4, $0)
+            }
+        }
+        return result == 0 ? info.ri_phys_footprint : nil
+    }
+
+    private func shouldRecycle(_ id: UUID, now: Date) -> Bool {
+        Self.shouldRecycle(
+            footprint: webContentFootprint(for: id),
+            baseline: baselineFootprints[id],
+            idle: now.timeIntervalSince(lastAccessTimes[id] ?? now),
+            isActive: id == activeServiceID,
+            isPinned: pinnedIDs.contains(id),
+            keepLoaded: neverHibernateIDs.contains(id),
+            isCapturing: mediaCaptureStates[id]?.isCapturing ?? false,
+            isPlayingAudio: audibleServiceIDs.contains(id)
+        )
+    }
+
+    /// Records the baseline of every page that has settled and has none yet,
+    /// then returns the services whose page has outgrown it and may be rebuilt.
+    func recycleCandidates(now: Date = Date()) -> [UUID] {
+        for (id, loaded) in loadedAt where baselineFootprints[id] == nil
+            && now.timeIntervalSince(loaded) >= Self.recycleSettleTime {
+            baselineFootprints[id] = webContentFootprint(for: id)
+        }
+        return webViews.keys.filter { !evictionInFlight.contains($0) && shouldRecycle($0, now: now) }
+    }
+
+    /// Tears down `id`'s page and has `rebuild` load a fresh one straight away,
+    /// iff it is still eligible after the call check. Mirrors
+    /// `hibernateIfStillIdle`: the call probe is a suspension point, so every
+    /// guard is read again after it. Unlike hibernation the service comes back
+    /// at once, so a chat app keeps posting notifications. Returns true iff it
+    /// recycled.
+    @discardableResult
+    func recycleIfStillOversized(_ id: UUID, rebuild: (UUID) -> Void) async -> Bool {
+        guard !evictionInFlight.contains(id), shouldRecycle(id, now: Date()) else { return false }
+
+        evictionInFlight.insert(id)
+        let hasCall = await hasActiveCall(for: id)
+        evictionInFlight.remove(id)
+
+        guard !hasCall, shouldRecycle(id, now: Date()) else { return false }
+
+        let megabytes = (webContentFootprint(for: id) ?? 0) / 1_048_576
+        let baseline = (baselineFootprints[id] ?? 0) / 1_048_576
+        teardownWebView(id)
+        rebuild(id)
+        AppLogger.webView.notice("Recycled service \(id) at \(megabytes) MB against a \(baseline) MB baseline")
         return true
     }
 
