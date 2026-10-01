@@ -206,6 +206,7 @@ final class AppState {
     }
     @ObservationIgnored nonisolated(unsafe) private var quietHoursTask: Task<Void, Never>?
     @ObservationIgnored nonisolated(unsafe) private var idleHibernationTask: Task<Void, Never>?
+    @ObservationIgnored nonisolated(unsafe) private var memoryRecycleTask: Task<Void, Never>?
     /// Per-service grace timers for the `.immediate` hibernation policy: a service
     /// switched away from is torn down a few seconds later unless switched back to.
     /// Keyed by service id so switching back can cancel the pending teardown.
@@ -545,6 +546,7 @@ final class AppState {
         }
         quietHoursTask?.cancel()
         idleHibernationTask?.cancel()
+        memoryRecycleTask?.cancel()
     }
 
     /// Wires the WebViewPool's external-link handler so that cross-domain
@@ -1346,6 +1348,31 @@ final class AppState {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(60))
                 await self?.hibernateIdleServices()
+            }
+        }
+    }
+
+    /// Every five minutes, rebuilds any background service whose page has grown
+    /// to twice its own settled size and past 1.5 GB (`WebViewPool.shouldRecycle`).
+    /// Always on: each pass is one `proc_pid_rusage` call per live page, it
+    /// touches only pages that kept growing, and the page comes straight back,
+    /// so a chat service keeps its notifications.
+    private func startMemoryRecycleTimer() {
+        memoryRecycleTask?.cancel()
+        memoryRecycleTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(300))
+                await self?.recycleOversizedServices()
+            }
+        }
+    }
+
+    private func recycleOversizedServices() async {
+        for id in webViewPool.recycleCandidates() {
+            guard !isLocked else { return }
+            await webViewPool.recycleIfStillOversized(id) { [weak self] id in
+                guard let service = self?.fetchService(id: id) else { return }
+                self?.webViewPool.preload(service)
             }
         }
     }
@@ -2808,6 +2835,7 @@ final class AppState {
             self.refreshEffectiveDoNotDisturb()
             self.startQuietHoursTimer()
             self.startIdleHibernationTimer()
+            self.startMemoryRecycleTimer()
             self.setupLockObservers()
             self.startDarkMode()
         }
