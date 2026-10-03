@@ -415,7 +415,12 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// Reloads a web view, or loads `fallbackURL` when there is nothing to
     /// reload. A first load stopped before it committed leaves no page, and
     /// `reload()` on that does nothing, so Reload looked broken.
-    static func reload(_ webView: WKWebView, fallbackURL: URL?) {
+    static func reload(_ webView: WKWebView, fallbackURL: URL?) async {
+        let originalURL = webView.url
+        await WebViewDeparture.prepareForDestruction(in: [webView])
+        // A navigation during the grace period takes precedence over this
+        // earlier reload request. Cancellation must not trigger a reload.
+        guard !Task.isCancelled, webView.url == originalURL else { return }
         if webView.reload() == nil, let fallbackURL {
             webView.load(URLRequest(url: fallbackURL))
         }

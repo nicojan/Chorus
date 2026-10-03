@@ -5,6 +5,11 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Work you start with a click in Gmail — marking a message read, archiving or deleting it — now survives hiding Chorus, switching services, or quitting. Hiding happens at once, and the app gives the click time to reach Gmail before it clears hover state or puts the page aside. Reloading the very instant after a click can still drop the change if Gmail has not sent it yet: at that point there is nothing to save.
+- Chorus tells Gmail it is Safari 27 rather than 26.
+
 ## [1.5.26] - 2026-10-03
 
 ### Added

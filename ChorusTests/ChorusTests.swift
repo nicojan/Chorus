@@ -83,6 +83,27 @@ final class ChorusTests: XCTestCase {
         XCTAssertNotNil(service.dataStoreIdentifier)
     }
 
+    /// A transition that ends a page waits out the rest of the settle window
+    /// since the last mouse or key event, and no longer. See `InputSettle`.
+    func testSettleWaitCountsDownFromTheLastInput() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        XCTAssertEqual(
+            InputSettle.remainingWait(since: now.addingTimeInterval(-0.1), now: now, window: 0.6),
+            0.5,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            InputSettle.remainingWait(since: now.addingTimeInterval(-0.6), now: now, window: 0.6),
+            0,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            InputSettle.remainingWait(since: now.addingTimeInterval(-30), now: now, window: 0.6),
+            0,
+            accuracy: 0.0001
+        )
+    }
+
     func testSpaceCreation() {
         let space = Space(name: "Work", emoji: "🏢", sortOrder: 0)
         XCTAssertEqual(space.name, "Work")

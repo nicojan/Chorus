@@ -1059,52 +1059,11 @@ final class AppState {
     /// Gives every live page a save point before the app quits, then lets it
     /// go. Called from `applicationShouldTerminate`, so every way out — the
     /// menu, ⌘Q, a relaunch, a Sparkle install — passes through it.
-    ///
-    /// Pages save when they go hidden, and a quit kills them with no
-    /// `visibilitychange` or `pagehide` at all. Chorus pins every page to
-    /// visible besides, so WhatsApp Web never reached the point where it writes
-    /// its session, and could come back signed out. Three steps, each capped so
-    /// a wedged page can't hold the quit hostage, about a second in all:
-    /// release every page to hidden, give the pages a moment to write, then read
-    /// each data store's records — a round trip through the storage process that
-    /// lands behind the writes just queued. That last step is best effort.
     func releasePagesForQuit() async {
         let webViews = webViewPool.liveWebViews
-        guard !webViews.isEmpty else { return }
-
-        // Started together, awaited in turn: all the pages get the signal at
-        // once, and the deadline bounds the wait for the slowest.
-        await withDeadline(seconds: 0.3, fallback: ()) {
-            let releases = webViews.map { webView in
-                Task { @MainActor in
-                    _ = try? await webView.evaluateJavaScript(UserScriptManager.quitReleaseJS)
-                }
-            }
-            for release in releases { await release.value }
-        }
-
-        try? await Task.sleep(for: Self.quitWriteWindow)
-
-        var seen = Set<ObjectIdentifier>()
-        let stores = webViews
-            .map { $0.configuration.websiteDataStore }
-            .filter { seen.insert(ObjectIdentifier($0)).inserted }
-        await withDeadline(seconds: 0.5, fallback: ()) {
-            let flushes = stores.map { store in
-                Task { @MainActor in
-                    _ = await store.dataRecords(ofTypes: [
-                        WKWebsiteDataTypeLocalStorage,
-                        WKWebsiteDataTypeIndexedDBDatabases,
-                    ])
-                }
-            }
-            for flush in flushes { await flush.value }
-        }
+        await WebViewDeparture.prepareForQuit(in: webViews)
         AppLogger.webView.info("Released \(webViews.count) pages for quit")
     }
-
-    /// How long pages get to write after going hidden before quit goes on.
-    static let quitWriteWindow: Duration = .milliseconds(250)
 
     /// Pauses or resumes polling when network connectivity toggles. While
     /// offline every poll (active, background, and hibernated) would only fire
@@ -1194,10 +1153,12 @@ final class AppState {
     // MARK: - Active service actions (driven by keyboard shortcuts)
 
     /// Reload the currently displayed service's web view. Triggered by Cmd-R.
-    func reloadActiveService() {
+    func reloadActiveService() async {
         guard let id = webViewPool.activeServiceID,
               let webView = webViewPool.liveWebView(for: id) else { return }
-        WebViewCoordinator.reload(webView, fallbackURL: fetchService(id: id).flatMap { URL(string: $0.url) })
+        // Capture the target before waiting, rather than reloading whichever
+        // service happens to be active when the wait ends.
+        await WebViewCoordinator.reload(webView, fallbackURL: fetchService(id: id).flatMap { URL(string: $0.url) })
     }
 
     /// Applies user edits to a service: persists label/URL/keep-loaded, syncs
