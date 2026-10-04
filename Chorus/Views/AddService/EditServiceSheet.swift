@@ -16,6 +16,7 @@ struct EditServiceSheet: View {
     @State private var hibernationPolicy: HibernationPolicy = .followGlobal
     @State private var hibernateAfterMinutes: Int = 10
     @State private var mobileView: Bool = false
+    @State private var handlesMailLinks: Bool = true
     /// The service's own outside-link choice; nil follows the Settings default.
     @State private var openLinksInApp: Bool? = nil
     @AppStorage(OutsideLinkDefault.defaultsKey) private var linksOpenInChorusByDefault = false
@@ -189,6 +190,11 @@ struct EditServiceSheet: View {
         }
         .help("Where a link opens when it points somewhere no Chorus service covers. A link that another service covers still switches to that service.")
 
+        if service.mailtoHandler != nil {
+            Toggle("Use for mail links", isOn: $handlesMailLinks)
+                .help("Offer this signed-in service when Chorus opens a mail link. Chorus keeps its declaration when this is off, so you can enable it again later.")
+        }
+
         Toggle("Always appear active", isOn: $stayActive)
             .help("Keeps this service from showing you as away or idle while Chorus is in the background, so your status stays active even when you work in other apps. Useful for Microsoft Teams. May hold back some of this service's notifications, since it now thinks you're looking at it.")
 
@@ -235,6 +241,7 @@ struct EditServiceSheet: View {
         hibernateAfterMinutes = service.hibernateAfterMinutesEffective
         mobileView = service.userAgent == UserAgentProvider.mobileSafari
         initialUserAgent = service.userAgent
+        handlesMailLinks = service.mailtoHandlerEnabledEffective
         openLinksInApp = service.openExternalLinksInApp
         stayActive = service.staysActiveInBackgroundEffective
         darkMode = service.darkMode
@@ -400,6 +407,9 @@ struct EditServiceSheet: View {
             service.showBadge = badge
             // Read fresh at each link click, so no rebuild is needed.
             service.openExternalLinksInApp = openLinksInApp
+            if service.mailtoHandler != nil {
+                service.mailtoHandlerEnabled = handlesMailLinks
+            }
             service.stayActiveInBackground = stayActive
             // Pin a camera/mic policy only if the user actually changed it, so
             // opening the sheet to edit something else doesn't stop the service

@@ -3,6 +3,7 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.openWindow) private var openWindow
 
     /// Whether the hybrid layout's space strip carries names, read here because
     /// it sets the strip's width, and the service bar beside it has to start
@@ -53,6 +54,9 @@ struct ContentView: View {
         // normal title-bar drag.
         .background(WindowMovableConfigurator(isMovable: !appState.railLayout.hasTopBar))
         .background(TrafficLightsPositioner(bandHeight: ChorusCard.topBand))
+        .onAppear {
+            appState.openMainWindow = { [openWindow] in openWindow(id: "main") }
+        }
         // Ask for macOS notification permission here, not in AppState.init:
         // requesting during App.init (before the scene exists) can fail with
         // "Notifications are not allowed for this application" and leave the app
@@ -121,6 +125,7 @@ struct ContentView: View {
         } message: { name in
             Text("Chorus needs it for two things: to read \(name)'s unread count from the Dock, and to move \(name)'s window over the space its tab would take. It never reads what's inside \(name) or any other app. macOS asks next. You can turn it off any time in System Settings, under Privacy & Security, then Accessibility.")
         }
+        .modifier(MailLinkPresentation(appState: appState))
         .sheet(isPresented: $state.isShowingStoreRecovery, onDismiss: {
             // Only quits when the user actually picked a backup. It has to
             // happen here rather than in the button: a quit requested while

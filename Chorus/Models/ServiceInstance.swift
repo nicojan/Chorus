@@ -18,6 +18,16 @@ enum HibernationPolicy: String, CaseIterable {
     case followGlobal, never, immediate, after
 }
 
+/// A service's discovered mail-handler declaration. Template and origin are only
+/// meaningful together: the template is trusted only while it resolves to the
+/// origin that declared it, so code passes them as one value. The opt-out flag
+/// stays separate storage — it is a user preference that survives a declaration
+/// refresh, and SwiftData migrates the three fields independently.
+struct MailtoHandler {
+    let template: String
+    let declaringOrigin: String
+}
+
 /// Pure policy → idle-threshold math for auto-hibernation, kept free of AppState
 /// and WebKit so the truth table is unit-testable in isolation. Mirrors
 /// `MediaPermissionResolver`.
@@ -225,6 +235,13 @@ final class ServiceInstance {
     /// which clamps to 1...120 (nil → 10). Ignored for the other policies.
     var hibernateAfterMinutes: Int?
 
+    /// Standards-declared mailto handler for this isolated service instance.
+    /// All fields are optional for lightweight migration. A nil enabled flag is
+    /// treated as enabled because newly discovered handlers are opt-out.
+    var mailtoHandlerTemplate: String?
+    var mailtoHandlerOrigin: String?
+    var mailtoHandlerEnabled: Bool?
+
     @Relationship(deleteRule: .cascade, inverse: \SpaceServiceLink.service)
     var spaceLinks: [SpaceServiceLink]
 
@@ -317,6 +334,30 @@ final class ServiceInstance {
         min(120, max(1, hibernateAfterMinutes ?? 10))
     }
 
+    var mailtoHandlerEnabledEffective: Bool { mailtoHandlerEnabled ?? true }
+
+    /// The stored declaration as one value, nil unless both stored fields are set.
+    var mailtoHandler: MailtoHandler? {
+        guard let mailtoHandlerTemplate, let mailtoHandlerOrigin else { return nil }
+        return MailtoHandler(template: mailtoHandlerTemplate, declaringOrigin: mailtoHandlerOrigin)
+    }
+
+    /// Records a discovered declaration. A first discovery defaults to enabled;
+    /// an explicit opt-out survives a provider updating its declaration.
+    func rememberMailtoHandler(_ handler: MailtoHandler) {
+        mailtoHandlerTemplate = handler.template
+        mailtoHandlerOrigin = handler.declaringOrigin
+        if mailtoHandlerEnabled == nil { mailtoHandlerEnabled = true }
+    }
+
+    /// Drops the declaration and the opt-out with it, matching a failed
+    /// revalidation: the service no longer offers mail handling at all.
+    func clearMailtoHandler() {
+        mailtoHandlerTemplate = nil
+        mailtoHandlerOrigin = nil
+        mailtoHandlerEnabled = nil
+    }
+
     /// True if this service is muted directly, or via any space it belongs to
     /// (muting a space cascades to its members). Use this when the model object
     /// is already in hand — it avoids AppState's fetch-all-then-scan lookup.
@@ -356,7 +397,10 @@ final class ServiceInstance {
         openExternalLinksInApp: Bool? = nil,
         stayActiveInBackground: Bool? = nil,
         hibernationPolicyRaw: String? = nil,
-        hibernateAfterMinutes: Int? = nil
+        hibernateAfterMinutes: Int? = nil,
+        mailtoHandlerTemplate: String? = nil,
+        mailtoHandlerOrigin: String? = nil,
+        mailtoHandlerEnabled: Bool? = nil
     ) {
         self.id = id
         self.label = label
@@ -382,6 +426,9 @@ final class ServiceInstance {
         self.stayActiveInBackground = stayActiveInBackground
         self.hibernationPolicyRaw = hibernationPolicyRaw
         self.hibernateAfterMinutes = hibernateAfterMinutes
+        self.mailtoHandlerTemplate = mailtoHandlerTemplate
+        self.mailtoHandlerOrigin = mailtoHandlerOrigin
+        self.mailtoHandlerEnabled = mailtoHandlerEnabled
         self.spaceLinks = []
         self.createdAt = Date()
         self.lastAccessedAt = Date()

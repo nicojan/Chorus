@@ -22,22 +22,23 @@ enum StoreLoadOutcome: Equatable {
 @Observable
 final class AppState {
     let modelContainer: ModelContainer
-    let webViewPool: WebViewPool
-    let contentBlocker: ContentBlockerManager
-    let dataStoreManager: DataStoreManager
-    let userScriptManager: UserScriptManager
-    let badgeManager: BadgeManager
+    private let dependencies: AppDependencies
+    var webViewPool: WebViewPool { dependencies.webViewPool }
+    var contentBlocker: ContentBlockerManager { dependencies.contentBlocker }
+    var dataStoreManager: DataStoreManager { dependencies.dataStoreManager }
+    var userScriptManager: UserScriptManager { dependencies.userScriptManager }
+    var badgeManager: BadgeManager { dependencies.badgeManager }
     /// Every download this session, for the toolbar's download list.
     let downloadCenter = DownloadCenter()
 
     /// Navigation state (back/forward/loading) for the active service's web view,
     /// shared so the top tab bar can host the nav buttons.
     let webViewState = WebViewState()
-    let notificationManager: NotificationManager
-    let transientBadgeFetcher: TransientBadgeFetcher
+    var notificationManager: NotificationManager { dependencies.notificationManager }
+    var transientBadgeFetcher: TransientBadgeFetcher { dependencies.transientBadgeFetcher }
     /// Copies Mac-app services' Dock badges onto the rail.
     let nativeAppBadgeReader = NativeAppBadgeReader()
-    let networkMonitor: NetworkMonitor
+    var networkMonitor: NetworkMonitor { dependencies.networkMonitor }
 
     var selectedSpaceID: UUID?
     var selectedServiceID: UUID? {
@@ -88,6 +89,24 @@ final class AppState {
     /// prompt is showing. Drives the alert in ContentView. Only ever set on the
     /// main actor; answered via `answerMediaRequest(allow:)`.
     private(set) var pendingMediaRequest: MediaPermissionRequest?
+
+    struct PendingMailLink: Identifiable, Equatable {
+        let id: UUID
+        let candidates: [MailLinkAccount]
+    }
+
+    /// The account chooser for the oldest queued mail link. The URL itself is
+    /// intentionally not exposed to the view, which only needs account labels.
+    private(set) var pendingMailLink: PendingMailLink?
+    struct MailLinkError: Identifiable {
+        let id = UUID()
+        let message: String
+    }
+
+    private(set) var mailLinkError: MailLinkError?
+    var mailLinkErrorMessage: String? { mailLinkError?.message }
+    @ObservationIgnored private var mailLinkQueue = MailLinkRequestQueue()
+    @ObservationIgnored var openMainWindow: (() -> Void)?
 
     /// A pending "always appear active?" offer, shown once right after the user
     /// adds a presence-sensitive service (Teams). Drives an alert in ContentView;
@@ -240,7 +259,12 @@ final class AppState {
     var appLockEnabled = false
     var lockOnLaunch = true
     var lockOnSleep = true
-    var isLocked = false
+    var isLocked = false {
+        didSet {
+            mailLinkQueue.isLocked = isLocked
+            if !isLocked { processNextMailLinkIfPossible() }
+        }
+    }
 
     /// Global content-blocking toggle, mirrored from AppPreferences at launch.
     /// The Settings switch writes both this and the persisted value via
@@ -380,6 +404,23 @@ final class AppState {
         !isStoreInMemoryFallback && !storeWasDamagedAtLaunch && !storeWasRestoredAtLaunch
     }
 
+    /// Isolated application wiring without launch-time persistence, observers,
+    /// preloading, or recovery. Callers own the container and account stores.
+    init(
+        modelContainer: ModelContainer,
+        dataStoreManager: DataStoreManager,
+        loadMailComposer: @escaping (WKWebView, URL) -> Void = { view, url in view.load(URLRequest(url: url)) }
+    ) {
+        self.modelContainer = modelContainer
+        dependencies = AppDependencies(modelContainer: modelContainer, dataStoreManager: dataStoreManager, loadMailComposer: loadMailComposer)
+        storeURL = URL(fileURLWithPath: "/dev/null")
+        storeFileName = "isolated.store"
+        storeWasDamagedAtLaunch = false
+        storeWasRestoredAtLaunch = false
+        isStoreInMemoryFallback = true
+        setupExternalLinkRouting()
+    }
+
     init() {
         // The current shipping shape, pinned as an explicit `VersionedSchema`.
         // `loadContainer` opens it through `ChorusMigrationPlan`, so an older
@@ -462,62 +503,7 @@ final class AppState {
             self.isStoreInMemoryFallback = true
         }
 
-        self.dataStoreManager = DataStoreManager()
-        self.userScriptManager = UserScriptManager()
-        self.badgeManager = BadgeManager()
-
-        // Capture the modelContainer locally so the @Sendable closure below
-        // doesn't capture `self` before all stored properties are assigned.
-        let container = self.modelContainer
-        let badgeManager = self.badgeManager
-        self.userScriptManager.isServiceMuted = { @Sendable serviceID in
-            // WKScriptMessageHandler.didReceive is invoked on the main
-            // thread, so we can safely hop into the main actor here to
-            // read the persisted mute state. A service is muted when its
-            // own isMuted flag is true *or* any of its parent spaces is
-            // muted (mute-the-space cascades to its members).
-            MainActor.assumeIsolated {
-                let context = container.mainContext
-                // Indexed single-row fetch, not a full-table scan — this runs on
-                // every intercepted web notification (matches isServiceNotifyingOS).
-                var descriptor = FetchDescriptor<ServiceInstance>(
-                    predicate: #Predicate { $0.id == serviceID }
-                )
-                descriptor.fetchLimit = 1
-                guard let service = try? context.fetch(descriptor).first else { return false }
-                return service.isEffectivelyMuted
-            }
-        }
-        self.userScriptManager.isServiceNotifyingOS = { @Sendable serviceID in
-            // Per-service flag (not cascaded, unlike mute); nil → enabled. Runs
-            // on every intercepted web notification, so use an indexed single-row
-            // fetch rather than a full-table scan. Fails silent: a missing or
-            // deleted service does not post a banner.
-            MainActor.assumeIsolated {
-                let context = container.mainContext
-                var descriptor = FetchDescriptor<ServiceInstance>(
-                    predicate: #Predicate { $0.id == serviceID }
-                )
-                descriptor.fetchLimit = 1
-                guard let service = try? context.fetch(descriptor).first else { return false }
-                return service.notifiesOSEffective
-            }
-        }
-        self.userScriptManager.isDoNotDisturbActive = { @Sendable in
-            MainActor.assumeIsolated { badgeManager.doNotDisturb }
-        }
-        self.notificationManager = NotificationManager(badgeManager: badgeManager)
-        self.transientBadgeFetcher = TransientBadgeFetcher(
-            badgeManager: badgeManager,
-            dataStoreManager: dataStoreManager
-        )
-        self.contentBlocker = ContentBlockerManager()
-        self.webViewPool = WebViewPool(
-            dataStoreManager: dataStoreManager,
-            userScriptManager: userScriptManager,
-            contentBlocker: contentBlocker
-        )
-        self.networkMonitor = NetworkMonitor()
+        dependencies = AppDependencies(modelContainer: modelContainer, dataStoreManager: DataStoreManager())
 
         loadAppPreferences()
         startContentBlocker()
@@ -587,6 +573,12 @@ final class AppState {
         webViewPool.externalLinkHandler = { [weak self] url, sourceServiceID in
             self?.handleExternalLink(url, from: sourceServiceID)
         }
+        webViewPool.mailLinkHandler = { [weak self] url in
+            self?.enqueueMailLink(url)
+        }
+        userScriptManager.onMailHandlerDeclaration = { [weak self] declaration in
+            self?.acceptMailHandlerDeclaration(declaration)
+        }
         webViewPool.serviceOwnsURL = { [weak self] url, sourceServiceID in
             guard let self, let host = url.host else { return false }
             return self.serviceOwning(host: host, excluding: sourceServiceID) != nil
@@ -629,7 +621,8 @@ final class AppState {
         // remove) invalidates a pending prompt for it — deny + drain so a stale
         // prompt can't linger and block a later service's prompt.
         webViewPool.onServiceTornDown = { [weak self] serviceID in
-            self?.drainMediaRequests(for: serviceID)
+            guard let self else { return }
+            self.drainMediaRequests(for: serviceID)
         }
     }
 
@@ -915,6 +908,145 @@ final class AppState {
         case .cameraAndMicrophone: return .cameraAndMicrophone
         @unknown default: return .cameraAndMicrophone  // unknown ⇒ most restrictive
         }
+    }
+
+    // MARK: - Mail links
+
+    /// Entry point shared by macOS URL delivery and clicks inside a service.
+    /// Requests are queued without logging their contents.
+    func enqueueMailLink(_ url: URL) {
+        guard url.scheme?.caseInsensitiveCompare("mailto") == .orderedSame else { return }
+        mailLinkQueue.enqueue(url)
+        if isLocked { bringMainWindowForward() }
+        processNextMailLinkIfPossible()
+    }
+
+    private func acceptMailHandlerDeclaration(_ declaration: MailHandlerDeclaration) {
+        guard let service = fetchService(id: declaration.serviceID),
+              let registration = MailLinkRouter.registration(
+                for: service,
+                protocolName: declaration.protocolName,
+                handlerTemplate: declaration.handlerTemplate,
+                declaringPageURL: declaration.declaringPageURL.absoluteString,
+                isMainFrame: declaration.isMainFrame,
+                enabled: service.mailtoHandlerEnabledEffective
+              )
+        else {
+            AppLogger.webView.info("Rejected mail handler declaration for service \(declaration.serviceID)")
+            return
+        }
+
+        service.rememberMailtoHandler(MailtoHandler(
+            template: registration.handlerTemplate,
+            declaringOrigin: registration.declaringOrigin
+        ))
+        do {
+            try modelContainer.mainContext.save()
+            webViewPool.completeMailHandlerProbe(for: declaration.serviceID)
+            processNextMailLinkIfPossible()
+        } catch {
+            AppLogger.dataStore.error("Failed to persist mail handler for service \(declaration.serviceID): \(error.localizedDescription)")
+            modelContainer.mainContext.rollback()
+        }
+    }
+
+    private func currentMailRegistrations() -> [MailLinkRegistration] {
+        let services = (try? modelContainer.mainContext.fetch(FetchDescriptor<ServiceInstance>())) ?? []
+        return services.compactMap { service in
+            guard service.modelContext != nil, let handler = service.mailtoHandler else { return nil }
+            let provider = service.catalogEntryID.flatMap { ServiceCatalog.shared.entry(for: $0)?.name }
+            let spaces = service.spaceLinks
+                .filter { $0.modelContext != nil }
+                .compactMap(\.liveSpace)
+                .map(\.name)
+            return MailLinkRegistration(
+                account: MailLinkAccount(
+                    serviceID: service.id, label: service.label,
+                    providerLabel: provider, spaceLabels: Array(Set(spaces)).sorted()
+                ),
+                serviceURL: service.url,
+                handlerTemplate: handler.template,
+                declaringOrigin: handler.declaringOrigin,
+                enabled: service.mailtoHandlerEnabledEffective
+            )
+        }
+    }
+
+    private func processNextMailLinkIfPossible() {
+        guard !isLocked,
+              pendingMailLink == nil,
+              mailLinkErrorMessage == nil,
+              let request = mailLinkQueue.current
+        else { return }
+
+        switch MailLinkRouter.route(request, registrations: currentMailRegistrations()) {
+        case .rejectInvalidRequest:
+            mailLinkQueue.completeCurrent()
+            processNextMailLinkIfPossible()
+        case .noEligibleService:
+            mailLinkError = MailLinkError(message: "None of your added services has declared support for mail links. Open a mail service in Chorus so it can register, or enable mail links in that service’s settings.")
+            bringMainWindowForward()
+        case .open(let destination):
+            if openMailDestination(destination) {
+                mailLinkQueue.completeCurrent()
+                processNextMailLinkIfPossible()
+            } else {
+                mailLinkError = MailLinkError(message: "That mail service is no longer available.")
+                bringMainWindowForward()
+            }
+        case .choose(let candidates):
+            pendingMailLink = PendingMailLink(id: UUID(), candidates: candidates)
+            bringMainWindowForward()
+        }
+    }
+
+    func chooseMailService(_ serviceID: UUID, requestID: UUID) {
+        // A dismissed or lock-hidden chooser may still deliver a stale action.
+        // It must not replace a newer chooser or reveal details behind the lock.
+        guard !isLocked, pendingMailLink?.id == requestID else { return }
+        guard let request = mailLinkQueue.current,
+              let destination = MailLinkRouter.destination(
+                for: request,
+                serviceID: serviceID,
+                registrations: currentMailRegistrations()
+              ),
+              openMailDestination(destination)
+        else {
+            pendingMailLink = nil
+            mailLinkError = MailLinkError(message: "That mail service is no longer available.")
+            bringMainWindowForward()
+            return
+        }
+        pendingMailLink = nil
+        mailLinkQueue.completeCurrent()
+        processNextMailLinkIfPossible()
+    }
+
+    func cancelMailLink(_ requestID: UUID) {
+        guard !isLocked, pendingMailLink?.id == requestID else { return }
+        pendingMailLink = nil
+        mailLinkQueue.completeCurrent()
+        processNextMailLinkIfPossible()
+    }
+
+    func dismissMailLinkError(_ presentationID: UUID) {
+        guard !isLocked, mailLinkError?.id == presentationID else { return }
+        mailLinkError = nil
+        mailLinkQueue.completeCurrent()
+        processNextMailLinkIfPossible()
+    }
+
+    private func openMailDestination(_ destination: MailLinkDestination) -> Bool {
+        guard let service = fetchService(id: destination.serviceID), service.modelContext != nil else { return false }
+        webViewPool.openMailComposer(for: service, at: destination.url)
+        return true
+    }
+
+    private func bringMainWindowForward() {
+        webViewPool.cancelMailComposerFocusRequests()
+        NSApp.activate(ignoringOtherApps: true)
+        openMainWindow?()
+        NSApp.windows.first(where: { $0.identifier?.rawValue == "main" })?.makeKeyAndOrderFront(nil)
     }
 
     /// Decides what to do with a link that the user clicked in one service
@@ -1213,6 +1345,16 @@ final class AppState {
         presenceChanged: Bool = false
     ) {
         guard let service = currentServiceInstance(id: serviceID) else { return }
+        if urlChanged, let handler = service.mailtoHandler,
+           MailLinkRouter.registration(
+                for: service, protocolName: "mailto", handlerTemplate: handler.template,
+                declaringPageURL: handler.declaringOrigin,
+                // Stored declarations were accepted from a main frame; this
+                // revalidates the template/origin pair, not the opt-out.
+                isMainFrame: true, enabled: true
+           ) == nil {
+            service.clearMailtoHandler()
+        }
         webViewPool.setNeverHibernate(service.hibernationPolicyEffective == .never, for: serviceID)
         // A policy change may add or drop the only per-service timer, so re-gate
         // the sweep; drop any pending grace teardown so a switch away from
@@ -1490,6 +1632,10 @@ final class AppState {
     func lock() {
         guard appLockEnabled else { return }
         isLocked = true
+        // Hide mail account names and status copy while locked, but leave the
+        // request at the head of the queue so unlock presents it again.
+        pendingMailLink = nil
+        mailLinkError = nil
         // Don't leave a capture prompt hanging over the lock screen.
         drainAllMediaRequests()
     }
@@ -3019,6 +3165,10 @@ final class AppState {
         webViewPool.onNavigationFinished = { [weak self] serviceID in
             guard let self,
                   let webView = self.webViewPool.liveWebView(for: serviceID) else { return }
+            if let service = self.fetchService(id: serviceID),
+               service.mailtoHandler == nil {
+                self.webViewPool.probeMailHandler(for: service)
+            }
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 await self.notificationManager.pollNow(

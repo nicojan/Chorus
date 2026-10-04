@@ -4,6 +4,14 @@ import AppKit
 /// `AppState.releasePagesForQuit`.
 @MainActor
 final class ChorusAppDelegate: NSObject, NSApplicationDelegate {
+    /// URL delivery stays outside the main scene so direct compose routes do
+    /// not bring the inbox window forward.
+    var onOpenURL: ((URL) -> Void)?
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls { onOpenURL?(url) }
+    }
+
     /// Set once the main window appears. Until then there are no pages to
     /// release, and a quit goes straight through.
     weak var appState: AppState?

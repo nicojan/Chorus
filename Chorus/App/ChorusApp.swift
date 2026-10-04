@@ -16,7 +16,8 @@ struct ChorusApp: App {
     #endif
 
     init() {
-        _appState = State(initialValue: AppState())
+        let state = AppState()
+        _appState = State(initialValue: state)
         #if canImport(Sparkle)
         updaterController = SPUStandardUpdaterController(
             startingUpdater: true,
@@ -24,6 +25,9 @@ struct ChorusApp: App {
             userDriverDelegate: nil
         )
         #endif
+        appDelegate.onOpenURL = { [weak state] url in
+            state?.enqueueMailLink(url)
+        }
     }
 
     var body: some Scene {

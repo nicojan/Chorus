@@ -5,6 +5,24 @@
     <key>NSUserNotificationsUsageDescription</key>
     <string>Chorus forwards notifications from your web services to macOS.</string>
 
+    <!-- Register only as a possible mailto handler. macOS keeps the user's
+         current default until they choose Chorus in the system picker. -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>CFBundleURLName</key>
+            <string>Mail links</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>mailto</string>
+            </array>
+        </dict>
+    </array>
+
     <!-- Required because the app declares camera/microphone entitlements.
          Without these strings macOS kills the access attempt (TCC). Shown to
          the user the first time an embedded service requests capture. -->

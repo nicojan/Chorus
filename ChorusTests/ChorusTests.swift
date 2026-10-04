@@ -4420,6 +4420,7 @@ final class ChorusTests: XCTestCase {
         let schemas: [(String, Schema)] = [
             ("V1_5_11", Schema(versionedSchema: ChorusSchemaV1_5_11.self)),
             ("V1_5_12", Schema(versionedSchema: ChorusSchemaV1_5_12.self)),
+            ("V1_5_19", Schema(versionedSchema: ChorusSchemaV1_5_19.self)),
             ("VCurrent", Schema(versionedSchema: ChorusSchemaVCurrent.self)),
         ]
         for (label, schema) in schemas {
@@ -4465,7 +4466,8 @@ final class ChorusTests: XCTestCase {
                 "dataStoreIdentifier", "pageZoom", "osNotificationsEnabled", "customCSS",
                 "forceDarkMode", "darkModeRaw", "cameraPolicyRaw", "microphonePolicyRaw",
                 "openExternalLinksInApp", "stayActiveInBackground", "hasSeenPasskeyNotice",
-                "hibernationPolicyRaw", "hibernateAfterMinutes", "createdAt", "lastAccessedAt",
+                "hibernationPolicyRaw", "hibernateAfterMinutes", "mailtoHandlerTemplate",
+                "mailtoHandlerOrigin", "mailtoHandlerEnabled", "createdAt", "lastAccessedAt",
             ],
             "ServiceInstance stored attributes changed without a new schema version"
         )
@@ -4626,6 +4628,9 @@ final class ChorusTests: XCTestCase {
         XCTAssertNil(s.stayActiveInBackground)
         XCTAssertNil(s.hibernationPolicyRaw)
         XCTAssertNil(s.hibernateAfterMinutes)
+        XCTAssertNil(s.mailtoHandlerTemplate)
+        XCTAssertNil(s.mailtoHandlerOrigin)
+        XCTAssertNil(s.mailtoHandlerEnabled)
         XCTAssertFalse(s.staysActiveInBackgroundEffective)
         XCTAssertEqual(s.hibernationPolicyEffective, .never)  // legacy neverHibernate == true
 

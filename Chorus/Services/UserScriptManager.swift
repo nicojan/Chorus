@@ -12,6 +12,11 @@ struct NotificationPayload: Codable {
 @MainActor
 final class UserScriptManager {
     private var messageHandlers: [UUID: NotificationMessageHandler] = [:]
+    private var mailHandlerMessageHandlers: [ObjectIdentifier: MailHandlerMessageHandler] = [:]
+
+    /// Receives untrusted page declarations. The owner must perform all origin,
+    /// protocol, frame, and template validation before persisting one.
+    var onMailHandlerDeclaration: ((MailHandlerDeclaration) -> Void)?
 
     var isServiceMuted: (@Sendable (UUID) -> Bool)?
     /// Per-service "forward notifications to macOS" flag. Defaults to true when
@@ -60,6 +65,43 @@ final class UserScriptManager {
         )
         controller.add(handler, name: "chorusNotification")
         messageHandlers[instance.id] = handler
+
+        installMailHandler(for: instance.id, on: controller)
+    }
+
+    /// Narrow setup for an invisible compatibility probe. It shares the service's
+    /// website data store but installs only standards-discovery scripts: no page
+    /// notifications, CSS, theming, cookie actions, or focus overrides.
+    func configureMailHandlerDiscovery(
+        for instanceID: UUID,
+        on controller: WKUserContentController
+    ) {
+        installMailHandler(for: instanceID, on: controller)
+        installMailDiscoveryScripts(on: controller)
+    }
+
+    private func installMailDiscoveryScripts(on controller: WKUserContentController) {
+        controller.addUserScript(WKUserScript(
+            source: Self.makeMailHandlerRegistrationScript(),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        ))
+        controller.addUserScript(WKUserScript(
+            source: Self.makeManifestDiscoveryScript(),
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: true
+        ))
+    }
+
+    private func installMailHandler(
+        for instanceID: UUID,
+        on controller: WKUserContentController
+    ) {
+        let handler = MailHandlerMessageHandler(serviceID: instanceID) { [weak self] declaration in
+            self?.onMailHandlerDeclaration?(declaration)
+        }
+        controller.add(handler, name: "chorusMailHandler")
+        mailHandlerMessageHandlers[ObjectIdentifier(controller)] = handler
     }
 
     /// Adds all user scripts. Safe to call again after `removeAllUserScripts()`
@@ -80,6 +122,9 @@ final class UserScriptManager {
             forMainFrameOnly: false
         )
         controller.addUserScript(userScript)
+
+        // Use the same timing, page world, and main-frame restrictions as probes.
+        installMailDiscoveryScripts(on: controller)
 
         // Page Visibility override — makes preloaded/off-screen views report as
         // "visible" so services that only write their unread count into the
@@ -195,6 +240,142 @@ final class UserScriptManager {
 
     func removeHandler(for instanceID: UUID) {
         messageHandlers.removeValue(forKey: instanceID)
+        mailHandlerMessageHandlers = mailHandlerMessageHandlers.filter { $0.value.serviceID != instanceID }
+    }
+
+    /// Releases the explicit strong reference held for a short-lived probe.
+    /// The controller's own message-handler reference is removed by its owner.
+    func removeMailHandler(on controller: WKUserContentController) {
+        mailHandlerMessageHandlers.removeValue(forKey: ObjectIdentifier(controller))?.onDeclaration = nil
+    }
+
+    nonisolated static func makeMailComposerLifecycleScript() -> String {
+        """
+        (function() {
+            var established = false, finished = false;
+            var establishTimer, closeTimer, observer;
+            function hasVisibleEditor() {
+                return Array.from(document.querySelectorAll('[contenteditable="true"], [contenteditable="plaintext-only"], textarea')).some(function(editor) {
+                    return !editor.disabled && !editor.readOnly && editor.getClientRects().length > 0 &&
+                        getComputedStyle(editor).visibility !== 'hidden';
+                });
+            }
+            function checkComposer() {
+                if (finished) return;
+                if (hasVisibleEditor()) {
+                    clearTimeout(closeTimer);
+                    closeTimer = undefined;
+                    if (!established && !establishTimer) {
+                        establishTimer = setTimeout(function() {
+                            establishTimer = undefined;
+                            established = hasVisibleEditor();
+                        }, 500);
+                    }
+                } else {
+                    clearTimeout(establishTimer);
+                    establishTimer = undefined;
+                    if (established && !closeTimer) {
+                        closeTimer = setTimeout(function() {
+                            closeTimer = undefined;
+                            if (!hasVisibleEditor()) {
+                                finished = true;
+                                observer.disconnect();
+                                window.webkit.messageHandlers.chorusMailHandler.postMessage({ composerClosed: true });
+                            }
+                        }, 500);
+                    }
+                }
+            }
+            function start() {
+                observer = new MutationObserver(checkComposer);
+                observer.observe(document.documentElement, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ['contenteditable', 'hidden', 'style', 'class', 'disabled', 'readonly']
+                });
+                checkComposer();
+            }
+            window.addEventListener('pagehide', function() {
+                finished = true;
+                clearTimeout(establishTimer);
+                clearTimeout(closeTimer);
+                if (observer) observer.disconnect();
+            }, { once: true });
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', start, { once: true });
+            } else {
+                start();
+            }
+        })();
+        """
+    }
+
+    nonisolated static func makeWindowCloseInterceptionScript() -> String {
+        """
+        (function() {
+            var originalClose = window.close;
+            window.close = function() {
+                try {
+                    window.webkit.messageHandlers.chorusMailHandler.postMessage({ windowClose: true });
+                } catch (e) {}
+                return originalClose.apply(this, arguments);
+            };
+        })();
+        """
+    }
+
+    nonisolated static func makeMailHandlerRegistrationScript() -> String {
+        """
+        (function() {
+            function report(protocol, url) {
+                try {
+                    window.webkit.messageHandlers.chorusMailHandler.postMessage({
+                        protocol: String(protocol), template: String(url)
+                    });
+                } catch (e) {}
+            }
+            var original = navigator.registerProtocolHandler;
+            if (typeof original === 'function') {
+                navigator.registerProtocolHandler = function(protocol, url) {
+                    report(protocol, url);
+                    return original.apply(this, arguments);
+                };
+            } else {
+                navigator.registerProtocolHandler = function(protocol, url) {
+                    if (String(protocol).toLowerCase() !== 'mailto') {
+                        throw new DOMException('Unsupported protocol', 'NotSupportedError');
+                    }
+                    report(protocol, url);
+                };
+            }
+        })();
+        """
+    }
+
+    nonisolated static func makeManifestDiscoveryScript() -> String {
+        """
+        (function() {
+            var link = document.querySelector('link[rel~="manifest"]');
+            if (!link || !link.href) return;
+            fetch(link.href, { credentials: 'include' }).then(function(response) {
+                if (!response.ok) return null;
+                var base = response.url;
+                return response.json().then(function(manifest) { return { manifest: manifest, base: base }; });
+            }).then(function(result) {
+                if (!result || !Array.isArray(result.manifest.protocol_handlers)) return;
+                result.manifest.protocol_handlers.forEach(function(entry) {
+                    if (!entry || typeof entry.protocol !== 'string' || typeof entry.url !== 'string') return;
+                    try {
+                        window.webkit.messageHandlers.chorusMailHandler.postMessage({
+                            protocol: entry.protocol,
+                            template: new URL(entry.url, result.base).href
+                        });
+                    } catch (e) {}
+                });
+            }).catch(function() {});
+        })();
+        """
     }
 
     /// Encodes a Swift string as a JS string literal (quotes included) so it can
@@ -553,6 +734,53 @@ final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unche
             if let error {
                 AppLogger.notifications.error("Failed to post notification: \(error.localizedDescription)")
             }
+        }
+    }
+}
+
+/// One standards declaration a page sent over the discovery bridge. The bridge
+/// reports what the frame observed; trust decisions stay with the router.
+struct MailHandlerDeclaration {
+    let serviceID: UUID
+    let protocolName: String
+    let handlerTemplate: String
+    let declaringPageURL: URL
+    let isMainFrame: Bool
+}
+
+/// Delivers bridge messages without deciding trust itself: the router validates
+/// the declaration, its frame, and the destination before persistence.
+final class MailHandlerMessageHandler: NSObject, WKScriptMessageHandler, @unchecked Sendable {
+    let serviceID: UUID
+    var onDeclaration: (@MainActor (MailHandlerDeclaration) -> Void)?
+
+    init(
+        serviceID: UUID,
+        onDeclaration: @escaping @MainActor (MailHandlerDeclaration) -> Void
+    ) {
+        self.serviceID = serviceID
+        self.onDeclaration = onDeclaration
+    }
+
+    func userContentController(
+        _ userContentController: WKUserContentController,
+        didReceive message: WKScriptMessage
+    ) {
+        guard message.name == "chorusMailHandler",
+              let body = message.body as? [String: Any],
+              let proto = body["protocol"] as? String,
+              let template = body["template"] as? String,
+              let pageURL = message.frameInfo.request.url ?? message.webView?.url
+        else { return }
+        let declaration = MailHandlerDeclaration(
+            serviceID: serviceID,
+            protocolName: proto,
+            handlerTemplate: template,
+            declaringPageURL: pageURL,
+            isMainFrame: message.frameInfo.isMainFrame
+        )
+        MainActor.assumeIsolated {
+            onDeclaration?(declaration)
         }
     }
 }

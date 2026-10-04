@@ -40,6 +40,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// Chorus" choice. When nil the coordinator falls back to `NSWorkspace.open`
     /// directly.
     var externalLinkHandler: ((URL, UUID?) -> Void)?
+    var mailLinkHandler: ((URL) -> Void)?
 
     /// Whether some Chorus service owns a URL, so a page's `window.open` to it
     /// can switch to that service instead of opening a window. Set by
@@ -81,6 +82,20 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     nonisolated private static let nonWebSchemes: Set<String> = [
         "mailto", "tel", "sms", "facetime", "facetime-audio", "imessage", "maps"
     ]
+
+    enum NonWebNavigationAction: Equatable { case cancel, routeMail, openSystem }
+
+    /// Decides a non-web navigation without performing the side effect. Mail is
+    /// deliberately distinct from the system path so Chorus can never hand a
+    /// click back to itself when it is the default mail reader.
+    nonisolated static func nonWebNavigationAction(
+        for url: URL,
+        navigationType: WKNavigationType
+    ) -> NonWebNavigationAction? {
+        guard let scheme = url.scheme?.lowercased(), nonWebSchemes.contains(scheme) else { return nil }
+        guard navigationType == .linkActivated else { return .cancel }
+        return scheme == "mailto" ? .routeMail : .openSystem
+    }
 
     /// Whether a URL may be handed to `NSWorkspace.open`. Only http/https and the
     /// curated `nonWebSchemes` qualify.
@@ -162,9 +177,16 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         //    user gesture, on repeat. Cancel either way so WebKit doesn't then
         //    try to load the unsupported scheme; only a `.linkActivated`
         //    navigation actually reaches the system handler.
-        if let scheme = url.scheme?.lowercased(),
-           Self.nonWebSchemes.contains(scheme) {
-            if navigationAction.navigationType == .linkActivated {
+        if let action = Self.nonWebNavigationAction(
+            for: url,
+            navigationType: navigationAction.navigationType
+        ) {
+            switch action {
+            case .cancel:
+                break
+            case .routeMail:
+                mailLinkHandler?(url)
+            case .openSystem:
                 Self.openExternally(url)
             }
             return .cancel
@@ -890,12 +912,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         initiatedByFrame frame: WKFrameInfo,
         completionHandler: @escaping @MainActor () -> Void
     ) {
-        AppLogger.webView.info("JS alert panel")
-        let alert = NSAlert()
-        alert.messageText = message
-        alert.addButton(withTitle: "OK")
-        let session = JSDialogSession(cancelValue: (), completionHandler)
-        present(alert, over: webView, session: session) { _ in () }
+        WebViewDialogs.alert(message, over: webView, completion: completionHandler)
     }
 
     /// Presents a native OK / Cancel panel for `window.confirm()`. Returns `true`
@@ -908,13 +925,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         initiatedByFrame frame: WKFrameInfo,
         completionHandler: @escaping @MainActor (Bool) -> Void
     ) {
-        AppLogger.webView.info("JS confirm panel")
-        let alert = NSAlert()
-        alert.messageText = message
-        alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Cancel")
-        let session = JSDialogSession(cancelValue: false, completionHandler)
-        present(alert, over: webView, session: session) { $0 == .alertFirstButtonReturn }
+        WebViewDialogs.confirm(message, over: webView, completion: completionHandler)
     }
 
     /// Presents a native text-input panel for `window.prompt()`. Returns the
@@ -928,43 +939,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         initiatedByFrame frame: WKFrameInfo,
         completionHandler: @escaping @MainActor (String?) -> Void
     ) {
-        AppLogger.webView.info("JS text-input panel")
-        let alert = NSAlert()
-        alert.messageText = prompt
-        alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Cancel")
-
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
-        field.stringValue = defaultText ?? ""
-        alert.accessoryView = field
-        alert.window.initialFirstResponder = field
-
-        let session = JSDialogSession(cancelValue: String?.none, completionHandler)
-        present(alert, over: webView, session: session) { response in
-            response == .alertFirstButtonReturn ? field.stringValue : nil
-        }
-    }
-
-    /// Runs `alert` as a sheet on the web view's window when there is one, falling
-    /// back to an app-modal panel otherwise (e.g. an OAuth popup web view). The
-    /// session guarantees the page's completion handler fires exactly once — on a
-    /// button press or, for a sheet, if the host window closes first — mirroring
-    /// the file-picker path. `map` turns the modal response into the value the
-    /// page's handler expects.
-    private func present<T>(
-        _ alert: NSAlert,
-        over webView: WKWebView,
-        session: JSDialogSession<T>,
-        map: @escaping (NSApplication.ModalResponse) -> T
-    ) {
-        if let window = webView.window {
-            session.observeClose(of: window)
-            alert.beginSheetModal(for: window) { response in
-                session.finish(map(response))
-            }
-        } else {
-            session.finish(map(alert.runModal()))
-        }
+        WebViewDialogs.prompt(prompt, defaultText: defaultText, over: webView, completion: completionHandler)
     }
 
     // MARK: - Context Menu
@@ -1573,48 +1548,5 @@ private final class FilePickerSession {
             self.closeObserver = nil
         }
         completion(urls)
-    }
-}
-
-/// Drives a JavaScript dialog (`alert` / `confirm` / `prompt`) to a single
-/// completion. WebKit blocks the page's script until the handler fires exactly
-/// once, so this guarantees it fires — on a button press or the host window
-/// closing first — and never twice. `cancelValue` is what a window-close-first
-/// resolves to (`()` for alert, `false` for confirm, nil for prompt). `@MainActor`
-/// (hence Sendable) so the close observer can hold it.
-@MainActor
-private final class JSDialogSession<T> {
-    private var completion: (@MainActor (T) -> Void)?
-    private var closeObserver: NSObjectProtocol?
-    private let cancelValue: T
-
-    init(cancelValue: T, _ completion: @escaping @MainActor (T) -> Void) {
-        self.cancelValue = cancelValue
-        self.completion = completion
-    }
-
-    /// Fires the completion with `cancelValue` if `window` closes before the sheet
-    /// resolves, releasing the page's blocked script instead of leaving it hung.
-    func observeClose(of window: NSWindow) {
-        closeObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification, object: window, queue: .main
-        ) { [weak self] _ in
-            // The .main queue delivers this on the main thread, so assuming main
-            // isolation to reach the @MainActor method is safe here.
-            MainActor.assumeIsolated { self?.finish(self?.cancelValue) }
-        }
-    }
-
-    /// Idempotent: the first call fires the handler and detaches the observer;
-    /// later calls are no-ops. `value` is nil only on the close path above, where
-    /// it falls back to `cancelValue`.
-    func finish(_ value: T?) {
-        guard let completion else { return }
-        self.completion = nil
-        if let closeObserver {
-            NotificationCenter.default.removeObserver(closeObserver)
-            self.closeObserver = nil
-        }
-        completion(value ?? cancelValue)
     }
 }

@@ -80,10 +80,14 @@ struct SetupArchive: Codable, Equatable {
     ///   person on a Mac, not carried in a file. A file that could grant camera
     ///   access to an address of its choosing, under a familiar name and icon,
     ///   would be a way in. An imported service asks, as a new one does.
+    /// - `mailtoHandlerTemplate`, `mailtoHandlerOrigin`, `mailtoHandlerEnabled`:
+    ///   declarations belong to the signed-in instance, not a portable setup.
+    ///   A new instance must discover its own handler.
     static let excludedServiceFields: Set<String> = [
         "id", "dataStoreIdentifier", "fetchedIconData", "faviconFetchedAt",
         "forceDarkMode", "hasSeenPasskeyNotice", "createdAt", "lastAccessedAt",
         "cameraPolicyRaw", "microphonePolicyRaw",
+        "mailtoHandlerTemplate", "mailtoHandlerOrigin", "mailtoHandlerEnabled",
     ]
 
     // MARK: - Limits

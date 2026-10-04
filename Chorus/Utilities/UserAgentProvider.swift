@@ -12,6 +12,12 @@ enum UserAgentProvider {
     /// Apple's own Safari emits on Apple Silicon too — don't change it.
     static let safariDefault = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
 
+    /// Chromium identity used only by a short-lived, invisible standards-
+    /// discovery view. Some sites (including Gmail) gate their call to
+    /// `registerProtocolHandler` on browser identity even when WKWebView exposes
+    /// the function. Normal service browsing always keeps the honest Safari UA.
+    static let chromiumMailHandlerDiscovery = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+
     /// Mobile Safari (iOS) user agent used by a service's "Mobile view" toggle,
     /// so sites serve their phone/tablet web layout instead of the desktop one.
     /// Keep the iOS and `Version/N` tokens roughly current when bumping

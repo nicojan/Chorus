@@ -9,6 +9,11 @@ import WebKit
 @MainActor
 final class DataStoreManager {
     private var cache: [UUID: WKWebsiteDataStore] = [:]
+    private let makeStore: (UUID) -> WKWebsiteDataStore
+
+    init(makeStore: @escaping (UUID) -> WKWebsiteDataStore = { WKWebsiteDataStore(forIdentifier: $0) }) {
+        self.makeStore = makeStore
+    }
 
     func dataStore(for instance: ServiceInstance) -> WKWebsiteDataStore {
         dataStore(forIdentifier: instance.dataStoreIdentifier)
@@ -18,7 +23,7 @@ final class DataStoreManager {
         if let cached = cache[identifier] {
             return cached
         }
-        let store = WKWebsiteDataStore(forIdentifier: identifier)
+        let store = makeStore(identifier)
         Self.disableTrackingPrevention(on: store)
         cache[identifier] = store
         return store
