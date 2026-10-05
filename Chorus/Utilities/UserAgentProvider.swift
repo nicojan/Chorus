@@ -8,9 +8,13 @@ enum UserAgentProvider {
     /// versions on a rolling basis).
     ///
     /// Keep the `Version/N.N` token bumped to a currently-shipping Safari major
-    /// when releasing. The "Intel Mac OS X 10_15_7" platform token is what
-    /// Apple's own Safari emits on Apple Silicon too — don't change it.
-    static let safariDefault = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
+    /// when releasing. Gmail treats the 27 token better than 26 for toolbar
+    /// actions; hover-action dispatch timing stays Gmail's own regardless.
+    /// Check Gmail's actions again after each bump.
+    ///
+    /// The "Intel Mac OS X 10_15_7" platform token is what Apple's own Safari
+    /// emits on Apple Silicon too — don't change it.
+    static let safariDefault = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Safari/605.1.15"
 
     /// Mobile Safari (iOS) user agent used by a service's "Mobile view" toggle,
     /// so sites serve their phone/tablet web layout instead of the desktop one.

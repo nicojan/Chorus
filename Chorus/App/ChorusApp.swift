@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import SwiftData
 #if canImport(Sparkle)
 import Sparkle
@@ -105,6 +106,23 @@ struct ChorusApp: App {
                 .keyboardShortcut("w", modifiers: .command)
             }
 
+            // End native hover before hiding, without delaying the command.
+            CommandGroup(replacing: .appVisibility) {
+                Button("Hide Chorus") {
+                    WebViewDeparture.hideApplication()
+                }
+                .keyboardShortcut("h", modifiers: .command)
+
+                Button("Hide Others") {
+                    NSApp.hideOtherApplications(nil)
+                }
+                .keyboardShortcut("h", modifiers: [.command, .option])
+
+                Button("Show All") {
+                    NSApp.unhideAllApplications(nil)
+                }
+            }
+
             KeyboardShortcutCommands(
                 selectedServiceID: Binding(
                     get: { appState.selectedServiceID },
@@ -128,7 +146,7 @@ struct ChorusApp: App {
 
             CommandGroup(after: .toolbar) {
                 Button("Reload") {
-                    appState.reloadActiveService()
+                    Task { await appState.reloadActiveService() }
                 }
                 .keyboardShortcut("r", modifiers: .command)
 

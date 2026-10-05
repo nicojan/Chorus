@@ -267,23 +267,7 @@ final class WebViewPool {
             return existing
         }
 
-        let config = makeConfiguration(for: instance)
-        let webView = WKWebView(frame: CGRect(origin: .zero, size: WebViewHostView.lastSize), configuration: config)
-        webView.allowsBackForwardNavigationGestures = true
-        webView.customUserAgent = instance.userAgent ?? UserAgentProvider.safariDefault
-        #if DEBUG
-        // Lets Safari's Develop menu attach to the page, to watch a sign-in.
-        webView.isInspectable = true
-        #endif
-
-        let coordinator = makeCoordinator(for: instance)
-        webView.navigationDelegate = coordinator
-        webView.uiDelegate = coordinator
-        coordinators[instance.id] = coordinator
-
-        webViews[instance.id] = webView
-        lastAccessTimes[instance.id] = Date()
-        observeCaptureState(webView, id: instance.id)
+        let webView = createWebView(for: instance)
 
         // Restore the last-visited URL when waking from full hibernation
         // so the user lands back where they left off, not at the home URL.
@@ -315,23 +299,7 @@ final class WebViewPool {
         // A Mac-app service has no page to load.
         guard instance.nativeAppBundleID == nil else { return }
 
-        let config = makeConfiguration(for: instance)
-        let webView = WKWebView(frame: CGRect(origin: .zero, size: WebViewHostView.lastSize), configuration: config)
-        webView.allowsBackForwardNavigationGestures = true
-        webView.customUserAgent = instance.userAgent ?? UserAgentProvider.safariDefault
-        #if DEBUG
-        // Lets Safari's Develop menu attach to the page, to watch a sign-in.
-        webView.isInspectable = true
-        #endif
-
-        let coordinator = makeCoordinator(for: instance)
-        webView.navigationDelegate = coordinator
-        webView.uiDelegate = coordinator
-        coordinators[instance.id] = coordinator
-
-        webViews[instance.id] = webView
-        lastAccessTimes[instance.id] = Date()
-        observeCaptureState(webView, id: instance.id)
+        let webView = createWebView(for: instance)
 
         // Register the hibernation-exemption flags now, not just on first
         // activation. A service preloaded but never clicked would otherwise be
@@ -801,6 +769,28 @@ final class WebViewPool {
         coordinators.removeValue(forKey: instanceID)
         dropSnapshot(for: instanceID)
         onServiceTornDown?(instanceID)
+    }
+
+    /// Creates and registers a page identically for foreground and preload.
+    /// Callers decide activation, the URL to load, and preload callbacks.
+    private func createWebView(for instance: ServiceInstance) -> WKWebView {
+        let config = makeConfiguration(for: instance)
+        let webView = WKWebView(frame: CGRect(origin: .zero, size: WebViewHostView.lastSize), configuration: config)
+        webView.allowsBackForwardNavigationGestures = true
+        webView.customUserAgent = instance.userAgent ?? UserAgentProvider.safariDefault
+        #if DEBUG
+        // Lets Safari's Develop menu attach to the page, to watch a sign-in.
+        webView.isInspectable = true
+        #endif
+
+        let coordinator = makeCoordinator(for: instance)
+        webView.navigationDelegate = coordinator
+        webView.uiDelegate = coordinator
+        coordinators[instance.id] = coordinator
+        webViews[instance.id] = webView
+        lastAccessTimes[instance.id] = Date()
+        observeCaptureState(webView, id: instance.id)
+        return webView
     }
 
     /// Builds a navigation/UI coordinator wired to this service. Shared by

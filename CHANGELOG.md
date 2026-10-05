@@ -5,6 +5,11 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Hiding Chorus and switching services happen at once. Chorus gives Gmail time to finish work from your click before it clears hover state or puts the page aside. Reloading or quitting immediately after a click can still lose the change if Gmail has not sent it yet.
+- Chorus tells Gmail it is Safari 27 rather than 26.
+
 ## [1.5.27] - 2026-10-05
 
 ### Added

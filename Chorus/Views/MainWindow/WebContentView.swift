@@ -111,72 +111,22 @@ struct WebContentView: View {
         }
     }
 
-    /// What the card holds: the live page with its snapshot and find bar, the
-    /// placeholder while a web view is made, or the empty state.
-    @ViewBuilder
     private var cardContent: some View {
-        if let service = selectedService, let bundleID = service.nativeAppBundleID {
-            NativeAppPanel(label: service.label, bundleID: bundleID)
-        } else if let service = selectedService, let webView = displayedWebView {
-            VStack(spacing: 0) {
-                if let tabs = selectedTabs, !tabs.isEmpty {
-                    ServiceTabStrip(
-                        serviceLabel: service.label,
-                        tabs: tabs,
-                        onClose: { id in
-                            appState.webViewPool.closeTab(id, for: service.id)
-                        }
-                    )
-                }
-                pageContent(webView)
+        WebContentCard(
+            service: selectedService,
+            webView: displayedWebView,
+            tabs: selectedTabs,
+            transitionSnapshot: transitionSnapshot,
+            isLoading: webViewState.isLoading,
+            findInPageVisible: Binding(
+                get: { appState.findInPageVisible },
+                set: { appState.findInPageVisible = $0 }
+            ),
+            onCloseTab: { id in
+                guard let serviceID = selectedServiceID else { return }
+                appState.webViewPool.closeTab(id, for: serviceID)
             }
-        } else if selectedService != nil {
-            ProgressView("Loading service…")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            emptyState
-        }
-    }
-
-    /// The live page with its load snapshot and find bar.
-    private func pageContent(_ webView: WKWebView) -> some View {
-        ZStack(alignment: .topTrailing) {
-            WebViewContainer(webView: webView)
-
-            // Show cached snapshot as instant visual feedback while page loads.
-            // Fades out once the web view finishes loading. It fills the
-            // web view's frame (rather than aspect-fill, which cropped or
-            // stretched it); since the snapshot was taken at this frame it
-            // lines up without distortion.
-            if let snapshot = transitionSnapshot, webViewState.isLoading {
-                Image(nsImage: snapshot)
-                    .resizable()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
-                    .transition(.opacity)
-                    // The snapshot is a picture, never a shield. Without
-                    // this it sits over the live web view and eats every
-                    // click for as long as a navigation runs — a page
-                    // that looks exactly like the one underneath but
-                    // answers nothing (reported on TD EasyWeb: click
-                    // Login and the app appears to freeze).
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
-
-            if appState.findInPageVisible {
-                FindInPageBar(
-                    isVisible: Binding(
-                        get: { appState.findInPageVisible },
-                        set: { appState.findInPageVisible = $0 }
-                    ),
-                    webView: webView
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: webViewState.isLoading)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: appState.findInPageVisible)
+        ) { emptyState }
     }
 
     /// Points the nav buttons at whichever page is now on screen, after a tab
@@ -394,6 +344,96 @@ struct WebContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Renders the selected service without owning selection, polling, or storage.
+/// Keeping this separate lets the real SwiftUI service transition run in tests.
+struct WebContentCard<EmptyContent: View>: View {
+    let service: ServiceInstance?
+    /// The page on screen for this service: the selected tab, or its own page.
+    let webView: WKWebView?
+    /// The service's open tabs, shown above the page when it has any.
+    let tabs: ServiceTabs?
+    let transitionSnapshot: NSImage?
+    let isLoading: Bool
+    @Binding var findInPageVisible: Bool
+    let onCloseTab: (UUID) -> Void
+    @ViewBuilder var emptyContent: () -> EmptyContent
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The page the host should hold. A Mac-app service and an empty selection
+    /// both have none, and the host stays mounted either way so the outgoing
+    /// page can still receive its native exit.
+    private var pageWebView: WKWebView? {
+        guard let service, service.nativeAppBundleID == nil else { return nil }
+        return webView
+    }
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            // Keep the host in the hierarchy for every selection. Hiding or
+            // removing it would prevent the outgoing page's native exit.
+            WebViewContainer(webView: pageWebView)
+
+            if let service, let bundleID = service.nativeAppBundleID {
+                NativeAppPanel(label: service.label, bundleID: bundleID)
+                    .background(ChorusColor.card)
+            } else if let service, let webView = pageWebView {
+                VStack(spacing: 0) {
+                    if let tabs, !tabs.isEmpty {
+                        ServiceTabStrip(
+                            serviceLabel: service.label,
+                            tabs: tabs,
+                            onClose: onCloseTab
+                        )
+                    }
+                    pageChrome(webView)
+                }
+            } else if service != nil {
+                ProgressView("Loading service…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(ChorusColor.card)
+            } else {
+                emptyContent()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(ChorusColor.card)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: isLoading)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: findInPageVisible)
+    }
+
+    /// The load snapshot and the find bar over the live page. The page itself is
+    /// the card's base layer, so it stays mounted while this comes and goes.
+    private func pageChrome(_ webView: WKWebView) -> some View {
+        ZStack(alignment: .topTrailing) {
+            // Show cached snapshot as instant visual feedback while page loads.
+            // Fades out once the web view finishes loading. It fills the
+            // web view's frame (rather than aspect-fill, which cropped or
+            // stretched it); since the snapshot was taken at this frame it
+            // lines up without distortion.
+            if let snapshot = transitionSnapshot, isLoading {
+                Image(nsImage: snapshot)
+                    .resizable()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+                    .transition(.opacity)
+                    // The snapshot is a picture, never a shield. Without
+                    // this it sits over the live web view and eats every
+                    // click for as long as a navigation runs — a page
+                    // that looks exactly like the one underneath but
+                    // answers nothing (reported on TD EasyWeb: click
+                    // Login and the app appears to freeze).
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+
+            if findInPageVisible {
+                FindInPageBar(isVisible: $findInPageVisible, webView: webView)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
     }
 }
 
