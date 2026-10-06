@@ -251,7 +251,7 @@ Measured 2026-09-22 against `~/Library/Logs/chorus-mem.csv`: 1,689 rows across 1
 
 The 57 hour run carries the finding, being the only one long enough to show a shape. In six-hour means the main process climbs 173 → 258 MB over the first day and then holds: 258, 260, 265, 265, 273 MB across hours 24 to 60. That is a ramp to a steady state around 260–270 MB rather than the unbounded climb this was filed as. The old 10 MB/h figure came from a single 3 hour sample that sat entirely inside the ramp.
 
-`webcontent_mb` shows no trend at all. It swings between 0.8 and 7.8 GB with what is open, and the sign of its slope flips from run to run — that is page content, not a leak.
+`webcontent_mb` shows no trend at all. It swings between 0.8 and 7.8 GB with what is open, and the sign of its slope flips from run to run — that is page content, not a leak. **Superseded as a reading of single pages, 2026-10-01:** the sum hides one page that climbs; see the memory watch note below.
 
 **A candidate for the ramp, found in the code on 2026-09-22.** `WebViewPool.softHibernateService` (`WebViewPool.swift:456`) calls `takeSnapshot(with: nil)`, which means the full view bounds at backing scale — roughly 2160 by 1520 by 4 bytes, about 13 MB, for a 1080 point window on a 2x display. The image goes into `snapshots[id]` and only `teardownWebView` ever removes it, so every service you switch away from leaves one resident for the life of the process.
 
@@ -277,6 +277,12 @@ Two further edges in the same rule, both live in shipped code:
 What would make a default-on defensible is a behavioural exemption rather than a categorical one: the app already sees every notification a page posts through the `chorusNotification` handler, so "this service actually pushed something in the last week" is a fact it can hold, and it covers custom services, which no category ever will. That needs the data collected first and is not 1.5.20 work.
 
 And soft hibernation does not help here. It suspends media and lets WebKit drop GPU and compositor resources while the WebContent process stays up, so the multi-GB figure is untouched. The page has to stop running for that memory to come back, and a page that has stopped running cannot notify you. That trade is real and cannot be designed away.
+
+**A memory watch, log only (PR #36).** The sum above hides one page that climbs, and reading one WebContent process at a time shows it. On 2026-10-01 a single Chorus WebContent process went from 154 MB at 18:00 to 1.6 GB at 18:28 and 2.2 GB at 18:30, 1.5 GB of it `WebKit Malloc` (`footprint -p`) and 41 MB of WebAssembly. That is one process on one evening on macOS 27, and the service is a guess: the WebKit logs hide URLs, and WhatsApp Web is only the likeliest of the six. The WhatsApp app sat at about 460 MB on the same machine.
+
+So PR #36 measures before it acts. Every five minutes `AppState.logMemoryWatch` logs each page's footprint, read with `proc_pid_rusage` on the pid from `_webProcessIdentifier` (SPI, probed), under the service's catalog id. It also logs when a page would be rebuilt (`WebViewPool.wouldRebuild`): past both 1.5 GB and twice its baseline, out of sight for ten minutes counted from when the user left it (`ServiceVisits`), and not on screen, pinned, Keep Loaded, capturing, audible or holding tabs. When a page counts, its footprint becomes its new baseline, standing in for the rebuild, so a page that settled heavy counts once rather than every pass. Nothing is rebuilt. Read it back with `log show --predicate 'subsystem == "com.nicojan.Chorus" AND eventMessage BEGINSWITH "Memory watch"'`.
+
+If the logs show the climb, turning the rebuild on needs, from the review of #36: one service per pass; skip while offline and just after wake; skip when `hasOpenTabs`, checked before and after the call probe; run the `quitReleaseJS` save step and wait, as quit and tab close do, since WhatsApp saves its session when the page goes hidden; and reload `webView.url`, not `instance.url`, so the open chat survives. Then test it on a release build against a signed-in WhatsApp over hours.
 
 **Still open:**
 

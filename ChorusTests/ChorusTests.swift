@@ -450,6 +450,93 @@ final class ChorusTests: XCTestCase {
         XCTAssertFalse(dropped.contains(ids[4]), "the one just stored is never dropped")
     }
 
+    func testMemoryWatchCountsOnlyAPageThatKeptGrowingAndNobodyIsUsing() {
+        let mb: UInt64 = 1_048_576
+        let floor = WebViewPool.memoryWatchFloor
+        let away = WebViewPool.memoryWatchMinimumOutOfSight
+        func grown(
+            footprint: UInt64? = 2_000 * 1_048_576, baseline: UInt64? = 300 * 1_048_576,
+            outOfSight: TimeInterval = away, isActive: Bool = false,
+            isPinned: Bool = false, keepLoaded: Bool = false,
+            isCapturing: Bool = false, isPlayingAudio: Bool = false, hasOpenTabs: Bool = false
+        ) -> Bool {
+            WebViewPool.wouldRebuild(
+                footprint: footprint, baseline: baseline, outOfSight: outOfSight,
+                isActive: isActive, isPinned: isPinned, keepLoaded: keepLoaded,
+                isCapturing: isCapturing, isPlayingAudio: isPlayingAudio, hasOpenTabs: hasOpenTabs
+            )
+        }
+
+        XCTAssertTrue(grown(), "a page past the floor and twice its baseline, long out of sight, counts")
+        XCTAssertFalse(grown(footprint: floor), "at the floor is not past it")
+        XCTAssertFalse(grown(footprint: nil), "a size that cannot be read is left alone")
+        XCTAssertFalse(grown(baseline: nil), "nor a page that has not settled yet")
+        XCTAssertFalse(grown(footprint: 1_900 * mb, baseline: 1_800 * mb), "big but steady does not count")
+        XCTAssertFalse(grown(footprint: 3_600 * mb, baseline: 1_800 * mb), "exactly twice is not past it")
+        XCTAssertTrue(grown(footprint: 3_700 * mb, baseline: 1_800 * mb), "past twice its own size counts")
+        XCTAssertFalse(grown(footprint: .max, baseline: .max), "an absurd baseline cannot overflow into a count")
+
+        XCTAssertFalse(grown(outOfSight: away - 1), "a page left moments ago may hold a draft")
+        XCTAssertFalse(grown(isActive: true), "never the page on screen")
+        XCTAssertFalse(grown(isPinned: true))
+        XCTAssertFalse(grown(keepLoaded: true), "Keep Loaded means keep it as it is")
+        XCTAssertFalse(grown(isCapturing: true), "never in the middle of a call")
+        XCTAssertFalse(grown(isPlayingAudio: true))
+        XCTAssertFalse(grown(hasOpenTabs: true), "a rebuild would close the tabs")
+    }
+
+    func testMemoryWatchDoesNotCountAHeavyPageSampledEarlyOverAndOver() {
+        let mb: UInt64 = 1_048_576
+        // Sampled at 700 MB while still loading, the page settles at 1.6 GB.
+        // Under 768 MB the floor alone decides, so it counts once...
+        let settled: UInt64 = 1_600 * mb
+        func grown(_ footprint: UInt64, baseline: UInt64) -> Bool {
+            WebViewPool.wouldRebuild(
+                footprint: footprint, baseline: baseline,
+                outOfSight: WebViewPool.memoryWatchMinimumOutOfSight,
+                isActive: false, isPinned: false, keepLoaded: false,
+                isCapturing: false, isPlayingAudio: false, hasOpenTabs: false
+            )
+        }
+        XCTAssertTrue(grown(settled, baseline: 700 * mb))
+        // ...and `memoryReadings` then carries that footprint over as the new
+        // baseline, so the same size on the next pass is steady, not grown.
+        XCTAssertFalse(grown(settled, baseline: settled), "counted once, not on every pass")
+        XCTAssertTrue(grown(2 * settled + mb, baseline: settled), "only doubling again counts again")
+    }
+
+    func testOutOfSightCountsFromLeavingAServiceNotFromOpeningIt() {
+        let whatsapp = UUID(), slack = UUID()
+        let start = Date()
+        var visits = ServiceVisits()
+
+        // Open WhatsApp and stay in it for half an hour.
+        visits.loaded(whatsapp, at: start)
+        visits.activate(whatsapp, at: start)
+        XCTAssertEqual(visits.outOfSight(whatsapp, now: start.addingTimeInterval(1_800)), 0, "on screen is never out of sight")
+
+        // Switch to Slack, and sweep a few seconds later.
+        let left = start.addingTimeInterval(1_800)
+        visits.loaded(slack, at: left)
+        visits.activate(slack, at: left)
+        let sweep = left.addingTimeInterval(5)
+        XCTAssertEqual(visits.outOfSight(whatsapp, now: sweep), 5, "counted from the switch, not from opening")
+        XCTAssertFalse(WebViewPool.wouldRebuild(
+            footprint: .max / 4, baseline: 1, outOfSight: visits.outOfSight(whatsapp, now: sweep),
+            isActive: false, isPinned: false, keepLoaded: false,
+            isCapturing: false, isPlayingAudio: false, hasOpenTabs: false
+        ), "a service left seconds ago never counts, however big")
+
+        // Going to a Mac app leaves the page too.
+        visits.activate(nil, at: sweep)
+        XCTAssertEqual(visits.outOfSight(slack, now: sweep.addingTimeInterval(60)), 60)
+
+        // A page loaded in the background is out of sight since it loaded.
+        let other = UUID()
+        visits.loaded(other, at: start)
+        XCTAssertEqual(visits.outOfSight(other, now: start.addingTimeInterval(600)), 600)
+    }
+
     @MainActor
     func testSnapshotCapHandlesDegenerateCaps() {
         let ids = (0..<2).map { _ in UUID() }
