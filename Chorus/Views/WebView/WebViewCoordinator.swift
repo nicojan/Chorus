@@ -261,7 +261,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         // popups (the coordinator is their navigation delegate too).
         guard !isAuxiliary(webView), let instanceID else { return }
         if errorPageLoadInFlight {
+            // Loading the error page started a load of its own, which moved the
+            // rail from failed back to loading. The page it shows is about a
+            // failure, so put the failure back.
             errorPageLoadInFlight = false
+            onHealthEvent?(instanceID, .failed)
         } else {
             onHealthEvent?(instanceID, .finishedLoading)
         }
