@@ -10,6 +10,9 @@ import SwiftData
 ///   so the flash and the attention pulse happen on cue.
 /// - `setRailLayout <sidebar|topBars|hybrid|allServices>` switches the layout
 ///   the way the Settings picker does.
+/// - `pollBadge <service label>` reads that service's count from its page
+///   now, rather than at its next poll, which for a background service can be
+///   thirty seconds away. The count is still the page's own.
 ///
 /// None of this exists in a Release build.
 enum DemoControl {
@@ -43,6 +46,7 @@ enum DemoControl {
     enum Command: Equatable {
         case bumpBadge(label: String)
         case setRailLayout(RailLayout)
+        case pollBadge(label: String)
     }
 
     /// Reads a command line: the verb, a space, and the rest as its argument.
@@ -55,6 +59,8 @@ enum DemoControl {
         switch parts[0] {
         case "bumpBadge":
             return argument.isEmpty ? nil : .bumpBadge(label: argument)
+        case "pollBadge":
+            return argument.isEmpty ? nil : .pollBadge(label: argument)
         case "setRailLayout":
             return RailLayout(rawValue: argument).map(Command.setRailLayout)
         default:
@@ -102,15 +108,28 @@ extension AppState {
         }
     }
 
+    private func demoService(named label: String) -> ServiceInstance? {
+        let services = (try? modelContainer.mainContext.fetch(FetchDescriptor<ServiceInstance>())) ?? []
+        guard let service = services.first(where: { $0.label.caseInsensitiveCompare(label) == .orderedSame }) else {
+            AppLogger.general.notice("Demo control: no service called \(label, privacy: .public)")
+            return nil
+        }
+        return service
+    }
+
     private func perform(_ command: DemoControl.Command) {
         switch command {
         case .bumpBadge(let label):
-            let services = (try? modelContainer.mainContext.fetch(FetchDescriptor<ServiceInstance>())) ?? []
-            guard let service = services.first(where: { $0.label.caseInsensitiveCompare(label) == .orderedSame }) else {
-                AppLogger.general.notice("Demo control: no service called \(label, privacy: .public)")
-                return
-            }
+            guard let service = demoService(named: label) else { return }
             badgeManager.bumpMockCount(for: service.id)
+        case .pollBadge(let label):
+            guard let service = demoService(named: label),
+                  let webView = webViewPool.liveWebView(for: service.id) else { return }
+            let catalogEntry = service.catalogEntryID.flatMap { ServiceCatalog.shared.entry(for: $0) }
+            let (id, isMuted, showBadge) = (service.id, service.isMuted, service.showBadge)
+            Task {
+                await notificationManager.demoPollNow(for: id, webView: webView, isMuted: isMuted, showBadge: showBadge, catalogEntry: catalogEntry)
+            }
         case .setRailLayout(let layout):
             ensurePreferences().railLayoutRaw = layout.rawValue
             railLayout = layout

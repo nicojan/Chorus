@@ -400,3 +400,13 @@ private final class NotificationCenterDelegate: NSObject, UNUserNotificationCent
         }
     }
 }
+
+#if DEBUG
+extension NotificationManager {
+    /// A demo recording's `pollBadge`: one read of the count, now, that can
+    /// clear it as well as raise it, like the live poll of an open service.
+    func demoPollNow(for instanceID: UUID, webView: WKWebView, isMuted: Bool, showBadge: Bool, catalogEntry: ServiceCatalogEntry?) async {
+        await pollPrimaryCount(webView: webView, instanceID: instanceID, isMuted: isMuted, showBadge: showBadge, catalogEntry: catalogEntry, resetToZero: true)
+    }
+}
+#endif

@@ -6844,6 +6844,8 @@ final class ChorusTests: XCTestCase {
         for layout in RailLayout.allCases {
             XCTAssertEqual(DemoControl.parse("setRailLayout \(layout.rawValue)"), .setRailLayout(layout))
         }
+        XCTAssertEqual(DemoControl.parse("pollBadge Parlour"), .pollBadge(label: "Parlour"))
+        XCTAssertNil(DemoControl.parse("pollBadge  "))
         XCTAssertNil(DemoControl.parse("setRailLayout sideways"))
         XCTAssertNil(DemoControl.parse("bumpBadge"))
         XCTAssertNil(DemoControl.parse("bumpBadge   "))
