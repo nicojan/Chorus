@@ -6850,6 +6850,38 @@ final class ChorusTests: XCTestCase {
         XCTAssertNil(DemoControl.parse("deleteEverything now"))
         XCTAssertNil(DemoControl.parse(""))
     }
+
+    /// Loading a demo setup leaves only what the file holds: no space, link or
+    /// service of the store it replaced survives.
+    @MainActor
+    func testDemoSetupReplacesEverythingInTheStore() throws {
+        let container = try makeGroupingContainer()
+        let context = container.mainContext
+        let work = Space(name: "Work", emoji: "💼", sortOrder: 0)
+        let slack = ServiceInstance(label: "Slack", url: "https://app.slack.com")
+        context.insert(work)
+        context.insert(slack)
+        try context.save()
+        link(slack, to: work, sortOrder: 0, in: context)
+        try context.save()
+
+        let archive = SetupArchive(
+            format: SetupArchive.format, version: 1, exportedAt: Date(), appVersion: nil,
+            spaces: [.init(name: "Demo", emoji: "📚", sortOrder: 0, isMuted: nil, members: [.init(service: 0, sortOrder: 0)])],
+            services: [.init(label: "Parlour", url: "http://parlour.localhost:8765", catalogEntryID: nil, customIconData: nil,
+                             isMuted: false, showBadge: true, neverHibernate: false, userAgent: nil, pageZoom: nil,
+                             osNotificationsEnabled: nil, customCSS: nil, darkModeRaw: nil, openExternalLinksInApp: nil,
+                             stayActiveInBackground: nil, hibernationPolicyRaw: nil, hibernateAfterMinutes: nil)]
+        )
+        _ = try DemoControl.replaceContents(of: context, with: archive)
+
+        XCTAssertEqual(try context.fetch(FetchDescriptor<Space>()).map(\.name), ["Demo"])
+        XCTAssertEqual(try context.fetch(FetchDescriptor<ServiceInstance>()).map(\.label), ["Parlour"])
+        let links = try context.fetch(FetchDescriptor<SpaceServiceLink>())
+        XCTAssertEqual(links.count, 1)
+        XCTAssertEqual(links.first?.space?.name, "Demo")
+        XCTAssertEqual(links.first?.service?.label, "Parlour")
+    }
     #endif
 
 }

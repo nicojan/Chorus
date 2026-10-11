@@ -20,6 +20,26 @@ enum DemoControl {
     /// `defaults write com.nicojan.Chorus.debug debugMockTickerOff -bool true`.
     static let tickerOffKey = "debugMockTickerOff"
 
+    /// UserDefaults key naming a setup file. The next launch empties the
+    /// Debug store and loads that file in its place, so a recording holds the
+    /// demo's own services and nothing of the developer's:
+    /// `defaults write com.nicojan.Chorus.debug debugDemoSetupPath /path/setup.json`.
+    /// The launch clears the key before it reads the file, so a bad file
+    /// costs one launch, not every launch.
+    static let setupPathKey = "debugDemoSetupPath"
+
+    /// Deletes every space, link and service, then imports `archive`. Links go
+    /// first and explicitly: on macOS 14 a space's cascade leaves its links
+    /// behind with `space` nulled.
+    @MainActor
+    static func replaceContents(of context: ModelContext, with archive: SetupArchive) throws -> SetupArchive.ImportSummary {
+        try context.fetch(FetchDescriptor<SpaceServiceLink>()).forEach(context.delete)
+        try context.fetch(FetchDescriptor<Space>()).forEach(context.delete)
+        try context.fetch(FetchDescriptor<ServiceInstance>()).forEach(context.delete)
+        try context.save()
+        return try archive.apply(to: context)
+    }
+
     enum Command: Equatable {
         case bumpBadge(label: String)
         case setRailLayout(RailLayout)
@@ -63,6 +83,22 @@ extension AppState {
                 }
                 self?.perform(command)
             }
+        }
+    }
+
+    /// Loads the setup file `DemoControl.setupPathKey` names, if one is set,
+    /// in place of everything in the store. Runs before seeding, so a store
+    /// it empties is not then filled with the default services.
+    func loadDemoSetupIfAsked(defaults: UserDefaults = .standard) {
+        guard let path = defaults.string(forKey: DemoControl.setupPathKey) else { return }
+        defaults.removeObject(forKey: DemoControl.setupPathKey)
+        do {
+            let archive = try SetupArchive.decode(Data(contentsOf: URL(fileURLWithPath: path)))
+            let summary = try DemoControl.replaceContents(of: modelContainer.mainContext, with: archive)
+            defaults.set(true, forKey: Self.hasEverHadDataKey)
+            AppLogger.dataStore.notice("Demo setup loaded from \(path, privacy: .public): \(summary.servicesAdded) services")
+        } catch {
+            AppLogger.dataStore.error("Demo setup at \(path, privacy: .public) not loaded: \(error.localizedDescription, privacy: .public)")
         }
     }
 

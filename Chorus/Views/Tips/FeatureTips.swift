@@ -67,6 +67,8 @@ enum FeatureTips {
     /// Debug-only switches, so the tips can be seen again without a new user.
     static let debugResetKey = "debugResetTips"
     static let debugShowAllKey = "debugShowAllTips"
+    /// Hides every tip, so a scripted demo recording is never interrupted.
+    static let debugHideAllKey = "debugHideAllTips"
     #endif
 
     /// Starts TipKit with its records in Chorus's own folder. The default
@@ -96,6 +98,8 @@ enum FeatureTips {
         #if DEBUG
         if UserDefaults.standard.bool(forKey: debugShowAllKey) {
             Tips.showAllTipsForTesting()
+        } else if UserDefaults.standard.bool(forKey: debugHideAllKey) {
+            Tips.hideAllTipsForTesting()
         }
         #endif
     }

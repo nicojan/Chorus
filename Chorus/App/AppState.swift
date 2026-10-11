@@ -530,6 +530,9 @@ final class AppState {
         setupDownloads()
         setupMediaPermissions()
         setupTerminationRecording()
+        #if DEBUG
+        loadDemoSetupIfAsked()
+        #endif
         let didSeedDefaults = seedDefaultDataIfNeeded()
         backfillPasskeyNoticeIfNeeded(freshInstall: didSeedDefaults)
         reapOrphanedServices()
