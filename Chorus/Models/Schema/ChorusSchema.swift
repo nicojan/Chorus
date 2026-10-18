@@ -13,16 +13,17 @@ import SwiftData
 //
 // Scope (see docs/superpowers/specs/2026-07-24-versioned-schema-migration-plan.md):
 // the floor is 1.5.11 — the incident's source version and the oldest shape worth
-// covering for a Sparkle-auto-updated app. From 1.5.11 to today, ONLY
-// `ServiceInstance` changed, and only by adding optional fields, so every stage
-// is `.lightweight`. `Space`, `SpaceServiceLink`, and `AppPreferences` are
-// unchanged across the whole window.
+// covering for a Sparkle-auto-updated app. Every stage since is additive or
+// only relaxes a constraint: `ServiceInstance` gained optional fields, and in
+// 1.5.19 `SpaceServiceLink.space` and `.service` became optional (see V1.5.13
+// below). Each version's comment says what it changed.
 //
 // Because `ServiceInstance`, `Space`, and `SpaceServiceLink` reference each other
 // through relationships, each historical version freezes all three together in
 // its own namespace so the relationship graph stays within-version. The
-// standalone `AppPreferences` has no relationships and is identical across the
-// window, so every version references the current type directly.
+// standalone `AppPreferences` has no relationships; older versions use the
+// frozen `ChorusSchemaV1_5_11.AppPreferences`, which
+// `testFrozenAppPreferencesMatchesLiveModel` keeps in step.
 //
 // IMPORTANT — the frozen types below mirror ONLY the stored shape (persisted
 // properties + relationships). Computed helpers, static tables, and

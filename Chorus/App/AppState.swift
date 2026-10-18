@@ -2290,6 +2290,9 @@ final class AppState {
             AppLogger.dataStore.error("Refusing to schedule a restore from an unexpected filename")
             return false
         }
+        // The latest choice wins: a fresh start still waiting from earlier
+        // would otherwise set this restore aside the moment it lands.
+        defaults.removeObject(forKey: StoreRepair.pendingResetKey)
         defaults.set(name, forKey: StoreRepair.pendingRestoreKey)
         AppLogger.dataStore.info("Scheduled a restore from \(name)")
         return true
@@ -2363,6 +2366,8 @@ final class AppState {
     /// applied at the next launch whenever that happens.
     @discardableResult
     func chooseFreshStart(defaults: UserDefaults = .standard) -> Bool {
+        // The latest choice wins over a restore still waiting from earlier.
+        defaults.removeObject(forKey: StoreRepair.pendingRestoreKey)
         defaults.set(true, forKey: StoreRepair.pendingResetKey)
         AppLogger.dataStore.info("Scheduled a fresh start; the current store will be set aside at the next launch")
         guard AppRelauncher.armRelaunch() else {

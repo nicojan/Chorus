@@ -12,6 +12,7 @@
 		0551F23E1A9E226486C1A0BB /* AddServiceSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECCC4A3133903E40BFB42AA6 /* AddServiceSheet.swift */; };
 		0630E42353C95F80FCA4AD3E /* DownloadsButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63600DD5EE558B052FFC8073 /* DownloadsButton.swift */; };
 		06696BB66C7BAA761E8291C9 /* HibernatedBadgePoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24EE83C0600AFD4A12914883 /* HibernatedBadgePoller.swift */; };
+		0680495DE14A246C97993DC1 /* IconThumbnail.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01CC2330887CF5293843BF3 /* IconThumbnail.swift */; };
 		074FE22389F3BF8A951A80CA /* SetupArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB2C3D766E33A238E3561B34 /* SetupArchive.swift */; };
 		08325D59D0DA278497FDA446 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 33B60E7DE1B2CCE732C55AF9 /* LICENSE */; };
 		091825995DF2FD9C4A7BC86F /* KeyboardShortcutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2AC7E996360A4BC660FD194 /* KeyboardShortcutManager.swift */; };
@@ -174,6 +175,7 @@
 		CA55A0E026084DC20071FBCE /* QuickSwitcherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickSwitcherView.swift; sourceTree = "<group>"; };
 		CA77C4C73BEB532F6AC1C339 /* AppRelauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRelauncher.swift; sourceTree = "<group>"; };
 		CBBF69E002BB39BB6EFF9BDB /* UserScriptManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserScriptManager.swift; sourceTree = "<group>"; };
+		D01CC2330887CF5293843BF3 /* IconThumbnail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconThumbnail.swift; sourceTree = "<group>"; };
 		D2AC7E996360A4BC660FD194 /* KeyboardShortcutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardShortcutManager.swift; sourceTree = "<group>"; };
 		D533B667501DF0913FF62B9A /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		D9E64C2450C98941A48AC7BD /* hagezi-light.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "hagezi-light.json"; sourceTree = "<group>"; };
@@ -310,6 +312,7 @@
 				CA77C4C73BEB532F6AC1C339 /* AppRelauncher.swift */,
 				38CB29411D3B889CE0623121 /* Deadline.swift */,
 				1ACFB877AD2138035F9E3EAE /* FaviconFetcher.swift */,
+				D01CC2330887CF5293843BF3 /* IconThumbnail.swift */,
 				313680424148829FCBEAA9BC /* ModelContext+Save.swift */,
 				E1E431CF7CE145D536081A23 /* UserAgentProvider.swift */,
 			);
@@ -582,6 +585,7 @@
 				0413EB0C08636424F9362A1C /* FeatureTips.swift in Sources */,
 				3DEA98A98656EE981A29A71D /* FindInPageBar.swift in Sources */,
 				06696BB66C7BAA761E8291C9 /* HibernatedBadgePoller.swift in Sources */,
+				0680495DE14A246C97993DC1 /* IconThumbnail.swift in Sources */,
 				A98FA6B9454EC0BCEDEED093 /* InAppBrowserWindow.swift in Sources */,
 				091825995DF2FD9C4A7BC86F /* KeyboardShortcutManager.swift in Sources */,
 				701984CFE765170D8EAE50EE /* MenuBarView.swift in Sources */,

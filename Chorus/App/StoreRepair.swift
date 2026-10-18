@@ -185,8 +185,9 @@ enum StoreRepair {
     /// `readContent` requires three tables and can fail to read a store that
     /// `snapshotHasUsableData` (which only needs `ZSPACE`) still judges usable.
     /// Unknown content is not evidence of a seed, so that case falls back to the
-    /// shipped rule rather than being denied protection — pruning must never
-    /// delete a backup it merely failed to read.
+    /// shipped rule rather than being denied protection. A snapshot that cannot
+    /// be opened at all fails that rule too, and is pruned once it ages past
+    /// `keep`.
     static func snapshotHoldsUsersData(at url: URL) -> Bool {
         guard let content = StoreInventory.readContent(at: url) else { return snapshotHasUsableData(at: url) }
         guard !content.looksLikeUntouchedSeed else { return false }
@@ -221,47 +222,38 @@ enum StoreRepair {
         return nil
     }
 
-    /// Restores the snapshot triple at `candidate` over the store at `storeURL`.
-    /// The current (bad) triple is first moved aside to a single
-    /// `<name>.prerestore-<stamp>.bak` — never destroyed — so even a failed
-    /// migration's output is recoverable; a second attempt skips re-backing-up so
-    /// a deterministic-failure loop can't bloat the directory. Returns whether the
-    /// primary file was put in place. Must run while no `ModelContainer` holds the
-    /// store open.
-    static func restoreFromSnapshot(_ candidate: RestoreCandidate, to storeURL: URL) -> Bool {
-        let fm = FileManager.default
-        let dir = storeURL.deletingLastPathComponent()
-        let baseName = storeURL.lastPathComponent
+    /// Filename infix marking the store as it stood just before an automatic
+    /// restore replaced it.
+    static let prerestoreInfix = ".prerestore-"
 
-        // Back up the current triple once (skip if a prior prerestore exists).
-        let alreadyBackedUp = (try? fm.contentsOfDirectory(atPath: dir.path))?
-            .contains { $0.hasPrefix(baseName + ".prerestore-") } ?? false
-        if !alreadyBackedUp {
-            let stamp = String(Int(Date().timeIntervalSince1970))
-            for suffix in ["", "-wal", "-shm"] {
-                let src = URL(fileURLWithPath: storeURL.path + suffix)
-                guard fm.fileExists(atPath: src.path) else { continue }
-                let dst = URL(fileURLWithPath: storeURL.path + ".prerestore-\(stamp).bak" + suffix)
-                do { try fm.copyItem(at: src, to: dst) } catch {
-                    AppLogger.dataStore.error("StoreRepair: prerestore backup of \(src.lastPathComponent) failed: \(error.localizedDescription)")
-                }
+    /// Restores the snapshot triple at `candidate` over the store at `storeURL`.
+    /// The current (bad) triple is first copied aside to
+    /// `<name>.prerestore-<stamp>.bak`, and the live files are only replaced if
+    /// that copy succeeded: they are deleted next, and the copy is the only way
+    /// back to them. Every restore writes its own copy, and the family is
+    /// bounded like the other way-back copies, the newest few plus the oldest,
+    /// so a deterministic-failure loop can't fill the disk and an unrelated
+    /// restore months later still gets a copy of its own. Returns whether the
+    /// primary file was put in place. Must run while no `ModelContainer` holds
+    /// the store open.
+    static func restoreFromSnapshot(
+        _ candidate: RestoreCandidate,
+        to storeURL: URL,
+        stamp: String = String(Int(Date().timeIntervalSince1970))
+    ) -> Bool {
+        if FileManager.default.fileExists(atPath: storeURL.path) {
+            let aside = storeURL.path + prerestoreInfix + stamp + ".bak"
+            guard copyTriple(from: storeURL.path, to: aside, label: "prerestore aside") else {
+                AppLogger.dataStore.error("StoreRepair: could not set the current store aside; not restoring over it")
+                return false
             }
+            pruneAsides(at: storeURL, infix: prerestoreInfix, keeping: 3)
         }
 
         // Replace the live triple with the snapshot's. The snapshot's primary is
         // `<...>.bak`; its WAL/SHM are `<...>.bak-wal`/`-shm`.
-        let snapshotPath = candidate.primaryURL.path
-        for suffix in ["", "-wal", "-shm"] {
-            let live = URL(fileURLWithPath: storeURL.path + suffix)
-            try? fm.removeItem(at: live)
-            let snap = URL(fileURLWithPath: snapshotPath + suffix)
-            guard fm.fileExists(atPath: snap.path) else { continue }
-            do {
-                try fm.copyItem(at: snap, to: live)
-            } catch {
-                AppLogger.dataStore.error("StoreRepair: restore copy of \(snap.lastPathComponent) failed: \(error.localizedDescription)")
-            }
-        }
+        copyTriple(from: candidate.primaryURL.path, to: storeURL.path, label: "restore")
+
         // Report success only if the store now in place is actually usable — a
         // partial copy (e.g. a failed `-wal`) can leave a stale or empty store,
         // and the caller must not treat that as a real recovery.
@@ -326,24 +318,27 @@ enum StoreRepair {
         // by the version, which both documents what each snapshot preceded and
         // keeps two versions taken in the same second from colliding.
         let safeVersion = version.replacingOccurrences(of: "/", with: "_")
-        snapshot(at: url, stamp: "\(Int(Date().timeIntervalSince1970))-\(safeVersion)")
+        // A failed snapshot (say, a full disk) leaves the version unmarked, so
+        // the next launch tries again, and prunes nothing: a partial copy must
+        // not push a good snapshot out of `keep`.
+        guard snapshot(at: url, stamp: "\(Int(Date().timeIntervalSince1970))-\(safeVersion)") else { return }
         pruneSnapshots(at: url, keeping: keep)
         defaults.set(version, forKey: key)
     }
 
     /// Copies `store`(+`-wal`/`-shm`) to `store.snapshot-<stamp>.bak` siblings.
-    static func snapshot(at url: URL, stamp: String) {
-        let fm = FileManager.default
-        for suffix in ["", "-wal", "-shm"] {
-            let src = URL(fileURLWithPath: url.path + suffix)
-            guard fm.fileExists(atPath: src.path) else { continue }
-            let dst = URL(fileURLWithPath: url.path + "\(snapshotInfix)\(stamp).bak" + suffix)
-            do {
-                try fm.copyItem(at: src, to: dst)
-            } catch {
-                AppLogger.dataStore.error("StoreRepair: snapshot of \(src.lastPathComponent) failed: \(error.localizedDescription)")
+    /// Returns whether every file copied; a partial snapshot is deleted rather
+    /// than left to pass for a backup.
+    @discardableResult
+    static func snapshot(at url: URL, stamp: String) -> Bool {
+        let destination = url.path + "\(snapshotInfix)\(stamp).bak"
+        guard copyTriple(from: url.path, to: destination, label: "snapshot") else {
+            for suffix in ["", "-wal", "-shm"] {
+                try? FileManager.default.removeItem(atPath: destination + suffix)
             }
+            return false
         }
+        return true
     }
 
     /// Backup primaries for one family, newest first by numeric stamp. A plain
@@ -409,8 +404,14 @@ enum StoreRepair {
     /// family — so a purely-recency rule would reap a candidate the picker is
     /// actively offering.
     static func prunePickAsides(at url: URL, keeping keep: Int) {
+        pruneAsides(at: url, infix: pickAsideInfix, keeping: keep)
+    }
+
+    /// Deletes all but the newest `keep` triples of one way-back family, plus the
+    /// single oldest, which is the store as it stood before the first of them.
+    static func pruneAsides(at url: URL, infix: String, keeping keep: Int) {
         let dir = url.deletingLastPathComponent()
-        let primaries = primariesNewestFirst(in: dir, prefix: url.lastPathComponent + pickAsideInfix)
+        let primaries = primariesNewestFirst(in: dir, prefix: url.lastPathComponent + infix)
         guard let oldest = primaries.last else { return }
 
         var retain = Set(primaries.prefix(keep))
@@ -425,9 +426,7 @@ enum StoreRepair {
 
     // MARK: - User-chosen restore
 
-    /// Where the user's pick waits for the next launch. The restore itself runs
-    /// before the container opens, because swapping SQLite files under a live
-    /// container faults deleted models and traps.
+    /// Filename infix marking the store as it stood just before a fresh start.
     static let resetAsideInfix = ".reset-"
 
     /// The fresh-start way-back copies. Each fresh start writes one full triple,
@@ -446,18 +445,7 @@ enum StoreRepair {
     /// keeps the first fresh start from deleting the only copy of what it just
     /// set aside.
     static func pruneResetAsides(at url: URL, keeping keep: Int) {
-        let dir = url.deletingLastPathComponent()
-        let primaries = primariesNewestFirst(in: dir, prefix: url.lastPathComponent + resetAsideInfix)
-        guard let oldest = primaries.last else { return }
-
-        var retain = Set(primaries.prefix(keep))
-        retain.insert(oldest)
-
-        for name in primaries where !retain.contains(name) {
-            for suffix in ["", "-wal", "-shm"] {
-                try? FileManager.default.removeItem(at: dir.appending(path: name + suffix))
-            }
-        }
+        pruneAsides(at: url, infix: resetAsideInfix, keeping: keep)
     }
 
     /// UserDefaults key holding a request to start fresh, written by the banner
@@ -560,6 +548,9 @@ enum StoreRepair {
         return moveStoreAside(at: storeURL)
     }
 
+    /// Where the user's pick waits for the next launch. The restore itself runs
+    /// before the container opens, because swapping SQLite files under a live
+    /// container faults deleted models and traps.
     static let pendingRestoreKey = "chorus.pendingRestore"
 
     /// Validates a pending restore filename. The value comes from UserDefaults,
@@ -592,13 +583,9 @@ enum StoreRepair {
     /// back. If the result cannot be read, the copy is put back.
     ///
     /// The aside copy uses its own `.prepick-` family rather than
-    /// `.prerestore-`. `restoreFromSnapshot`'s "already backed up" sentinel
-    /// treats the presence of ANY `.prerestore-`-prefixed file as proof it has
-    /// already set the live store aside once; if a deliberate restore wrote
-    /// into that same family, every later *automatic* restore would see that
-    /// file, believe it had already backed up, and skip its own aside copy —
-    /// permanently, since nothing ever prunes it. `.prepick-` keeps this
-    /// restore's aside out of that sentinel's sight entirely.
+    /// `.prerestore-`, so the copies of what the user chose and the copies an
+    /// automatic restore takes are pruned separately and one kind can never
+    /// push the other out.
     ///
     /// Both the aside copy and the apply are gated on their own success rather
     /// than trusting a single read at the end: `copyTriple` reports whether

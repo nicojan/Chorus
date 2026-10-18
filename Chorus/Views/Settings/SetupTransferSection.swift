@@ -59,11 +59,21 @@ struct SetupTransferSection: View {
         let shown = hosts.prefix(6).joined(separator: ", ")
         let more = hosts.count > 6 ? ", and \(hosts.count - 6) more" : ""
         var lines = ["Sites: \(shown)\(more)."]
+        let apps = archive.macApps.map(appName)
+        if !apps.isEmpty {
+            lines.append("Mac apps: \(apps.joined(separator: ", ")).")
+        }
         if archive.hasCustomCSS {
-            lines.append("Some of these services bring their own CSS, which changes what their pages show. Add this only if you trust whoever made the file.")
+            lines.append("Some of these services bring their own CSS. It runs inside those sites while you're signed in, and it can hide or change what a page shows, such as a warning or a phone number. Add this only if you trust whoever made the file.")
         }
         lines.append("If you already have a space with one of these names, its new services go into yours. Nothing you have now is removed.")
         return lines.joined(separator: "\n\n")
+    }
+
+    /// An app's name when it is installed here, else its bundle id.
+    private static func appName(_ bundleID: String) -> String {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return bundleID }
+        return FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
     }
 
     private func export() {

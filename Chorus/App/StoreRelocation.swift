@@ -61,6 +61,15 @@ enum StoreRelocation {
         do {
             try fm.createDirectory(at: scopedDir, withIntermediateDirectories: true)
         } catch {
+            // The old path is shared with every other app that took SwiftData's
+            // default, so fall back to it only when it holds Chorus's own
+            // store. Otherwise opening `scoped` fails and the app runs on the
+            // in-memory store with its banner, which is safe; opening someone
+            // else's file would migrate it to Chorus's model and wipe it.
+            guard StoreInventory.readContent(at: legacy) != nil else {
+                AppLogger.dataStore.error("Could not create the store folder (\(error.localizedDescription)), and the old path holds no Chorus store")
+                return scoped
+            }
             AppLogger.dataStore.error("Could not create the store folder (\(error.localizedDescription)); staying on the old path")
             return legacy
         }
