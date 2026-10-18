@@ -240,10 +240,9 @@ struct StoreCandidate: Hashable, Sendable, Identifiable {
         case corrupt
         /// The store set aside by `StoreRepair.applyPendingRestore` just
         /// before putting the user's deliberately chosen backup in place.
-        /// Its own family, separate from `.prerestore`: `restoreFromSnapshot`
-        /// tests for the presence of any `.prerestore-`-prefixed file as its
-        /// "already backed up" sentinel, and a deliberate restore's aside must
-        /// never satisfy that check.
+        /// Its own family, separate from `.prerestore`, so the copies of what the
+        /// user chose and the copies an automatic restore takes are pruned
+        /// separately and one kind can never push the other out.
         case prepick
         /// The store set aside when the user chose to start fresh from the
         /// temporary-storage banner. Its own family so it is never mistaken for

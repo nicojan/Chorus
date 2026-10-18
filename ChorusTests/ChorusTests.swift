@@ -207,7 +207,7 @@ final class ChorusTests: XCTestCase {
         XCTAssertFalse(FaviconFetcher.isFetchableIconURL(URL(string: "http://10.0.0.5/i.png")!))
         XCTAssertFalse(FaviconFetcher.isFetchableIconURL(URL(string: "http://169.254.169.254/latest")!))
         // Every other way of writing a private IPv4 address.
-        for host in ["127.1", "0x7f.0.0.1", "2130706433", "[::ffff:127.0.0.1]", "100.100.100.100"] {
+        for host in ["127.1", "0x7f.0.0.1", "2130706433", "[::ffff:127.0.0.1]", "[::ffff:7f00:1]", "100.100.100.100"] {
             XCTAssertTrue(FaviconFetcher.isPrivateOrReservedHost(host), host)
         }
         XCTAssertFalse(FaviconFetcher.isPrivateOrReservedHost("8.8.8.8"))
@@ -2978,6 +2978,18 @@ final class ChorusTests: XCTestCase {
         XCTAssertNil(IconThumbnail.png(from: try png(width: 300, height: 300), maxSourcePixels: 200 * 200),
                      "past the pixel limit, read from the header without decoding")
         XCTAssertNil(IconThumbnail.png(from: Data([1, 2, 3])), "not an image")
+
+        // A favicon.ico holds several sizes, often the smallest first; the
+        // largest one is the one to keep.
+        let ico = NSMutableData()
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithData(ico, "com.microsoft.ico" as CFString, 2, nil))
+        for side in [16, 64] {
+            let source = try XCTUnwrap(CGImageSourceCreateWithData(try png(width: side, height: side) as CFData, nil))
+            CGImageDestinationAddImageFromSource(destination, source, 0, nil)
+        }
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        let fromIco = try XCTUnwrap(IconThumbnail.png(from: ico as Data))
+        XCTAssertEqual(try XCTUnwrap(NSBitmapImageRep(data: fromIco)).pixelsWide, 64)
     }
 
     /// A Mac app in a space survives export and import, and is not listed as

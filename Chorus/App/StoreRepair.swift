@@ -244,6 +244,9 @@ enum StoreRepair {
         if FileManager.default.fileExists(atPath: storeURL.path) {
             let aside = storeURL.path + prerestoreInfix + stamp + ".bak"
             guard copyTriple(from: storeURL.path, to: aside, label: "prerestore aside") else {
+                // A partial copy is no way back, and on a full disk each failed
+                // launch would leave another.
+                for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: aside + suffix) }
                 AppLogger.dataStore.error("StoreRepair: could not set the current store aside; not restoring over it")
                 return false
             }

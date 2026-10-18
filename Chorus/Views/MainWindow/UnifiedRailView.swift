@@ -118,10 +118,12 @@ struct UnifiedRailView: View {
         .sheet(isPresented: $showingAddService) {
             if let spaceID = selectedSpaceID {
                 AddServiceSheet(spaceID: spaceID)
+                    .coveredWhenLocked()
             }
         }
         .sheet(item: $editingService) { service in
             EditServiceSheet(service: service)
+                .coveredWhenLocked()
         }
         .onChange(of: appState.pendingEditServiceID) { _, id in
             // A tip asked for this service's settings.
@@ -137,12 +139,15 @@ struct UnifiedRailView: View {
                     moveService(link: link, to: newSpace, followToSpace: true)
                 }
             )
+            .coveredWhenLocked()
         }
         .sheet(isPresented: $showingAddSpace) {
             SpaceEditorSheet(editingSpace: nil, selectedSpaceID: $selectedSpaceID)
+                .coveredWhenLocked()
         }
         .sheet(item: $editingSpace) { space in
             SpaceEditorSheet(editingSpace: space, selectedSpaceID: $selectedSpaceID)
+                .coveredWhenLocked()
         }
         .confirmationDialog(
             "Delete \(confirmingDelete?.liveService?.label ?? "service")?",

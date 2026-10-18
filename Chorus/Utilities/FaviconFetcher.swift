@@ -135,8 +135,15 @@ actor FaviconFetcher {
             let h = host.hasPrefix("[") ? String(host.dropFirst().dropLast()) : host
             let lower = h.lowercased()
             if lower == "::1" || lower == "::" { return true }
-            // An IPv4 address written as IPv6 reaches the same IPv4 host.
-            if lower.hasPrefix("::ffff:") { return isPrivateOrReservedHost(String(lower.dropFirst(7))) }
+            // An IPv4 address written as IPv6 reaches the same IPv4 host, in
+            // either spelling: `::ffff:127.0.0.1` or `::ffff:7f00:1`.
+            var v6 = in6_addr()
+            if inet_pton(AF_INET6, lower, &v6) == 1 {
+                let bytes = withUnsafeBytes(of: v6) { Array($0) }
+                if bytes[0..<10].allSatisfy({ $0 == 0 }), bytes[10] == 0xff, bytes[11] == 0xff {
+                    return isPrivateOrReservedHost(bytes[12...].map(String.init).joined(separator: "."))
+                }
+            }
             return lower.hasPrefix("fe80") || lower.hasPrefix("fc") || lower.hasPrefix("fd")
         }
         // `inet_aton` reads every form of IPv4 literal a URL loader accepts, not

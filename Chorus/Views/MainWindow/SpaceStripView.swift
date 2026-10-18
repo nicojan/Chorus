@@ -45,9 +45,11 @@ struct SpaceStripView: View {
         content
             .sheet(isPresented: $showingAddSpace) {
                 SpaceEditorSheet(editingSpace: nil, selectedSpaceID: $selectedSpaceID)
+                    .coveredWhenLocked()
             }
             .sheet(item: $editingSpace) { space in
                 SpaceEditorSheet(editingSpace: space, selectedSpaceID: $selectedSpaceID)
+                    .coveredWhenLocked()
             }
             .confirmationDialog(
                 "Delete \(confirmingDeleteSpace?.name ?? "space")?",

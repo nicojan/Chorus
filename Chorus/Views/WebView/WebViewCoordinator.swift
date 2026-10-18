@@ -92,7 +92,14 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// loads with no base URL, so `webView.url` reads `about:blank` then, which
     /// is no use to Reload or to a hibernation that wants to come back to the
     /// page. Cleared when a real page finishes.
-    private(set) var errorPageRetryURL: URL?
+    private var errorPageRetryURL: URL?
+
+    /// The failed address behind the error page, if `webView` is this
+    /// coordinator's own service page and the error page is up. A tab or a
+    /// popup shares the coordinator but never shows the service page's error.
+    func errorPageRetryURL(for webView: WKWebView) -> URL? {
+        isAuxiliary(webView) ? nil : errorPageRetryURL
+    }
 
     /// Resolves a camera/microphone capture request to a WebKit decision. Set by
     /// `WebViewPool` (supplied by `AppState`), which owns the per-service policy
@@ -366,7 +373,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         }
 
         AppLogger.webView.warning("WebContent process terminated — reloading")
-        if webView.url != nil {
+        if let failed = errorPageRetryURL {
+            // On the error page `reload()` would reload `about:blank`, which
+            // then finishes as a healthy page and forgets the address.
+            webView.load(URLRequest(url: failed))
+        } else if webView.url != nil {
             webView.reload()
         } else if let fallback = fallbackURL {
             webView.load(URLRequest(url: fallback))
@@ -469,7 +480,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// On Chorus's own error page it retries the address that failed: reloading
     /// the error page itself would only show it again.
     static func reload(_ webView: WKWebView, fallbackURL: URL?) {
-        if let retry = (webView.navigationDelegate as? WebViewCoordinator)?.errorPageRetryURL {
+        if let retry = (webView.navigationDelegate as? WebViewCoordinator)?.errorPageRetryURL(for: webView) {
             webView.load(URLRequest(url: retry))
             return
         }
@@ -481,7 +492,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// The address a web view is showing, for coming back to it later: the
     /// failed address while Chorus's error page is up, otherwise `url`.
     static func pageURL(of webView: WKWebView) -> URL? {
-        (webView.navigationDelegate as? WebViewCoordinator)?.errorPageRetryURL ?? webView.url
+        (webView.navigationDelegate as? WebViewCoordinator)?.errorPageRetryURL(for: webView) ?? webView.url
     }
 
     // MARK: - Crash backoff / error page (pure, testable)

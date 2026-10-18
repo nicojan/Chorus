@@ -19,22 +19,26 @@ enum IconThumbnail {
     /// data is not an image ImageIO can read (SVG, for one) or is too large to
     /// decode safely.
     static func png(from data: Data, maxPixelSize: Int = 128, maxSourcePixels: Int = IconThumbnail.maxSourcePixels) -> Data? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              CGImageSourceGetCount(source) > 0,
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let width = properties[kCGImagePropertyPixelWidth] as? Int,
-              let height = properties[kCGImagePropertyPixelHeight] as? Int,
-              width > 0, height > 0
-        else { return nil }
-        let (pixels, overflow) = width.multipliedReportingOverflow(by: height)
-        guard !overflow, pixels <= maxSourcePixels else { return nil }
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        // A favicon.ico or an .icns holds several sizes, often 16 px first.
+        // Take the largest one that is still safe to decode.
+        let sizes = (0..<CGImageSourceGetCount(source)).compactMap { index -> (index: Int, pixels: Int)? in
+            guard let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
+                  let width = properties[kCGImagePropertyPixelWidth] as? Int,
+                  let height = properties[kCGImagePropertyPixelHeight] as? Int,
+                  width > 0, height > 0
+            else { return nil }
+            let (pixels, overflow) = width.multipliedReportingOverflow(by: height)
+            return overflow || pixels > maxSourcePixels ? nil : (index, pixels)
+        }
+        guard let best = sizes.max(by: { $0.pixels < $1.pixels }) else { return nil }
 
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
         ]
-        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, best.index, options as CFDictionary) else { return nil }
 
         let output = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(output, UTType.png.identifier as CFString, 1, nil) else { return nil }

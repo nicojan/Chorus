@@ -247,7 +247,13 @@ final class AppState {
     var appLockEnabled = false
     var lockOnLaunch = true
     var lockOnSleep = true
-    var isLocked = false
+    var isLocked = false {
+        didSet { if oldValue && !isLocked { showWindowsHiddenForLock() } }
+    }
+    /// Windows `lock()` hid, and the observer that drops any of them closed
+    /// while locked so unlocking doesn't bring back a window that is gone.
+    @ObservationIgnored private var windowsHiddenForLock: [NSWindow] = []
+    @ObservationIgnored private var lockCloseObserver: NSObjectProtocol?
 
     /// Global content-blocking toggle, mirrored from AppPreferences at launch.
     /// The Settings switch writes both this and the persisted value via
@@ -1568,6 +1574,38 @@ final class AppState {
         isLocked = true
         // Don't leave a capture prompt hanging over the lock screen.
         drainAllMediaRequests()
+        hideWindowsForLock()
+    }
+
+    /// Hides every other titled window: sign-in popups and link windows show
+    /// signed-in pages, and the lock cover is only on the main window and its
+    /// sheets. They come back on unlock.
+    private func hideWindowsForLock() {
+        let windows = NSApp.windows.filter { window in
+            window.isVisible && window.sheetParent == nil && window.level == .normal
+                && window.styleMask.contains(.titled) && window.identifier?.rawValue != "main"
+        }
+        guard !windows.isEmpty else { return }
+        windows.forEach { $0.orderOut(nil) }
+        windowsHiddenForLock += windows
+        if lockCloseObserver == nil {
+            lockCloseObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification, object: nil, queue: .main
+            ) { [weak self] notification in
+                guard let closed = (notification.object as? NSWindow).map(ObjectIdentifier.init) else { return }
+                MainActor.assumeIsolated {
+                    self?.windowsHiddenForLock.removeAll { ObjectIdentifier($0) == closed }
+                }
+            }
+        }
+    }
+
+    private func showWindowsHiddenForLock() {
+        let windows = windowsHiddenForLock
+        windowsHiddenForLock = []
+        if let lockCloseObserver { NotificationCenter.default.removeObserver(lockCloseObserver) }
+        lockCloseObserver = nil
+        windows.forEach { $0.orderFront(nil) }
     }
 
     /// Prompts for Touch ID (with the login password as fallback) and unlocks on

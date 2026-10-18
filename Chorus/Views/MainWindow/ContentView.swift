@@ -82,6 +82,7 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $state.showAddService) {
+            Group {
             if let spaceID = appState.selectedSpaceID {
                 AddServiceSheet(spaceID: spaceID)
             } else {
@@ -97,6 +98,8 @@ struct ContentView: View {
                 .padding(40)
                 .frame(minWidth: 320)
             }
+            }
+            .coveredWhenLocked()
         }
         .sheet(isPresented: Binding(
             // Never over the store recovery sheet, which has to come first.
@@ -106,6 +109,7 @@ struct ContentView: View {
             if let version = appState.whatsNewVersion {
                 WhatsNewSheet(version: version)
                     .environment(appState)
+                    .coveredWhenLocked()
             }
         }
         .alert(
@@ -128,6 +132,7 @@ struct ContentView: View {
             appState.quitForScheduledRestore()
         }) {
             StoreRecoveryView()
+                .coveredWhenLocked()
         }
         .alert(
             appState.pendingMediaRequest?.title ?? "",
@@ -366,8 +371,33 @@ private struct SupportButton: View {
 
 /// Opaque cover shown while the app is locked, hiding all content until the user
 /// authenticates. Prompts for Touch ID on appear; the button retries.
+/// Covers a sheet with the lock screen while Chorus is locked. A sheet is its
+/// own window, which the main window's lock cover doesn't reach, so an Edit
+/// Service sheet left open when the Mac slept stayed usable above it.
+struct CoveredWhenLocked: ViewModifier {
+    @Environment(AppState.self) private var appState
+
+    func body(content: Content) -> some View {
+        content.overlay {
+            if appState.isLocked {
+                // The main window's cover already asks for Touch ID; a second
+                // prompt from here would stack on it.
+                LockView(promptsOnAppear: false)
+                    .environment(appState)
+            }
+        }
+    }
+}
+
+extension View {
+    func coveredWhenLocked() -> some View {
+        modifier(CoveredWhenLocked())
+    }
+}
+
 struct LockView: View {
     @Environment(AppState.self) private var appState
+    var promptsOnAppear = true
 
     var body: some View {
         VStack(spacing: 20) {
@@ -387,7 +417,7 @@ struct LockView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
-            appState.authenticate()
+            if promptsOnAppear { appState.authenticate() }
         }
     }
 }
