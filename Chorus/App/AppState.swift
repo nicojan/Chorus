@@ -696,15 +696,11 @@ final class AppState {
         let originHost = frame.securityOrigin.host
         switch Self.foreignCaptureOutcome(
             isMainFrame: frame.isMainFrame,
-            originHost: originHost,
-            isFirstParty: isFirstPartyService(service),
-            resolution: resolution
+            originHost: originHost
         ) {
         case .deny:
             logMediaDenyUntrusted(frame, service: service)
             return .deny
-        case .grantSilently:
-            return .grant
         case .promptNamingOrigin:
             let asked = MediaPermissionResolver.askedFields(kind, camera: .ask, microphone: .ask)
             let allowed = await withCheckedContinuation { (continuation: CheckedContinuation<Bool?, Never>) in
@@ -878,44 +874,30 @@ final class AppState {
 
     /// What to do with a capture request whose origin is NOT the service's own site
     /// — a foreign origin inside the service's own web view. Pure, so it's
-    /// unit-testable without a live `WKFrameInfo`. `resolution` is already known to
-    /// be `.grant` or `.ask` here (an explicit `.deny` is short-circuited earlier).
+    /// unit-testable without a live `WKFrameInfo`. An explicit Deny never gets
+    /// here; it is short-circuited earlier.
     /// - A third-party SUBFRAME (can't meaningfully consent, the spoofiest case) or
     ///   an empty origin fails closed.
-    /// - A first-party vendor pinned to Allow grants silently. This is the ONE
-    ///   cross-domain silent grant — the seamless-call case the flag exists for —
-    ///   and its accepted risk: the vendor's own main frame, navigated to a foreign
-    ///   origin, gets the grant.
-    /// - Everything else prompts NAMING THE REAL ORIGIN and does not persist: a
-    ///   non-first-party service, or a first-party vendor still on Ask. Naming the
-    ///   real origin (not the service) stops a hijacked main frame from borrowing
-    ///   the vendor's name; not persisting keeps a one-off foreign answer from
+    /// - A foreign MAIN frame prompts NAMING THE REAL ORIGIN and does not
+    ///   persist, even when the service is pinned to Allow. Naming the real
+    ///   origin (not the service) stops a hijacked main frame from borrowing the
+    ///   service's name; not persisting keeps a one-off foreign answer from
     ///   pinning a blanket service Allow.
-    enum ForeignCaptureOutcome: Equatable { case grantSilently, promptNamingOrigin, deny }
+    ///
+    /// There used to be a silent grant here for a few call vendors pinned to
+    /// Allow. It rested on clicked foreign links always leaving for the browser,
+    /// which stopped being true once sign-in round trips (any URL carrying a
+    /// `redirect_uri` back to the service) and hosted sign-in tenants anyone can
+    /// register (`*.auth0.com`) stayed in the service's own frame: a crafted link
+    /// then got the camera and microphone with no prompt.
+    enum ForeignCaptureOutcome: Equatable { case promptNamingOrigin, deny }
 
     static func foreignCaptureOutcome(
         isMainFrame: Bool,
-        originHost: String,
-        isFirstParty: Bool,
-        resolution: MediaPermissionResolver.Resolution
+        originHost: String
     ) -> ForeignCaptureOutcome {
         guard isMainFrame, !originHost.isEmpty else { return .deny }
-        if isFirstParty, resolution == .grant { return .grantSilently }
         return .promptNamingOrigin
-    }
-
-    /// Whether `service` is a curated first-party vendor: the catalog entry carries
-    /// the `firstParty` flag AND the service still points at that vendor's own site.
-    /// The second check means a user who edits the service's URL elsewhere doesn't
-    /// carry the vendor's cross-domain trust to the new site. Custom, non-catalog
-    /// services are never first-party.
-    private func isFirstPartyService(_ service: ServiceInstance) -> Bool {
-        guard let id = service.catalogEntryID,
-              let entry = ServiceCatalog.shared.entry(for: id),
-              entry.firstParty == true,
-              let serviceHost = URL(string: service.url)?.host,
-              let entryHost = URL(string: entry.url)?.host else { return false }
-        return WebViewCoordinator.captureOriginBelongsToService(serviceHost, serviceHost: entryHost)
     }
 
     private static func captureKind(from type: WKMediaCaptureType) -> MediaCaptureKind {

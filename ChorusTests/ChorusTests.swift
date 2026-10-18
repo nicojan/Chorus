@@ -4489,52 +4489,27 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(foreign.message.hasPrefix("messenger.com, opened by Messenger"))
     }
 
-    func testForeignCaptureOutcomeGrantsSilentlyOnlyForFirstPartyAllow() {
-        // A first-party vendor pinned to Allow, calling from a foreign MAIN-frame
-        // origin (Messenger: facebook.com → messenger.com): silent grant, the
-        // seamless-call case the flag exists for.
+    func testForeignCaptureOutcomeNeverGrantsAForeignOriginSilently() {
+        // A foreign MAIN-frame origin prompts, naming the real origin, even for a
+        // call vendor whose service is pinned to Allow. A crafted sign-in link
+        // (`evil.example/login?redirect_uri=<the service>`) stays in the service's
+        // frame, so that page must not inherit the service's grant.
         XCTAssertEqual(
-            AppState.foreignCaptureOutcome(
-                isMainFrame: true, originHost: "messenger.com", isFirstParty: true, resolution: .grant),
-            .grantSilently)
-
-        // A first-party vendor still on Ask does NOT silently grant a foreign
-        // origin — it prompts, and the prompt names the real origin.
+            AppState.foreignCaptureOutcome(isMainFrame: true, originHost: "messenger.com"),
+            .promptNamingOrigin)
         XCTAssertEqual(
-            AppState.foreignCaptureOutcome(
-                isMainFrame: true, originHost: "messenger.com", isFirstParty: true, resolution: .ask),
+            AppState.foreignCaptureOutcome(isMainFrame: true, originHost: "evil.example.com"),
             .promptNamingOrigin)
 
-        // A non-first-party service, even pinned Allow, never silently grants a
-        // foreign origin (this was the shared-suffix leak) — it prompts.
+        // A third-party SUBFRAME fails closed.
         XCTAssertEqual(
-            AppState.foreignCaptureOutcome(
-                isMainFrame: true, originHost: "evil.example.com", isFirstParty: false, resolution: .grant),
-            .promptNamingOrigin)
-
-        // A third-party SUBFRAME fails closed even for a first-party Allow vendor.
-        XCTAssertEqual(
-            AppState.foreignCaptureOutcome(
-                isMainFrame: false, originHost: "messenger.com", isFirstParty: true, resolution: .grant),
+            AppState.foreignCaptureOutcome(isMainFrame: false, originHost: "messenger.com"),
             .deny)
 
         // An empty origin fails closed.
         XCTAssertEqual(
-            AppState.foreignCaptureOutcome(
-                isMainFrame: true, originHost: "", isFirstParty: true, resolution: .grant),
+            AppState.foreignCaptureOutcome(isMainFrame: true, originHost: ""),
             .deny)
-    }
-
-    func testCatalogFlagsFirstPartyCallVendors() {
-        let entries = ServiceCatalog.shared.entries
-        func firstParty(_ id: String) -> Bool? { entries.first { $0.id == id }?.firstParty }
-        // The curated cross-domain / named call vendors are flagged.
-        for id in ["messenger", "teams", "facebook", "whatsapp", "google-meet", "google-chat"] {
-            XCTAssertEqual(firstParty(id), true, "\(id) should be flagged firstParty")
-        }
-        // Single-domain services are not (no benefit, keep the trust surface small).
-        XCTAssertNotEqual(firstParty("discord"), true)
-        XCTAssertNotEqual(firstParty("slack"), true)
     }
 
     func testShouldBustCachesOnlyAfterAVersionChange() {
