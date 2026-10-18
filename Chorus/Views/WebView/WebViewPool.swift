@@ -10,6 +10,11 @@ final class WebViewPool {
     private var coordinators: [UUID: WebViewCoordinator] = [:]
     private var suspendedURLs: [UUID: String] = [:]
     private var snapshots: [UUID: NSImage] = [:]
+    /// When each live page loaded and when the user last left it, and each
+    /// page's footprint once it settled. Both feed the memory watch; see
+    /// `memoryReadings`.
+    private var visits = ServiceVisits()
+    private var baselineFootprints: [UUID: UInt64] = [:]
     /// Snapshot ids in the order they were stored, oldest first. Drives the cap
     /// below; `snapshots` alone has no order to evict by.
     private var snapshotOrder: [UUID] = []
@@ -254,6 +259,7 @@ final class WebViewPool {
             softHibernateService(previousID)
         }
         activeServiceID = instance.id
+        visits.activate(instance.id, at: Date())
 
         // Wake from full hibernation if needed
         if hibernatedServiceIDs.contains(instance.id) {
@@ -283,6 +289,7 @@ final class WebViewPool {
 
         webViews[instance.id] = webView
         lastAccessTimes[instance.id] = Date()
+        visits.loaded(instance.id, at: Date())
         observeCaptureState(webView, id: instance.id)
 
         // Restore the last-visited URL when waking from full hibernation
@@ -331,6 +338,7 @@ final class WebViewPool {
 
         webViews[instance.id] = webView
         lastAccessTimes[instance.id] = Date()
+        visits.loaded(instance.id, at: Date())
         observeCaptureState(webView, id: instance.id)
 
         // Register the hibernation-exemption flags now, not just on first
@@ -398,6 +406,7 @@ final class WebViewPool {
         // would otherwise grow unbounded across create/delete cycles.
         if activeServiceID == instanceID {
             activeServiceID = nil
+            visits.activate(nil, at: Date())
         }
         pinnedIDs.remove(instanceID)
         neverHibernateIDs.remove(instanceID)
@@ -526,6 +535,7 @@ final class WebViewPool {
     func deactivateActiveService() {
         guard let id = activeServiceID else { return }
         activeServiceID = nil
+        visits.activate(nil, at: Date())
         softHibernateService(id)
     }
 
@@ -799,6 +809,8 @@ final class WebViewPool {
         webViews.removeValue(forKey: instanceID)
         lastAccessTimes.removeValue(forKey: instanceID)
         coordinators.removeValue(forKey: instanceID)
+        visits.remove(instanceID)
+        baselineFootprints.removeValue(forKey: instanceID)
         dropSnapshot(for: instanceID)
         onServiceTornDown?(instanceID)
     }
@@ -1021,6 +1033,124 @@ final class WebViewPool {
         return true
     }
 
+    // MARK: - Memory watch (log only)
+
+    /// The floor under which no page counts as grown, however much it climbed.
+    nonisolated static let memoryWatchFloor: UInt64 = 1536 * 1_048_576
+
+    /// How many times its baseline a page must reach to count as grown. The
+    /// limit is relative so that a page which simply needs a lot of memory does
+    /// not count over and over.
+    nonisolated static let memoryWatchGrowthFactor: UInt64 = 2
+
+    /// How long after it loads a page is first measured for its baseline.
+    /// Sampled earlier, a page still loading would read small.
+    nonisolated static let memoryWatchSettleTime: TimeInterval = 5 * 60
+
+    /// How long a service must have been out of sight, counted from when the
+    /// user left it, before it may count. A page left moments ago may hold a
+    /// half-typed message.
+    nonisolated static let memoryWatchMinimumOutOfSight: TimeInterval = 10 * 60
+
+    /// Whether a page has grown enough, and is far enough from the user, that
+    /// a rebuild would be justified. Nothing acts on it yet: the memory watch
+    /// only logs it.
+    ///
+    /// The page has to be past both the floor and twice its baseline, and out
+    /// of sight for `memoryWatchMinimumOutOfSight`. Everything that makes a
+    /// teardown cost the user something rules it out: the service on screen,
+    /// one pinned, one set to Keep Loaded, one using the camera or microphone,
+    /// one playing sound, or one with tabs open, since `teardownWebView` closes
+    /// them. A footprint or baseline that could not be read rules it out too.
+    nonisolated static func wouldRebuild(
+        footprint: UInt64?,
+        baseline: UInt64?,
+        outOfSight: TimeInterval,
+        isActive: Bool,
+        isPinned: Bool,
+        keepLoaded: Bool,
+        isCapturing: Bool,
+        isPlayingAudio: Bool,
+        hasOpenTabs: Bool
+    ) -> Bool {
+        guard let footprint, let baseline else { return false }
+        let (grown, overflow) = baseline.multipliedReportingOverflow(by: memoryWatchGrowthFactor)
+        let limit = max(memoryWatchFloor, overflow ? .max : grown)
+        return footprint > limit
+            && outOfSight >= memoryWatchMinimumOutOfSight
+            && !isActive && !isPinned && !keepLoaded && !isCapturing && !isPlayingAudio && !hasOpenTabs
+    }
+
+    /// The physical footprint of the WebContent process behind a service, the
+    /// figure Activity Monitor shows as Memory. Each service has its own data
+    /// store, so the process belongs to that one service, but open tabs run in
+    /// it too and count toward it.
+    ///
+    /// The process id comes from `_webProcessIdentifier`, which is SPI, so it is
+    /// probed before use. If a macOS release drops it, this returns nil and the
+    /// watch logs nothing.
+    func webContentFootprint(for id: UUID) -> UInt64? {
+        let key = "_webProcessIdentifier"
+        guard let webView = webViews[id],
+              webView.responds(to: NSSelectorFromString(key)),
+              let pid = (webView.value(forKey: key) as? NSNumber)?.int32Value,
+              pid > 0
+        else { return nil }
+        var info = rusage_info_v4()
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
+                proc_pid_rusage(pid, RUSAGE_INFO_V4, $0)
+            }
+        }
+        return result == 0 ? info.ri_phys_footprint : nil
+    }
+
+    struct MemoryReading {
+        let id: UUID
+        let footprint: UInt64
+        let baseline: UInt64?
+        let outOfSight: TimeInterval
+        let hasOpenTabs: Bool
+        let wouldRebuild: Bool
+    }
+
+    /// Measures every live page once, for the memory watch to log.
+    ///
+    /// A page gets its baseline the first time it is read after
+    /// `memoryWatchSettleTime`. When a page counts as grown, its footprint
+    /// becomes its new baseline, standing in for the rebuild that does not
+    /// happen yet. A page that settled heavy therefore counts once, not on
+    /// every pass, and the log shows how often each service would really be
+    /// rebuilt.
+    func memoryReadings(now: Date = Date()) -> [MemoryReading] {
+        webViews.keys.compactMap { id in
+            guard let footprint = webContentFootprint(for: id) else { return nil }
+            if baselineFootprints[id] == nil,
+               let age = visits.age(id, now: now), age >= Self.memoryWatchSettleTime {
+                baselineFootprints[id] = footprint
+            }
+            let baseline = baselineFootprints[id]
+            let outOfSight = visits.outOfSight(id, now: now)
+            let tabs = hasOpenTabs(id)
+            let grown = Self.wouldRebuild(
+                footprint: footprint,
+                baseline: baseline,
+                outOfSight: outOfSight,
+                isActive: id == activeServiceID,
+                isPinned: pinnedIDs.contains(id),
+                keepLoaded: neverHibernateIDs.contains(id),
+                isCapturing: mediaCaptureStates[id]?.isCapturing ?? false,
+                isPlayingAudio: audibleServiceIDs.contains(id),
+                hasOpenTabs: tabs
+            )
+            if grown { baselineFootprints[id] = footprint }
+            return MemoryReading(
+                id: id, footprint: footprint, baseline: baseline,
+                outOfSight: outOfSight, hasOpenTabs: tabs, wouldRebuild: grown
+            )
+        }
+    }
+
     /// When exceeding maxLoaded web views, fully hibernate the least recently used ones.
     /// Skips services that have an active WebRTC call, via `hibernateIfStillIdle`.
     private func evictIfNeeded() async {
@@ -1080,5 +1210,46 @@ final class PlayingAudioObserver: NSObject {
         Task { @MainActor [weak self] in
             self?.onChange(isPlaying)
         }
+    }
+}
+
+/// When each service's page loaded and when the user last switched away from
+/// it. The memory watch counts "out of sight" from the moment a service was
+/// left, not from when it was opened: half an hour in WhatsApp followed by a
+/// switch to Slack leaves WhatsApp out of sight for seconds, not half an hour.
+struct ServiceVisits {
+    private var loadedAt: [UUID: Date] = [:]
+    private var leftAt: [UUID: Date] = [:]
+    private var active: UUID?
+
+    /// A page came up. Until the user opens and leaves it, a page loaded in
+    /// the background counts as out of sight since it loaded.
+    mutating func loaded(_ id: UUID, at date: Date) {
+        loadedAt[id] = date
+        leftAt[id] = date
+    }
+
+    /// The user brought `id` on screen, or nil when nothing is. Whatever was on
+    /// screen before is left now.
+    mutating func activate(_ id: UUID?, at date: Date) {
+        if let previous = active, previous != id {
+            leftAt[previous] = date
+        }
+        active = id
+    }
+
+    mutating func remove(_ id: UUID) {
+        loadedAt.removeValue(forKey: id)
+        leftAt.removeValue(forKey: id)
+    }
+
+    func age(_ id: UUID, now: Date) -> TimeInterval? {
+        loadedAt[id].map { now.timeIntervalSince($0) }
+    }
+
+    /// Zero for the page on screen; otherwise the time since the user left it.
+    func outOfSight(_ id: UUID, now: Date) -> TimeInterval {
+        guard id != active, let left = leftAt[id] else { return 0 }
+        return now.timeIntervalSince(left)
     }
 }
