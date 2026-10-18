@@ -92,7 +92,9 @@ struct WebNavButtons: View {
     /// not one, so this is the way out to a real one.
     private func openInDefaultBrowser() {
         guard let url = currentPageURL else { return }
-        NSWorkspace.shared.open(url)
+        // Through the same scheme check every other way out uses: an
+        // `about:` or `blob:` page has no business going to the system.
+        WebViewCoordinator.openExternally(url)
     }
 
     private func copyCurrentURL() {

@@ -22,20 +22,24 @@ actor FaviconFetcher {
               ["http", "https"].contains(scheme.lowercased())
         else { return nil }
 
+        // Keep the port: a self-hosted service on :8443 serves its icons there,
+        // and port 443 on the same host may be another server entirely.
+        let origin = baseURL.port.map { "\(scheme)://\(host):\($0)" } ?? "\(scheme)://\(host)"
+
         // Try high-res sources first, then fall back to lower-res
         let candidates = [
-            "\(scheme)://\(host)/apple-touch-icon.png",
-            "\(scheme)://\(host)/apple-touch-icon-precomposed.png",
-            "\(scheme)://\(host)/favicon-192x192.png",
-            "\(scheme)://\(host)/favicon-96x96.png",
-            "\(scheme)://\(host)/favicon-32x32.png",
-            "\(scheme)://\(host)/favicon.ico",
+            "\(origin)/apple-touch-icon.png",
+            "\(origin)/apple-touch-icon-precomposed.png",
+            "\(origin)/favicon-192x192.png",
+            "\(origin)/favicon-96x96.png",
+            "\(origin)/favicon-32x32.png",
+            "\(origin)/favicon.ico",
         ]
 
         for candidate in candidates {
-            if let data = await fetchURL(candidate)?.data, isValidImage(data) {
+            if let data = await fetchURL(candidate)?.data, let icon = storable(data) {
                 AppLogger.favicon.debug("Favicon found at \(candidate, privacy: .private)")
-                return data
+                return icon
             }
         }
 
@@ -50,9 +54,9 @@ actor FaviconFetcher {
         // the ones a user would least expect to leak off-device.
         if googleFallbackEnabled, !Self.isLikelyPrivateHost(host) {
             let googleAPI = "https://www.google.com/s2/favicons?domain=\(host)&sz=128"
-            if let data = await fetchURL(googleAPI)?.data, isValidImage(data) {
+            if let data = await fetchURL(googleAPI)?.data, let icon = storable(data) {
                 AppLogger.favicon.debug("Favicon from Google API for \(host, privacy: .private)")
-                return data
+                return icon
             }
         }
 
@@ -84,9 +88,9 @@ actor FaviconFetcher {
             guard let iconURL = URL(string: iconInfo.url), Self.isFetchableIconURL(iconURL) else {
                 continue
             }
-            if let data = await fetchURL(iconInfo.url)?.data, isValidImage(data) {
+            if let data = await fetchURL(iconInfo.url)?.data, let icon = storable(data) {
                 AppLogger.favicon.debug("Favicon from HTML link: \(iconInfo.url, privacy: .private)")
-                return data
+                return icon
             }
         }
 
@@ -262,6 +266,15 @@ actor FaviconFetcher {
             AppLogger.favicon.debug("Fetch failed for \(urlString, privacy: .private): \(error.localizedDescription)")
         }
         return nil
+    }
+
+    /// The icon as it is stored: an SVG as it came, since it is drawn as
+    /// vectors, and any other image shrunk to a PNG by `IconThumbnail`. Nil
+    /// when the data isn't an image or is too large to decode safely; the
+    /// rail, the menu bar and the switcher decode it on every redraw.
+    private func storable(_ data: Data) -> Data? {
+        guard isValidImage(data) else { return nil }
+        return Self.looksLikeSVG(data) ? data : IconThumbnail.png(from: data, maxPixelSize: 256)
     }
 
     private func isValidImage(_ data: Data) -> Bool {

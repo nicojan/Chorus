@@ -9,6 +9,10 @@ struct MenuBarView: View {
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
     @Environment(AppState.self) private var appState
     @Environment(\.openSettings) private var openSettings
+    /// Brings the main window back, or opens it again once it was closed. In
+    /// menu-bar-only mode there is no Dock icon, so a closed window had no way
+    /// back while this looked it up among the open windows.
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -46,9 +50,7 @@ struct MenuBarView: View {
 
             Button("Show Chorus") {
                 NSApp.activate(ignoringOtherApps: true)
-                if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) {
-                    window.makeKeyAndOrderFront(nil)
-                }
+                openWindow(id: "main")
             }
 
             // Settings must be reachable here: in "Menu bar only" mode the app
@@ -83,8 +85,6 @@ struct MenuBarView: View {
             object: nil,
             userInfo: ["serviceID": serviceID, "spaceID": spaceID]
         )
-        if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) {
-            window.makeKeyAndOrderFront(nil)
-        }
+        openWindow(id: "main")
     }
 }

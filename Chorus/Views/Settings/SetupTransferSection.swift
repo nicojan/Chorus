@@ -71,7 +71,7 @@ struct SetupTransferSection: View {
     }
 
     /// An app's name when it is installed here, else its bundle id.
-    private static func appName(_ bundleID: String) -> String {
+    nonisolated private static func appName(_ bundleID: String) -> String {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return bundleID }
         return FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
     }

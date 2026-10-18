@@ -56,7 +56,9 @@ struct SpaceEditorSheet: View {
             Divider()
 
             HStack {
-                if isEditing {
+                // The last space can't be deleted (AppState refuses), so don't
+                // offer it, as the context menus already don't.
+                if isEditing, spaces.count > 1 {
                     Button("Delete Space", role: .destructive) {
                         showDeleteConfirmation = true
                     }

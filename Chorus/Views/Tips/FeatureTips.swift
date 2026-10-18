@@ -38,7 +38,7 @@ enum FeatureTips {
 
     struct ServiceSettings: Tip {
         var title: Text { Text("Settings for each service") }
-        var message: Text? { Text("Right-click a service to mute it, hide its badge, or change its zoom and theme.") }
+        var message: Text? { Text("Right-click a service to mute it, or choose Edit Service to hide its badge or change its theme.") }
         var image: Image? { Image(systemName: "slider.horizontal.3") }
         var actions: [Action] { [Action(id: "show", title: "Show Me")] }
     }

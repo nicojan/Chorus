@@ -18,7 +18,27 @@ struct SettingsView: View {
     init() {}
     #endif
 
+    @Environment(AppState.self) private var appState
+
     var body: some View {
+        // Settings is its own window, which the lock screen doesn't cover.
+        // Without this, anyone at the Mac could open it while Chorus is locked
+        // and switch the lock off.
+        if appState.isLocked {
+            ContentUnavailableView {
+                Label("Chorus is locked", systemImage: "lock.fill")
+            } description: {
+                Text("Unlock Chorus to change its settings.")
+            } actions: {
+                Button("Unlock") { appState.authenticate() }
+            }
+            .frame(width: 520, height: 460)
+        } else {
+            settingsTabs
+        }
+    }
+
+    private var settingsTabs: some View {
         TabView {
             GeneralSettingsView()
                 .tabItem {

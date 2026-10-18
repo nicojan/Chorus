@@ -68,12 +68,14 @@ struct ChorusApp: App {
                 // service and renders empty and un-dismissable, so disable ⌘N
                 // until a space exists (the seeded app always has one; this
                 // covers the transient no-space state).
-                .disabled(appState.selectedSpaceID == nil)
+                // A sheet is its own window, which the lock screen doesn't cover.
+                .disabled(appState.selectedSpaceID == nil || appState.isLocked)
 
                 Button("Quick Switcher") {
                     appState.showQuickSwitcher.toggle()
                 }
                 .keyboardShortcut("k", modifiers: .command)
+                .disabled(appState.isLocked)
 
                 Divider()
 

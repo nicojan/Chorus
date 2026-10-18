@@ -948,7 +948,7 @@ struct UnifiedRailView: View {
         if service.nativeAppBundleID == nil {
             Divider()
 
-            Button("Open in Safari") {
+            Button("Open in Browser") {
                 openInDefaultBrowser(service)
             }
         }
@@ -1178,13 +1178,18 @@ struct UnifiedRailView: View {
         service.customIconData = nil
         save("reset icon")
         if service.fetchedIconData == nil {
+            // The fetch can take a minute, and the service may be deleted
+            // meanwhile; writing to a deleted model traps. Hold the id, not
+            // the model, and look it up again after the await.
+            let serviceID = service.id
+            let serviceURL = service.url
             Task {
-                let data = await FaviconFetcher.shared.fetchFavicon(for: service.url)
-                if let data {
-                    service.fetchedIconData = data
-                    service.faviconFetchedAt = Date()
-                    save("cache fetched icon")
-                }
+                guard let data = await FaviconFetcher.shared.fetchFavicon(for: serviceURL) else { return }
+                let descriptor = FetchDescriptor<ServiceInstance>(predicate: #Predicate { $0.id == serviceID })
+                guard let current = try? modelContext.fetch(descriptor).first else { return }
+                current.fetchedIconData = data
+                current.faviconFetchedAt = Date()
+                save("cache fetched icon")
             }
         }
     }

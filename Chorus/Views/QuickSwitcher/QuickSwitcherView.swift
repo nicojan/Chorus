@@ -93,8 +93,12 @@ struct QuickSwitcherView: View {
     }
 
     private func recomputeResults() {
+        // In rail order, space by space, so an empty search opens the first
+        // service of the first space on Return, not whatever the store returned.
         let serviceResults = allLinks
-            .compactMap(\.liveEnds)
+            .compactMap { link in link.liveEnds.map { (order: link.sortOrder, ends: $0) } }
+            .sorted { ($0.ends.space.sortOrder, $0.order) < ($1.ends.space.sortOrder, $1.order) }
+            .map(\.ends)
             .map { space, service in
                 QuickSwitcherResult(
                     id: "\(space.id)-\(service.id)",
