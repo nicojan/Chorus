@@ -487,22 +487,40 @@ final class ChorusTests: XCTestCase {
 
     func testMemoryWatchDoesNotCountAHeavyPageSampledEarlyOverAndOver() {
         let mb: UInt64 = 1_048_576
-        // Sampled at 700 MB while still loading, the page settles at 1.6 GB.
-        // Under 768 MB the floor alone decides, so it counts once...
-        let settled: UInt64 = 1_600 * mb
-        func grown(_ footprint: UInt64, baseline: UInt64) -> Bool {
-            WebViewPool.wouldRebuild(
-                footprint: footprint, baseline: baseline,
-                outOfSight: WebViewPool.memoryWatchMinimumOutOfSight,
-                isActive: false, isPinned: false, keepLoaded: false,
-                isCapturing: false, isPlayingAudio: false, hasOpenTabs: false
-            )
+        let settle = WebViewPool.memoryWatchSettleTime
+        func counts(_ footprint: UInt64) -> (UInt64?) -> Bool {
+            { baseline in
+                WebViewPool.wouldRebuild(
+                    footprint: footprint, baseline: baseline,
+                    outOfSight: WebViewPool.memoryWatchMinimumOutOfSight,
+                    isActive: false, isPinned: false, keepLoaded: false,
+                    isCapturing: false, isPlayingAudio: false, hasOpenTabs: false
+                )
+            }
         }
-        XCTAssertTrue(grown(settled, baseline: 700 * mb))
-        // ...and `memoryReadings` then carries that footprint over as the new
-        // baseline, so the same size on the next pass is steady, not grown.
-        XCTAssertFalse(grown(settled, baseline: settled), "counted once, not on every pass")
-        XCTAssertTrue(grown(2 * settled + mb, baseline: settled), "only doubling again counts again")
+        // Run passes the way `memoryReadings` does, carrying the baseline over.
+        var baseline: UInt64?
+        func pass(_ footprint: UInt64, age: TimeInterval) -> Bool {
+            let result = WebViewPool.memoryWatchPass(
+                footprint: footprint, baseline: baseline, age: age, counts: counts(footprint)
+            )
+            baseline = result.nextBaseline
+            return result.wouldRebuild
+        }
+
+        XCTAssertFalse(pass(400 * mb, age: settle - 1), "a page still loading is not measured")
+        XCTAssertNil(baseline, "and gets no baseline yet")
+        // Sampled at 700 MB while still settling, the page climbs to 1.6 GB.
+        XCTAssertFalse(pass(700 * mb, age: settle))
+        XCTAssertEqual(baseline, 700 * mb, "the first read after settling is the baseline")
+        // Under 768 MB the floor alone decides, so 1.6 GB counts once...
+        let settled: UInt64 = 1_600 * mb
+        XCTAssertTrue(pass(settled, age: settle * 2))
+        XCTAssertEqual(baseline, settled, "a page that counts carries its size over as the baseline")
+        // ...and the same size on the next passes is steady, not grown.
+        XCTAssertFalse(pass(settled, age: settle * 3), "counted once, not on every pass")
+        XCTAssertFalse(pass(settled, age: settle * 4))
+        XCTAssertTrue(pass(2 * settled + mb, age: settle * 5), "only doubling again counts again")
     }
 
     func testOutOfSightCountsFromLeavingAServiceNotFromOpeningIt() {

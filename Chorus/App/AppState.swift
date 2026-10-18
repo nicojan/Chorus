@@ -1454,15 +1454,19 @@ final class AppState {
 
     private func logMemoryWatch() {
         for reading in webViewPool.memoryReadings() {
-            // The catalog id names the service without the user's own label.
-            let service = fetchService(id: reading.id)?.catalogEntryID ?? "custom"
+            // The catalog id names the service without the user's own label,
+            // and the pid tells two accounts of one service apart. An id the
+            // catalog does not know, say from an imported setup, is logged as
+            // custom rather than trusted.
+            let service = fetchService(id: reading.id)?.catalogEntryID
+                .flatMap { ServiceCatalog.shared.entry(for: $0) != nil ? $0 : nil } ?? "custom"
             let megabytes = reading.footprint / 1_048_576
             let baseline = reading.baseline.map { "\($0 / 1_048_576) MB" } ?? "not yet"
             let outOfSight = Int(reading.outOfSight)
             if reading.wouldRebuild {
-                AppLogger.webView.notice("Memory watch: would rebuild \(service, privacy: .public) at \(megabytes) MB, baseline \(baseline, privacy: .public), out of sight \(outOfSight) s")
+                AppLogger.webView.notice("Memory watch: would rebuild \(service, privacy: .public) pid \(reading.pid) at \(megabytes) MB, baseline \(baseline, privacy: .public), out of sight \(outOfSight) s")
             } else {
-                AppLogger.webView.notice("Memory watch: \(service, privacy: .public) \(megabytes) MB, baseline \(baseline, privacy: .public), out of sight \(outOfSight) s, tabs \(reading.hasOpenTabs)")
+                AppLogger.webView.notice("Memory watch: \(service, privacy: .public) pid \(reading.pid) \(megabytes) MB, baseline \(baseline, privacy: .public), out of sight \(outOfSight) s, tabs \(reading.hasOpenTabs)")
             }
         }
     }

@@ -1081,21 +1081,27 @@ final class WebViewPool {
             && !isActive && !isPinned && !keepLoaded && !isCapturing && !isPlayingAudio && !hasOpenTabs
     }
 
-    /// The physical footprint of the WebContent process behind a service, the
-    /// figure Activity Monitor shows as Memory. Each service has its own data
-    /// store, so the process belongs to that one service, but open tabs run in
-    /// it too and count toward it.
+    /// The id of the WebContent process behind a service's page.
     ///
-    /// The process id comes from `_webProcessIdentifier`, which is SPI, so it is
-    /// probed before use. If a macOS release drops it, this returns nil and the
-    /// watch logs nothing.
-    func webContentFootprint(for id: UUID) -> UInt64? {
+    /// It comes from `_webProcessIdentifier`, which is SPI, so it is probed
+    /// before use. If a macOS release drops it, this returns nil and the watch
+    /// logs nothing.
+    func webContentPID(for id: UUID) -> pid_t? {
         let key = "_webProcessIdentifier"
         guard let webView = webViews[id],
               webView.responds(to: NSSelectorFromString(key)),
               let pid = (webView.value(forKey: key) as? NSNumber)?.int32Value,
               pid > 0
         else { return nil }
+        return pid
+    }
+
+    /// The physical footprint of a WebContent process, the figure Activity
+    /// Monitor shows as Memory. Each service has its own data store, so the
+    /// process belongs to that one service. Tabs the page opened usually share
+    /// it, though a cross-site tab can get a process of its own, and the GPU
+    /// and Networking processes are not counted.
+    nonisolated static func webContentFootprint(pid: pid_t) -> UInt64? {
         var info = rusage_info_v4()
         let result = withUnsafeMutablePointer(to: &info) {
             $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
@@ -1107,6 +1113,7 @@ final class WebViewPool {
 
     struct MemoryReading {
         let id: UUID
+        let pid: pid_t
         let footprint: UInt64
         let baseline: UInt64?
         let outOfSight: TimeInterval
@@ -1114,39 +1121,61 @@ final class WebViewPool {
         let wouldRebuild: Bool
     }
 
-    /// Measures every live page once, for the memory watch to log.
+    /// One pass of the memory watch over one page: the baseline the page is
+    /// judged against, whether it counts, and the baseline to keep for the
+    /// next pass.
     ///
     /// A page gets its baseline the first time it is read after
-    /// `memoryWatchSettleTime`. When a page counts as grown, its footprint
-    /// becomes its new baseline, standing in for the rebuild that does not
-    /// happen yet. A page that settled heavy therefore counts once, not on
-    /// every pass, and the log shows how often each service would really be
-    /// rebuilt.
+    /// `memoryWatchSettleTime`. When a page counts, its footprint becomes its
+    /// new baseline, so a page that settled heavy counts once, not on every
+    /// pass. A real rebuild would restart the page small and let it count
+    /// again sooner, so the count of "would rebuild" lines is a floor. Read
+    /// the five-minute series of footprints to see how often a rebuild would
+    /// really happen.
+    nonisolated static func memoryWatchPass(
+        footprint: UInt64,
+        baseline: UInt64?,
+        age: TimeInterval?,
+        counts: (_ baseline: UInt64?) -> Bool
+    ) -> (baseline: UInt64?, wouldRebuild: Bool, nextBaseline: UInt64?) {
+        var judged = baseline
+        if judged == nil, let age, age >= memoryWatchSettleTime {
+            judged = footprint
+        }
+        let grown = counts(judged)
+        return (judged, grown, grown ? footprint : judged)
+    }
+
+    /// Measures every live page once, for the memory watch to log. See
+    /// `memoryWatchPass` for how the baseline moves.
     func memoryReadings(now: Date = Date()) -> [MemoryReading] {
         webViews.keys.compactMap { id in
-            guard let footprint = webContentFootprint(for: id) else { return nil }
-            if baselineFootprints[id] == nil,
-               let age = visits.age(id, now: now), age >= Self.memoryWatchSettleTime {
-                baselineFootprints[id] = footprint
-            }
-            let baseline = baselineFootprints[id]
+            guard let pid = webContentPID(for: id),
+                  let footprint = Self.webContentFootprint(pid: pid)
+            else { return nil }
             let outOfSight = visits.outOfSight(id, now: now)
             let tabs = hasOpenTabs(id)
-            let grown = Self.wouldRebuild(
+            let pass = Self.memoryWatchPass(
                 footprint: footprint,
-                baseline: baseline,
-                outOfSight: outOfSight,
-                isActive: id == activeServiceID,
-                isPinned: pinnedIDs.contains(id),
-                keepLoaded: neverHibernateIDs.contains(id),
-                isCapturing: mediaCaptureStates[id]?.isCapturing ?? false,
-                isPlayingAudio: audibleServiceIDs.contains(id),
-                hasOpenTabs: tabs
-            )
-            if grown { baselineFootprints[id] = footprint }
+                baseline: baselineFootprints[id],
+                age: visits.age(id, now: now)
+            ) { baseline in
+                Self.wouldRebuild(
+                    footprint: footprint,
+                    baseline: baseline,
+                    outOfSight: outOfSight,
+                    isActive: id == activeServiceID,
+                    isPinned: pinnedIDs.contains(id),
+                    keepLoaded: neverHibernateIDs.contains(id),
+                    isCapturing: mediaCaptureStates[id]?.isCapturing ?? false,
+                    isPlayingAudio: audibleServiceIDs.contains(id),
+                    hasOpenTabs: tabs
+                )
+            }
+            baselineFootprints[id] = pass.nextBaseline
             return MemoryReading(
-                id: id, footprint: footprint, baseline: baseline,
-                outOfSight: outOfSight, hasOpenTabs: tabs, wouldRebuild: grown
+                id: id, pid: pid, footprint: footprint, baseline: pass.baseline,
+                outOfSight: outOfSight, hasOpenTabs: tabs, wouldRebuild: pass.wouldRebuild
             )
         }
     }
@@ -1238,9 +1267,12 @@ struct ServiceVisits {
         active = id
     }
 
+    /// The page is gone. It stops being the active one too, so a later switch
+    /// writes nothing back for it.
     mutating func remove(_ id: UUID) {
         loadedAt.removeValue(forKey: id)
         leftAt.removeValue(forKey: id)
+        if active == id { active = nil }
     }
 
     func age(_ id: UUID, now: Date) -> TimeInterval? {

@@ -3,6 +3,12 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+
+- Every five minutes, Chorus writes the memory each service's page uses to the system log, under the service's name in the catalog, never your own label. Chorus behaves as before. The log will show whether a page left in the background keeps growing, and later releases may use that to reload such a page. Marcio Vinicius Spiridigliozzi da Silva Leite wrote it.
+
 ## [1.5.28] - 2026-10-11
 
 ### Changed
