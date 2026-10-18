@@ -160,8 +160,13 @@ final class BadgeManager {
         // toggles the display mask. Storing the real value (rather than 0) keeps
         // adaptive polling's delta detection correct for muted services and
         // makes un-muting instantaneous.
+        // Every poll lands here, mostly with nothing new. Writing an @Observable
+        // property notifies even when the value is the same, which redraws
+        // every badge and sets the Dock badge again, so leave both alone then.
+        let masked = isMuted || !showBadge
+        guard counts[instanceID] != clamped || maskedIDs.contains(instanceID) != masked else { return }
         counts[instanceID] = clamped
-        if isMuted || !showBadge {
+        if masked {
             maskedIDs.insert(instanceID)
         } else {
             maskedIDs.remove(instanceID)

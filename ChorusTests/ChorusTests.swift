@@ -107,6 +107,10 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(NotificationManager.extractBadgeCount(from: "Inbox (5) - Gmail"), 5)
         XCTAssertEqual(NotificationManager.extractBadgeCount(from: "(12) Slack"), 12)
         XCTAssertEqual(NotificationManager.extractBadgeCount(from: "No badges here"), 0)
+        XCTAssertEqual(NotificationManager.extractBadgeCount(from: "(99+) Discord"), 99, "a capped count still counts")
+        XCTAssertEqual(NotificationManager.extractBadgeCount(from: "(1,234) Inbox - Gmail"), 999)
+        XCTAssertEqual(NotificationManager.extractBadgeCount(from: "(9999+) Inbox"), 999)
+        XCTAssertEqual(NotificationManager.extractBadgeCount(from: "Annual Report (2024) - Drive"), 0, "a year is not a count")
     }
 
     func testCustomServiceInputValidation() {
@@ -202,6 +206,12 @@ final class ChorusTests: XCTestCase {
         XCTAssertFalse(FaviconFetcher.isFetchableIconURL(URL(string: "http://127.0.0.1/i.png")!))
         XCTAssertFalse(FaviconFetcher.isFetchableIconURL(URL(string: "http://10.0.0.5/i.png")!))
         XCTAssertFalse(FaviconFetcher.isFetchableIconURL(URL(string: "http://169.254.169.254/latest")!))
+        // Every other way of writing a private IPv4 address.
+        for host in ["127.1", "0x7f.0.0.1", "2130706433", "[::ffff:127.0.0.1]", "100.100.100.100"] {
+            XCTAssertTrue(FaviconFetcher.isPrivateOrReservedHost(host), host)
+        }
+        XCTAssertFalse(FaviconFetcher.isPrivateOrReservedHost("8.8.8.8"))
+        XCTAssertFalse(FaviconFetcher.isPrivateOrReservedHost("example.com"))
     }
 
     func testIsLikelyPrivateHostHeuristic() {
@@ -2429,7 +2439,12 @@ final class ChorusTests: XCTestCase {
         // approval request at the user, every sweep.
         XCTAssertTrue(AuthWallResolver.looksLikeSignInWall(
             requestedHost: "outlook.cloud.microsoft",
-            landedHost: "login.microsoftonline.com",
+            landedURL: URL(string: "https://login.microsoftonline.com/common/oauth2/authorize"),
+            badge: 0))
+        // A company's own sign-in page, known by its address alone.
+        XCTAssertTrue(AuthWallResolver.looksLikeSignInWall(
+            requestedHost: "mail.example.com",
+            landedURL: URL(string: "https://sso.example.org/login?next=/"),
             badge: 0))
     }
 
@@ -2437,22 +2452,27 @@ final class ChorusTests: XCTestCase {
         // Same host, no count: an authenticated inbox that is simply empty.
         XCTAssertFalse(AuthWallResolver.looksLikeSignInWall(
             requestedHost: "outlook.cloud.microsoft",
-            landedHost: "outlook.cloud.microsoft",
+            landedURL: URL(string: "https://outlook.cloud.microsoft/mail/"),
             badge: 0))
         // Redirected but still produced a count, so the session is fine.
         XCTAssertFalse(AuthWallResolver.looksLikeSignInWall(
             requestedHost: "outlook.cloud.microsoft",
-            landedHost: "outlook.office.com",
+            landedURL: URL(string: "https://login.microsoftonline.com/common/oauth2/authorize"),
             badge: 3))
+        // A site that moved, at inbox zero, is not a sign-in wall.
+        XCTAssertFalse(AuthWallResolver.looksLikeSignInWall(
+            requestedHost: "www.threads.net",
+            landedURL: URL(string: "https://www.threads.com/"),
+            badge: 0))
     }
 
     func testAuthWallResolverTreatsMissingHostAsUnknown() {
         // A load that never resolved a host tells us nothing, and parking on a
         // guess would stop that badge updating until the user opens the service.
         XCTAssertFalse(AuthWallResolver.looksLikeSignInWall(
-            requestedHost: "outlook.cloud.microsoft", landedHost: nil, badge: 0))
+            requestedHost: "outlook.cloud.microsoft", landedURL: nil, badge: 0))
         XCTAssertFalse(AuthWallResolver.looksLikeSignInWall(
-            requestedHost: nil, landedHost: "login.microsoftonline.com", badge: 0))
+            requestedHost: nil, landedURL: URL(string: "https://login.microsoftonline.com/"), badge: 0))
     }
 
     // MARK: - Reloading the opener after a popup closes
@@ -3162,6 +3182,35 @@ final class ChorusTests: XCTestCase {
 
         let muted = WebViewPool.MediaCaptureState.combined(camera: [], microphone: [.none, .muted])
         XCTAssertTrue(muted.micMuted)
+    }
+
+    /// A bundled brand icon is found by `brand-<catalog id>`; these three
+    /// once carried short names (`brand-gchat`) and were never shown.
+    /// A chat app added by its address is still a chat app: it stays loaded and
+    /// the badge sweep leaves it alone.
+    func testCustomChatServiceIsNotificationCriticalByHost() {
+        XCTAssertTrue(ServiceInstance(label: "WA", url: "https://web.whatsapp.com/").isNotificationCritical)
+        XCTAssertTrue(ServiceInstance(label: "WA", url: "https://WEB.whatsapp.com").isNotificationCritical, "host case is ignored")
+        XCTAssertFalse(ServiceInstance(label: "Notes", url: "https://notes.example.com").isNotificationCritical)
+        XCTAssertFalse(ServiceInstance(label: "Drive", url: "https://drive.google.com").isNotificationCritical,
+                       "a catalog service outside Messaging is not")
+    }
+
+    func testGoogleBrandIconsMatchTheirCatalogIDs() {
+        for id in ["google-chat", "google-calendar", "google-drive"] {
+            XCTAssertNotNil(ServiceCatalog.shared.entry(for: id), id)
+            XCTAssertNotNil(NSImage(named: "brand-\(id)"), "brand-\(id) is bundled")
+        }
+    }
+
+    func testNotificationRateLimitStopsALoopButNotABurst() {
+        let now = Date()
+        let burst = (1...4).map { now.addingTimeInterval(TimeInterval(-$0)) }
+        XCTAssertFalse(NotificationMessageHandler.isRateLimited(recent: burst, now: now), "four in ten seconds is a busy chat")
+        let loop = burst + [now.addingTimeInterval(-0.5)]
+        XCTAssertTrue(NotificationMessageHandler.isRateLimited(recent: loop, now: now), "the sixth in ten seconds is dropped")
+        let old = (1...5).map { now.addingTimeInterval(TimeInterval(-10 - $0)) }
+        XCTAssertFalse(NotificationMessageHandler.isRateLimited(recent: old, now: now), "posts older than the window don't count")
     }
 
     /// A chat open in both its page and a tab fires each notification twice.

@@ -16,6 +16,8 @@ final class UserScriptManager {
     /// unset, preserving behavior for services that predate the toggle.
     var isServiceNotifyingOS: (@Sendable (UUID) -> Bool)?
     var isDoNotDisturbActive: (@Sendable () -> Bool)?
+    /// The service's label, shown on each notification it posts.
+    var serviceLabel: (@Sendable (UUID) -> String?)?
     var autoDismissCookieBanners: Bool = true
 
     /// Full setup for a freshly built web view: the message handlers (added once)
@@ -44,8 +46,12 @@ final class UserScriptManager {
         let mutedCheck = isServiceMuted
         let notifyOSCheck = isServiceNotifyingOS
         let dndCheck = isDoNotDisturbActive
+        let labelLookup = serviceLabel
         let handler = NotificationMessageHandler(
             serviceID: instance.id,
+            labelLookup: { id in
+                labelLookup?(id) ?? nil
+            },
             isMutedCheck: { id in
                 mutedCheck?(id) ?? false
             },
@@ -463,6 +469,7 @@ final class UserScriptManager {
 
 final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unchecked Sendable {
     let serviceID: UUID
+    let labelLookup: @Sendable (UUID) -> String?
     let isMutedCheck: @Sendable (UUID) -> Bool
     let notifyOSCheck: @Sendable (UUID) -> Bool
     let isDoNotDisturbCheck: @Sendable () -> Bool
@@ -481,13 +488,36 @@ final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unche
         return last.key == key && now.timeIntervalSince(last.at) < duplicateWindow
     }
 
+    /// When this page's last notifications were posted, newest last, for the
+    /// rate limit. Only touched from `didReceive`, on the main thread.
+    private var recentPosts: [Date] = []
+
+    /// At most this many notifications from one page within `rateWindow`. A
+    /// page can call `new Notification` in a loop; a chat that bursts a few
+    /// messages at once stays under it.
+    static let rateLimit = 5
+    static let rateWindow: TimeInterval = 10
+
+    /// Whether one more notification would pass the rate limit, given when the
+    /// recent ones were posted.
+    static func isRateLimited(recent: [Date], now: Date) -> Bool {
+        recent.filter { now.timeIntervalSince($0) < rateWindow }.count >= rateLimit
+    }
+
+    /// The longest title and body a notification keeps. A page sets both, and
+    /// nothing on screen needs more.
+    static let maxTitleLength = 200
+    static let maxBodyLength = 1000
+
     init(
         serviceID: UUID,
+        labelLookup: @escaping @Sendable (UUID) -> String?,
         isMutedCheck: @escaping @Sendable (UUID) -> Bool,
         notifyOSCheck: @escaping @Sendable (UUID) -> Bool,
         isDoNotDisturbCheck: @escaping @Sendable () -> Bool
     ) {
         self.serviceID = serviceID
+        self.labelLookup = labelLookup
         self.isMutedCheck = isMutedCheck
         self.notifyOSCheck = notifyOSCheck
         self.isDoNotDisturbCheck = isDoNotDisturbCheck
@@ -548,11 +578,20 @@ final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unche
         let key = payload.title + "\u{0}" + payload.body
         let now = Date()
         guard !Self.isDuplicate(key: key, last: lastPosted, now: now) else { return }
+        guard !Self.isRateLimited(recent: recentPosts, now: now) else {
+            AppLogger.notifications.info("Dropped a notification: the page is posting faster than \(Self.rateLimit) in \(Int(Self.rateWindow)) s")
+            return
+        }
         lastPosted = (key, now)
+        recentPosts = recentPosts.filter { now.timeIntervalSince($0) < Self.rateWindow } + [now]
 
         let content = UNMutableNotificationContent()
-        content.title = payload.title
-        content.body = payload.body
+        content.title = String(payload.title.prefix(Self.maxTitleLength))
+        content.body = String(payload.body.prefix(Self.maxBodyLength))
+        // The page writes the title and body, so it could claim to be any
+        // service. The subtitle is Chorus's own: the service it came from.
+        content.subtitle = labelLookup(serviceID) ?? ""
+        content.threadIdentifier = serviceID.uuidString
         content.userInfo = ["serviceID": serviceID.uuidString]
         content.sound = .default
 

@@ -291,12 +291,16 @@ final class ServiceInstance {
     static let notificationCriticalCategories: Set<String> = ["Messaging"]
 
     /// True when this service must stay live for real-time notifications, decided
-    /// by its catalog category. Custom (non-catalog) services aren't covered —
-    /// use the `.never` hibernation policy for those.
+    /// by its catalog category. A service added by its address has no catalog id,
+    /// so its host is matched against the catalog instead: a custom
+    /// `https://web.whatsapp.com` is still WhatsApp, and treating it as an
+    /// ordinary page would hibernate it and send the badge sweep at it, which
+    /// signs WhatsApp out. A self-hosted chat matches nothing; use the `.never`
+    /// hibernation policy for those.
     var isNotificationCritical: Bool {
-        guard let catalogEntryID,
-              let entry = ServiceCatalog.shared.entry(for: catalogEntryID)
-        else { return false }
+        let entry = catalogEntryID.flatMap { ServiceCatalog.shared.entry(for: $0) }
+            ?? URL(string: url)?.host.flatMap { ServiceCatalog.shared.entry(forHost: $0) }
+        guard let entry else { return false }
         return Self.notificationCriticalCategories.contains(entry.category)
     }
 

@@ -35,12 +35,17 @@ final class ServiceCatalog: Sendable {
         entries.first { $0.id == id }
     }
 
-    func entries(in category: String) -> [ServiceCatalogEntry] {
-        entries.filter { $0.category.lowercased() == category.lowercased() }
+    /// The entry whose home is at `host`, ignoring case and a leading `www.`,
+    /// for a service added by its address, which carries no catalog id. The
+    /// first entry wins where two share a host.
+    func entry(forHost host: String) -> ServiceCatalogEntry? {
+        let wanted = Self.bareHost(host)
+        return entries.first { URL(string: $0.url)?.host.map(Self.bareHost) == wanted }
     }
 
-    var categories: [String] {
-        Array(Set(entries.map(\.category))).sorted()
+    private static func bareHost(_ host: String) -> String {
+        let lowered = host.lowercased()
+        return lowered.hasPrefix("www.") ? String(lowered.dropFirst(4)) : lowered
     }
 }
 

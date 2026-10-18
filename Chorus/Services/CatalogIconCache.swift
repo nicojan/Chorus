@@ -24,7 +24,13 @@ actor CatalogIconCache {
         // degradation, not a reason to crash the app at launch.
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
-        cacheDirectory = caches.appendingPathComponent("CatalogIcons", isDirectory: true)
+        // Under the bundle id: Chorus is not sandboxed, so the caches directory
+        // is the user's shared one, and a bare "CatalogIcons" there is shared
+        // by the Debug and Release builds and by any app that picks the name.
+        let bundleID = Bundle.main.bundleIdentifier ?? "com.nicojan.Chorus"
+        cacheDirectory = caches
+            .appendingPathComponent(bundleID, isDirectory: true)
+            .appendingPathComponent("CatalogIcons", isDirectory: true)
         try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
     }
 

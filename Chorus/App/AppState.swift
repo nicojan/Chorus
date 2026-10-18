@@ -41,8 +41,12 @@ final class AppState {
 
     var selectedSpaceID: UUID?
     var selectedServiceID: UUID? {
-        // Opening a service clears the pulse on its count.
-        didSet { badgeManager.activeServiceID = selectedServiceID }
+        // Opening a service clears the pulse on its count, and any sign-in
+        // wall the badge sweep had parked it behind.
+        didSet {
+            badgeManager.activeServiceID = selectedServiceID
+            if let selectedServiceID { transientBadgeFetcher.serviceOpened(selectedServiceID) }
+        }
     }
     var showAddService = false
     var showQuickSwitcher = false
@@ -508,6 +512,15 @@ final class AppState {
         }
         self.userScriptManager.isDoNotDisturbActive = { @Sendable in
             MainActor.assumeIsolated { badgeManager.doNotDisturb }
+        }
+        self.userScriptManager.serviceLabel = { @Sendable serviceID in
+            MainActor.assumeIsolated {
+                var descriptor = FetchDescriptor<ServiceInstance>(
+                    predicate: #Predicate { $0.id == serviceID }
+                )
+                descriptor.fetchLimit = 1
+                return (try? container.mainContext.fetch(descriptor).first)?.label
+            }
         }
         self.notificationManager = NotificationManager(badgeManager: badgeManager)
         self.transientBadgeFetcher = TransientBadgeFetcher(

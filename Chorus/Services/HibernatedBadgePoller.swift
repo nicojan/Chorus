@@ -26,8 +26,8 @@ import WebKit
 /// and free of WebKit so the truth table is unit-testable in isolation. Mirrors
 /// `HibernationResolver`.
 enum AuthWallResolver {
-    /// True when a fetch ended somewhere other than the host it asked for and
-    /// came back with no count.
+    /// True when a fetch ended on a sign-in page on another host and came back
+    /// with no count.
     ///
     /// A load with a valid session either stays on the service's own host or
     /// returns a badge. One that needs interactive sign-in gets redirected to the
@@ -36,12 +36,19 @@ enum AuthWallResolver {
     /// the identity provider push a fresh approval request at the user on every
     /// sweep.
     ///
+    /// Landing on another host is not enough on its own: sites move
+    /// (`threads.net` to `threads.com`, `twitter.com` to `x.com`), and at zero
+    /// unread such a move looked exactly like a wall. So the page landed on has
+    /// to be a sign-in page too, on a known sign-in host or at an address shaped
+    /// like one.
+    ///
     /// A missing host on either side reads as "don't know" rather than a wall.
     /// Guessing wrong here costs a badge that stops updating until the user opens
     /// the service, so the check stays conservative.
-    static func looksLikeSignInWall(requestedHost: String?, landedHost: String?, badge: Int) -> Bool {
-        guard let requestedHost, let landedHost else { return false }
+    static func looksLikeSignInWall(requestedHost: String?, landedURL: URL?, badge: Int) -> Bool {
+        guard let requestedHost, let landedURL, let landedHost = landedURL.host else { return false }
         return landedHost != requestedHost && badge == 0
+            && (WebViewCoordinator.isAuthHost(landedHost) || WebViewCoordinator.looksLikeSignIn(landedURL))
     }
 }
 
@@ -220,7 +227,7 @@ final class TransientBadgeFetcher {
 
         let best = await boundedSettle(for: target, webView: webView)
         // Where the load actually ended up, read before the teardown clears it.
-        let landedHost = webView.url?.host
+        let landedURL = webView.url
 
         // Stop the load unconditionally. On the normal path this reaps the web
         // content process as the local reference drops; on the watchdog path it
@@ -228,7 +235,7 @@ final class TransientBadgeFetcher {
         // abandoned settle task so its own reference releases too.
         webView.stopLoading()
 
-        noteAuthWallOutcome(for: target.id, requestedHost: url.host, landedHost: landedHost, badge: best)
+        noteAuthWallOutcome(for: target.id, requestedHost: url.host, landedURL: landedURL, badge: best)
 
         // Raise-only: a transient view torn down after a bounded window can't tell
         // "authenticated inbox, 0 unread" from "auth wall / didn't hydrate" — both
@@ -252,15 +259,16 @@ final class TransientBadgeFetcher {
     /// service once it has looked that way `authWallStrikesBeforeParking` times
     /// running.
     ///
-    /// The signal is "ended on a different host and produced no count". A load
+    /// The signal is "ended on a sign-in page on another host and produced no
+    /// count" (see `AuthWallResolver`). A load
     /// with a valid session either stays on the service's own host or returns a
     /// badge; one that needs interactive sign-in gets redirected to the identity
     /// provider and yields nothing. Anything else clears the run, so a service
     /// that recovers on its own is never parked.
-    private func noteAuthWallOutcome(for id: UUID, requestedHost: String?, landedHost: String?, badge: Int) {
+    private func noteAuthWallOutcome(for id: UUID, requestedHost: String?, landedURL: URL?, badge: Int) {
         guard AuthWallResolver.looksLikeSignInWall(
             requestedHost: requestedHost,
-            landedHost: landedHost,
+            landedURL: landedURL,
             badge: badge
         ) else {
             authWallStrikes[id] = nil
@@ -272,7 +280,7 @@ final class TransientBadgeFetcher {
         authWalledIDs.insert(id)
         authWallStrikes[id] = nil
         AppLogger.badges.info(
-            "Badge sweep parked \(id) — redirected to \(landedHost ?? "?") with no count; skipping until it is opened"
+            "Badge sweep parked \(id) — redirected to \(landedURL?.host ?? "?") with no count; skipping until it is opened"
         )
     }
 
@@ -294,6 +302,14 @@ final class TransientBadgeFetcher {
         authWalledIDs.subtract(reopened)
         for id in reopened { authWallStrikes[id] = nil }
         AppLogger.badges.info("Badge sweep released \(reopened.count) service(s) that were opened")
+    }
+
+    /// The user opened a service, which is the only way past a sign-in wall,
+    /// so stop treating it as parked. The sweep's own check only sees services
+    /// still loaded when it runs, every three minutes; one opened, signed in
+    /// and left in between would stay parked.
+    func serviceOpened(_ id: UUID) {
+        clearAuthWall(id)
     }
 
     /// Drops a service's park and its strike run.
@@ -380,6 +396,11 @@ final class TransientBadgeFetcher {
         let prefs = WKWebpagePreferences()
         prefs.allowsContentJavaScript = true
         config.defaultWebpagePreferences = prefs
+        // A view nobody can see must make no sound, and macOS lets media play
+        // without a click by default. A page that autoplays (a stream on a
+        // Twitch home page) would otherwise sound off every sweep, out of
+        // reach of Pause Audio and Mute All.
+        config.mediaTypesRequiringUserActionForPlayback = .all
 
         let controller = WKUserContentController()
         controller.addUserScript(WKUserScript(

@@ -168,11 +168,10 @@ struct EditServiceSheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if service.catalogEntryID == nil && hibernationPolicy != .never {
-                // A service added by typing its address has no catalog
-                // category, so `isNotificationCritical` is false for it
-                // whatever it actually is — a self-hosted Mattermost or
-                // a second Slack hibernates like any other page and goes
-                // quiet. Nothing said so before this.
+                // A service added by typing its address is only known when
+                // its host matches a catalog entry, so a self-hosted
+                // Mattermost hibernates like any other page and goes quiet.
+                // Nothing said so before this.
                 Text("Chorus does not know what this service is, so it cannot keep it loaded the way it does a chat app from its list. While this one sleeps its notifications do not arrive, only its unread count. Pick Never if you need to hear from it.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

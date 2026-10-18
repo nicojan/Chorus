@@ -135,15 +135,20 @@ actor FaviconFetcher {
             let h = host.hasPrefix("[") ? String(host.dropFirst().dropLast()) : host
             let lower = h.lowercased()
             if lower == "::1" || lower == "::" { return true }
+            // An IPv4 address written as IPv6 reaches the same IPv4 host.
+            if lower.hasPrefix("::ffff:") { return isPrivateOrReservedHost(String(lower.dropFirst(7))) }
             return lower.hasPrefix("fe80") || lower.hasPrefix("fc") || lower.hasPrefix("fd")
         }
-        let parts = host.split(separator: ".")
-        guard parts.count == 4, parts.allSatisfy({ Int($0) != nil }),
-              let a = Int(parts[0]), let b = Int(parts[1]) else {
-            return false  // not a dotted-quad IPv4 → treat as a normal hostname
-        }
+        // `inet_aton` reads every form of IPv4 literal a URL loader accepts, not
+        // just the dotted quad: `127.1`, `0x7f.1`, `2130706433`. A name it
+        // can't read is a normal hostname.
+        var address = in_addr()
+        guard inet_aton(host, &address) == 1 else { return false }
+        let value = UInt32(bigEndian: address.s_addr)
+        let a = value >> 24, b = (value >> 16) & 0xff
         switch a {
         case 0, 10, 127: return true                      // this-network, private, loopback
+        case 100 where (64...127).contains(b): return true // carrier-grade NAT, Tailscale
         case 169 where b == 254: return true              // link-local
         case 172 where (16...31).contains(b): return true // private
         case 192 where b == 168: return true              // private

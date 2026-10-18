@@ -256,13 +256,16 @@ final class NotificationManager {
                 head = String(head[..<range.lowerBound])
             }
         }
-        let pattern = /\((\d+)\)/
+        // A count can be written "(99+)" or "(1,234)". A bare number past 999
+        // is far more often a year or an id ("Annual Report (2024)") than
+        // unread mail, so only the written-out forms count past 999, capped.
+        let pattern = /\((\d[\d,]*)(\+?)\)/
         guard let match = head.firstMatch(of: pattern),
-              let count = Int(match.1),
-              count > 0, count <= 999,
-              !(1900...2099).contains(count)
+              let count = Int(match.1.replacingOccurrences(of: ",", with: "")),
+              count > 0
         else { return 0 }
-        return count
+        guard count > 999 else { return count }
+        return match.1.contains(",") || !match.2.isEmpty ? 999 : 0
     }
 
     /// Whether the view layer should stop the outgoing service's poll when the
@@ -276,7 +279,7 @@ final class NotificationManager {
     /// no longer equals `previousID` — stopping here would wrongly kill that
     /// background poll and leave the outgoing service silent. Reconciling
     /// against the pool's active id (rather than trusting the last writer)
-    /// fixes the deep-link race. See OPEN-ITEMS item 1.
+    /// fixes the deep-link race.
     nonisolated static func shouldStopOutgoingPoll(
         previousID: UUID?,
         poolActiveID: UUID?
@@ -300,12 +303,6 @@ final class NotificationManager {
 
     // MARK: - Notifications
 
-    /// Requests notification authorization from macOS. Call this AFTER the app
-    /// has finished launching (from the root view's `.task`) — never from
-    /// `App.init`/`AppState.init`. Requesting during launch, before the app's
-    /// scene exists, can fail with "Notifications are not allowed for this
-    /// application" and leave the app unregistered, so no banner ever appears.
-    /// Idempotent: macOS ignores repeat calls once the choice has been made.
     /// The current authorization status, as its raw value.
     ///
     /// `nonisolated` so `UNNotificationSettings` never crosses an actor
@@ -317,6 +314,12 @@ final class NotificationManager {
         await UNUserNotificationCenter.current().notificationSettings().authorizationStatus.rawValue
     }
 
+    /// Requests notification authorization from macOS. Call this AFTER the app
+    /// has finished launching (from the root view's `.task`) — never from
+    /// `App.init`/`AppState.init`. Requesting during launch, before the app's
+    /// scene exists, can fail with "Notifications are not allowed for this
+    /// application" and leave the app unregistered, so no banner ever appears.
+    /// Idempotent: macOS ignores repeat calls once the choice has been made.
     func requestAuthorization() {
         Task {
             let center = UNUserNotificationCenter.current()
@@ -396,7 +399,9 @@ private final class NotificationCenterDelegate: NSObject, UNUserNotificationCent
         if isDoNotDisturb() {
             completionHandler([])
         } else {
-            completionHandler([.banner, .sound])
+            // `.list` too, or a notification that arrives while Chorus is in
+            // front shows its banner and is gone from Notification Center.
+            completionHandler([.banner, .list, .sound])
         }
     }
 }
