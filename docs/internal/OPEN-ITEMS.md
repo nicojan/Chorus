@@ -1,5 +1,30 @@
 # Open items
 
+## Open: full code review of 2026-10-18, fixed on `main`, not released
+
+A full review of the app in five slices (app core, store and setup import, web views, background services, views), each by an independent read-only reviewer, then a sixth review of the fixes themselves. Nothing malicious turned up. The supply chain checks out: `darkreader.js` is byte-identical to npm 4.9.128, the two blocklists match the hashes in `vendor/blocklists/manifest.json` and hold only block and hide rules, Sparkle's pin is the 2.9.3 tag, gitleaks finds nothing in 521 commits, CI uses `pull_request` (no secrets to forks) and the repo's default token is read-only, and the appcast Worker stores only a salted daily hash. Seven commits on `fix/code-review-2026-10`, merged to `main`; 326 tests and CI on 14 and 15 green. What each changed is in the CHANGELOG and the commit messages.
+
+The two changes most likely to be noticed:
+
+- **Camera and mic from another site always prompt now** (`AppState.foreignCaptureOutcome`). The `firstParty` silent grant for six call vendors is gone, with its catalog flag. It rested on clicked foreign links always leaving for the browser, which stopped being true in 1.5.22 (`isSignInRoundTrip`, and `authTenantDomains` such as `*.auth0.com`, which anyone can register). A Messenger or Teams call whose media runs on another domain now asks once per request, naming the domain, as it always did for services on Ask.
+- **A service out of sight can't open a window by script** (`WebViewCoordinator.refusesBackgroundWindow`). Clicks, and windows a sign-in popup opens, are unaffected.
+
+**Check by hand before releasing** (none of this was seen live; the quit-time selection save was):
+
+- A Messenger and a Teams call with the service on Allow: one prompt naming the call's domain, then the call works.
+- Sign-in popups that open by script from the service on screen (Google, Microsoft, Slack) still open.
+- App lock: lock with the Edit Service sheet and a sign-in popup open; the sheet shows the lock cover with no second Touch ID prompt, the popup hides and comes back on unlock, and Settings shows only Unlock.
+- A notification shows the service's name as its subtitle.
+- Favicons fetched after this build look sharp (stored as 256 px PNGs; an ICO now gives its largest size).
+- Menu-bar-only mode: close the window, then Show Chorus brings it back.
+
+**Left as they were, on purpose:**
+
+- A WebContent crash still cancels the service's downloads (`cancelActiveDownloads`). The reviewer says WKDownload survives that crash; the code's own note says terminal callbacks didn't arrive. Needs a live crash test before changing.
+- Notifications are still accepted from any origin in the service's main frame; the subtitle now names the service. Gating them on the service's own domain would break Teams, which moves between `teams.cloud.microsoft` and `teams.microsoft.com`.
+- `javaScriptCanOpenWindowsAutomatically` stays on. Turning it off matches Safari but can break OAuth popups that open after an async step.
+- Not done, lower value: the weekly catalog icon refresh still contacts every catalog host through `URLSession.shared` (skip entries with a bundled brand mark; use an ephemeral session); favicon URLs drop IPv6 brackets, and a self-hosted service's same-host icon links are refused; the Mac-app docker can grab a Settings window instead of the main one, and its badge reader fetches every service every 3 s; the feature tips anchor carries `allowsHitTesting(false)` though its own comment says that stops TipKit (check with `debugShowAllTips`); Edit Service has no scroll view; Restore from a backup can latch when another sheet is up; Launch at login reads `.requiresApproval` as off; `ChorusAppDelegate.appState` is only set when the window appears; three add-service paths, three copies of space reorder, and two icon-drawing paths have drifted; a snapshot retried after a failure is labelled pre-migration though the store has migrated; the old `~/Library/Caches/CatalogIcons` is left behind, since another app may own that name.
+
 ## Open: WhatsApp voice messages crackle and drop words (#38)
 
 Reported 2026-10-13 on 1.5.27 and 1.5.28, Apple silicon, mic permission granted. The WhatsApp Mac app records cleanly on the same mic, and Always appear active made no difference. Chorus has no code that touches capture: no `getUserMedia` or `AudioContext` patching, no capture SPI, only the permission prompt (`requestMediaCapturePermissionFor`). So the likely causes are WebKit's own capture path (its echo cancellation) or WhatsApp Web, and the one Chorus-side suspect is Dark Reader, which could slow the page while the waveform animates.
@@ -828,6 +853,8 @@ public suffixes. Two owners on the same shared suffix no longer count as one sit
 so a service pinned to Allow can no longer hand its grant to another site there.
 Same registrable domain still matches, so `*.slack.com` workspaces keep working. A
 test covers it.
+
+**Superseded 2026-10-18:** the `firstParty` silent grant described next is gone; a foreign origin always prompts. See the code review section at the top.
 
 Cross-domain calls: trust is anchored to a service's home host, so a call service
 whose live capture host differs by registrable domain would be denied. Two things

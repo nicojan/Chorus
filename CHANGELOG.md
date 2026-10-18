@@ -9,6 +9,29 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 - Every five minutes, Chorus writes the memory each service's page uses to the system log, under the service's name in the catalog, never your own label. Chorus behaves as before. The log will show whether a page left in the background keeps growing, and later releases may use that to reload such a page. Marcio Vinicius Spiridigliozzi da Silva Leite wrote it.
 
+### Security
+
+- A page from another site, open inside a call service, could use your camera and microphone without asking if you had set that service to Allow. A crafted link shaped like a sign-in could put such a page there. Chorus now always asks first, and the question names the real site.
+- Settings opened while Chorus was locked, so anyone at your Mac could switch the lock off there, and sheets left open stayed usable above the lock screen. While Chorus is locked, Settings now shows only an Unlock button, open sheets show the lock screen too, and sign-in and link windows hide until you unlock.
+- A service you are not looking at can no longer open a window on its own. Links you click work as before.
+- Each notification now shows which service sent it, so a page can't post one that looks like it came from another service. A page can post at most five in ten seconds.
+- A setup file can come from anyone. Importing one now drops CSS that could send what a page shows to another site, refuses a file that adds Chorus itself as a Mac app, and names any Mac apps it adds.
+- The window you open from a link inside a service hands email and phone links to your Mac only when you click them, so a page can't start a call prompt over and over.
+
+### Fixed
+
+- A camera or microphone question that went away without an answer, because Chorus locked or the page reloaded, was remembered as Don't Allow, and the service never asked again.
+- Chorus forgot the service you had open if you quit with ⌘Q.
+- Opening a link to a service that sits in two spaces could move you to the other space.
+- Reload on the Unable to connect page now tries the page that failed. Before, it reloaded the error, and a service put to sleep there came back blank.
+- Counts written as (99+) or (1,234) read as zero.
+- A service whose site moved to a new address, such as threads.net to threads.com, stopped updating its count while it had none.
+- Google Chat, Calendar and Drive now show their own icons, and icons from a site's favicon.ico use its largest size.
+- In menu-bar-only mode, Show Chorus brings the window back after you close it.
+- If an automatic recovery replaces your data, it now always keeps a copy of what it replaced first, and stops if it can't.
+- Notifications that arrive while Chorus is in front stay in Notification Center.
+- Two downloads with the same name no longer clash.
+
 ## [1.5.28] - 2026-10-11
 
 ### Changed
