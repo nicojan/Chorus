@@ -60,6 +60,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// The second argument is this service's id, which never counts as the owner.
     var serviceOwnsURL: ((URL, UUID?) -> Bool)?
 
+    /// Whether this service is the one on screen. Set by `WebViewPool`. Nil ⇒
+    /// treated as on screen, so nothing is refused.
+    var isServiceOnScreen: (() -> Bool)?
+
     /// The service this coordinator drives, set by `WebViewPool` so navigation
     /// callbacks can be attributed to a specific service.
     var instanceID: UUID?
@@ -83,6 +87,12 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// finishes — which would report the service healthy while it is sitting on
     /// "Unable to connect".
     private var errorPageLoadInFlight = false
+
+    /// The address that failed, while the error page is up. The error page
+    /// loads with no base URL, so `webView.url` reads `about:blank` then, which
+    /// is no use to Reload or to a hibernation that wants to come back to the
+    /// page. Cleared when a real page finishes.
+    private(set) var errorPageRetryURL: URL?
 
     /// Resolves a camera/microphone capture request to a WebKit decision. Set by
     /// `WebViewPool` (supplied by `AppState`), which owns the per-service policy
@@ -267,6 +277,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             errorPageLoadInFlight = false
             onHealthEvent?(instanceID, .failed)
         } else {
+            errorPageRetryURL = nil
             onHealthEvent?(instanceID, .finishedLoading)
         }
         onNavigationFinished?(instanceID)
@@ -320,6 +331,9 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             return
         }
 
+        // A tab already closing is on its way out; its crash is not the page's.
+        if isAuxiliary(webView) { return }
+
         // The service's own content process died — reconcile downloads it started
         // so a stuck transfer can't leak this coordinator (see cancelActiveDownloads).
         cancelActiveDownloads()
@@ -328,7 +342,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         crashTimestamps.append(now)
         crashTimestamps = crashTimestamps.filter { now.timeIntervalSince($0) <= Self.crashWindow }
 
-        let retryURL = webView.url ?? fallbackURL
+        let retryURL = errorPageRetryURL ?? webView.url ?? fallbackURL
 
         guard Self.shouldAutoReload(
             crashTimestamps: crashTimestamps,
@@ -346,6 +360,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             // the recovery page's own load must not report it healthy.
             if let instanceID { onHealthEvent?(instanceID, .failed) }
             errorPageLoadInFlight = true
+            errorPageRetryURL = retryURL
             webView.loadHTMLString(html, baseURL: nil)
             return
         }
@@ -397,6 +412,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             retryURLString: failingURL
         )
         errorPageLoadInFlight = true
+        errorPageRetryURL = failingURL.flatMap(URL.init(string:))
         webView.loadHTMLString(html, baseURL: nil)
     }
 
@@ -449,10 +465,23 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// Reloads a web view, or loads `fallbackURL` when there is nothing to
     /// reload. A first load stopped before it committed leaves no page, and
     /// `reload()` on that does nothing, so Reload looked broken.
+    ///
+    /// On Chorus's own error page it retries the address that failed: reloading
+    /// the error page itself would only show it again.
     static func reload(_ webView: WKWebView, fallbackURL: URL?) {
+        if let retry = (webView.navigationDelegate as? WebViewCoordinator)?.errorPageRetryURL {
+            webView.load(URLRequest(url: retry))
+            return
+        }
         if webView.reload() == nil, let fallbackURL {
             webView.load(URLRequest(url: fallbackURL))
         }
+    }
+
+    /// The address a web view is showing, for coming back to it later: the
+    /// failed address while Chorus's error page is up, otherwise `url`.
+    static func pageURL(of webView: WKWebView) -> URL? {
+        (webView.navigationDelegate as? WebViewCoordinator)?.errorPageRetryURL ?? webView.url
     }
 
     // MARK: - Crash backoff / error page (pure, testable)
@@ -584,6 +613,15 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
         let openerIndex = popupIndex(of: webView)
 
+        if Self.refusesBackgroundWindow(
+            navigationType: navigationAction.navigationType,
+            openerIsPopup: openerIndex != nil,
+            serviceOnScreen: isServiceOnScreen?() ?? true
+        ) {
+            AppLogger.webView.info("Refused a window a background service opened without a click")
+            return nil
+        }
+
         // A page opening another Chorus service's link with `window.open` — a
         // Linear link in Slack — switches to that service, the way a clicked
         // link already does.
@@ -690,10 +728,13 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         // nonisolated/@Sendable, and touching the main-actor-isolated WKWebView
         // from it is a data race under Swift 6. An empty title leaves the bar on
         // its current text (the host it was seeded with) instead of clearing it.
-        entry.titleObservation = popup.observe(\.title, options: [.new]) { [weak window] _, change in
+        // The page's own title can say anything ("Sign in – Google Accounts"),
+        // so the real host stays on screen as the subtitle.
+        entry.titleObservation = popup.observe(\.title, options: [.new]) { [weak window, weak popup] _, change in
             guard let newTitle = change.newValue ?? nil, !newTitle.isEmpty else { return }
             Task { @MainActor in
                 window?.title = newTitle
+                window?.subtitle = popup?.url?.host ?? ""
             }
         }
 
@@ -808,7 +849,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// A popup or a tab: a web view of this service's that is not its own
     /// page, so it reports no health and carries no badge.
     private func isAuxiliary(_ webView: WKWebView) -> Bool {
+        // A closing tab has left `tabs` but still runs for its save window; it
+        // must not drive the service page's crash or health handling meanwhile.
         isPopup(webView) || tabs.tab(for: webView) != nil
+            || closingTabs.contains { $0.webView === webView }
     }
 
     // MARK: - Tabs
@@ -1109,10 +1153,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
     // MARK: - Context Menu
 
-    // WKWebView provides native context menus by default on macOS.
-    // We add "Open Link in Browser" and "Copy Link" via the default
-    // context menu handling. Custom context menus can be added via
-    // WKUIDelegate methods if needed in the future.
+    // WKWebView's own context menu is used as is; Chorus adds no items.
 
     // MARK: - Download Delegate
 
@@ -1240,10 +1281,13 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         }
 
         let filename = Self.sanitizedDownloadFilename(suggestedFilename)
+        // A name already given to a download still in flight counts as taken:
+        // its file may not exist yet, and two downloads must not share a path.
+        let inFlight = Set(downloadDestinations.values.map(\.path))
         let destination = Self.nonCollidingURL(
             in: downloads,
             filename: filename,
-            fileExists: { fileManager.fileExists(atPath: $0.path) }
+            fileExists: { inFlight.contains($0.path) || fileManager.fileExists(atPath: $0.path) }
         )
         downloadDestinations[ObjectIdentifier(download)] = destination
         if let itemID = downloadItemIDs[ObjectIdentifier(download)] {
@@ -1314,7 +1358,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
               let disposition = http.value(forHTTPHeaderField: "Content-Disposition") else {
             return false
         }
-        return disposition.lowercased().contains("attachment")
+        // The disposition type is the first token; a filename that happens to
+        // contain the word ("inline; filename=attachment.pdf") is not one.
+        let type = disposition.split(separator: ";", maxSplits: 1).first ?? ""
+        return type.trimmingCharacters(in: .whitespaces).lowercased() == "attachment"
     }
 
     /// Returns a URL in `directory` for `filename` that no file occupies,
@@ -1342,8 +1389,9 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     }
 
     /// Reduces a host to its registrable domain (eTLD+1), e.g.
-    /// `app.slack.com` → `slack.com`, `foo.co.uk` → `foo.co.uk`. Exposed so
-    /// `belongsToService` and its callers share one definition of "same site".
+    /// `app.slack.com` → `slack.com`, `foo.co.uk` → `foo.co.uk`. It knows nothing
+    /// of shared hosting suffixes; `captureRegistrableDomain` adds those, and is
+    /// what `belongsToService` uses.
     nonisolated static func effectiveDomain(_ host: String) -> String {
         var h = host.lowercased()
         if h.hasPrefix("www.") {
@@ -1488,6 +1536,20 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// too, even on a host a service owns: Linear's "Connect Slack" opens
     /// Slack's OAuth page, and handing that to the Slack service would run the
     /// consent in the wrong data store and lose the callback.
+    /// Whether to refuse a new window outright: one the page opened by script,
+    /// not a clicked link, while its service is out of sight. WebKit lets a page
+    /// open windows with no click, so a background page on a timer could steal
+    /// focus with a window, pin a hidden tab that blocks hibernation, or switch
+    /// the user's service under them. A sign-in popup's own windows are left
+    /// alone: the user may switch services while one is open.
+    nonisolated static func refusesBackgroundWindow(
+        navigationType: WKNavigationType,
+        openerIsPopup: Bool,
+        serviceOnScreen: Bool
+    ) -> Bool {
+        navigationType != .linkActivated && !openerIsPopup && !serviceOnScreen
+    }
+
     nonisolated static func shouldHandOffScriptedWindow(
         navigationType: WKNavigationType,
         openerIsPopup: Bool,
@@ -1576,9 +1638,9 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         let service = normalizedHost(serviceHost)
         guard !target.isEmpty, !service.isEmpty else { return false }
 
-        // Reduce with the public-suffix-aware registrable-domain function, the
-        // same one the capture trust check uses. The naive `effectiveDomain`
-        // collapsed a shared multi-tenant hosting suffix to its bare form, so
+        // Reduce with the public-suffix-aware registrable-domain function. Link
+        // routing and the camera/mic trust check both come through here. The
+        // naive `effectiveDomain` collapsed a shared multi-tenant hosting suffix to its bare form, so
         // `evil.vercel.app` and `team.vercel.app` both became `vercel.app` and
         // an attacker sibling on that suffix was treated as owning a user's
         // service — its page then loaded in place inside the service's
@@ -1599,7 +1661,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// suffixes, so `alice.web.app` and `attacker.web.app` are different sites and
     /// a capture grant can never leak across them. Not exhaustive (a full PSL is
     /// the ideal), but it covers the common free-hosting providers a service might
-    /// live on. Used ONLY by the capture check, not by link routing.
+    /// live on. `belongsToService` uses it for link routing and capture trust alike.
     nonisolated static let captureSharedHostingSuffixes: Set<String> = [
         "github.io", "gitlab.io", "web.app", "firebaseapp.com", "appspot.com",
         "run.app", "pages.dev", "workers.dev", "vercel.app", "netlify.app",
@@ -1607,7 +1669,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         "replit.dev", "surge.sh", "azurewebsites.net",
     ]
 
-    /// The registrable domain for the capture trust decision. Like
+    /// The registrable domain for `belongsToService`. Like
     /// `effectiveDomain`, but also treats the multi-tenant hosting suffixes above
     /// as public suffixes, so a tenant on shared hosting reduces to
     /// `<tenant>.<suffix>` instead of the bare suffix.
@@ -1623,24 +1685,6 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             }
         }
         return effectiveDomain(h)
-    }
-
-    /// Whether a capture request from `frameHost` should be trusted as the service
-    /// at `serviceHost`. Stricter than `belongsToService` (which drives link
-    /// routing): hosts that merely share a multi-tenant hosting suffix are
-    /// different owners and never match, closing a grant leak across e.g.
-    /// `*.web.app`. Same registrable domain still matches (so `*.slack.com`
-    /// workspaces work), and shared-umbrella domains keep their exact-host rule.
-    nonisolated static func captureOriginBelongsToService(_ frameHost: String, serviceHost: String) -> Bool {
-        let frame = normalizedHost(frameHost)
-        let service = normalizedHost(serviceHost)
-        guard !frame.isEmpty, !service.isEmpty else { return false }
-        let frameDomain = captureRegistrableDomain(frame)
-        guard frameDomain == captureRegistrableDomain(service) else { return false }
-        if sharedUmbrellaDomains.contains(frameDomain) {
-            return frame == service
-        }
-        return true
     }
 
     /// Sign-in / identity gateways. These host the authentication step for a

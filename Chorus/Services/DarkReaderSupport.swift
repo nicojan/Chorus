@@ -36,11 +36,6 @@ enum DarkReaderSupport {
         appDark && mode == .on ? .themed : .none
     }
 
-    /// Whether a service should be themed right now. Derived from `injection`.
-    static func shouldTheme(mode: ServiceDarkMode, appDark: Bool) -> Bool {
-        injection(mode: mode, appDark: appDark) == .themed
-    }
-
     /// The Dark Reader library source, loaded once from the app bundle.
     static let libraryJS: String = {
         guard let url = Bundle.main.url(forResource: "darkreader", withExtension: "js"),

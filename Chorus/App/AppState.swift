@@ -864,12 +864,11 @@ final class AppState {
         guard let serviceHost = URL(string: service.url)?.host else { return false }
         let frameHost = frame.securityOrigin.host
         guard !frameHost.isEmpty else { return false }
-        // Stricter capture-specific same-site test (not the link-routing one): two
-        // owners on a shared hosting suffix (*.web.app, *.github.io, …) are NOT the
-        // same site, so an Allow-pinned service can't leak its grant to another site
-        // there. First-party cross-domain trust is handled separately, on the
-        // foreign-origin path in resolveMediaPermission.
-        return WebViewCoordinator.captureOriginBelongsToService(frameHost, serviceHost: serviceHost)
+        // Two owners on a shared hosting suffix (*.web.app, *.github.io, …) are
+        // NOT the same site, so an Allow-pinned service can't leak its grant to
+        // another site there. Any other origin takes the foreign-origin path in
+        // resolveMediaPermission, which always prompts.
+        return WebViewCoordinator.belongsToService(frameHost, serviceHost: serviceHost)
     }
 
     /// What to do with a capture request whose origin is NOT the service's own site

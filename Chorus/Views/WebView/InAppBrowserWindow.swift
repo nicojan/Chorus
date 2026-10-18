@@ -5,7 +5,7 @@ import WebKit
 /// user has turned on "open links in Chorus" for that service.
 ///
 /// Deliberately separate from the OAuth popup path in `WebViewCoordinator`: that
-/// one is single-slot, reloads its opener when it closes, and shares the
+/// one is a `PopupChain`, reloads its opener when it closes, and shares the
 /// service's data store so a sign-in lands its cookies. None of that fits a
 /// plain external link, which wants its own window and no session tie to the
 /// service. Each opened link gets its own window.
@@ -108,9 +108,18 @@ final class InAppBrowserWindow: NSObject, WKNavigationDelegate, WKUIDelegate {
     ) async -> WKNavigationActionPolicy {
         guard let url = navigationAction.request.url,
               let scheme = url.scheme?.lowercased() else { return .cancel }
-        // Web content loads in this window; a non-web scheme (mailto:, tel:, …)
-        // goes to the system handler, gated by the same vetted-scheme rule the
-        // main views use. Anything else is dropped.
+        // Web content loads in this window, and so do the page's own internal
+        // documents: editors, payment forms and sign-ins build frames from
+        // `about:blank`, `about:srcdoc`, `blob:`, and `data:` inside a frame
+        // (never as the whole page, a known phishing trick). A non-web scheme (mailto:,
+        // tel:, …) goes to the system handler, gated by the same vetted-scheme
+        // rule the main views use, and only on a click: a page that sets
+        // `location` to `facetime-audio:` in a loop must not raise a call
+        // prompt each time. Anything else is dropped.
+        if scheme == "about" || scheme == "blob" { return .allow }
+        if scheme == "data" {
+            return navigationAction.targetFrame?.isMainFrame == false ? .allow : .cancel
+        }
         if scheme == "http" || scheme == "https" {
             // An `<a download>` click: hand the file to the browser, below.
             if navigationAction.shouldPerformDownload {
@@ -119,7 +128,9 @@ final class InAppBrowserWindow: NSObject, WKNavigationDelegate, WKUIDelegate {
             }
             return .allow
         }
-        WebViewCoordinator.openExternally(url)
+        if navigationAction.navigationType == .linkActivated {
+            WebViewCoordinator.openExternally(url)
+        }
         return .cancel
     }
 

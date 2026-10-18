@@ -402,8 +402,9 @@ final class WebViewPool {
         // Permanent removal (deletion, not hibernation): drop every trace of
         // the service so stale IDs can't dangle. The active pointer must be
         // cleared or keyboard shortcuts / eviction would target a ghost; the
-        // pin/never-hibernate/in-flight sets and the script message handler
-        // would otherwise grow unbounded across create/delete cycles.
+        // pin/never-hibernate/in-flight sets would otherwise grow unbounded
+        // across create/delete cycles. The script message handler goes with
+        // the web view's content controller in teardown.
         if activeServiceID == instanceID {
             activeServiceID = nil
             visits.activate(nil, at: Date())
@@ -412,7 +413,6 @@ final class WebViewPool {
         neverHibernateIDs.remove(instanceID)
         notificationCriticalIDs.remove(instanceID)
         evictionInFlight.remove(instanceID)
-        userScriptManager.removeHandler(for: instanceID)
         onServiceRemoved?(instanceID)
         dropSnapshot(for: instanceID)
     }
@@ -429,7 +429,7 @@ final class WebViewPool {
     /// The service reloads its home URL when next accessed.
     func hibernate(_ instanceID: UUID) {
         guard let webView = webViews[instanceID] else { return }
-        suspendedURLs[instanceID] = webView.url?.absoluteString ?? ""
+        suspendedURLs[instanceID] = WebViewCoordinator.pageURL(of: webView)?.absoluteString ?? ""
         teardownWebView(instanceID)
         hibernatedServiceIDs.insert(instanceID)
         onServiceHibernated?(instanceID)
@@ -520,7 +520,7 @@ final class WebViewPool {
     func recreateWebView(for instanceID: UUID, preserveURL: Bool = true) {
         guard let webView = webViews[instanceID] else { return }
         if preserveURL {
-            suspendedURLs[instanceID] = webView.url?.absoluteString ?? ""
+            suspendedURLs[instanceID] = WebViewCoordinator.pageURL(of: webView)?.absoluteString ?? ""
         } else {
             suspendedURLs.removeValue(forKey: instanceID)
         }
@@ -842,6 +842,9 @@ final class WebViewPool {
         coordinator.servicePage = { [weak self] in
             self?.webViews[id]
         }
+        coordinator.isServiceOnScreen = { [weak self] in
+            self?.activeServiceID == id
+        }
         return coordinator
     }
 
@@ -852,7 +855,7 @@ final class WebViewPool {
         prefs.allowsContentJavaScript = true
         config.defaultWebpagePreferences = prefs
 
-        // Enable back-forward cache so swiping back loads instantly from cache
+        // Let a video or a call go full screen.
         config.preferences.isElementFullscreenEnabled = true
 
         // NOTE: no picture-in-picture config flag here. That flag
@@ -1019,7 +1022,9 @@ final class WebViewPool {
               !hasOpenTabs(id)
         else { return false }
 
-        if hasCall {
+        // The JavaScript probe misses a call inside a cross-origin frame and any
+        // capture that isn't WebRTC; WebKit's own capture state does not.
+        if hasCall || mediaCaptureStates[id]?.isCapturing == true {
             AppLogger.webView.info("Skipping hibernation of \(id) — active call detected")
             return false
         }

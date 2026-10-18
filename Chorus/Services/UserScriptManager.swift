@@ -11,8 +11,6 @@ struct NotificationPayload: Codable {
 
 @MainActor
 final class UserScriptManager {
-    private var messageHandlers: [UUID: NotificationMessageHandler] = [:]
-
     var isServiceMuted: (@Sendable (UUID) -> Bool)?
     /// Per-service "forward notifications to macOS" flag. Defaults to true when
     /// unset, preserving behavior for services that predate the toggle.
@@ -59,7 +57,6 @@ final class UserScriptManager {
             }
         )
         controller.add(handler, name: "chorusNotification")
-        messageHandlers[instance.id] = handler
     }
 
     /// Adds all user scripts. Safe to call again after `removeAllUserScripts()`
@@ -191,10 +188,6 @@ final class UserScriptManager {
             (document.head || document.documentElement).appendChild(style);
         })();
         """
-    }
-
-    func removeHandler(for instanceID: UUID) {
-        messageHandlers.removeValue(forKey: instanceID)
     }
 
     /// Encodes a Swift string as a JS string literal (quotes included) so it can
