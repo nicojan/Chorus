@@ -13,6 +13,7 @@ final class ChorusAppDelegate: NSObject, NSApplicationDelegate {
     private var isReleasingPages = false
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if !isReleasingPages { appState?.saveSelection() }
         guard let appState, !isReleasingPages, appState.webViewPool.loadedCount > 0 else {
             return .terminateNow
         }

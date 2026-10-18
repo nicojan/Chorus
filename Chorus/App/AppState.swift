@@ -145,7 +145,9 @@ final class AppState {
     private struct PendingMediaEntry {
         let request: MediaPermissionRequest
         let serviceID: UUID
-        let continuation: CheckedContinuation<Bool, Never>
+        /// Resumed with the user's answer, or nil when the prompt was cleared
+        /// without one (lock, teardown). Only an answer is remembered.
+        let continuation: CheckedContinuation<Bool?, Never>
     }
     @ObservationIgnored private var mediaQueue: [PendingMediaEntry] = []
 
@@ -608,6 +610,8 @@ final class AppState {
     func importSetup(_ archive: SetupArchive) throws -> SetupArchive.ImportSummary {
         let summary = try archive.apply(to: modelContainer.mainContext)
         fetchMissingAndStaleFavicons()
+        // An imported service may bring its own hibernation timer.
+        startIdleHibernationTimer()
         AppLogger.dataStore.info("Imported a setup: \(summary.servicesAdded) services, \(summary.spacesAdded) new spaces")
         return summary
     }
@@ -638,8 +642,8 @@ final class AppState {
     /// Resolves a service's camera/microphone request into a WebKit decision from
     /// the persisted per-service policy (falling back to the global default, then
     /// `.ask`). Fails closed (`.deny`) whenever anything is uncertain: unknown
-    /// service, a persisted grant reached from a cross-origin subframe, or — until
-    /// the prompt lands in the next step — an `.ask` outcome.
+    /// service, a persisted grant reached from a cross-origin subframe, or an
+    /// `.ask` prompt cleared without an answer.
     @MainActor
     func resolveMediaPermission(
         serviceID: UUID,
@@ -674,11 +678,14 @@ final class AppState {
             // (kind-gated), so a mic-only prompt can't silently pin the camera.
             if resolution == .grant { return .grant }
             let asked = MediaPermissionResolver.askedFields(kind, camera: camera, microphone: microphone)
-            let allowed = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            let allowed = await withCheckedContinuation { (continuation: CheckedContinuation<Bool?, Never>) in
                 enqueueMediaRequest(
                     serviceID: serviceID, serviceLabel: service.label, originHost: nil,
                     camAsked: asked.camera, micAsked: asked.microphone, continuation: continuation)
             }
+            // A prompt cleared by a lock or teardown denies this request only;
+            // saving it as Deny would silence the prompt for good.
+            guard let allowed else { return .deny }
             persistMediaAnswer(serviceID: serviceID, allow: allowed, camAsked: asked.camera, micAsked: asked.microphone)
             return allowed ? .grant : .deny
         }
@@ -700,12 +707,12 @@ final class AppState {
             return .grant
         case .promptNamingOrigin:
             let asked = MediaPermissionResolver.askedFields(kind, camera: .ask, microphone: .ask)
-            let allowed = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            let allowed = await withCheckedContinuation { (continuation: CheckedContinuation<Bool?, Never>) in
                 enqueueMediaRequest(
                     serviceID: serviceID, serviceLabel: service.label, originHost: originHost,
                     camAsked: asked.camera, micAsked: asked.microphone, continuation: continuation)
             }
-            return allowed ? .grant : .deny
+            return allowed == true ? .grant : .deny
         }
     }
 
@@ -716,7 +723,7 @@ final class AppState {
         originHost: String?,
         camAsked: Bool,
         micAsked: Bool,
-        continuation: CheckedContinuation<Bool, Never>
+        continuation: CheckedContinuation<Bool?, Never>
     ) {
         let request = MediaPermissionRequest(
             id: UUID(), serviceLabel: serviceLabel, originHost: originHost,
@@ -762,27 +769,28 @@ final class AppState {
         applyServiceEdits(serviceID: id, urlChanged: false, presenceChanged: true)
     }
 
-    /// Resumes (with deny) and clears any prompts queued for a service that's
-    /// being removed, so a delete mid-prompt can't strand a continuation.
+    /// Resumes (unanswered, so denied but not remembered) and clears any prompts
+    /// queued for a service that's being removed, so a delete mid-prompt can't
+    /// strand a continuation.
     private func drainMediaRequests(for serviceID: UUID) {
         guard mediaQueue.contains(where: { $0.serviceID == serviceID }) else { return }
         let headWasStranded = mediaQueue.first?.serviceID == serviceID
         let stranded = mediaQueue.filter { $0.serviceID == serviceID }
         mediaQueue.removeAll { $0.serviceID == serviceID }
-        for entry in stranded { entry.continuation.resume(returning: false) }
+        for entry in stranded { entry.continuation.resume(returning: nil) }
         // Only re-present if the prompt currently on screen was one we just
         // drained; a drained non-head entry leaves the visible prompt alone.
         if headWasStranded { presentNextMediaRequest() }
     }
 
-    /// Denies and clears every queued prompt. Used when the app locks — a capture
+    /// Denies, without remembering, and clears every queued prompt. Used when the app locks — a capture
     /// prompt must not sit above the lock screen leaking a service name or letting
     /// the user grant capture without unlocking.
     private func drainAllMediaRequests() {
         guard !mediaQueue.isEmpty else { return }
         let all = mediaQueue
         mediaQueue.removeAll()
-        for entry in all { entry.continuation.resume(returning: false) }
+        for entry in all { entry.continuation.resume(returning: nil) }
         pendingMediaRequest = nil
     }
 
@@ -853,7 +861,7 @@ final class AppState {
         let frameHost = frame.securityOrigin.host
         let serviceHost = URL(string: service.url)?.host ?? service.url
         AppLogger.webView.info(
-            "Media capture denied: request origin \(frameHost, privacy: .public) doesn't belong to \(service.label, privacy: .public) (\(serviceHost, privacy: .public))")
+            "Media capture denied: request origin \(frameHost, privacy: .public) doesn't belong to \(service.label) (\(serviceHost, privacy: .public))")
     }
 
     private func isCaptureFrameTrusted(_ frame: WKFrameInfo, service: ServiceInstance) -> Bool {
@@ -954,27 +962,24 @@ final class AppState {
         }
     }
 
-    /// Some service other than `excluded` whose home URL covers `host`.
-    private func serviceOwning(host: String, excluding excluded: UUID?) -> ServiceInstance? {
+    /// Every web service whose home URL covers `host`.
+    private func servicesCovering(host: String) -> [ServiceInstance] {
         let services = (try? modelContainer.mainContext.fetch(FetchDescriptor<ServiceInstance>())) ?? []
-        return services.first { service in
-            guard service.id != excluded, service.nativeAppBundleID == nil,
-                  let serviceHost = URL(string: service.url)?.host else { return false }
-            return WebViewCoordinator.belongsToService(host, serviceHost: serviceHost)
-        }
-    }
-
-    private func findServiceMatching(host: String, preferringSpace spaceID: UUID?) -> ServiceInstance? {
-        let context = modelContainer.mainContext
-        let descriptor = FetchDescriptor<ServiceInstance>()
-        guard let services = try? context.fetch(descriptor) else { return nil }
-
-        let matches = services.filter { service in
+        return services.filter { service in
             // A Mac app's address holds a bundle id, not a host.
             guard service.nativeAppBundleID == nil,
                   let serviceHost = URL(string: service.url)?.host else { return false }
             return WebViewCoordinator.belongsToService(host, serviceHost: serviceHost)
         }
+    }
+
+    /// Some service other than `excluded` whose home URL covers `host`.
+    private func serviceOwning(host: String, excluding excluded: UUID?) -> ServiceInstance? {
+        servicesCovering(host: host).first { $0.id != excluded }
+    }
+
+    private func findServiceMatching(host: String, preferringSpace spaceID: UUID?) -> ServiceInstance? {
+        let matches = servicesCovering(host: host)
         if matches.isEmpty { return nil }
         if matches.count == 1 { return matches.first }
 
@@ -992,16 +997,7 @@ final class AppState {
     }
 
     private func switchToService(_ service: ServiceInstance, navigateTo url: URL) {
-        // Make sure we're in a space that contains this service so the
-        // sidebar selection becomes visible. If the service lives in
-        // multiple spaces, pick the first.
-        if let firstSpace = service.spaceLinks
-            .filter({ $0.modelContext != nil })
-            .compactMap(\.liveSpace)
-            .first?.id {
-            selectedSpaceID = firstSpace
-        }
-        selectedServiceID = service.id
+        select(service)
 
         // Acquire (or wake) the web view and load the deep URL. webView(for:)
         // marks the service active and handles soft-hibernation of whatever
@@ -1441,7 +1437,7 @@ final class AppState {
     /// Nothing is rebuilt yet: this release only measures, to show whether a
     /// background page really keeps climbing. Each pass is one
     /// `proc_pid_rusage` call per live page. Read it back with
-    /// `log show --predicate 'subsystem == "com.nicojan.Chorus" AND eventMessage BEGINSWITH "Memory watch"'`.
+    /// `/usr/bin/log show --predicate 'subsystem == "com.nicojan.Chorus" AND eventMessage BEGINSWITH "Memory watch"'`.
     private func startMemoryWatchTimer() {
         memoryWatchTask?.cancel()
         memoryWatchTask = Task { @MainActor [weak self] in
@@ -2060,21 +2056,8 @@ final class AppState {
         storeError = nil
     }
 
-    /// Post-open sanity check for dangling `SpaceServiceLink` rows — join rows
-    /// whose non-optional `space` points at a deleted `Space`, left behind by a
-    /// build that shipped before `Space.serviceLinks` declared its inverse (the
-    /// `.cascade` rule never fired). Reading such a link's `space` faults the
-    /// deleted row and traps, crashing the app at launch, so the actual cleanup
-    /// runs on the raw store file BEFORE it opens (`StoreRepair`, called from
-    /// `init`). By the time this runs the store should already be clean; this
-    /// only detects and logs anything that slipped through — deliberately
-    /// without ever touching a link's `space`/`service`. It walks outward from
-    /// live spaces and services (reading link `id`s only) and treats any link
-    /// not reachable from BOTH sides as dangling. It does NOT delete: an
-    /// object-graph delete faults the dead space on save (the very crash we
-    /// avoid), which is why removal is the raw-file repair's job.
     /// Whether the store still holds any dangling `SpaceServiceLink` — a join
-    /// row whose non-optional `space` or `service` points at a deleted row.
+    /// row whose `space` or `service` points at a deleted row.
     /// Reading such a link's relationship faults the deleted model and traps
     /// ("backing data could no longer be found"), which is the launch/keystroke
     /// crash `StoreRepair` exists to prevent. `StoreRepair` runs on the raw file
@@ -2085,7 +2068,9 @@ final class AppState {
     ///
     /// It never touches a dangling relationship: it walks outward only from
     /// live spaces and services, reading link `id`s (a stored attribute), and
-    /// treats any link not reachable from BOTH sides as dangling.
+    /// treats any link not reachable from BOTH sides as dangling. It does not
+    /// delete either: an object-graph delete faults the dead row on save, which
+    /// is why removal is the raw-file repair's job.
     static func storeHasDanglingLinks(_ container: ModelContainer) -> Bool {
         let context = container.mainContext
         let links: [SpaceServiceLink]
@@ -2473,6 +2458,11 @@ final class AppState {
     /// Removes any data store identifiers previously marked as orphaned.
     /// Runs at launch (deferred) and after the user deletes a service.
     func cleanUpOrphanedDataStores() {
+        // On the in-memory fallback the services in view are not the ones on
+        // disk, so an empty claim set means "unknown", not "unclaimed". Leave
+        // every tombstone for a launch that opens the real store.
+        guard !isStoreInMemoryFallback else { return }
+
         // Drop any identifier a service currently claims, and forget it for
         // good. The tombstone list lives in UserDefaults and the services live
         // in the store, so the two can disagree: restoring a backup rolls the
@@ -2632,9 +2622,6 @@ final class AppState {
         }
     }
 
-    /// Preloads web views for all services in the currently selected space.
-    /// Runs after window state is restored so `selectedSpaceID` is already set.
-    /// The selected service (if any) loads first, then the rest stagger at 500ms intervals.
     /// Returns services for a space, safely skipping any links with dangling relationships
     /// (can happen if the previous session crashed mid-delete).
     func servicesForSpace(_ spaceID: UUID) -> [ServiceInstance] {
@@ -2655,6 +2642,9 @@ final class AppState {
         }
     }
 
+    /// Preloads web views for all services in the currently selected space.
+    /// Runs after window state is restored so `selectedSpaceID` is already set.
+    /// The selected service (if any) loads first, then the rest stagger at 500ms intervals.
     private func preloadActiveSpaceServices() {
         guard let spaceID = selectedSpaceID else { return }
         let services = servicesForSpace(spaceID)
@@ -2928,6 +2918,23 @@ final class AppState {
         return previousVersion != currentVersion
     }
 
+    /// Remembers the selected space and service for the next launch. Runs when
+    /// the window closes and again at quit, since SwiftUI does not promise the
+    /// window's `onDisappear` when the app terminates.
+    func saveSelection() {
+        // Single shared accessor so we never mint a second preferences row.
+        let prefs = ensurePreferences()
+        prefs.selectedSpaceID = selectedSpaceID
+        prefs.selectedServiceID = selectedServiceID
+
+        do {
+            try modelContainer.mainContext.save()
+        } catch {
+            AppLogger.dataStore.error("Failed to save window state: \(error.localizedDescription)")
+            modelContainer.mainContext.rollback()
+        }
+    }
+
     /// The single AppPreferences row, created (and inserted) once if missing.
     /// All preference *writes* must go through this: unlike a per-view @Query
     /// existence check, a fresh fetch here sees pending inserts, so two
@@ -3193,7 +3200,7 @@ final class AppState {
     }
 
     private func setupMenuBarNavigation() {
-        NotificationCenter.default.addObserver(
+        defaultCenterTokens.append(NotificationCenter.default.addObserver(
             forName: .menuBarServiceActivated,
             object: nil,
             queue: .main
@@ -3206,7 +3213,7 @@ final class AppState {
                 self?.selectedSpaceID = spaceID
                 self?.selectedServiceID = serviceID
             }
-        }
+        })
     }
 
     private func setupNotificationNavigation() {
@@ -3227,8 +3234,12 @@ final class AppState {
         let context = modelContainer.mainContext
         let descriptor = FetchDescriptor<ServiceInstance>(predicate: #Predicate { $0.id == serviceID })
         guard let service = try? context.fetch(descriptor).first else { return }
+        select(service)
+    }
 
-        // If the service isn't in the current space, move to one that has it.
+    /// Selects `service`, moving to a space that contains it when the current
+    /// one does not, so the selection is visible in the sidebar.
+    private func select(_ service: ServiceInstance) {
         // Guard the link relationships first: reading `$0.space.id` on a link
         // whose Space was deleted (a dangling link that outlived StoreRepair)
         // faults the freed model and traps. Reading `.modelContext` is safe.
@@ -3239,7 +3250,7 @@ final class AppState {
         if !inCurrentSpace, let firstSpace = liveSpaces.first?.id {
             selectedSpaceID = firstSpace
         }
-        selectedServiceID = serviceID
+        selectedServiceID = service.id
     }
 
     private func restoreWindowState() {

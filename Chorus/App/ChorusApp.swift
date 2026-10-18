@@ -36,7 +36,7 @@ struct ChorusApp: App {
                     appDelegate.appState = appState
                 }
                 .onDisappear {
-                    saveWindowState()
+                    appState.saveSelection()
                 }
         }
         .defaultSize(width: 1100, height: 700)
@@ -79,7 +79,6 @@ struct ChorusApp: App {
 
                 Button(appState.doNotDisturb ? "Turn Off Do Not Disturb" : "Do Not Disturb") {
                     appState.doNotDisturb.toggle()
-                    appState.refreshEffectiveDoNotDisturb()
                 }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
 
@@ -223,20 +222,6 @@ struct ChorusApp: App {
         }
     }
 
-    @MainActor
-    private func saveWindowState() {
-        // Single shared accessor so we never mint a second preferences row.
-        let prefs = appState.ensurePreferences()
-        prefs.selectedSpaceID = appState.selectedSpaceID
-        prefs.selectedServiceID = appState.selectedServiceID
-
-        do {
-            try appState.modelContainer.mainContext.save()
-        } catch {
-            AppLogger.dataStore.error("Failed to save window state: \(error.localizedDescription)")
-            appState.modelContainer.mainContext.rollback()
-        }
-    }
 
     /// The credits block in the About panel: one line on what the app is, then a
     /// live link to the donation page. The panel centres its own text, so the
