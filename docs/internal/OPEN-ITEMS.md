@@ -31,6 +31,8 @@ Reported 2026-10-13 on 1.5.27 and 1.5.28, Apple silicon, mic permission granted.
 
 Asked the reporter on 2026-10-18 for the macOS version, whether Safari does the same on web.whatsapp.com, which mic (built-in, USB or Bluetooth, which drops to a low-quality mode when the mic is in use), and whether the dark theme is on for WhatsApp. If Safari crackles too, report it to WebKit with their details; the nearest existing bug, WebKit 326286, is iOS 27 playback, not a match. If only Chorus crackles, compare the dark theme off, then a plain WKWebView with nothing injected.
 
+Reporter replied 2026-10-18 11:12 UTC: it "seems to have improved on its own", they will keep watching. None of the four questions answered. Nothing changed in Chorus between the report and the reply (no release), which points away from Chorus. If it stays quiet for a week or so, close it as not reproducible with a reopen note.
+
 ## Shipped in 1.5.28: grey nameless badges and the orange failed dot
 
 Both fixes show in the portfolio clips, so they went out together on 2026-10-11 as 1.5.28: build 41, tag `069ad1b`, DMG 9,738,781 bytes, sha256 `a85d874d…afc58`. Appcast `e23a55f`, cask `5edc7ce` here and `bf54bb0` in the tap. `brew style`, `livecheck` and `audit` all pass.
