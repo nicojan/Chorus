@@ -7,6 +7,9 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ### Added
 
+- A service can now show in every space. Right-click it and choose Show in Every Space, or drag it onto the Global group at the top of the rail. It keeps one sign-in and one badge wherever you are. Move to Space puts it back in a space.
+- Dividers. Right-click a service or a space and choose Add Divider Below to put a line under it. Drag a divider to move it, and drag it off the rail and let go to remove it.
+- Services can share a sign-in. In Edit Service, set Sign-in to Same as another service, and signing in to one signs in both, which suits several Google apps on one account. Asked for in #39.
 - Every five minutes, Chorus writes the memory each service's page uses to the system log, under the service's name in the catalog, never your own label. Chorus behaves as before. The log will show whether a page left in the background keeps growing, and later releases may use that to reload such a page. Marcio Vinicius Spiridigliozzi da Silva Leite wrote it.
 
 ### Security

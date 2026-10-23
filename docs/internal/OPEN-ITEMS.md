@@ -1,5 +1,39 @@
 # Open items
 
+## Open: global services, dividers and shared sign-ins, on `feat/global-services-dividers`, not merged
+
+Built 2026-10-22 in one session at Nico's request, with the questions skipped, so every design call is Claude's; they are listed in `docs/superpowers/specs/2026-10-22-global-services-and-dividers-design.md` and in the branch's commit messages. Nine commits from `90ee700`, two of them fixes from two independent reviews (one of the whole branch, one of the sign-in commit); 359 tests pass. CI: check `gh run list --branch feat/global-services-dividers`.
+
+- **Global services.** Schema 1.5.29 (lightweight from a newly frozen 1.5.19): `ServiceInstance.isGlobal` and `.globalSortOrder`. A global service has no links; the launch reap (`AppState.reapable`) skips it. Shown first in every layout. Made from the context menu (Show in Every Space) or by dragging onto the group; Move to Space or a drag into a space undoes it.
+- **Dividers.** New `RailDivider` entity, no relationships (`spaceID` is a plain attribute). Rows and dividers share one numbering, so every reorder goes through `RailOrder` / `RailEdits` over the merged list. The drag starts from AppKit (`RailDividerView`) so its end point is known; a release with no operation outside the rail's area, or Escape off it, removes the divider.
+- **Shared sign-ins (#39).** No schema change: two services share `dataStoreIdentifier`. Sign-in picker in Edit Service. `markDataStoreOrphaned` now refuses a store a live service still claims. Clear session names and reloads every sharer. Setup files carry the groups (`sharedSignIns`). Not built from the 2026-10-05 plan: the "use your sign-in from Gmail" offer in Add Service.
+
+**Seen live in a Debug build** (store `Chorus-debug`, Little Snitch blocking pages):
+
+- Show in Every Space, and the global's Move to Space menu.
+- A service divider added, dragged, dropped on a gap (kept) and dragged off (removed).
+- A service dragged into the global group, and a global dragged into a space.
+- A spaces divider from the heading menu, in the hybrid strip and in the palette popover, each dragged off.
+- A bar divider dragged off, and the window did not move.
+- Gradebook still global after a relaunch; ⌘1 selects it; a space switch moves to the space's first service.
+
+A copy of the real 1.5.28 store migrated with 4 spaces, 18 services and 18 links intact. The copy was deleted after.
+
+**Left as they were, on purpose** (found by the sign-in review, older than this branch, now also reachable from a sign-in change):
+
+- Rebuilding a service's web view closes its tabs but not a sign-in popup window, which stays on the old store.
+- A service the badge sweep parked behind a sign-in wall stays parked after joining a signed-in store, until it is opened.
+
+**Check by hand before merging:**
+
+- Two signed-in services on one shared store, both loaded at once, on macOS 14, 15 and 26 (the 2026-10-05 exploration asked for this; not done, pages could not load).
+- Switching a service's Sign-in, then deleting one of two sharers: the other stays signed in.
+- Clear session on a sharer: the dialog names the others, all of them sign out and reload.
+- The Sign-in picker's menu itself (a Little Snitch prompt covered the window before it could be opened).
+- Drag-off on a second display, and Escape mid-drag over the rail (keeps it) and off it (removes it).
+- VoiceOver: Remove divider, Move up and Move down on a divider and on a global service.
+- macOS 14 and 15 by hand for the drags; CI covers only the tests there.
+
 ## Open: full code review of 2026-10-18, fixed on `main`, not released
 
 A full review of the app in five slices (app core, store and setup import, web views, background services, views), each by an independent read-only reviewer, then a sixth review of the fixes themselves. Nothing malicious turned up. The supply chain checks out: `darkreader.js` is byte-identical to npm 4.9.128, the two blocklists match the hashes in `vendor/blocklists/manifest.json` and hold only block and hide rules, Sparkle's pin is the 2.9.3 tag, gitleaks finds nothing in 521 commits, CI uses `pull_request` (no secrets to forks) and the repo's default token is read-only, and the appcast Worker stores only a salted daily hash. Seven commits on `fix/code-review-2026-10`, merged to `main`; 326 tests and CI on 14 and 15 green. What each changed is in the CHANGELOG and the commit messages.
@@ -99,7 +133,9 @@ Released 2026-10-05 as 1.5.27: build 40, tag `4ab767f`, DMG 10,520,614 bytes, sh
 - **#35 (mailto links) and #37 (Gmail actions across hide and switch), jpagh.** The author pushed fixes on 2026-10-12, then closed both the same day: "I couldn't get it to a standard I can stand behind." The branches stay on their fork. Nothing to do unless they reopen.
 - **#36, memory watch (marcioviniciusspiridigliozzi-dot).** Reshaped to log only, as asked, and merged on 2026-10-18 with maintainer fixups. See "A memory watch, log only" under the memory item below.
 
-## Open: sign-in groups (services sharing cookies), explored, not built
+## Built on `feat/global-services-dividers`: sign-in groups (services sharing cookies)
+
+Built 2026-10-22 as the Edit Service picker below proposed; see the top section. The notes from the exploration stay for reference.
 
 Asked on 2026-10-05 and parked for its own session. No code exists yet. The exploration found:
 
