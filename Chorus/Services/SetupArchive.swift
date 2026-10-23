@@ -237,8 +237,14 @@ struct SetupArchive: Codable, Equatable {
         for index in globalServices ?? [] where !services.indices.contains(index) {
             throw ReadError.invalid("the global list names a service that isn't in the file")
         }
-        for index in (sharedSignIns ?? []).joined() where !services.indices.contains(index) {
+        let sharedIndices = Array((sharedSignIns ?? []).joined())
+        for index in sharedIndices where !services.indices.contains(index) {
             throw ReadError.invalid("a shared sign-in names a service that isn't in the file")
+        }
+        // A service sits in one group at most; two groups naming it would
+        // leave it in whichever came last and quietly split the first.
+        guard Set(sharedIndices).count == sharedIndices.count else {
+            throw ReadError.invalid("a service is in more than one shared sign-in")
         }
     }
 
@@ -398,7 +404,8 @@ struct SetupArchive: Codable, Equatable {
         }
         // One fresh store per shared group, among the services actually added.
         for group in sharedSignIns ?? [] {
-            let members = group.compactMap { created[$0] }
+            // A Mac app has no cookies to share.
+            let members = group.compactMap { created[$0] }.filter { $0.nativeAppBundleID == nil }
             guard members.count > 1 else { continue }
             let store = UUID()
             members.forEach { $0.dataStoreIdentifier = store }

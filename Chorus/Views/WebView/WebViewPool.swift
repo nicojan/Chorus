@@ -517,6 +517,13 @@ final class WebViewPool {
     /// never-hibernate state are left intact (this is a refresh, not a removal).
     /// With `preserveURL` false the open URL is dropped so the rebuild loads the
     /// service's (possibly just-edited) home URL instead.
+    /// Forgets the page a service was on, so its next web view opens its home
+    /// page. For a change that makes the old page meaningless, such as a new
+    /// sign-in, whether or not a view is up to tear down.
+    func forgetSuspendedURL(for instanceID: UUID) {
+        suspendedURLs.removeValue(forKey: instanceID)
+    }
+
     func recreateWebView(for instanceID: UUID, preserveURL: Bool = true) {
         guard let webView = webViews[instanceID] else { return }
         if preserveURL {

@@ -121,4 +121,63 @@ final class SignInSharingTests: XCTestCase {
         archive.sharedSignIns = [[0, 7]]
         XCTAssertThrowsError(try SetupArchive.decode(try archive.encoded()))
     }
+
+    // MARK: - Removing a store
+
+    /// The guard every delete path goes through. A store another service
+    /// still uses is never tombstoned, and neither is any store while the
+    /// claims can't be read: removing a shared store signs out the services
+    /// that remain, with no way back.
+    func testTombstoningSparesAClaimedStoreAndAnUnreadableStore() {
+        let shared = UUID(), alone = UUID(), earlier = UUID()
+
+        XCTAssertEqual(
+            AppState.tombstones(adding: shared, to: [earlier], claimed: [shared]),
+            [earlier],
+            "a store a remaining service uses must not be tombstoned"
+        )
+        XCTAssertEqual(
+            AppState.tombstones(adding: alone, to: [earlier], claimed: [shared]),
+            [earlier, alone],
+            "a store nobody uses any more is"
+        )
+        XCTAssertEqual(
+            AppState.tombstones(adding: alone, to: [earlier], claimed: nil),
+            [earlier],
+            "unreadable claims are unknown, never empty"
+        )
+        XCTAssertEqual(AppState.tombstones(adding: alone, to: [], claimed: []), [alone], "no services at all: nothing claims it")
+    }
+
+    /// A Mac app has no cookies, so it is never shown or counted as a partner.
+    func testAMacAppIsNeverASignInPartner() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let gmail = ServiceInstance(label: "Gmail", url: "https://mail.google.com")
+        let app = ServiceInstance(label: "LINE", url: NativeApp.serviceURL(forBundleID: "jp.naver.line.mac"),
+                                  dataStoreIdentifier: gmail.dataStoreIdentifier)
+        [gmail, app].forEach(ctx.insert)
+        try ctx.save()
+        XCTAssertTrue(SignInSharing.partners(of: gmail, among: try ctx.fetch(FetchDescriptor<ServiceInstance>())).isEmpty)
+    }
+
+    /// A service in two groups would end up in whichever came last and split
+    /// the first, so a file that does that is refused.
+    func testSetupFileWithOverlappingGroupsIsRefused() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let space = Space(name: "Home", emoji: "🏠", sortOrder: 0)
+        let services = ["a", "b", "c"].map { ServiceInstance(label: $0, url: "https://\($0).example") }
+        ctx.insert(space)
+        services.forEach(ctx.insert)
+        try ctx.save()
+        for (order, service) in services.enumerated() { link(service, to: space, order: order, in: ctx) }
+        try ctx.save()
+
+        var archive = try SetupArchive.capture(from: ctx, appVersion: nil)
+        archive.sharedSignIns = [[0, 1], [1, 2]]
+        XCTAssertThrowsError(try SetupArchive.decode(try archive.encoded()))
+        archive.sharedSignIns = [[0, 1, 2]]
+        XCTAssertNoThrow(try SetupArchive.decode(try archive.encoded()))
+    }
 }

@@ -78,6 +78,20 @@ final class TransientBadgeFetcher {
     /// write. Returns nil if the service no longer exists — then the write is
     /// skipped entirely.
     var currentBadgeParams: (@MainActor (UUID) -> (isMuted: Bool, showBadge: Bool)?)?
+    /// The service's data store as it is now, or nil if the service is gone.
+    /// A target's snapshot can be minutes old by the time its turn comes, and
+    /// a service whose sign-in changed (or that was deleted) in between must
+    /// not have a view built on the store it left: that store may be on its
+    /// way to removal, and removing a store under a live view traps in WebKit.
+    var currentDataStoreIdentifier: (@MainActor (UUID) -> UUID?)?
+
+    /// Stores an offscreen fetch has a view on right now, with how many.
+    /// `AppState.cleanUpOrphanedDataStores` waits these out rather than
+    /// remove a store under one.
+    @ObservationIgnored private var storeUseCounts: [UUID: Int] = [:]
+
+    /// The stores in use by a fetch at this moment.
+    var storesInUse: Set<UUID> { Set(storeUseCounts.keys) }
     /// The compiled content-blocking rule lists to attach (ad/tracker blocking
     /// speeds the headless load and cuts noise). Empty until the lists compile.
     var enabledContentRuleLists: (@MainActor () -> [WKContentRuleList])?
@@ -221,7 +235,14 @@ final class TransientBadgeFetcher {
         guard !authWalledIDs.contains(target.id) else { return }
         guard !isPaused, !Task.isCancelled else { return }
         guard let url = URL(string: target.url) else { return }
+        if let current = currentDataStoreIdentifier, current(target.id) != target.dataStoreIdentifier { return }
 
+        let store = target.dataStoreIdentifier
+        storeUseCounts[store, default: 0] += 1
+        defer {
+            let remaining = (storeUseCounts[store] ?? 1) - 1
+            storeUseCounts[store] = remaining > 0 ? remaining : nil
+        }
         let webView = makeTransientWebView(for: target)
         webView.load(URLRequest(url: url))
 

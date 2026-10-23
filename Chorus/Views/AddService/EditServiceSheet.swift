@@ -257,16 +257,37 @@ struct EditServiceSheet: View {
             }
             .help("Services that share a sign-in use the same cookies and storage, so signing in to one signs in the others. Useful for several Google or Microsoft apps on one account.")
 
-            if signInPartnerID != initialSignInPartnerID {
-                Text("Saving signs this service out of the session it has now.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else if !currentPartners.isEmpty {
-                Text("Shares its sign-in with \(currentPartners.map(\.label).joined(separator: ", ")).")
+            if let signInNote {
+                Text(signInNote)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    /// What saving the picker's choice will do, in the words that matter:
+    /// whose sign-in this service ends up on, and whether its own saved one
+    /// is deleted. Nil when saving changes nothing.
+    private var signInNote: String? {
+        let partners = currentPartners
+        let partnerNames = partners.map(\.label).joined(separator: ", ")
+        let keep = partners.count == 1 ? "keeps" : "keep"
+        guard signInPartnerID != initialSignInPartnerID else {
+            return partners.isEmpty ? nil : "Shares its sign-in with \(partnerNames)."
+        }
+        // Picking another service that already shares this store changes nothing.
+        if let id = signInPartnerID, partners.contains(where: { $0.id == id }) {
+            return nil
+        }
+        guard let id = signInPartnerID,
+              let chosen = signInChoices.first(where: { $0.id == id })
+        else {
+            return "Saving gives this service a new sign-in, signed out. \(partnerNames) \(keep) the current one."
+        }
+        if partners.isEmpty {
+            return "Saving deletes this service's own saved sign-in on this Mac and uses \(chosen.label)'s instead."
+        }
+        return "Saving moves this service to \(chosen.label)'s sign-in. \(partnerNames) \(keep) the current one."
     }
 
     private var clearSessionMessage: String {
@@ -470,8 +491,11 @@ struct EditServiceSheet: View {
             if muteChanged || badgeChanged {
                 appState.refreshBadgeState(for: service.id)
             }
-            if signInPartnerID != initialSignInPartnerID {
-                appState.changeSignIn(for: service.id, sharingWith: signInPartnerID)
+            if signInPartnerID != initialSignInPartnerID,
+               !appState.changeSignIn(for: service.id, sharingWith: signInPartnerID) {
+                // The other changes are saved by now; only the sign-in failed.
+                errorMessage = "Chorus couldn't change the sign-in. Your other changes are saved."
+                return
             }
             dismiss()
         }

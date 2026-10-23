@@ -1313,11 +1313,17 @@ final class AppState {
             let types = WKWebsiteDataStore.allWebsiteDataTypes()
             await store.removeData(ofTypes: types, modifiedSince: .distantPast)
             for home in homes {
-                guard let webView = pool.liveWebView(for: home.id) else { continue }
-                if let url = home.url {
-                    webView.load(URLRequest(url: url))
-                } else {
+                // The service's own page goes home; its tabs reload, so none
+                // of them keeps showing a signed-in page.
+                let main = pool.liveWebView(for: home.id)
+                for webView in pool.allWebViews(for: home.id) where webView !== main {
                     webView.reload()
+                }
+                guard let main else { continue }
+                if let url = home.url {
+                    main.load(URLRequest(url: url))
+                } else {
+                    main.reload()
                 }
             }
             AppLogger.dataStore.info("Cleared session for service \(serviceID) and \(homes.count - 1) sharing it")
@@ -2505,18 +2511,25 @@ final class AppState {
     /// deferred to `cleanUpOrphanedDataStores()` so the live WKWebView has
     /// time to tear down first.
     func markDataStoreOrphaned(_ identifier: UUID) {
-        // Services can share one store (a shared sign-in). Deleting one of
-        // them must not wipe the sign-in the others still use, so a store a
-        // live service still claims is never tombstoned. The cleanup's own
-        // reconcile would drop such a tombstone too; this keeps it from being
-        // written at all.
-        guard !liveDataStoreIdentifiers().contains(identifier) else {
-            AppLogger.dataStore.info("Keeping data store \(identifier): another service still uses it")
+        let current = Self.loadOrphanedIdentifiers()
+        let next = Self.tombstones(adding: identifier, to: current, claimed: liveDataStoreIdentifiers())
+        guard next != current else {
+            if !current.contains(identifier) {
+                AppLogger.dataStore.info("Keeping data store \(identifier): another service uses it, or the store could not be read")
+            }
             return
         }
-        var orphans = Self.loadOrphanedIdentifiers()
-        orphans.insert(identifier)
-        Self.saveOrphanedIdentifiers(orphans)
+        Self.saveOrphanedIdentifiers(next)
+    }
+
+    /// The tombstone list after asking to remove `identifier`. Services can
+    /// share one store (a shared sign-in), so deleting one of them must not
+    /// wipe the sign-in the others still use: a store a live service claims,
+    /// or any store while the claims can't be read, is left off. The cleanup's
+    /// reconcile would drop such a tombstone too; this keeps it from being
+    /// written at all. Pure, so the rule is pinned by a test.
+    nonisolated static func tombstones(adding identifier: UUID, to current: Set<UUID>, claimed: Set<UUID>?) -> Set<UUID> {
+        shouldTombstone(identifier, claimed: claimed) ? current.union([identifier]) : current
     }
 
     /// Removes any data store identifiers previously marked as orphaned.
@@ -2535,9 +2548,15 @@ final class AppState {
         // reconcile, the next launch wipes the cookies of a service the user can
         // see and is using. Nothing legitimate is lost — a tombstone whose
         // service exists again is, by definition, wrong.
+        // An unreadable store says nothing about what is claimed, so this pass
+        // waits for a launch that can read it.
+        guard let claimed = liveDataStoreIdentifiers() else {
+            AppLogger.dataStore.warning("Skipping data store cleanup: could not read which stores services use")
+            return
+        }
         let reconciled = Self.reconciledTombstones(
             tombstoned: Self.loadOrphanedIdentifiers(),
-            claimed: liveDataStoreIdentifiers()
+            claimed: claimed
         )
         let tombstoned = reconciled.keep
         if !reconciled.dropped.isEmpty {
@@ -2578,8 +2597,10 @@ final class AppState {
             let backoff: [Duration] = [.seconds(2), .seconds(3), .seconds(5)]
             for delay in backoff {
                 try? await Task.sleep(for: delay)
-                let pending = orphans.subtracting(removed)
-                guard !pending.isEmpty else { break }
+                // A store an offscreen badge fetch still has a view on waits
+                // for the next round, or the next launch if it never frees.
+                let pending = orphans.subtracting(removed).subtracting(transientBadgeFetcher.storesInUse)
+                guard !orphans.subtracting(removed).isEmpty else { break }
                 for identifier in pending {
                     do {
                         try await WKWebsiteDataStore.remove(forIdentifier: identifier)
@@ -2604,12 +2625,22 @@ final class AppState {
         }
     }
 
-    /// Every data store identifier a service currently claims. Empty when the
-    /// store can't be read — callers must treat that as "unknown", never as
-    /// "nothing is claimed".
-    func liveDataStoreIdentifiers() -> Set<UUID> {
-        let services = (try? modelContainer.mainContext.fetch(FetchDescriptor<ServiceInstance>())) ?? []
+    /// Every data store identifier a service currently claims, or nil when
+    /// the store can't be read. Nil is "unknown", never "nothing is claimed":
+    /// a failed fetch read as empty would mark every shared store unclaimed.
+    func liveDataStoreIdentifiers() -> Set<UUID>? {
+        guard let services = try? modelContainer.mainContext.fetch(FetchDescriptor<ServiceInstance>()) else {
+            return nil
+        }
         return Set(services.map(\.dataStoreIdentifier))
+    }
+
+    /// Whether a store may be tombstoned: only when the claims could be read
+    /// and no service, such as one sharing its sign-in, still uses it. Pure,
+    /// so the rule is pinned by a test.
+    nonisolated static func shouldTombstone(_ identifier: UUID, claimed: Set<UUID>?) -> Bool {
+        guard let claimed else { return false }
+        return !claimed.contains(identifier)
     }
 
     /// Where WebKit keeps the identifier-scoped stores made by
@@ -2661,9 +2692,10 @@ final class AppState {
               let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return }
 
         let onDisk = Set(names.compactMap(UUID.init(uuidString:)))
+        guard let claimed = liveDataStoreIdentifiers() else { return }
         let unreferenced = Self.unreferencedDataStoreIdentifiers(
             onDisk: onDisk,
-            claimed: liveDataStoreIdentifiers()
+            claimed: claimed
         )
         guard !unreferenced.isEmpty else { return }
 
@@ -2875,6 +2907,10 @@ final class AppState {
 
         transientBadgeFetcher.hasLiveWebView = { [weak self] id in
             self?.webViewPool.hasWebView(for: id) ?? false
+        }
+
+        transientBadgeFetcher.currentDataStoreIdentifier = { [weak self] id in
+            self?.currentServiceInstance(id: id)?.dataStoreIdentifier
         }
 
         transientBadgeFetcher.currentBadgeParams = { [weak self] id in

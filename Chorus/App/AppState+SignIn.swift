@@ -14,9 +14,11 @@ import SwiftData
 enum SignInSharing {
     /// The services that share `service`'s sign-in, not counting itself.
     static func partners(of service: ServiceInstance, among services: [ServiceInstance]) -> [ServiceInstance] {
+        // A Mac app has no cookies, so it is never anyone's partner.
         services.filter {
             $0.id != service.id
                 && $0.modelContext != nil
+                && $0.nativeAppBundleID == nil
                 && $0.dataStoreIdentifier == service.dataStoreIdentifier
         }
     }
@@ -57,8 +59,12 @@ extension AppState {
     func changeSignIn(for serviceID: UUID, sharingWith partnerID: UUID?) -> Bool {
         let context = modelContainer.mainContext
         let services = (try? context.fetch(FetchDescriptor<ServiceInstance>())) ?? []
-        guard let service = services.first(where: { $0.id == serviceID }) else { return false }
-        let partner = partnerID.flatMap { id in services.first { $0.id == id && $0.modelContext != nil } }
+        guard let service = services.first(where: { $0.id == serviceID }),
+              service.nativeAppBundleID == nil
+        else { return false }
+        let partner = partnerID.flatMap { id in
+            services.first { $0.id == id && $0.modelContext != nil && $0.nativeAppBundleID == nil }
+        }
         if partnerID != nil && partner == nil { return false }
 
         let previous = service.dataStoreIdentifier
@@ -71,8 +77,11 @@ extension AppState {
         guard context.saveOrRollBack("change sign-in") else { return false }
 
         // The data store is fixed when a web view is built, so the view has
-        // to go and be built again on the new one.
+        // to go and be built again on the new one, at the home page: a page
+        // kept from the old session, by this rebuild or an earlier one in the
+        // same Save, means nothing to the new one.
         webViewPool.recreateWebView(for: serviceID, preserveURL: false)
+        webViewPool.forgetSuspendedURL(for: serviceID)
         webViewRebuildToken &+= 1
         markDataStoreOrphaned(previous)
         cleanUpOrphanedDataStores()
