@@ -118,3 +118,16 @@ The live reorder rows read the same "what is being dragged" state the services u
 ## Left to the builder
 
 Spacing and exact sizes of the divider rows and the global group, the drag preview's look, and the order of the context-menu items, matched to what is there.
+
+## Shared sign-ins by default (added after review)
+
+After reviewing the build, Nico asked for five things. A space's services share cookies, and global services share theirs. A checkbox in Add Service keeps a new service's cookies separate. Adding a second copy of a service where one exists asks first. Dragging a service into another space or the global group asks for a yes and says its cookies come with it.
+
+- **The stores.** A space's shared store is the space's own id; the global services' is one fixed id (`ServiceAdding.globalStore`). No schema change: a service still only points at a store, so deleting, the setup file and the store cleanup treat a shared store as any other.
+- **Existing services are not moved** (Claude's call, to answer "would it break existing users?"). Every service keeps the store it has, so an update signs nobody out. A service joins its space's store by choosing it under Sign-in in Edit Service, which signs it out of its current session and says so.
+- **New services** go on their place's shared store unless Keep its sign-in separate is ticked. New installs seed each space's services onto that space's store. Show in every space in Add Service adds straight to the global group.
+- **A second copy.** When the new service's site (catalog entry, else host) is already on the store it would join, Add Service asks: Keep Separate, Share Sign-In, or Cancel.
+- **Moving keeps the store.** A service dragged to another space or the global group keeps its cookies, so it may go on sharing them with services it left behind; the confirmation names them. Drags are confirmed; the menu commands, which are explicit already, are not (Claude's call).
+- **A reused store id.** A space's store id comes back when a service is added after the last one was deleted, so the store cleanup checks right before each removal whether a service has claimed the store again.
+- **Privacy.** Tracking prevention stays off, as before; inside one shared store an ad network embedded on several of its services can now follow a person across them. The content blocker drops most such requests.
+
