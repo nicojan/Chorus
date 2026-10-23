@@ -1304,19 +1304,23 @@ final class AppState {
     func clearSession(for serviceID: UUID) {
         guard let service = currentServiceInstance(id: serviceID) else { return }
         let store = dataStoreManager.dataStore(forIdentifier: service.dataStoreIdentifier)
-        let homeURL = URL(string: service.url)
+        // Every service on this store loses the sign-in, not only this one, so
+        // each live page is sent home to show it. See `SignInSharing`.
+        let affected = [service] + signInPartners(of: serviceID)
+        let homes = affected.map { (id: $0.id, url: URL(string: $0.url)) }
         let pool = webViewPool
         Task { @MainActor in
             let types = WKWebsiteDataStore.allWebsiteDataTypes()
             await store.removeData(ofTypes: types, modifiedSince: .distantPast)
-            if let webView = pool.liveWebView(for: serviceID) {
-                if let homeURL {
-                    webView.load(URLRequest(url: homeURL))
+            for home in homes {
+                guard let webView = pool.liveWebView(for: home.id) else { continue }
+                if let url = home.url {
+                    webView.load(URLRequest(url: url))
                 } else {
                     webView.reload()
                 }
             }
-            AppLogger.dataStore.info("Cleared session for service \(serviceID)")
+            AppLogger.dataStore.info("Cleared session for service \(serviceID) and \(homes.count - 1) sharing it")
         }
     }
 
@@ -2498,6 +2502,15 @@ final class AppState {
     /// deferred to `cleanUpOrphanedDataStores()` so the live WKWebView has
     /// time to tear down first.
     func markDataStoreOrphaned(_ identifier: UUID) {
+        // Services can share one store (a shared sign-in). Deleting one of
+        // them must not wipe the sign-in the others still use, so a store a
+        // live service still claims is never tombstoned. The cleanup's own
+        // reconcile would drop such a tombstone too; this keeps it from being
+        // written at all.
+        guard !liveDataStoreIdentifiers().contains(identifier) else {
+            AppLogger.dataStore.info("Keeping data store \(identifier): another service still uses it")
+            return
+        }
         var orphans = Self.loadOrphanedIdentifiers()
         orphans.insert(identifier)
         Self.saveOrphanedIdentifiers(orphans)
@@ -2591,7 +2604,7 @@ final class AppState {
     /// Every data store identifier a service currently claims. Empty when the
     /// store can't be read — callers must treat that as "unknown", never as
     /// "nothing is claimed".
-    private func liveDataStoreIdentifiers() -> Set<UUID> {
+    func liveDataStoreIdentifiers() -> Set<UUID> {
         let services = (try? modelContainer.mainContext.fetch(FetchDescriptor<ServiceInstance>())) ?? []
         return Set(services.map(\.dataStoreIdentifier))
     }

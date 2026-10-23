@@ -10,6 +10,8 @@ struct EditServiceSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
+    /// Every service, for the sign-in picker's choices.
+    @Query(sort: \ServiceInstance.label) private var allServices: [ServiceInstance]
 
     @State private var label: String = ""
     @State private var url: String = ""
@@ -35,6 +37,10 @@ struct EditServiceSheet: View {
     @State private var initialUserAgent: String?
     @State private var errorMessage: String?
     @State private var confirmingClearSession = false
+    /// The service whose sign-in this one uses, or nil for its own. See
+    /// `SignInSharing`.
+    @State private var signInPartnerID: UUID?
+    @State private var initialSignInPartnerID: UUID?
 
     /// A Mac-app service has no page, so it gets only the settings that apply
     /// to a launcher: name, mute and badge.
@@ -107,7 +113,7 @@ struct EditServiceSheet: View {
                 dismiss()
             }
         } message: {
-            Text("This clears this service's cookies and storage on this Mac. You'll need to sign in again.")
+            Text(clearSessionMessage)
         }
     }
 
@@ -198,6 +204,8 @@ struct EditServiceSheet: View {
         .pickerStyle(.segmented)
         .help("On applies a dark theme to this service while the app is dark. Off never does.")
 
+        signInSection
+
         if let errorMessage {
             Text(errorMessage)
                 .font(.caption)
@@ -227,7 +235,51 @@ struct EditServiceSheet: View {
         .help("Signs you out by clearing this service's cookies and storage. Its place in your spaces is kept.")
     }
 
+    /// Other web pages this service could share a sign-in with. A Mac app has
+    /// no cookies to share.
+    private var signInChoices: [ServiceInstance] {
+        allServices.filter { $0.id != service.id && $0.modelContext != nil && $0.nativeAppBundleID == nil }
+    }
+
+    /// The services that share this one's sign-in as saved now.
+    private var currentPartners: [ServiceInstance] {
+        SignInSharing.partners(of: service, among: allServices)
+    }
+
+    @ViewBuilder
+    private var signInSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Picker("Sign-in", selection: $signInPartnerID) {
+                Text("Its own").tag(UUID?.none)
+                ForEach(signInChoices) { other in
+                    Text("Same as \(other.label)").tag(Optional(other.id))
+                }
+            }
+            .help("Services that share a sign-in use the same cookies and storage, so signing in to one signs in the others. Useful for several Google or Microsoft apps on one account.")
+
+            if signInPartnerID != initialSignInPartnerID {
+                Text("Saving signs this service out of the session it has now.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if !currentPartners.isEmpty {
+                Text("Shares its sign-in with \(currentPartners.map(\.label).joined(separator: ", ")).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var clearSessionMessage: String {
+        let partners = currentPartners.map(\.label)
+        guard !partners.isEmpty else {
+            return "This clears this service's cookies and storage on this Mac. You'll need to sign in again."
+        }
+        return "This clears the cookies and storage this service shares with \(partners.joined(separator: ", ")), so all of them sign out on this Mac."
+    }
+
     private func loadFields() {
+        signInPartnerID = currentPartners.first?.id
+        initialSignInPartnerID = signInPartnerID
         label = service.label
         url = service.url
         hibernationPolicy = service.hibernationPolicyEffective
@@ -417,6 +469,9 @@ struct EditServiceSheet: View {
             )
             if muteChanged || badgeChanged {
                 appState.refreshBadgeState(for: service.id)
+            }
+            if signInPartnerID != initialSignInPartnerID {
+                appState.changeSignIn(for: service.id, sharingWith: signInPartnerID)
             }
             dismiss()
         }

@@ -29,6 +29,12 @@ struct SetupArchive: Codable, Equatable {
     /// and not a version bump: an older Chorus ignores the key it does not know,
     /// and a file without it (every file before this) reads as no globals.
     var globalServices: [Int]?
+    /// Groups of indexes into `services` that share one sign-in (issue #39),
+    /// each group two or more. Optional for the same reason as
+    /// `globalServices`. The sign-in itself never travels; an import gives
+    /// each group one fresh store, so signing in once on the new Mac signs
+    /// in the whole group.
+    var sharedSignIns: [[Int]]?
 
     struct SpaceRecord: Codable, Equatable {
         var name: String
@@ -231,6 +237,9 @@ struct SetupArchive: Codable, Equatable {
         for index in globalServices ?? [] where !services.indices.contains(index) {
             throw ReadError.invalid("the global list names a service that isn't in the file")
         }
+        for index in (sharedSignIns ?? []).joined() where !services.indices.contains(index) {
+            throw ReadError.invalid("a shared sign-in names a service that isn't in the file")
+        }
     }
 
     /// http or https with a host, and no credentials in the address. A setup
@@ -257,6 +266,7 @@ struct SetupArchive: Codable, Equatable {
         var records: [ServiceRecord] = []
         var indexByID: [UUID: Int] = [:]
         var spaceRecords: [SpaceRecord] = []
+        var storeByIndex: [Int: UUID] = [:]
 
         for space in spaces {
             var members: [Member] = []
@@ -270,6 +280,7 @@ struct SetupArchive: Codable, Equatable {
                     guard let record = ServiceRecord(exporting: service) else { continue }
                     index = records.count
                     indexByID[service.id] = index
+                    storeByIndex[index] = service.dataStoreIdentifier
                     records.append(record)
                 }
                 members.append(Member(service: index, sortOrder: sortOrder))
@@ -283,13 +294,26 @@ struct SetupArchive: Codable, Equatable {
         for service in RailEdits.globalServices(in: context) {
             guard let record = ServiceRecord(exporting: service) else { continue }
             globalIndices.append(records.count)
+            storeByIndex[records.count] = service.dataStoreIdentifier
             records.append(record)
         }
+        let shared = sharedSignInGroups(storeByIndex: storeByIndex)
         return SetupArchive(
             format: format, version: currentVersion, exportedAt: now,
             appVersion: appVersion, spaces: spaceRecords, services: records,
-            globalServices: globalIndices.isEmpty ? nil : globalIndices
+            globalServices: globalIndices.isEmpty ? nil : globalIndices,
+            sharedSignIns: shared.isEmpty ? nil : shared
         )
+    }
+
+    /// The exported services that share a store, as groups of two or more,
+    /// each sorted and the groups in order of their first member. Pure.
+    static func sharedSignInGroups(storeByIndex: [Int: UUID]) -> [[Int]] {
+        Dictionary(grouping: storeByIndex.keys, by: { storeByIndex[$0]! })
+            .values
+            .map { $0.sorted() }
+            .filter { $0.count > 1 }
+            .sorted { $0[0] < $1[0] }
     }
 
     /// Every link whose two ends are still there, grouped by space and in
@@ -371,6 +395,13 @@ struct SetupArchive: Codable, Equatable {
             }
             context.insert(service)
             created[index] = service
+        }
+        // One fresh store per shared group, among the services actually added.
+        for group in sharedSignIns ?? [] {
+            let members = group.compactMap { created[$0] }
+            guard members.count > 1 else { continue }
+            let store = UUID()
+            members.forEach { $0.dataStoreIdentifier = store }
         }
         summary.servicesAdded = created.count
 
