@@ -50,6 +50,7 @@
 		75C395B384D9E21AF94FBC4F /* UserScriptManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBBF69E002BB39BB6EFF9BDB /* UserScriptManager.swift */; };
 		783EF6C467034D74DE8D5F52 /* WebViewState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 192C907C2215D62E02FF8408 /* WebViewState.swift */; };
 		78C80EEE6E3E6F9D2DB819D5 /* RailSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 542BCDA03CE248BE3E75D814 /* RailSupport.swift */; };
+		79F69990EE72D6196FBB80B8 /* RailDividerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24ECDB7D8F7F0F324289AD37 /* RailDividerView.swift */; };
 		817A70A10923352BBAC3F63E /* CatalogIconCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0693A705E1552F5809BA3399 /* CatalogIconCache.swift */; };
 		8325C3DEC3242E7E2C19EB07 /* SpacePaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03E9D5B98CFDDD0B2E7FD42C /* SpacePaletteView.swift */; };
 		863BAA64BC341E5286D8915E /* UnifiedRailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D2B28970B7AEF9B0EB53AFD /* UnifiedRailView.swift */; };
@@ -58,6 +59,7 @@
 		8E4B7701A7A18F51C6109E10 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A3640458AF427BC8D3C8F2A /* NetworkMonitor.swift */; };
 		8F6E2C62BD277E5577FBE480 /* WebContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA4617D503719C1701307F28 /* WebContentView.swift */; };
 		92BF212550953DD2E21A12E7 /* EmojiPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01EC3720B49A4D8B953CDA90 /* EmojiPickerView.swift */; };
+		96AB65EE0864CCD84279C86D /* RailItems.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8D1ECB45C649A2DC43CECD5 /* RailItems.swift */; };
 		9722D48056956FA71E911D98 /* ServicePopup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200FB7DAF9279B0E2764474D /* ServicePopup.swift */; };
 		9912BDFEE290E93DC57ED3C7 /* DemoControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42C2BEF1C847F26AD98EABF0 /* DemoControl.swift */; };
 		9EDF307D989D199DE994D432 /* EditServiceSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DD5F8F7C2450C88FA1A3886 /* EditServiceSheet.swift */; };
@@ -127,6 +129,7 @@
 		1B679EE1300566DA259FFF77 /* THIRD_PARTY_NOTICES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = THIRD_PARTY_NOTICES.md; sourceTree = "<group>"; };
 		1D9D707C0F9A04B5E0744F59 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		200FB7DAF9279B0E2764474D /* ServicePopup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServicePopup.swift; sourceTree = "<group>"; };
+		24ECDB7D8F7F0F324289AD37 /* RailDividerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailDividerView.swift; sourceTree = "<group>"; };
 		24EE83C0600AFD4A12914883 /* HibernatedBadgePoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HibernatedBadgePoller.swift; sourceTree = "<group>"; };
 		311EEF2D99711EA929371A79 /* ChorusSchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChorusSchema.swift; sourceTree = "<group>"; };
 		312995FF05808961FD519D76 /* SpaceServiceLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceServiceLink.swift; sourceTree = "<group>"; };
@@ -202,6 +205,7 @@
 		EA17C93CEDF437318D536482 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		EB2C3D766E33A238E3561B34 /* SetupArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupArchive.swift; sourceTree = "<group>"; };
 		ECCC4A3133903E40BFB42AA6 /* AddServiceSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddServiceSheet.swift; sourceTree = "<group>"; };
+		F8D1ECB45C649A2DC43CECD5 /* RailItems.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailItems.swift; sourceTree = "<group>"; };
 		FBA2B8A19B41207F66E51CC3 /* ChorusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChorusTests.swift; sourceTree = "<group>"; };
 		FBCB337C1EF863BC5957ABE9 /* BlocklistSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlocklistSupport.swift; sourceTree = "<group>"; };
 		FEC9767949C165F7DCD9A281 /* Space.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Space.swift; sourceTree = "<group>"; };
@@ -368,6 +372,8 @@
 				7458024AA17BF508D4807018 /* ContentView.swift */,
 				63600DD5EE558B052FFC8073 /* DownloadsButton.swift */,
 				76865DDEE671C34CC88CF4D8 /* FindInPageBar.swift */,
+				24ECDB7D8F7F0F324289AD37 /* RailDividerView.swift */,
+				F8D1ECB45C649A2DC43CECD5 /* RailItems.swift */,
 				542BCDA03CE248BE3E75D814 /* RailSupport.swift */,
 				BFD9BB4DBF6536D1AD0CA298 /* ServiceHealth.swift */,
 				E84C935C8A82FD6B6B969E6B /* ServiceIconView.swift */,
@@ -612,7 +618,9 @@
 				A96CBF7ECCEC4F44B5A6351E /* OutsideLinkDefault.swift in Sources */,
 				53C0B5A438EDC6C98FE081AB /* QuickSwitcherView.swift in Sources */,
 				DFF3C2C6D2BD8785482FDAD1 /* RailDivider.swift in Sources */,
+				79F69990EE72D6196FBB80B8 /* RailDividerView.swift in Sources */,
 				3B3092B01F046644EECAC315 /* RailEdits.swift in Sources */,
+				96AB65EE0864CCD84279C86D /* RailItems.swift in Sources */,
 				E8288CD202E937B4B6087D67 /* RailOrder.swift in Sources */,
 				78C80EEE6E3E6F9D2DB819D5 /* RailSupport.swift in Sources */,
 				C65C95AB514FF50CEE9A75D6 /* ServiceCatalog.swift in Sources */,

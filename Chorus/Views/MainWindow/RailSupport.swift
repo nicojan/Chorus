@@ -227,6 +227,12 @@ final class FocusVisibility {
 enum LiveReorder {
     static let spaceType = UTType(exportedAs: "com.nicojan.chorus.space-id")
     static let serviceType = UTType(exportedAs: "com.nicojan.chorus.service-link-id")
+    /// A global service, by its service id: it has no membership link.
+    static let globalServiceType = UTType(exportedAs: "com.nicojan.chorus.global-service-id")
+    /// A divider, by its id. Started from AppKit rather than `onDrag`, since
+    /// removing one depends on knowing where the drag ended. See
+    /// `RailDividerDragSource`.
+    static let dividerType = UTType(exportedAs: "com.nicojan.chorus.divider-id")
 
     /// The order after `dragged` takes the slot of `target`: it lands after
     /// the target when it came from above, and before it when it came from
