@@ -358,4 +358,47 @@ final class RailTests: XCTestCase {
         // And the new entity takes rows after the migration.
         XCTAssertNotNil(RailEdits.addDivider(in: .space(spaceID), after: linkID, context: ctx))
     }
+
+    // MARK: - Setup import
+
+    private func railLink(_ service: ServiceInstance, to space: Space, in ctx: ModelContext) {
+        let link = SpaceServiceLink(sortOrder: 0, space: space, service: service)
+        if link.modelContext == nil { ctx.insert(link) }
+    }
+
+    /// An import into a space that holds a divider puts the new services past
+    /// it, rather than on its number.
+    func testImportIntoASpaceAppendsPastItsDividers() throws {
+        let source = try makeContainer()
+        let src = source.mainContext
+        let home = Space(name: "Home", emoji: "🏠", sortOrder: 0)
+        let gmail = ServiceInstance(label: "Gmail", url: "https://mail.google.com")
+        src.insert(home)
+        src.insert(gmail)
+        try src.save()
+        railLink(gmail, to: home, in: src)
+        try src.save()
+        let archive = try SetupArchive.capture(from: src, appVersion: nil)
+
+        let target = try makeContainer()
+        let dst = target.mainContext
+        let existingHome = Space(name: "Home", emoji: "🏠", sortOrder: 0)
+        let slack = ServiceInstance(label: "Slack", url: "https://slack.com")
+        dst.insert(existingHome)
+        dst.insert(slack)
+        try dst.save()
+        railLink(slack, to: existingHome, in: dst)
+        try dst.save()
+        let divider = try XCTUnwrap(RailEdits.addDivider(in: .space(existingHome.id), after: nil, context: dst))
+
+        _ = try archive.apply(to: dst)
+
+        let homes = try dst.fetch(FetchDescriptor<Space>())
+        let entries = homes.flatMap { RailEdits.entries(in: .space($0.id), context: dst) }
+        XCTAssertEqual(Set(entries.map(\.sortOrder)).count, entries.count, "no two entries share a number")
+        if homes.count == 1 {
+            XCTAssertEqual(entries.last?.isDivider, false, "the import lands after the divider")
+            XCTAssertTrue(entries.contains { $0.id == divider })
+        }
+    }
 }

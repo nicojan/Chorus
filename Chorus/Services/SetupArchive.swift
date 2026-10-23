@@ -328,7 +328,8 @@ struct SetupArchive: Codable, Equatable {
         // Oldest first, so a store that already holds two spaces of one name
         // merges into the same one every time.
         let existing = try context.fetch(FetchDescriptor<Space>(sortBy: [SortDescriptor(\.sortOrder)]))
-        var nextSpaceOrder = (existing.map(\.sortOrder).max() ?? -1) + 1
+        // Past any dividers between spaces too, which share this numbering.
+        var nextSpaceOrder = RailEdits.nextOrder(in: .spaces, context: context)
         var byName: [String: Space] = [:]
         for space in existing where byName[space.name] == nil {
             byName[space.name] = space
@@ -381,7 +382,6 @@ struct SetupArchive: Codable, Equatable {
         }
 
         do {
-            let linksBySpace = try Self.liveLinksBySpace(in: context)
             var nextOrder: [UUID: Int] = [:]
             var linked: [UUID: Set<Int>] = [:]
             // A global service has no links; a file that also lists it in a
@@ -389,7 +389,8 @@ struct SetupArchive: Codable, Equatable {
             let globalSet = Set(globalIndices)
             for (record, space) in zip(orderedSpaces, targets) {
                 // Two records can merge into one space; each continues the order.
-                var order = nextOrder[space.id] ?? ((linksBySpace[space.id]?.last?.0 ?? -1) + 1)
+                // Past the space's dividers too, which share its numbering.
+                var order = nextOrder[space.id] ?? RailEdits.nextOrder(in: .space(space.id), context: context)
                 for member in record.members.sorted(by: { $0.sortOrder < $1.sortOrder }) {
                     // A service listed twice in one space gets one link.
                     guard !globalSet.contains(member.service),
