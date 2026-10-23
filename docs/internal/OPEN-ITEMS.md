@@ -2,43 +2,40 @@
 
 ## Open: global services, dividers and shared sign-ins, on `feat/global-services-dividers`, not merged
 
-Built 2026-10-22 in one session at Nico's request, with the questions skipped, so every design call is Claude's; they are listed in `docs/superpowers/specs/2026-10-22-global-services-and-dividers-design.md` and in the branch's commit messages. Nine commits from `90ee700`, two of them fixes from two independent reviews (one of the whole branch, one of the sign-in commit); 359 tests pass. CI: check `gh run list --branch feat/global-services-dividers`.
+Built 2026-10-22 in one long session. Nico skipped the questions, so the design calls are Claude's; they are in `docs/superpowers/specs/2026-10-22-global-services-and-dividers-design.md` (with the later additions at its end) and in the commit messages. The branch ends at `dfce48c` plus this docs commit; 368 tests pass; CI green on 14 and 15 at `dfce48c`. Three independent reviews found no data-loss path, and their findings are fixed (`63bce54`, `95e0182`, `2327a3e`). Nothing merged or released.
 
-- **Global services.** Schema 1.5.29 (lightweight from a newly frozen 1.5.19): `ServiceInstance.isGlobal` and `.globalSortOrder`. A global service has no links; the launch reap (`AppState.reapable`) skips it. Shown first in every layout. Made from the context menu (Show in Every Space) or by dragging onto the group; Move to Space or a drag into a space undoes it.
-- **Dividers.** New `RailDivider` entity, no relationships (`spaceID` is a plain attribute). Rows and dividers share one numbering, so every reorder goes through `RailOrder` / `RailEdits` over the merged list. The drag starts from AppKit (`RailDividerView`) so its end point is known; a release with no operation outside the rail's area, or Escape off it, removes the divider.
-- **Shared sign-ins (#39).** No schema change: two services share `dataStoreIdentifier`. Sign-in picker in Edit Service. `markDataStoreOrphaned` now refuses a store a live service still claims. Clear session names and reloads every sharer. Setup files carry the groups (`sharedSignIns`). Not built from the 2026-10-05 plan: the "use your sign-in from Gmail" offer in Add Service.
+What it does:
 
-**Seen live in a Debug build** (store `Chorus-debug`, Little Snitch blocking pages):
+- **Global services.** Schema 1.5.29, lightweight from a newly frozen 1.5.19: `ServiceInstance.isGlobal` and `.globalSortOrder`. A global service has no links, and the launch reap (`AppState.reapable`) skips it. Shown first in every layout; in the hybrid layout it sits in the space strip above the spaces, and in the all-services rail in a card with no heading.
+- **Dividers.** A `RailDivider` entity with no relationships. Rows and dividers share one numbering, so every reorder goes through `RailOrder` and `RailEdits`. The drag starts from AppKit (`RailDividerView`) so its end is known; dragged off the rail it is removed. It shows as an accent bar in its slot while dragged. Every + button's right-click menu has Add Divider.
+- **Shared sign-ins.** A new service shares its space's sign-in (the store id is the space's id) or the global services' one (`ServiceAdding.globalStore`), unless it is given its own on the second page of Add Service. Existing services keep their own stores, so the update signs nobody out; Edit Service's Sign-in picker can move one onto its space's. A shared store nobody uses is cleared before a service starts on it (`AppState.prepareStore`), since its id comes back and WebKit can keep its cookies in memory.
+- **Moves.** Dragging a service into another space or the global group asks first and keeps its cookies. Menu moves do not ask.
 
-- Show in Every Space, and the global's Move to Space menu.
-- A service divider added, dragged, dropped on a gap (kept) and dragged off (removed).
-- A service dragged into the global group, and a global dragged into a space.
-- A spaces divider from the heading menu, in the hybrid strip and in the palette popover, each dragged off.
-- A bar divider dragged off, and the window did not move.
-- Gradebook still global after a relaunch; ⌘1 selects it; a space switch moves to the space's first service.
+Seen working in the Debug build:
 
-A copy of the real 1.5.28 store migrated with 4 spaces, 18 services and 18 links intact. The copy was deleted after.
+- Every layout, and dividers added, moved, dropped on a gap and dragged off in the rail, bar, strip and palette.
+- A service made global and moved back, by menu and by drag, with the move confirmation.
+- The two-page Add Service.
+- Against a local cookie page: shared and separate sign-ins, and a service deleted and added back starting signed out, both at once and after the cleanup ran.
 
-**Shared sign-ins by default** (added 2026-10-22 evening, after Nico's review): new services share their space's sign-in (the store id is the space's id) or the global one (`ServiceAdding.globalStore`) unless Add Service's "Keep its sign-in separate" is ticked. Existing services keep their own stores, so the update signs nobody out. Drags into another space or the global group ask first. A third independent review found no data-loss path; its fixes are in `2327a3e`. Still open from it: a setup import gives each shared group a fresh store rather than the target space's, so an imported space can end up with two sign-ins once more services are added there.
+A copy of the real 1.5.28 store migrated with 4 spaces, 18 services and 18 links intact.
 
-**Left as they were, on purpose** (found by the sign-in review, older than this branch, now also reachable from a sign-in change):
+**Check by hand before merging** (Nico, next session):
 
-- Rebuilding a service's web view closes its tabs but not a sign-in popup window, which stays on the old store.
-- A service the badge sweep parked behind a sign-in wall stays parked after joining a signed-in store, until it is opened.
-
-**Check by hand before merging:**
-
-- Add two Google services to a space without "Keep its sign-in separate": signing in to one signs in the other. Add a third with it ticked: signed out.
-- Delete the last service in a space and add one straight back: it starts signed out, and nothing crashes (the reused store id).
-- Edit Service on an older service: choose "Shared in <space>", save, and it signs out of its own session onto the space's.
-
-- Two signed-in services on one shared store, both loaded at once, on macOS 14, 15 and 26 (the 2026-10-05 exploration asked for this; not done, pages could not load).
-- Switching a service's Sign-in, then deleting one of two sharers: the other stays signed in.
-- Clear session on a sharer: the dialog names the others, all of them sign out and reload.
-- The Sign-in picker's menu itself (a Little Snitch prompt covered the window before it could be opened).
-- Drag-off on a second display, and Escape mid-drag over the rail (keeps it) and off it (removes it).
+- Two Google services on one shared sign-in: signing in to Gmail signs in Drive, and both stay loaded together. On macOS 14 and 15 too if possible.
+- Delete every service in a space after signing in, add a Google service back: it starts signed out.
+- Move a signed-in service to another space: the dialog says its cookies come with it, and it stays signed in.
+- Edit Service on an older service: choose "Shared in <space>", save, and it moves onto the space's sign-in.
+- Clear session on a service that shares: the dialog names the others, and all of them sign out.
+- A second display: drag a divider off; Escape during a divider drag over the rail keeps it.
 - VoiceOver: Remove divider, Move up and Move down on a divider and on a global service.
-- macOS 14 and 15 by hand for the drags; CI covers only the tests there.
+
+**Still open:**
+
+- A setup import gives each shared group a fresh store rather than its space's, so an imported space can end up with two sign-ins as services are added.
+- Offered, not decided: the move confirmation could let the person choose between keeping the service's sign-in and taking the new space's.
+- Older gaps a sign-in change can now reach: rebuilding a web view leaves a sign-in popup window on the old store; a service the badge sweep parked behind a sign-in wall stays parked after joining a signed-in store until it is opened.
+- Not built from the 2026-10-05 plan: "use your sign-in from Gmail" in Add Service for a matching site. The second page covers most of it.
 
 ## Open: full code review of 2026-10-18, fixed on `main`, not released
 
@@ -63,7 +60,7 @@ The two changes most likely to be noticed:
 - A WebContent crash still cancels the service's downloads (`cancelActiveDownloads`). The reviewer says WKDownload survives that crash; the code's own note says terminal callbacks didn't arrive. Needs a live crash test before changing.
 - Notifications are still accepted from any origin in the service's main frame; the subtitle now names the service. Gating them on the service's own domain would break Teams, which moves between `teams.cloud.microsoft` and `teams.microsoft.com`.
 - `javaScriptCanOpenWindowsAutomatically` stays on. Turning it off matches Safari but can break OAuth popups that open after an async step.
-- Not done, lower value: the weekly catalog icon refresh still contacts every catalog host through `URLSession.shared` (skip entries with a bundled brand mark; use an ephemeral session); favicon URLs drop IPv6 brackets, and a self-hosted service's same-host icon links are refused; the Mac-app docker can grab a Settings window instead of the main one, and its badge reader fetches every service every 3 s; the feature tips anchor carries `allowsHitTesting(false)` though its own comment says that stops TipKit (check with `debugShowAllTips`); Edit Service has no scroll view; Restore from a backup can latch when another sheet is up; Launch at login reads `.requiresApproval` as off; `ChorusAppDelegate.appState` is only set when the window appears; three add-service paths, three copies of space reorder, and two icon-drawing paths have drifted; a snapshot retried after a failure is labelled pre-migration though the store has migrated; the old `~/Library/Caches/CatalogIcons` is left behind, since another app may own that name.
+- Not done, lower value: the weekly catalog icon refresh still contacts every catalog host through `URLSession.shared` (skip entries with a bundled brand mark; use an ephemeral session); favicon URLs drop IPv6 brackets, and a self-hosted service's same-host icon links are refused; the Mac-app docker can grab a Settings window instead of the main one, and its badge reader fetches every service every 3 s; the feature tips anchor carries `allowsHitTesting(false)` though its own comment says that stops TipKit (check with `debugShowAllTips`); Restore from a backup can latch when another sheet is up; Launch at login reads `.requiresApproval` as off; `ChorusAppDelegate.appState` is only set when the window appears; three copies of space reorder, and two icon-drawing paths have drifted; a snapshot retried after a failure is labelled pre-migration though the store has migrated; the old `~/Library/Caches/CatalogIcons` is left behind, since another app may own that name.
 
 ## Open: WhatsApp voice messages crackle and drop words (#38)
 

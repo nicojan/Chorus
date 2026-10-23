@@ -38,6 +38,7 @@ Write plain, direct, active, concrete prose. No marketing gloss, no AI tells.
 - `xcodegen generate` reproduces the checked-in `.pbxproj` byte for byte, so add a new `.swift` file and run it; commit the regenerated project. To ship a file that is not under `Chorus/`, add a `sources:` entry with `buildPhase: resources`. A target-level `resources:` key is not XcodeGen's, and it ignores it silently.
 - CI's macOS 14 job builds with Xcode 16.2, which has no macOS 26 SDK, so `#available(macOS 26, *)` alone does not compile there. Wrap any macOS 26 symbol, such as `NSGlassEffectView` or `.glassEffect`, in `#if compiler(>=6.2)` as well. A stored property holds it as a plain `NSView`, since it cannot name a type the deployment target lacks.
 - **Run CI after every commit on a branch, not only before merging.** Xcode 16.2's compiler rejects code that Xcode 26 accepts; the known cases are in `CONTRIBUTING.md` under Build and test.
+- **Keep a SwiftUI `body` modifier chain short.** The macOS 15 runner's compiler gave up type-checking `ContentView.body` once one more dialog was added, while the dev machine built it fine. Move a dialog or `onChange` group into a `ViewModifier` of its own (see `RailMoveConfirmation`).
 - **Never add `-configuration Release` to that test command.** `ChorusTests` is
   app-hosted, and `ChorusApp.init` builds an `AppState`, so every test run
   executes the launch path, including `StoreRepair.applyPendingRestore`, which
@@ -60,12 +61,21 @@ drops the entities that model does not declare. Chorus shared that file with
 Bartender 6 and both apps lost everything, at every launch, until 1.5.18 moved
 out. Debug builds sit in `Chorus-debug` for the same reason.
 
+## Sign-in stores are shared (read before removing one)
+
+A service's cookies live in `WKWebsiteDataStore(forIdentifier: service.dataStoreIdentifier)`, and that id is not one per service. The services added to a space share the space's id as their store, the global services share `ServiceAdding.globalStore`, and a service can share another's from Edit Service. So:
+
+- Never remove or clear a store because one service went. Go through `markDataStoreOrphaned`, which refuses a store a live service still uses, and `cleanUpOrphanedDataStores`, which checks again right before each removal.
+- Store ids come back. Deleting the last service in a space and adding one there reuses the space's id, and WebKit can keep the old cookies in memory. Any code that puts a service on a store calls `AppState.prepareStore` first, which clears a store nobody uses.
+- Existing services were never moved onto a shared store. Do not migrate them: it would sign people out of everything.
+
 ## SwiftData schema changes (read before editing any `@Model`)
 
 The store opens through an explicit `VersionedSchema` + `SchemaMigrationPlan`
 (`Chorus/Models/Schema/ChorusSchema.swift`), not inferred migration. Any change
-to a **stored** property on `ServiceInstance`, `Space`, `SpaceServiceLink`, or
-`AppPreferences` (add, remove, rename, retype) is a new schema version. Before
+to a **stored** property on `ServiceInstance`, `Space`, `SpaceServiceLink`,
+`RailDivider` or `AppPreferences` (add, remove, rename, retype) is a new schema
+version. Before
 editing the live model:
 
 1. Freeze the current shape as a new `ChorusSchemaV…` (copy `ChorusSchemaVCurrent`
