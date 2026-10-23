@@ -69,8 +69,9 @@ Anchoring a divider to a neighbour instead ("after service X") was ruled out: dr
 ### Global services
 
 - **Rail on the left:** the global group sits at the top, under the traffic lights, above the space header, with a hairline under it. Then the space header and the space's services as now.
-- **Bar along the top, and the hybrid bar:** after the space header (top bar only), global tabs come first, then a short vertical rule, then the space's tabs. The header stays at the leading edge because it opens the space list.
-- **All services on the left:** a "Global" group heading (🌐) comes first, above the first space.
+- **Bar along the top:** after the space header, global tabs come first, then a short vertical rule, then the space's tabs. The header stays at the leading edge because it opens the space list.
+- **Spaces on the left, services on top (hybrid):** the global services sit at the top of the space strip, above the spaces, with a hairline under them, and the bar holds only the space's own tabs. Nico asked for this after review.
+- **All services on the left:** the global group comes first, in a card of its own with no heading, above the first space. Nico asked for the heading to go after review.
 - With no global services, none of this is drawn. The group's dividers go with its last service, so a group that starts over starts with no lines.
 
 Selecting a global service leaves the current space as it is. Switching space while a global service is showing selects the new space's first service, as switching does today; a global service does not count as "in" the new space for that check (Claude's call: switching space is a request to see that space).
@@ -96,8 +97,8 @@ Elsewhere:
 
 - **Services divider:** a hairline row 11 points tall across the rail, or a short vertical rule between tabs in the bar. It shows wherever that space's (or the global group's) services show.
 - **Spaces divider:** a hairline row between spaces in the all-services rail, the hybrid strip and the space palette. The single-space header has nothing to put it between, so it doesn't show there.
-- **Adding:** context menu **Add Divider Below** (**Add Divider After** in the bar) on a service; **Add Divider Below** on a space in the strip, the palette and the all-services heading.
-- **Moving:** drag it. It reorders live among its own list, like a service does. Dropped anywhere else on the rail, nothing happens.
+- **Adding:** context menu **Add Divider Below** (**Add Divider After** in the bar) on a service; **Add Divider Below** on a space in the strip, the palette and the all-services heading. Every + button also has a context menu with its own action and **Add Divider**, which adds one at the end of that list, and its tooltip says so, so the feature can be found without right-clicking a row first.
+- **Moving:** drag it. It reorders live among its own list, like a service does, and the rows slide aside as it passes. While it is dragged it draws as a solid accent bar in the slot it would land in, since a moving hairline is too faint to follow. Dropped anywhere else on the rail, nothing happens.
 - **Removing:** drag it off the rail and let go. While it is off the rail the pointer shows the system's disappearing-item cursor, the puff the Dock shows, and on release the divider is gone and the rows close up. Also **Remove Divider** in its context menu and as a VoiceOver action, since not everyone can drag.
 
 ### Dragging off the rail
