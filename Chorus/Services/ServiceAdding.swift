@@ -67,6 +67,24 @@ enum ServiceAdding {
         }
     }
 
+    /// The web services on a store, for saying who a new service would share
+    /// a sign-in with.
+    @MainActor
+    static func services(on store: UUID, context: ModelContext) -> [ServiceInstance] {
+        let services = (try? context.fetch(FetchDescriptor<ServiceInstance>())) ?? []
+        return services.filter { $0.modelContext != nil && $0.nativeAppBundleID == nil && $0.dataStoreIdentifier == store }
+    }
+
+    /// Whether a site is a chat service. Two copies of one on a single
+    /// sign-in compete for the session, so a second copy is only offered a
+    /// sign-in of its own.
+    static func isChat(catalogEntryID: String?, url: String) -> Bool {
+        let entry = catalogEntryID.flatMap { ServiceCatalog.shared.entry(for: $0) }
+            ?? URL(string: url)?.host.flatMap { ServiceCatalog.shared.entry(forHost: $0) }
+        guard let entry else { return false }
+        return ServiceInstance.notificationCriticalCategories.contains(entry.category)
+    }
+
     /// Puts a new service in its place: a link at the end of the space, or
     /// the end of the global group. The caller has inserted the service and
     /// set its store; this does not save.

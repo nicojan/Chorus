@@ -224,6 +224,10 @@ final class AppState {
     /// and issue `WKWebsiteDataStore.remove(...)` for the same store at once.
     /// Main-actor only.
     @ObservationIgnored private var dataStoresBeingRemoved: Set<UUID> = []
+    /// The store a `WKWebsiteDataStore.remove` call is working on right now,
+    /// if any. A service about to use a reused store id waits this out; see
+    /// `prepareStore(_:)`.
+    @ObservationIgnored var storeBeingRemovedNow: UUID?
 
     /// Scheduled "quiet hours" Do Not Disturb, loaded from AppPreferences.
     /// `doNotDisturb` above stays the manual toggle; the effective DND that
@@ -2597,25 +2601,35 @@ final class AppState {
             // reports as in use. Anything that never succeeds stays in the
             // tombstone list and is retried at the next launch, so no store leaks.
             var removed: Set<UUID> = []
+            // Stores a service claimed again before their turn: settled, but
+            // not removed. Kept apart from `removed` so a store deleted again
+            // while this pass runs keeps its new tombstone.
+            var kept: Set<UUID> = []
             let backoff: [Duration] = [.seconds(2), .seconds(3), .seconds(5)]
             for delay in backoff {
                 try? await Task.sleep(for: delay)
-                // A store an offscreen badge fetch still has a view on waits
-                // for the next round, or the next launch if it never frees.
-                let pending = orphans.subtracting(removed).subtracting(transientBadgeFetcher.storesInUse)
-                guard !orphans.subtracting(removed).isEmpty else { break }
+                let pending = orphans.subtracting(removed).subtracting(kept)
+                guard !pending.isEmpty else { break }
                 for identifier in pending {
                     // A shared store's id comes back: a space's is the space's
-                    // id, so the next service added there claims the very store
-                    // this pass is waiting to remove. Ask again right before
-                    // each removal, and let go of one a service claims again.
-                    // Unreadable claims wait for the next round.
-                    guard let claimedNow = liveDataStoreIdentifiers() else { continue }
-                    if claimedNow.contains(identifier) {
-                        removed.insert(identifier)
+                    // id, so the next service added there can claim the very
+                    // store this pass is waiting to remove. Decided right before
+                    // each removal; see `removalDecision`.
+                    switch Self.removalDecision(
+                        for: identifier,
+                        claimedNow: liveDataStoreIdentifiers(),
+                        inUseOffscreen: transientBadgeFetcher.storesInUse
+                    ) {
+                    case .keep:
+                        kept.insert(identifier)
                         AppLogger.dataStore.info("Keeping data store \(identifier): a service claimed it again")
                         continue
+                    case .wait:
+                        continue
+                    case .remove:
+                        break
                     }
+                    storeBeingRemovedNow = identifier
                     do {
                         try await WKWebsiteDataStore.remove(forIdentifier: identifier)
                         removed.insert(identifier)
@@ -2623,6 +2637,7 @@ final class AppState {
                     } catch {
                         AppLogger.dataStore.warning("Data store \(identifier) not yet removable, will retry: \(error.localizedDescription)")
                     }
+                    storeBeingRemovedNow = nil
                 }
             }
 
@@ -2633,9 +2648,68 @@ final class AppState {
             // Read-modify-write rather than overwriting with a stale snapshot:
             // another delete may have appended new orphans while we slept, and
             // blindly saving `orphans − removed` would drop them, leaking those
-            // stores permanently.
+            // stores permanently. A kept store's tombstone goes only while a
+            // service still claims it.
+            let stillClaimed = kept.intersection(liveDataStoreIdentifiers() ?? [])
             let current = Self.loadOrphanedIdentifiers()
-            Self.saveOrphanedIdentifiers(current.subtracting(removed))
+            Self.saveOrphanedIdentifiers(current.subtracting(removed).subtracting(stillClaimed))
+        }
+    }
+
+    /// What to do with one tombstoned store when its turn comes.
+    enum RemovalDecision: Equatable {
+        /// Nobody uses it: remove it.
+        case remove
+        /// A service claims it again: settle the tombstone, keep the store.
+        case keep
+        /// Not now: the claims can't be read, or an offscreen badge fetch has
+        /// a view on it. Try again next round, or next launch.
+        case wait
+    }
+
+    /// The per-store rule of the removal pass. Pure, so the case that stops a
+    /// reused store id (a space's, or the global one) being removed under a
+    /// service that has just claimed it is pinned by a test.
+    nonisolated static func removalDecision(
+        for identifier: UUID,
+        claimedNow: Set<UUID>?,
+        inUseOffscreen: Set<UUID>
+    ) -> RemovalDecision {
+        guard let claimedNow else { return .wait }
+        if claimedNow.contains(identifier) { return .keep }
+        if inUseOffscreen.contains(identifier) { return .wait }
+        return .remove
+    }
+
+    /// Readies a store a service is about to start using, for the case where
+    /// its id is reused: a space's store, or the global one, that was left for
+    /// removal when its last service went. Waits out a removal in progress,
+    /// takes the store off the removal list, and clears whatever it still
+    /// holds, so the new service neither lands on a store being deleted nor
+    /// opens signed in to the account whose service was just deleted. Does
+    /// nothing for a store that is not waiting to be removed.
+    ///
+    /// The caller saves the service right after this returns, with no await
+    /// in between, so the removal pass sees the claim before it can act.
+    func prepareStore(_ identifier: UUID) async {
+        await waitOutRemoval(of: identifier)
+        let tombstones = Self.loadOrphanedIdentifiers()
+        guard tombstones.contains(identifier) || dataStoresBeingRemoved.contains(identifier) else { return }
+        Self.saveOrphanedIdentifiers(tombstones.subtracting([identifier]))
+        let store = dataStoreManager.dataStore(forIdentifier: identifier)
+        await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
+        // A removal may have started during the clear; wait for it too, and
+        // drop the handle it may have made stale.
+        await waitOutRemoval(of: identifier)
+        dataStoreManager.evict(identifier: identifier)
+        AppLogger.dataStore.info("Reusing data store \(identifier) after clearing it")
+    }
+
+    private func waitOutRemoval(of identifier: UUID) async {
+        var waited = 0
+        while storeBeingRemovedNow == identifier, waited < 100 {
+            try? await Task.sleep(for: .milliseconds(100))
+            waited += 1
         }
     }
 

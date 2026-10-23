@@ -330,11 +330,16 @@ struct SpaceStripView: View {
                 let all = (try? modelContext.fetch(FetchDescriptor<SpaceServiceLink>())) ?? []
                 guard let ends = all.first(where: { $0.id == linkID })?.liveEnds else { return false }
                 guard ends.space.id != spaceID else { return true }
-                guard !links.contains(where: { $0.liveService?.id == ends.service.id }) else { return false }
+                guard appState.pendingRailMove == nil,
+                      !links.contains(where: { $0.liveService?.id == ends.service.id })
+                else { return false }
                 appState.pendingRailMove = .intoSpace(linkID: linkID, spaceID: spaceID, before: nil)
                 return true
             }),
             .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, drop: { serviceID in
+                // Still global, and no other move waiting for its answer.
+                let globals = RailEdits.globalServices(in: modelContext)
+                guard appState.pendingRailMove == nil, globals.contains(where: { $0.id == serviceID }) else { return false }
                 appState.pendingRailMove = .globalIntoSpace(serviceID: serviceID, spaceID: spaceID, before: nil)
                 return true
             }),

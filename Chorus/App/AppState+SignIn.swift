@@ -60,7 +60,7 @@ extension AppState {
     /// The store it leaves is removed only when no other service still uses
     /// it; `markDataStoreOrphaned` checks that after the save.
     @discardableResult
-    func changeSignIn(for serviceID: UUID, toStore target: UUID?) -> Bool {
+    func changeSignIn(for serviceID: UUID, toStore target: UUID?) async -> Bool {
         let context = modelContainer.mainContext
         let services = (try? context.fetch(FetchDescriptor<ServiceInstance>())) ?? []
         guard let service = services.first(where: { $0.id == serviceID }),
@@ -74,6 +74,11 @@ extension AppState {
         guard let next = SignInSharing.newIdentifier(current: previous, target: target, isSharedNow: isShared) else {
             return true
         }
+        // A space's shared store, or the global one, may be waiting to be
+        // removed since its last service went; ready it before it is used.
+        await prepareStore(next)
+        // The service may have gone while that ran.
+        guard service.modelContext != nil else { return false }
 
         service.dataStoreIdentifier = next
         guard context.saveOrRollBack("change sign-in") else { return false }

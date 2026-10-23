@@ -1660,10 +1660,11 @@ struct UnifiedRailView: View {
     }
 
     /// Released in a space: a global service moves into it, before `beforeID`
-    /// or at the end, and stops being global.
-    /// Released in a space: a global service moves into it, once confirmed.
-    /// One that was showing goes along with the view.
+    /// or at the end, once confirmed, and stops being global. One that was
+    /// showing goes along with the view. Refused while another move waits for
+    /// its answer, or when the service is no longer global.
     private func dropGlobal(_ serviceID: UUID, into spaceID: UUID, before beforeID: UUID?) -> Bool {
+        guard appState.pendingRailMove == nil, globalServices.contains(where: { $0.id == serviceID }) else { return false }
         appState.pendingRailMove = .globalIntoSpace(serviceID: serviceID, spaceID: spaceID, before: beforeID)
         return true
     }
@@ -1672,7 +1673,9 @@ struct UnifiedRailView: View {
     /// `beforeID` or at the end of the group, once confirmed. Its other
     /// memberships go too.
     private func dropLinkIntoGlobal(_ linkID: UUID, before beforeID: UUID?) -> Bool {
-        guard allLinks.contains(where: { $0.id == linkID && $0.liveService != nil }) else { return false }
+        guard appState.pendingRailMove == nil,
+              allLinks.contains(where: { $0.id == linkID && $0.liveService != nil })
+        else { return false }
         appState.pendingRailMove = .intoGlobal(linkID: linkID, before: beforeID)
         return true
     }
@@ -1714,6 +1717,8 @@ struct UnifiedRailView: View {
     private func requestMoveIntoSpace(_ dragged: UUID, spaceID: UUID, before beforeID: UUID?) -> Bool {
         guard let ends = allLinks.first(where: { $0.id == dragged })?.liveEnds else { return false }
         guard ends.space.id != spaceID else { return true }
+        // One question at a time: a second drop while one waits is refused.
+        guard appState.pendingRailMove == nil else { return false }
         guard !links(in: spaceID).contains(where: { $0.liveService?.id == ends.service.id }) else { return false }
         // Drop the keyboard focus before the cell is recreated in the new
         // group. Holding it on the same link id is what left a ring on the

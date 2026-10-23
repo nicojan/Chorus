@@ -48,8 +48,8 @@ final class DataStoreManager {
     ///
     /// Turning ITP off costs little here that isolation is not already paying
     /// for. Services only share a `WKWebsiteDataStore` when they share a
-    /// sign-in: by default the services of one space do, and a service can
-    /// keep its own (see `ServiceAdding`). Stores never mix across that line,
+    /// sign-in: by default the services added to one space do, and a service
+    /// can keep its own (see `ServiceAdding`). Stores never mix across that line,
     /// whatever ITP does; what ITP adds is blocking third-party cookies
     /// *within* one store, where the participants are the services on it and
     /// the identity providers they chose.

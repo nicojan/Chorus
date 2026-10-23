@@ -138,7 +138,10 @@ extension AppState {
         guard let service = moveSubject(move) else { return nil }
         let partners = signInPartners(of: service.id).map(\.label)
         let shared = partners.isEmpty ? "" : " It still shares them with \(Self.listed(partners))."
-        let message = "\(service.label) keeps its sign-in, so its cookies come with it.\(shared)"
+        // A Mac app has no cookies to carry.
+        let message = service.nativeAppBundleID != nil
+            ? "\(service.label) opens the same app from there."
+            : "\(service.label) keeps its sign-in, so its cookies come with it.\(shared)"
         switch move {
         case .intoSpace(_, let spaceID, _), .globalIntoSpace(_, let spaceID, _):
             let spaces = (try? modelContainer.mainContext.fetch(FetchDescriptor<Space>(predicate: #Predicate { $0.id == spaceID }))) ?? []

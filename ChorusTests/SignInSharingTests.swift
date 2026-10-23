@@ -295,4 +295,32 @@ final class SignInSharingTests: XCTestCase {
         XCTAssertEqual(AppState.listed(["Gmail", "Drive"]), "Gmail and Drive")
         XCTAssertEqual(AppState.listed(["Gmail", "Drive", "Docs"]), "Gmail, Drive and Docs")
     }
+
+    // MARK: - Reused store ids
+
+    /// The rule that stops the removal pass taking a store a service has
+    /// just claimed again: a space's store id, or the global one, comes back
+    /// when a service is added after the last one there was deleted.
+    func testRemovalLeavesAStoreAServiceClaimedAgain() {
+        let store = UUID(), other = UUID()
+        XCTAssertEqual(AppState.removalDecision(for: store, claimedNow: [store], inUseOffscreen: []), .keep)
+        XCTAssertEqual(AppState.removalDecision(for: store, claimedNow: [other], inUseOffscreen: []), .remove)
+        XCTAssertEqual(AppState.removalDecision(for: store, claimedNow: nil, inUseOffscreen: []), .wait, "unreadable claims are unknown")
+        XCTAssertEqual(AppState.removalDecision(for: store, claimedNow: [], inUseOffscreen: [store]), .wait, "an offscreen view still has it")
+        XCTAssertEqual(AppState.removalDecision(for: store, claimedNow: [store], inUseOffscreen: [store]), .keep)
+    }
+
+    func testChatSitesAreKnownByCatalogEntryOrHost() {
+        let chat = ServiceCatalog.shared.entries.first { ServiceInstance.notificationCriticalCategories.contains($0.category) }
+        let notChat = ServiceCatalog.shared.entries.first { !ServiceInstance.notificationCriticalCategories.contains($0.category) }
+        if let chat {
+            XCTAssertTrue(ServiceAdding.isChat(catalogEntryID: chat.id, url: chat.url))
+            XCTAssertTrue(ServiceAdding.isChat(catalogEntryID: nil, url: chat.url), "a custom address of a chat site")
+        }
+        if let notChat {
+            XCTAssertFalse(ServiceAdding.isChat(catalogEntryID: notChat.id, url: notChat.url))
+        }
+        XCTAssertFalse(ServiceAdding.isChat(catalogEntryID: nil, url: "https://nothing-chat.example"))
+        XCTAssertNotNil(chat, "the catalog has chat services to test against")
+    }
 }

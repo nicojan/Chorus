@@ -21,6 +21,8 @@ struct AddServiceSheet: View {
     /// one it would share an account with.
     @State private var pendingAdd: PendingAdd?
     @State private var duplicateLabel = ""
+    /// Why the last add failed, shown under the options.
+    @State private var addError: String?
 
     enum AddServiceTab: String, CaseIterable {
         case catalog = "Browse"
@@ -66,7 +68,7 @@ struct AddServiceSheet: View {
         }
         .frame(width: 520, height: 520)
         .alert(
-            "\(duplicateLabel) is already \(showInEverySpace ? "in every space" : "here")",
+            "\(duplicateLabel) already uses this sign-in",
             isPresented: Binding(
                 get: { pendingAdd != nil },
                 set: { if !$0 { pendingAdd = nil } }
@@ -74,10 +76,16 @@ struct AddServiceSheet: View {
             presenting: pendingAdd
         ) { add in
             Button("Keep Separate") { make(add, separate: true) }
-            Button("Share Sign-In") { make(add, separate: false) }
+            if !ServiceAdding.isChat(catalogEntryID: add.catalogEntryID, url: add.url) {
+                Button("Share Sign-In") { make(add, separate: false) }
+            }
             Button("Cancel", role: .cancel) {}
-        } message: { _ in
-            Text("Services \(showInEverySpace ? "in every space" : "in a space") share one sign-in, so a second \(duplicateLabel) would open the same account. To use another account, keep this one's sign-in separate.")
+        } message: { add in
+            if ServiceAdding.isChat(catalogEntryID: add.catalogEntryID, url: add.url) {
+                Text("A second \(duplicateLabel) on the same sign-in would open the same account, and the two would compete for it. Keep this one's sign-in separate to use another account.")
+            } else {
+                Text("A second \(duplicateLabel) on the same sign-in would open the same account. To use another account, keep this one's sign-in separate.")
+            }
         }
         .onAppear {
             if let tab = appState.pendingAddServiceTab {
@@ -112,18 +120,46 @@ struct AddServiceSheet: View {
 
     /// Where the new service goes, and whether it shares the sign-in there.
     private var placementOptions: some View {
-        HStack(spacing: 20) {
-            Toggle("Show in every space", isOn: $showInEverySpace)
-                .help("Adds it above the spaces, where it shows whichever space you are in.")
-            Toggle("Keep its sign-in separate", isOn: $keepSignInSeparate)
-                .help("Services in a space share one sign-in, so signing in once signs in the rest. Keep it separate to use another account.")
-                // A Mac app has no sign-in to share.
-                .disabled(selectedTab == .macApp)
-            Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 20) {
+                Toggle("Show in every space", isOn: $showInEverySpace)
+                    .help("Adds it above the spaces, where it shows whichever space you are in.")
+                Toggle("Keep its sign-in separate", isOn: $keepSignInSeparate)
+                    .help("Gives it a sign-in of its own, for a second account of a site.")
+                    // A Mac app has no sign-in to share.
+                    .disabled(selectedTab == .macApp)
+                Spacer(minLength: 0)
+            }
+            .toggleStyle(.checkbox)
+
+            if selectedTab != .macApp {
+                Text(signInCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let addError {
+                Text(addError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
         }
-        .toggleStyle(.checkbox)
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+    }
+
+    /// What the new service's sign-in will be, read from the store it would
+    /// join: the services already on it, or that it starts signed out. A
+    /// space's older services keep sign-ins of their own, so "the space shares
+    /// one" would often be untrue.
+    private var signInCaption: String {
+        if keepSignInSeparate { return "It gets a sign-in of its own." }
+        let sharers = ServiceAdding.services(on: ServiceAdding.store(for: destination), context: modelContext)
+        if !sharers.isEmpty {
+            return "It shares a sign-in with \(AppState.listed(sharers.map(\.label).sorted()))."
+        }
+        let place = showInEverySpace ? "to every space" : "here"
+        return "It starts signed out. Services you add \(place) after it share its sign-in."
     }
 
     private var header: some View {
@@ -294,6 +330,17 @@ struct AddServiceSheet: View {
     private func make(_ add: PendingAdd, separate: Bool) {
         var place = destination
         place.separate = separate
+        let store = ServiceAdding.store(for: place)
+        Task {
+            // A space's shared store, or the global one, may be waiting to be
+            // removed since its last service went; ready it first. Nothing
+            // awaits between this and the save, so the removal sees the claim.
+            await appState.prepareStore(store)
+            finishMaking(add, at: place, store: store)
+        }
+    }
+
+    private func finishMaking(_ add: PendingAdd, at place: ServiceAdding.Destination, store: UUID) {
         let service: ServiceInstance
         switch add {
         case .catalog(let entry):
@@ -302,10 +349,10 @@ struct AddServiceSheet: View {
                 url: entry.url,
                 catalogEntryID: entry.id,
                 userAgent: entry.userAgent,
-                dataStoreIdentifier: ServiceAdding.store(for: place)
+                dataStoreIdentifier: store
             )
         case .custom(let label, let url):
-            service = ServiceInstance(label: label, url: url, dataStoreIdentifier: ServiceAdding.store(for: place))
+            service = ServiceInstance(label: label, url: url, dataStoreIdentifier: store)
         }
         guard insert(service, at: place) else { return }
 
@@ -323,9 +370,17 @@ struct AddServiceSheet: View {
     @discardableResult
     private func insert(_ service: ServiceInstance, at place: ServiceAdding.Destination) -> Bool {
         modelContext.insert(service)
-        guard ServiceAdding.place(service, at: place, context: modelContext),
-              modelContext.saveOrRollBack("add service")
-        else { return false }
+        guard ServiceAdding.place(service, at: place, context: modelContext) else {
+            // The space went while the sheet was open. Take the unsaved
+            // service back out, or the next save would keep it with no place.
+            modelContext.rollback()
+            addError = "Chorus couldn't add it: the space is gone."
+            return false
+        }
+        guard modelContext.saveOrRollBack("add service") else {
+            addError = "Chorus couldn't save the new service."
+            return false
+        }
 
         // Switch to the service just added. A global one shows in every space,
         // so the space stays as it is.

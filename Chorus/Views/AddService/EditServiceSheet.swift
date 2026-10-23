@@ -313,7 +313,7 @@ struct EditServiceSheet: View {
                     Text(option.title).tag(option.store)
                 }
             }
-            .help("Services that share a sign-in use the same cookies and storage, so signing in to one signs in the others. A space's services share one by default. Keep one separate for a second account.")
+            .help("Services on the same sign-in share cookies and storage, so signing in to one signs in the others. A service added to a space goes on that space's shared sign-in unless it is kept separate.")
 
             if let signInNote {
                 Text(signInNote)
@@ -546,13 +546,19 @@ struct EditServiceSheet: View {
             if muteChanged || badgeChanged {
                 appState.refreshBadgeState(for: service.id)
             }
-            if signInTarget != initialSignInTarget,
-               !appState.changeSignIn(for: service.id, toStore: signInTarget) {
-                // The other changes are saved by now; only the sign-in failed.
-                errorMessage = "Chorus couldn't change the sign-in. Your other changes are saved."
+            guard signInTarget != initialSignInTarget else {
+                dismiss()
                 return
             }
-            dismiss()
+            let target = signInTarget
+            Task {
+                if await appState.changeSignIn(for: service.id, toStore: target) {
+                    dismiss()
+                } else {
+                    // The other changes are saved by now; only the sign-in failed.
+                    errorMessage = "Chorus couldn't change the sign-in. Your other changes are saved."
+                }
+            }
         }
     }
 

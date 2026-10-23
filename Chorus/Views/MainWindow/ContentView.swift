@@ -15,12 +15,6 @@ struct ContentView: View {
     /// How much desktop the window lets through. See `WindowGlassStyle`.
     @AppStorage(WindowGlassStyle.defaultsKey) private var glassStyleRaw = WindowGlassStyle.defaultStyle.rawValue
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    /// The words for the move waiting on a yes. See `RailMove`.
-    private var pendingMovePrompt: RailMovePrompt? {
-        appState.pendingRailMove.flatMap { appState.prompt(for: $0) }
-    }
 
 
     var body: some View {
@@ -109,25 +103,9 @@ struct ContentView: View {
         }
         // A service dragged into another space or the global group. Asked
         // here, once, for every rail: the drop can come from any of them.
-        .confirmationDialog(
-            pendingMovePrompt?.title ?? "",
-            isPresented: Binding(
-                get: { appState.pendingRailMove != nil && pendingMovePrompt != nil },
-                set: { if !$0 { appState.pendingRailMove = nil } }
-            ),
-            titleVisibility: .visible,
-            presenting: appState.pendingRailMove
-        ) { move in
-            Button(pendingMovePrompt?.confirm ?? "Move") {
-                withAnimation(ChorusMotion.animation(ChorusMotion.reorder, reduceMotion: reduceMotion)) {
-                    _ = appState.performRailMove(move)
-                }
-                appState.pendingRailMove = nil
-            }
-            Button("Cancel", role: .cancel) { appState.pendingRailMove = nil }
-        } message: { _ in
-            Text(pendingMovePrompt?.message ?? "")
-        }
+        // A modifier of its own, since the body's chain grew past what the
+        // macOS 15 runner's compiler will type-check in time.
+        .modifier(RailMoveConfirmation())
         .sheet(isPresented: Binding(
             // Never over the store recovery sheet, which has to come first.
             get: { appState.whatsNewVersion != nil && !appState.isShowingStoreRecovery },
@@ -573,5 +551,47 @@ struct WindowNotices: View {
         appState.storeError != nil
             || appState.storeRecoveryOffer != nil
             || !appState.networkMonitor.isOnline
+    }
+}
+
+/// Asks before a dragged service moves into another space or the global
+/// group, saying its cookies come with it. See `RailMove`.
+private struct RailMoveConfirmation: ViewModifier {
+    @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The words for the move waiting on a yes.
+    private var prompt: RailMovePrompt? {
+        appState.pendingRailMove.flatMap { appState.prompt(for: $0) }
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .confirmationDialog(
+                prompt?.title ?? "",
+                isPresented: Binding(
+                    get: { appState.pendingRailMove != nil && prompt != nil },
+                    set: { if !$0 { appState.pendingRailMove = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: appState.pendingRailMove
+            ) { move in
+                Button(prompt?.confirm ?? "Move") {
+                    withAnimation(ChorusMotion.animation(ChorusMotion.reorder, reduceMotion: reduceMotion)) {
+                        _ = appState.performRailMove(move)
+                    }
+                    appState.pendingRailMove = nil
+                }
+                Button("Cancel", role: .cancel) { appState.pendingRailMove = nil }
+            } message: { _ in
+                Text(prompt?.message ?? "")
+            }
+            // A move whose service or space went before it was answered has
+            // nothing to ask about; let it go rather than block the next one.
+            .onChange(of: appState.pendingRailMove) { _, move in
+                if move != nil, prompt == nil {
+                    appState.pendingRailMove = nil
+                }
+            }
     }
 }
