@@ -215,7 +215,11 @@ struct ContentView: View {
             HStack(spacing: 0) {
                 // The strip's card starts under the bar's height, level with
                 // the web card beside it.
-                SpaceStripView(selectedSpaceID: spaceSelection, contentInset: UnifiedRailView.barHeight)
+                SpaceStripView(
+                    selectedSpaceID: spaceSelection,
+                    selectedServiceID: serviceSelection,
+                    contentInset: UnifiedRailView.barHeight
+                )
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel("Spaces")
                 VStack(spacing: 0) {
@@ -231,7 +235,8 @@ struct ContentView: View {
                             stripWidth: SpaceStripMetrics.width(showingNames: showSpaceNames),
                             lightsWidth: lightsWidth
                         ),
-                        showsSpaceHeader: false
+                        showsSpaceHeader: false,
+                        showsGlobals: false
                     )
                     // The strip's edge sets its names, as the rail's does.
                     webContent
@@ -267,7 +272,8 @@ struct ContentView: View {
         serviceSelection: Binding<UUID?>,
         contentInset: CGFloat = 0,
         showsSpaceHeader: Bool = true,
-        showsAllSpaces: Bool = false
+        showsAllSpaces: Bool = false,
+        showsGlobals: Bool = true
     ) -> some View {
         UnifiedRailView(
             selectedSpaceID: spaceSelection,
@@ -275,7 +281,8 @@ struct ContentView: View {
             axis: axis,
             contentInset: contentInset,
             showsSpaceHeader: showsSpaceHeader,
-            showsAllSpaces: showsAllSpaces
+            showsAllSpaces: showsAllSpaces,
+            showsGlobals: showsGlobals
         )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Space and services")

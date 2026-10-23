@@ -32,6 +32,12 @@ struct UnifiedRailView: View {
     var showsSpaceHeader: Bool = true
     /// Draw every space and its services in one compact vertical rail.
     var showsAllSpaces: Bool = false
+    /// Whether the bar draws the global group. Off in the hybrid layout,
+    /// where the global services sit in the space strip instead.
+    var showsGlobals: Bool = true
+    /// Draw only the global group, as a column, for the space strip to hold
+    /// above its spaces. Rows follow the strip's width and its names setting.
+    var globalsOnly: Bool = false
 
     @Query private var allLinks: [SpaceServiceLink]
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
@@ -51,6 +57,9 @@ struct UnifiedRailView: View {
     @AppStorage(ServiceNameVisibility.defaultsKey) private var showServiceNames = true
     /// The rail's width while it carries names. See `RailWidth`.
     @AppStorage(RailWidth.defaultsKey) private var namedWidth = Double(RailWidth.defaultNamed)
+    /// The space strip's names setting, which global rows follow when this
+    /// view draws them inside the strip. See `globalsOnly`.
+    @AppStorage(SpaceStripMetrics.defaultsKey) private var stripShowsNames = true
 
     @State private var showingPalette = false
     @State private var showingAddService = false
@@ -99,7 +108,14 @@ struct UnifiedRailView: View {
 
     /// What the vertical rail takes from the window now, gutter included.
     private var railFootprint: CGFloat {
-        showServiceNames ? RailWidth.clampNamed(CGFloat(namedWidth)) : ServiceRowView.compactRailWidth
+        if globalsOnly { return SpaceStripMetrics.width(showingNames: stripShowsNames) }
+        return showServiceNames ? RailWidth.clampNamed(CGFloat(namedWidth)) : ServiceRowView.compactRailWidth
+    }
+
+    /// Whether rows carry names: the rail's setting, or the strip's when this
+    /// view draws the global group inside the strip.
+    private var namesShown: Bool {
+        globalsOnly ? stripShowsNames : showServiceNames
     }
 
     /// The rail's column, less the gutter.
@@ -252,7 +268,9 @@ struct UnifiedRailView: View {
 
     @ViewBuilder
     private var content: some View {
-        if showsAllSpaces {
+        if globalsOnly {
+            globalsOnlyBody
+        } else if showsAllSpaces {
             allServicesBody
         } else if axis == .vertical {
             verticalBody
@@ -284,9 +302,9 @@ struct UnifiedRailView: View {
                 // then keeps the old selection/focus marks, so the moved icon
                 // stays highlighted after another service is actually in use.
                 VStack(spacing: 0) {
+                    // The global group has no heading: it sits first, in a
+                    // card of its own, and its rows say what they are.
                     if !globals.isEmpty {
-                        globalHeading
-                            .padding(.bottom, 4)
                         VStack(spacing: 2) {
                             ForEach(globals) { item in
                                 allServicesItem(item, in: .global, space: nil)
@@ -355,51 +373,6 @@ struct UnifiedRailView: View {
         case .space:
             EmptyView()
         }
-    }
-
-    /// The heading over the global group: like a space's, but it is not a
-    /// space, so it selects nothing and has no menu. It takes a service
-    /// dropped on it, which becomes global at the top of the group.
-    private var globalHeading: some View {
-        Group {
-            if showServiceNames {
-                HStack(spacing: 8) {
-                    Text("🌐")
-                        .font(.system(size: 14))
-                        .frame(width: 18)
-                        .accessibilityHidden(true)
-                    Text("Global")
-                        .font(ChorusType.label)
-                        .fontWeight(.bold)
-                        .foregroundStyle(ChorusColor.secondaryText)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, ChorusCard.railPadding + 8)
-                .frame(width: railColumnWidth)
-            } else {
-                Text("🌐")
-                    .font(.system(size: 16))
-                    .fixedSize()
-                    .accessibilityHidden(true)
-                    .frame(width: ServiceRowView.railCardWidth(showsName: false))
-            }
-        }
-        .frame(height: 22)
-        .contentShape(Rectangle())
-        .help("Global: shown in every space")
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Global services")
-        .accessibilityAddTraits(.isHeader)
-        .liveReorderDrop([
-            .init(type: LiveReorder.globalServiceType, draggingID: { draggingGlobalID }, move: { dragged in
-                guard let first = orderedIDs(.global).first else { return }
-                liveMove(dragged, over: first, in: .global)
-            }),
-            .init(type: LiveReorder.serviceType, draggingID: { draggingLinkID }, drop: { dragged in
-                dropLinkIntoGlobal(dragged, before: orderedIDs(.global).first)
-            }),
-        ])
     }
 
     /// A space's name over its card, lined up with the service names in it:
@@ -579,7 +552,9 @@ struct UnifiedRailView: View {
             allServicesAddButton(
                 title: "Add service",
                 systemImage: "plus",
-                disabled: selectedSpaceID == nil
+                disabled: selectedSpaceID == nil,
+                menuTitle: "Add Service…",
+                dividerScope: selectedSpaceID.map { .space($0) }
             ) {
                 showingAddService = true
             }
@@ -587,7 +562,9 @@ struct UnifiedRailView: View {
             allServicesAddButton(
                 title: "Add space",
                 systemImage: "folder.badge.plus",
-                disabled: false
+                disabled: false,
+                menuTitle: "Add Space…",
+                dividerScope: .spaces
             ) {
                 showingAddSpace = true
             }
@@ -599,6 +576,8 @@ struct UnifiedRailView: View {
         title: String,
         systemImage: String,
         disabled: Bool,
+        menuTitle: String,
+        dividerScope: RailScope?,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -623,9 +602,16 @@ struct UnifiedRailView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.chromeRow)
-        .help(title)
+        .help("\(title). Right-click to add a divider.")
         .accessibilityLabel(title)
         .disabled(disabled)
+        // The same choice as the button, plus a divider at the end of the
+        // list, so dividers can be found without right-clicking a row.
+        .contextMenu {
+            Button(menuTitle, action: action)
+            Button("Add Divider") { addDividerAtEnd(of: dividerScope) }
+        }
+        .accessibilityAction(named: "Add divider") { addDividerAtEnd(of: dividerScope) }
     }
 
     private func selectSpaceFromAllServicesRail(_ space: Space) {
@@ -671,6 +657,30 @@ struct UnifiedRailView: View {
             Button("Delete Space", role: .destructive) {
                 confirmingDeleteSpace = space
             }
+        }
+    }
+
+    /// The global group alone, as a column for the hybrid layout's space
+    /// strip, with a rule under it. Nothing at all while there are no global
+    /// services. It takes the strip's drop zone from the environment rather
+    /// than marking its own, so a divider dragged from here onto the spaces
+    /// below is still on the rail.
+    @ViewBuilder
+    private var globalsOnlyBody: some View {
+        let globals = globalItems
+        if !globals.isEmpty {
+            VStack(spacing: 0) {
+                VStack(spacing: 2) {
+                    ForEach(globals) { item in
+                        railItemRow(item, in: .global)
+                    }
+                }
+                .animation(reorderAnimation, value: ReorderKey(ids: globals.map(\.id)))
+                .padding(.vertical, ChorusCard.railPadding)
+
+                railRule
+            }
+            .environment(\.railWidth, railFootprint)
         }
     }
 
@@ -870,7 +880,7 @@ struct UnifiedRailView: View {
     /// can measure its width to decide whether the tabs fit. The traffic-light
     /// inset is spent by the header now, so this starts flush.
     private var tabRow: some View {
-        let globals = globalItems
+        let globals = showsGlobals ? globalItems : []
         let spaceItems = filteredItems
         return HStack(spacing: 4) {
             // Global tabs lead, set off from the space's by a rule.
@@ -934,7 +944,7 @@ struct UnifiedRailView: View {
 
     /// A row's width in a vertical list, with or without names.
     private var namedOrCompactRowWidth: CGFloat {
-        showServiceNames ? namedRowWidth : ServiceRowView.compactRailCellWidth
+        namesShown ? namedRowWidth : ServiceRowView.compactRailCellWidth
     }
 
     @ViewBuilder
@@ -1012,6 +1022,7 @@ struct UnifiedRailView: View {
             media: media,
             health: health,
             focused: focused && focusVisibility.isVisible,
+            showsName: namesShown,
             spaceName: showsAllSpaces ? "Global" : nil,
             selectionAction: {
                 NativeAppDocker.reselect(service, wasSelected: isSel)
@@ -1055,7 +1066,9 @@ struct UnifiedRailView: View {
             length: length,
             onDragStart: { draggingDividerID = dividerID },
             onRemove: { removeDivider(dividerID) },
-            onMove: { step(dividerID, forward: $0, in: scope) }
+            onMove: { step(dividerID, forward: $0, in: scope) },
+            isDragging: draggingDividerID == dividerID,
+            onDragEnd: { draggingDividerID = nil }
         )
         .liveReorderDrop(dividerLanes(over: dividerID, in: scope))
     }
@@ -1253,8 +1266,15 @@ struct UnifiedRailView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.chromeRow)
-        .help("Add service")
+        .help("Add service. Right-click to add a divider.")
         .accessibilityLabel("Add service")
+        // Where a divider can be found without first right-clicking a
+        // service. It goes at the end of the space.
+        .contextMenu {
+            Button("Add Service…") { showingAddService = true }
+            Button("Add Divider") { addDividerAtEnd(of: selectedSpaceID.map { .space($0) }) }
+        }
+        .accessibilityAction(named: "Add divider") { addDividerAtEnd(of: selectedSpaceID.map { .space($0) }) }
         // Without a space there is nothing to add a service to, and
         // AddServiceSheet needs one.
         .disabled(selectedSpaceID == nil)
@@ -1605,7 +1625,9 @@ struct UnifiedRailView: View {
         guard ids.contains(dragged),
               let moved = LiveReorder.moving(dragged, over: target, in: ids)
         else { return }
-        appState.reorderRail(moved, in: scope)
+        // Explicit, so the rows slide whatever the list's own reorder key
+        // makes of the change.
+        withAnimation(reorderAnimation) { _ = appState.reorderRail(moved, in: scope) }
     }
 
     /// Moves an entry one place along its list, past a divider as readily as
@@ -1650,6 +1672,12 @@ struct UnifiedRailView: View {
         return withAnimation(reorderAnimation) {
             appState.makeServiceGlobal(serviceID, before: beforeID)
         }
+    }
+
+    /// Adds a divider at the end of a list, from a + button's menu.
+    private func addDividerAtEnd(of scope: RailScope?) {
+        guard let scope else { return }
+        withAnimation(reorderAnimation) { _ = appState.addDivider(in: scope, after: nil) }
     }
 
     /// Takes a divider away, closing the gap it leaves.

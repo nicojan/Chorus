@@ -25,6 +25,13 @@ struct RailDividerView: View {
     let onRemove: () -> Void
     /// Moves it one place up or down the list, for VoiceOver.
     let onMove: (_ forward: Bool) -> Void
+    /// Whether this divider is the one being dragged. It then draws as a
+    /// solid accent bar in the slot it would land in, so the eye can follow it
+    /// as the rows slide past; a hairline moving is too faint to see.
+    var isDragging: Bool = false
+    /// Called when a drag of it ends, however it ends.
+    var onDragEnd: () -> Void = {}
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The divider's own thickness along the list: room to grab it, while
     /// reading as a line rather than a row.
@@ -42,9 +49,11 @@ struct RailDividerView: View {
                 RailDividerDragSource(
                     dividerID: dividerID,
                     onDragStart: onDragStart,
+                    onDragEnd: onDragEnd,
                     onRemove: onRemove
                 )
             )
+            .animation(ChorusMotion.animation(ChorusMotion.reorder, reduceMotion: reduceMotion), value: isDragging)
             .help("Drag to move. Drag off the rail to remove.")
             .accessibilityElement()
             .accessibilityLabel("Divider")
@@ -55,15 +64,17 @@ struct RailDividerView: View {
 
     @ViewBuilder
     private var line: some View {
+        let style = isDragging ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(ChorusColor.hairline)
+        let weight: CGFloat = isDragging ? 3 : 1
         if axis == .vertical {
-            Rectangle()
-                .fill(ChorusColor.hairline)
-                .frame(height: 1)
+            Capsule()
+                .fill(style)
+                .frame(height: weight)
                 .padding(.horizontal, 8)
         } else {
-            Rectangle()
-                .fill(ChorusColor.hairline)
-                .frame(width: 1, height: 18)
+            Capsule()
+                .fill(style)
+                .frame(width: weight, height: 18)
         }
     }
 }
@@ -152,6 +163,7 @@ extension View {
 private struct RailDividerDragSource: NSViewRepresentable {
     let dividerID: UUID
     let onDragStart: () -> Void
+    let onDragEnd: () -> Void
     let onRemove: () -> Void
     @Environment(\.railDropZone) private var zone
 
@@ -168,6 +180,7 @@ private struct RailDividerDragSource: NSViewRepresentable {
     private func update(_ view: DividerDragView) {
         view.dividerID = dividerID
         view.onDragStart = onDragStart
+        view.onDragEnd = onDragEnd
         view.onRemove = onRemove
         view.zone = zone
     }
@@ -176,6 +189,7 @@ private struct RailDividerDragSource: NSViewRepresentable {
 final class DividerDragView: NSView, NSDraggingSource {
     var dividerID = UUID()
     var onDragStart: () -> Void = {}
+    var onDragEnd: () -> Void = {}
     var onRemove: () -> Void = {}
     var zone: RailDropZone?
 
@@ -257,6 +271,7 @@ final class DividerDragView: NSView, NSDraggingSource {
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         NSCursor.arrow.set()
+        onDragEnd()
         // A drop a row took is a move. A drop nothing took counts as a removal
         // only off the rail: let go over a gap between rows, or press Escape
         // over the rail, and the divider stays. With no zone to ask, keep it.
@@ -271,10 +286,10 @@ final class DividerDragView: NSView, NSDraggingSource {
         return NSImage(size: size, flipped: false) { rect in
             let vertical = size.width >= size.height
             let line = vertical
-                ? NSRect(x: 8, y: rect.midY - 1, width: max(rect.width - 16, 1), height: 2)
-                : NSRect(x: rect.midX - 1, y: rect.midY - 9, width: 2, height: 18)
-            NSColor.secondaryLabelColor.setFill()
-            NSBezierPath(roundedRect: line, xRadius: 1, yRadius: 1).fill()
+                ? NSRect(x: 8, y: rect.midY - 1.5, width: max(rect.width - 16, 1), height: 3)
+                : NSRect(x: rect.midX - 1.5, y: rect.midY - 9, width: 3, height: 18)
+            NSColor.controlAccentColor.setFill()
+            NSBezierPath(roundedRect: line, xRadius: 1.5, yRadius: 1.5).fill()
             return true
         }
     }

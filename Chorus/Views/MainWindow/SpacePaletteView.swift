@@ -239,6 +239,17 @@ struct SpacePaletteView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("New space")
+        .help("New space. Right-click to add a divider.")
+        // A divider between spaces, at the end, found without right-clicking
+        // a space first. The palette stays open to show where it went.
+        .contextMenu {
+            Button("New Space…") {
+                dismiss()
+                onAddSpace()
+            }
+            Button("Add Divider") { addDividerAtEnd() }
+        }
+        .accessibilityAction(named: "Add divider") { addDividerAtEnd() }
     }
 
     // MARK: - Keyboard
@@ -282,6 +293,10 @@ struct SpacePaletteView: View {
 
     // MARK: - Reordering
 
+    private func addDividerAtEnd() {
+        withAnimation(reorderAnimation) { _ = appState.addDivider(in: .spaces, after: nil) }
+    }
+
     private var reorderAnimation: Animation? {
         ChorusMotion.animation(ChorusMotion.reorder, reduceMotion: reduceMotion)
     }
@@ -296,7 +311,9 @@ struct SpacePaletteView: View {
             onRemove: {
                 withAnimation(reorderAnimation) { _ = appState.removeDivider(dividerID) }
             },
-            onMove: { step(dividerID, forward: $0) }
+            onMove: { step(dividerID, forward: $0) },
+            isDragging: draggingDividerID == dividerID,
+            onDragEnd: { draggingDividerID = nil }
         )
         .liveReorderDrop(lanes(over: dividerID))
     }
@@ -316,7 +333,7 @@ struct SpacePaletteView: View {
     private func liveMove(_ dragged: UUID, over target: UUID) {
         let ids = items.map(\.id)
         guard let moved = LiveReorder.moving(dragged, over: target, in: ids) else { return }
-        appState.reorderRail(moved, in: .spaces)
+        withAnimation(reorderAnimation) { _ = appState.reorderRail(moved, in: .spaces) }
     }
 
     /// Moves an entry one place along the list, for VoiceOver.

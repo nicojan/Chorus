@@ -18,6 +18,9 @@ struct SpaceStripView: View {
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
     @Query private var allDividers: [RailDivider]
     @Binding var selectedSpaceID: UUID?
+    /// The selected service, for the global services the strip holds above
+    /// its spaces.
+    @Binding var selectedServiceID: UUID?
     /// Room above the card for the window traffic lights. The hybrid layout
     /// passes the bar's height, so the card's top edge is level with the web
     /// card's.
@@ -80,6 +83,18 @@ struct SpaceStripView: View {
 
     private var content: some View {
         VStack(spacing: 2) {
+            // Global services sit above the spaces, under a rule, since they
+            // belong to none of them. The bar beside the strip then holds only
+            // the selected space's own services. Draws nothing while there are
+            // no global services.
+            UnifiedRailView(
+                selectedSpaceID: $selectedSpaceID,
+                selectedServiceID: $selectedServiceID,
+                axis: .vertical,
+                showsSpaceHeader: false,
+                globalsOnly: true
+            )
+
             // Scroll the cells so more spaces than fit the window height stay
             // reachable; the divider and add button below stay pinned.
             // No scroller: with "Always show scroll bars" on, it took width from
@@ -231,8 +246,15 @@ struct SpaceStripView: View {
         // In from the column's edges, as the space rows are, so the hover
         // fill lines up with theirs.
         .padding(.horizontal, ChorusCard.railPadding)
-        .help("Add space")
+        .help("Add space. Right-click to add a divider.")
         .accessibilityLabel("Add space")
+        // A divider between spaces, at the end, found without right-clicking
+        // a space first.
+        .contextMenu {
+            Button("Add Space…") { showingAddSpace = true }
+            Button("Add Divider") { addDividerAtEnd() }
+        }
+        .accessibilityAction(named: "Add divider") { addDividerAtEnd() }
     }
 
     private func save(_ context: String) {
@@ -265,6 +287,10 @@ struct SpaceStripView: View {
         return .handled
     }
 
+    private func addDividerAtEnd() {
+        withAnimation(reorderAnimation) { _ = appState.addDivider(in: .spaces, after: nil) }
+    }
+
     private var reorderAnimation: Animation? {
         ChorusMotion.animation(ChorusMotion.reorder, reduceMotion: reduceMotion)
     }
@@ -279,7 +305,9 @@ struct SpaceStripView: View {
             onRemove: {
                 withAnimation(reorderAnimation) { _ = appState.removeDivider(dividerID) }
             },
-            onMove: { step(dividerID, forward: $0) }
+            onMove: { step(dividerID, forward: $0) },
+            isDragging: draggingDividerID == dividerID,
+            onDragEnd: { draggingDividerID = nil }
         )
         .padding(.horizontal, ChorusCard.railPadding)
         .liveReorderDrop(lanes(over: dividerID))
@@ -300,7 +328,7 @@ struct SpaceStripView: View {
     private func liveMove(_ dragged: UUID, over target: UUID) {
         let ids = items.map(\.id)
         guard let moved = LiveReorder.moving(dragged, over: target, in: ids) else { return }
-        appState.reorderRail(moved, in: .spaces)
+        withAnimation(reorderAnimation) { _ = appState.reorderRail(moved, in: .spaces) }
     }
 
     /// Moves an entry one place along the strip, for VoiceOver and Option-arrow.
