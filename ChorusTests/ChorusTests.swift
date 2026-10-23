@@ -362,6 +362,39 @@ final class ChorusTests: XCTestCase {
         )
     }
 
+    func testAllServicesShortcutNavigationStepsFromAGlobalService() {
+        let work = UUID(), personal = UUID()
+        let calendar = UUID(), vault = UUID(), slack = UUID(), gmail = UUID()
+        let destinations = [
+            ServiceShortcutDestination(spaceID: nil, serviceID: calendar),
+            ServiceShortcutDestination(spaceID: nil, serviceID: vault),
+            ServiceShortcutDestination(spaceID: work, serviceID: slack),
+            ServiceShortcutDestination(spaceID: personal, serviceID: gmail),
+        ]
+
+        // From the first global, in whichever space is showing, next is the
+        // second global, not the first service of a space.
+        XCTAssertEqual(
+            ServiceShortcutNavigation.destination(
+                movingBy: 1, fromSpaceID: personal, serviceID: calendar, in: destinations),
+            destinations[1]
+        )
+        // From the last global, next is the first service of the first space.
+        XCTAssertEqual(
+            ServiceShortcutNavigation.destination(
+                movingBy: 1, fromSpaceID: personal, serviceID: vault, in: destinations),
+            destinations[2]
+        )
+        // Back from the first space's first service lands on the last global.
+        XCTAssertEqual(
+            ServiceShortcutNavigation.destination(
+                movingBy: -1, fromSpaceID: work, serviceID: slack, in: destinations),
+            destinations[1]
+        )
+        // A global destination carries no space to switch to.
+        XCTAssertNil(destinations[0].spaceID)
+    }
+
     func testAllServicesShortcutNavigationStartsAtNearestEndWithoutSelection() {
         let destinations = [
             ServiceShortcutDestination(spaceID: UUID(), serviceID: UUID()),
@@ -2919,6 +2952,58 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(try target.mainContext.fetch(FetchDescriptor<SpaceServiceLink>()).count, 1, "one link, not two")
     }
 
+    /// A global service has no links, so it must be carried by the file's own
+    /// list and come back global, after the globals already here. A service
+    /// that is neither listed nor global is still left out.
+    @MainActor
+    func testSetupRoundTripsGlobalServices() throws {
+        let source = try makeGroupingContainer()
+        let src = source.mainContext
+        let home = Space(name: "Home", emoji: "🏠", sortOrder: 0)
+        let gmail = ServiceInstance(label: "Gmail", url: "https://mail.google.com")
+        let calendar = ServiceInstance(label: "Calendar", url: "https://calendar.example", isMuted: true)
+        let vault = ServiceInstance(label: "Vault", url: "https://vault.example")
+        let stray = ServiceInstance(label: "Stray", url: "https://stray.example")
+        src.insert(home)
+        [gmail, calendar, vault, stray].forEach(src.insert)
+        vault.isGlobal = true
+        vault.globalSortOrder = 0
+        calendar.isGlobal = true
+        calendar.globalSortOrder = 1
+        try src.save()
+        link(gmail, to: home, sortOrder: 0, in: src)
+        try src.save()
+
+        let data = try SetupArchive.capture(from: src, appVersion: nil).encoded()
+        let archive = try SetupArchive.decode(data)
+        XCTAssertEqual(archive.services.count, 3, "the stray service is left out")
+        XCTAssertEqual(archive.globalServices?.map { archive.services[$0].label }, ["Vault", "Calendar"])
+        XCTAssertEqual(archive.listedServiceIndices.count, 3)
+
+        // A file written before globals existed has no such key and reads fine.
+        let oldJSON = try XCTUnwrap(String(data: data, encoding: .utf8))
+            .replacingOccurrences(of: "\"globalServices\"", with: "\"someFutureKey\"")
+        XCTAssertNil(try SetupArchive.decode(Data(oldJSON.utf8)).globalServices)
+
+        let target = try makeGroupingContainer()
+        let dst = target.mainContext
+        let existing = ServiceInstance(label: "Existing", url: "https://existing.example")
+        dst.insert(existing)
+        existing.isGlobal = true
+        existing.globalSortOrder = 4
+        try dst.save()
+
+        let summary = try archive.apply(to: dst)
+        XCTAssertEqual(summary.servicesAdded, 3)
+
+        let globals = RailEdits.globalServices(in: dst)
+        XCTAssertEqual(globals.map(\.label), ["Existing", "Vault", "Calendar"])
+        XCTAssertEqual(globals.map { $0.globalSortOrder ?? -1 }, [4, 5, 6])
+        XCTAssertEqual(globals.last?.isMuted, true, "a global's settings travel")
+        let links = try dst.fetch(FetchDescriptor<SpaceServiceLink>()).compactMap(\.liveEnds)
+        XCTAssertEqual(links.map(\.service.label), ["Gmail"], "globals get no links")
+    }
+
     /// A file that docks Chorus inside itself is refused, as adding it by hand is.
     @MainActor
     func testSetupArchiveRefusesChorusAsAMacApp() throws {
@@ -4292,7 +4377,7 @@ final class ChorusTests: XCTestCase {
     /// using only its `mainContext` after the container deallocates crashes.
     private func makeGroupingContainer() throws -> ModelContainer {
         try ModelContainer(
-            for: Space.self, ServiceInstance.self, SpaceServiceLink.self,
+            for: Space.self, ServiceInstance.self, SpaceServiceLink.self, RailDivider.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
     }
@@ -4416,6 +4501,49 @@ final class ChorusTests: XCTestCase {
         XCTAssertFalse(result.groups.contains { $0.space == nil })
     }
 
+    func testNotificationGroupingPutsGlobalServicesInTheirOwnFirstGroup() throws {
+        let container = try makeGroupingContainer()
+        let ctx = container.mainContext
+        let work = Space(name: "Work", emoji: "💼", sortOrder: 0)
+        let slack = ServiceInstance(label: "Slack", url: "https://s.example")
+        let calendar = ServiceInstance(label: "Calendar", url: "https://c.example")
+        let loose = ServiceInstance(label: "Loose", url: "https://l.example")
+        ctx.insert(work)
+        [slack, calendar, loose].forEach(ctx.insert)
+        calendar.isGlobal = true
+        calendar.globalSortOrder = 0
+        link(slack, to: work, sortOrder: 0, in: ctx)
+        try ctx.save()
+
+        let result = NotificationGrouping.grouped(spaces: [work], services: [slack, calendar, loose])
+
+        XCTAssertTrue(result.showsHeaders)
+        XCTAssertEqual(result.groups.count, 3)
+        XCTAssertTrue(result.groups[0].isGlobal)
+        XCTAssertEqual(result.groups[0].services.map(\.label), ["Calendar"])
+        XCTAssertEqual(result.groups[1].space?.name, "Work")
+        // A link-less service that is not global keeps the "Ungrouped" bucket.
+        XCTAssertFalse(result.groups[2].isGlobal)
+        XCTAssertNil(result.groups[2].space)
+        XCTAssertEqual(result.groups[2].services.map(\.label), ["Loose"])
+    }
+
+    func testNotificationGroupingShowsHeadersWhenOnlyGlobalsExist() throws {
+        let container = try makeGroupingContainer()
+        let ctx = container.mainContext
+        let empty = Space(name: "Empty", emoji: "📭", sortOrder: 0)
+        let calendar = ServiceInstance(label: "Calendar", url: "https://c.example")
+        ctx.insert(empty)
+        ctx.insert(calendar)
+        calendar.isGlobal = true
+        try ctx.save()
+
+        let result = NotificationGrouping.grouped(spaces: [empty], services: [calendar])
+
+        XCTAssertTrue(result.showsHeaders)
+        XCTAssertEqual(result.groups.map(\.isGlobal), [true])
+    }
+
     /// Exercises the dangling-link guard: a link whose service has no
     /// `modelContext` (a deleted or never-inserted model — the crash class the
     /// A link whose service is gone must be skipped, not grouped.
@@ -4509,7 +4637,7 @@ final class ChorusTests: XCTestCase {
     /// the tail) and never leaves the service with zero or duplicate links.
     func testMoveServiceRelocatesLinkBetweenSpacesAtTail() throws {
         let container = try ModelContainer(
-            for: Space.self, ServiceInstance.self, SpaceServiceLink.self,
+            for: Space.self, ServiceInstance.self, SpaceServiceLink.self, RailDivider.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         let ctx = container.mainContext
@@ -4794,6 +4922,8 @@ final class ChorusTests: XCTestCase {
         let schemas: [(String, Schema)] = [
             ("V1_5_11", Schema(versionedSchema: ChorusSchemaV1_5_11.self)),
             ("V1_5_12", Schema(versionedSchema: ChorusSchemaV1_5_12.self)),
+            ("V1_5_13", Schema(versionedSchema: ChorusSchemaV1_5_13.self)),
+            ("V1_5_19", Schema(versionedSchema: ChorusSchemaV1_5_19.self)),
             ("VCurrent", Schema(versionedSchema: ChorusSchemaVCurrent.self)),
         ]
         for (label, schema) in schemas {
@@ -4840,6 +4970,7 @@ final class ChorusTests: XCTestCase {
                 "forceDarkMode", "darkModeRaw", "cameraPolicyRaw", "microphonePolicyRaw",
                 "openExternalLinksInApp", "stayActiveInBackground", "hasSeenPasskeyNotice",
                 "hibernationPolicyRaw", "hibernateAfterMinutes", "createdAt", "lastAccessedAt",
+                "isGlobal", "globalSortOrder",
             ],
             "ServiceInstance stored attributes changed without a new schema version"
         )
@@ -4853,6 +4984,16 @@ final class ChorusTests: XCTestCase {
             ["id", "name", "emoji", "sortOrder", "isMuted", "createdAt"],
             "Space stored attributes changed without a new schema version"
         )
+        let divider = try entity("RailDivider")
+        XCTAssertEqual(
+            Set(divider.attributes.map(\.name)),
+            ["id", "kindRaw", "spaceID", "sortOrder", "createdAt"],
+            "RailDivider stored attributes changed without a new schema version"
+        )
+        // A divider names its space by id. A relationship here would change
+        // Space's stored shape and bring the cascade differences between macOS
+        // 14, 15 and 26 with it.
+        XCTAssertTrue(divider.relationships.isEmpty, "RailDivider must not hold relationships")
         let link = try entity("SpaceServiceLink")
         XCTAssertEqual(
             Set(link.attributes.map(\.name)),

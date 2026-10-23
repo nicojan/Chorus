@@ -65,7 +65,8 @@ struct CatalogGridView: View {
 
     private func addService(from entry: ServiceCatalogEntry) {
         guard let space = fetchSpace(id: spaceID) else { return }
-        let existingCount = space.serviceLinks.count
+        // Dividers share the space's link numbering, so count past them too.
+        let nextOrder = RailEdits.nextOrder(in: .space(spaceID), context: modelContext)
 
         let service = ServiceInstance(
             label: entry.name,
@@ -76,11 +77,13 @@ struct CatalogGridView: View {
         modelContext.insert(service)
 
         let link = SpaceServiceLink(
-            sortOrder: existingCount,
+            sortOrder: nextOrder,
             space: space,
             service: service
         )
-        modelContext.insert(link)
+        // Wiring the inverses already registers the row on macOS 14; a second
+        // insert there is fatal.
+        if link.modelContext == nil { modelContext.insert(link) }
 
         do {
             try modelContext.save()

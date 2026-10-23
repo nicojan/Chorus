@@ -199,7 +199,7 @@ struct AddServiceSheet: View {
         )
         modelContext.insert(service)
         let link = SpaceServiceLink(
-            sortOrder: space.serviceLinks.count,
+            sortOrder: RailEdits.nextOrder(in: .space(spaceID), context: modelContext),
             space: space,
             service: service
         )
@@ -228,7 +228,8 @@ struct AddServiceSheet: View {
 
     private func addCustomService(label: String, url: String) {
         guard let space = fetchSpace(id: spaceID) else { return }
-        let existingCount = space.serviceLinks.count
+        // Dividers share the space's link numbering, so count past them too.
+        let nextOrder = RailEdits.nextOrder(in: .space(spaceID), context: modelContext)
 
         let service = ServiceInstance(
             label: label,
@@ -237,11 +238,13 @@ struct AddServiceSheet: View {
         modelContext.insert(service)
 
         let link = SpaceServiceLink(
-            sortOrder: existingCount,
+            sortOrder: nextOrder,
             space: space,
             service: service
         )
-        modelContext.insert(link)
+        // Wiring the inverses already registers the row on macOS 14; a second
+        // insert there is fatal.
+        if link.modelContext == nil { modelContext.insert(link) }
 
         do {
             try modelContext.save()

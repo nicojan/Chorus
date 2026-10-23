@@ -984,10 +984,11 @@ final class AppState {
         if matches.count == 1 { return matches.first }
 
         // Multiple instances of the same site (e.g. personal + work Notion).
-        // Prefer one inside the current space; fall back to any match.
+        // Prefer one inside the current space, where a global service counts
+        // as inside every space; fall back to any match.
         if let spaceID,
            let inCurrentSpace = matches.first(where: { service in
-               service.spaceLinks.contains { link in
+               service.isGlobalEffective || service.spaceLinks.contains { link in
                    link.modelContext != nil && link.liveSpace?.id == spaceID
                }
            }) {
@@ -1782,6 +1783,9 @@ final class AppState {
             context.delete(link)
         }
         for service in reclaimed { context.delete(service) }
+        // Dividers point at their space by id, not by a relationship, so no
+        // cascade takes them. Delete them in this same save.
+        RailEdits.deleteDividers(ofSpace: spaceID, context: context)
         context.delete(space)
 
         do {
@@ -2460,7 +2464,7 @@ final class AppState {
             return
         }
 
-        let orphans = services.filter { $0.spaceLinks.isEmpty }
+        let orphans = Self.reapable(services)
         guard !orphans.isEmpty else { return }
 
         // Capture identifiers before deleting; tombstoning + removing the on-disk
@@ -2480,6 +2484,13 @@ final class AppState {
         }
         for id in orphanedIDs { markDataStoreOrphaned(id) }
         cleanUpOrphanedDataStores()
+    }
+
+    /// The services the launch reap deletes: those in no space. A global
+    /// service is in no space on purpose (see `ServiceInstance.isGlobal`), and
+    /// reaping it would delete it and wipe its sign-in on every launch.
+    static func reapable(_ services: [ServiceInstance]) -> [ServiceInstance] {
+        services.filter { $0.spaceLinks.isEmpty && !$0.isGlobalEffective }
     }
 
     /// Mark a per-service data store identifier as orphaned. Called from
@@ -2679,12 +2690,21 @@ final class AppState {
         }
     }
 
+    /// What the rail shows in a space, in its order: the global services,
+    /// then the space's own. Use this wherever "the services you can see" is
+    /// meant — preloading, ⌘1–9, launch restore — and `servicesForSpace`
+    /// where membership is meant, such as a space's badge total or the
+    /// selection check when switching spaces.
+    func railServices(forSpace spaceID: UUID) -> [ServiceInstance] {
+        RailEdits.globalServices(in: modelContainer.mainContext) + servicesForSpace(spaceID)
+    }
+
     /// Preloads web views for all services in the currently selected space.
     /// Runs after window state is restored so `selectedSpaceID` is already set.
     /// The selected service (if any) loads first, then the rest stagger at 500ms intervals.
     private func preloadActiveSpaceServices() {
         guard let spaceID = selectedSpaceID else { return }
-        let services = servicesForSpace(spaceID)
+        let services = railServices(forSpace: spaceID)
         guard !services.isEmpty else { return }
 
         // Move the selected service to the front so it preloads first.
@@ -2919,7 +2939,7 @@ final class AppState {
 
     /// Preloads services when the user switches to a different space.
     func preloadServicesForSpace(_ spaceID: UUID) {
-        let services = servicesForSpace(spaceID)
+        let services = railServices(forSpace: spaceID)
         Task {
             await webViewPool.preloadAll(services)
         }
@@ -3243,11 +3263,13 @@ final class AppState {
             queue: .main
         ) { [weak self] notification in
             guard let userInfo = notification.userInfo,
-                  let serviceID = userInfo["serviceID"] as? UUID,
-                  let spaceID = userInfo["spaceID"] as? UUID
+                  let serviceID = userInfo["serviceID"] as? UUID
             else { return }
+            // A global service comes with no space: it shows in every space,
+            // so the current one stays.
+            let spaceID = userInfo["spaceID"] as? UUID
             Task { @MainActor in
-                self?.selectedSpaceID = spaceID
+                if let spaceID { self?.selectedSpaceID = spaceID }
                 self?.selectedServiceID = serviceID
             }
         })
@@ -3311,7 +3333,9 @@ final class AppState {
                 selectedServiceID = nil
                 return
             }
-            let servicesInSpace = servicesForSpace(spaceID)
+            // Global services show in every space, so a saved global
+            // selection is as valid as one of the space's own.
+            let servicesInSpace = railServices(forSpace: spaceID)
             if let savedServiceID = prefs?.selectedServiceID,
                servicesInSpace.contains(where: { $0.id == savedServiceID }) {
                 selectedServiceID = savedServiceID

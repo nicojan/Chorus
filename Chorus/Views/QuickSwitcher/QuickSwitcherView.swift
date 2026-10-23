@@ -9,6 +9,9 @@ struct QuickSwitcherView: View {
     @Environment(AppState.self) private var appState
     @Query private var allLinks: [SpaceServiceLink]
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
+    /// Global services have no links, so the link query never sees them.
+    @Query(filter: #Predicate<ServiceInstance> { $0.isGlobal == true })
+    private var globalServices: [ServiceInstance]
 
     @State private var searchText = ""
     @State private var selectedIndex = 0
@@ -87,15 +90,31 @@ struct QuickSwitcherView: View {
     /// A stable string signature of the links' displayed content, so onChange
     /// fires on renames and space moves — not only on insert/delete.
     private var linksSignature: [String] {
-        allLinks
+        let linked = allLinks
             .compactMap(\.liveEnds)
             .map { "\($0.service.id)|\($0.service.label)|\($0.space.id)|\($0.space.name)" }
+        let global = globalServices.map { "\($0.id)|\($0.label)|global|\($0.globalSortOrder ?? -1)" }
+        return global + linked
     }
 
     private func recomputeResults() {
         // In rail order, space by space, so an empty search opens the first
         // service of the first space on Return, not whatever the store returned.
-        let serviceResults = allLinks
+        // Globals lead, as they do in the rail.
+        let globalResults = globalServices
+            .sorted { ($0.globalSortOrder ?? Int.max, $0.createdAt) < ($1.globalSortOrder ?? Int.max, $1.createdAt) }
+            .map { service in
+                QuickSwitcherResult(
+                    id: "global-\(service.id)",
+                    label: service.label,
+                    spaceName: "Global",
+                    spaceEmoji: "🌐",
+                    serviceID: service.id,
+                    spaceID: nil,
+                    iconData: service.customIconData ?? service.fetchedIconData
+                )
+            }
+        let linkedResults = allLinks
             .compactMap { link in link.liveEnds.map { (order: link.sortOrder, ends: $0) } }
             .sorted { ($0.ends.space.sortOrder, $0.order) < ($1.ends.space.sortOrder, $1.order) }
             .map(\.ends)
@@ -110,6 +129,7 @@ struct QuickSwitcherView: View {
                     iconData: service.customIconData ?? service.fetchedIconData
                 )
             }
+        let serviceResults = globalResults + linkedResults
 
         if searchText.trimmingCharacters(in: .whitespaces).isEmpty {
             results = serviceResults
@@ -229,7 +249,8 @@ struct QuickSwitcherView: View {
     }
 
     private func selectResult(_ result: QuickSwitcherResult) {
-        appState.selectedSpaceID = result.spaceID
+        // A global service shows in every space, so the space stays as it is.
+        if let spaceID = result.spaceID { appState.selectedSpaceID = spaceID }
         appState.selectedServiceID = result.serviceID
         dismiss()
     }
@@ -241,7 +262,8 @@ struct QuickSwitcherResult: Identifiable {
     let spaceName: String
     let spaceEmoji: String
     let serviceID: UUID
-    let spaceID: UUID
+    /// Nil for a global service.
+    let spaceID: UUID?
     let iconData: Data?
 }
 

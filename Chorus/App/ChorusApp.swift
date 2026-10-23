@@ -199,8 +199,8 @@ struct ChorusApp: App {
         // Route through AppState's implementation, which guards against
         // dangling links (reading `link.space`/`.service` on a deleted model
         // traps). This is called from keyboard shortcuts, so an unguarded copy
-        // could crash on a keystroke.
-        appState.servicesForSpace(spaceID)
+        // could crash on a keystroke. Globals come first, as in the rail.
+        appState.railServices(forSpace: spaceID)
     }
 
     @MainActor
@@ -217,11 +217,17 @@ struct ChorusApp: App {
 
     @MainActor
     private func allServiceDestinations() -> [ServiceShortcutDestination] {
-        allSpaces().flatMap { space in
+        // Globals lead, as the all-services rail lists them first. They carry
+        // no space, so ⌘1 on one does not switch spaces.
+        let globals = RailEdits.globalServices(in: appState.modelContainer.mainContext).map {
+            ServiceShortcutDestination(spaceID: nil, serviceID: $0.id)
+        }
+        let inSpaces = allSpaces().flatMap { space in
             appState.servicesForSpace(space.id).map { service in
                 ServiceShortcutDestination(spaceID: space.id, serviceID: service.id)
             }
         }
+        return globals + inSpaces
     }
 
 

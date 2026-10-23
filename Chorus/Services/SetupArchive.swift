@@ -2,8 +2,8 @@ import Foundation
 import SwiftData
 
 /// A file that carries a Chorus setup — its spaces, its services, which service
-/// sits in which space, and each service's own settings — to another Mac, or
-/// keeps it safe on this one.
+/// sits in which space or is global, and each service's own settings — to
+/// another Mac, or keeps it safe on this one.
 ///
 /// It carries no sign-ins. A service's cookies and storage live in its WebKit
 /// data store, which can't be moved, so every imported service gets a fresh
@@ -25,6 +25,10 @@ struct SetupArchive: Codable, Equatable {
     var appVersion: String?
     var spaces: [SpaceRecord]
     var services: [ServiceRecord]
+    /// Indexes into `services` of the global services, in rail order. Optional
+    /// and not a version bump: an older Chorus ignores the key it does not know,
+    /// and a file without it (every file before this) reads as no globals.
+    var globalServices: [Int]?
 
     struct SpaceRecord: Codable, Equatable {
         var name: String
@@ -70,6 +74,9 @@ struct SetupArchive: Codable, Equatable {
     }
 
     /// Stored on a service but not exported, each for a reason:
+    /// - `isGlobal`, `globalSortOrder`: a global service is carried by the
+    ///   file's `globalServices` list, whose order sets `globalSortOrder` again
+    ///   on import, after the globals already here.
     /// - `id`, `dataStoreIdentifier`: an import is a new service with its own
     ///   store; reusing either would collide with, or point at, another one.
     /// - `fetchedIconData`, `faviconFetchedAt`: a cache, fetched again.
@@ -81,6 +88,7 @@ struct SetupArchive: Codable, Equatable {
     ///   access to an address of its choosing, under a familiar name and icon,
     ///   would be a way in. An imported service asks, as a new one does.
     static let excludedServiceFields: Set<String> = [
+        "isGlobal", "globalSortOrder",
         "id", "dataStoreIdentifier", "fetchedIconData", "faviconFetchedAt",
         "forceDarkMode", "hasSeenPasskeyNotice", "createdAt", "lastAccessedAt",
         "cameraPolicyRaw", "microphonePolicyRaw",
@@ -123,9 +131,10 @@ struct SetupArchive: Codable, Equatable {
     // MARK: - What an import would add
 
     /// The services that will actually be added: those at least one space
-    /// lists. A service no space lists would have nowhere to show.
+    /// lists, and the global ones. A service that is neither would have nowhere
+    /// to show.
     var listedServiceIndices: [Int] {
-        Set(spaces.flatMap { $0.members.map(\.service) }).sorted()
+        Set(spaces.flatMap { $0.members.map(\.service) } + (globalServices ?? [])).sorted()
     }
 
     /// The sites the import would open, so the person can see them before
@@ -219,6 +228,9 @@ struct SetupArchive: Codable, Equatable {
                 throw ReadError.invalid("a space lists a service that isn't in the file")
             }
         }
+        for index in globalServices ?? [] where !services.indices.contains(index) {
+            throw ReadError.invalid("the global list names a service that isn't in the file")
+        }
     }
 
     /// http or https with a host, and no credentials in the address. A setup
@@ -235,8 +247,9 @@ struct SetupArchive: Codable, Equatable {
 
     // MARK: - From and into the store
 
-    /// Captures the setup in `context`. Services in no space are left out,
-    /// since there would be nowhere to show them after an import.
+    /// Captures the setup in `context`. Services that are in no space and not
+    /// global are left out, since there would be nowhere to show them after an
+    /// import.
     @MainActor
     static func capture(from context: ModelContext, appVersion: String?, now: Date = Date()) throws -> SetupArchive {
         let spaces = try context.fetch(FetchDescriptor<Space>(sortBy: [SortDescriptor(\.sortOrder)]))
@@ -266,9 +279,16 @@ struct SetupArchive: Codable, Equatable {
                 isMuted: space.isMuted, members: members
             ))
         }
+        var globalIndices: [Int] = []
+        for service in RailEdits.globalServices(in: context) {
+            guard let record = ServiceRecord(exporting: service) else { continue }
+            globalIndices.append(records.count)
+            records.append(record)
+        }
         return SetupArchive(
             format: format, version: currentVersion, exportedAt: now,
-            appVersion: appVersion, spaces: spaceRecords, services: records
+            appVersion: appVersion, spaces: spaceRecords, services: records,
+            globalServices: globalIndices.isEmpty ? nil : globalIndices
         )
     }
 
@@ -335,9 +355,19 @@ struct SetupArchive: Codable, Equatable {
                 summary.spacesAdded += 1
             }
         }
+        // Globals continue the global group's numbering, in the file's order.
+        let firstGlobalOrder = RailEdits.nextOrder(in: .global, context: context)
+        var globalIndices: [Int] = []
+        for index in globalServices ?? [] where !globalIndices.contains(index) {
+            globalIndices.append(index)
+        }
         var created: [Int: ServiceInstance] = [:]
         for index in listedServiceIndices {
             let service = services[index].makeService()
+            if let position = globalIndices.firstIndex(of: index) {
+                service.isGlobal = true
+                service.globalSortOrder = firstGlobalOrder + position
+            }
             context.insert(service)
             created[index] = service
         }
@@ -354,12 +384,16 @@ struct SetupArchive: Codable, Equatable {
             let linksBySpace = try Self.liveLinksBySpace(in: context)
             var nextOrder: [UUID: Int] = [:]
             var linked: [UUID: Set<Int>] = [:]
+            // A global service has no links; a file that also lists it in a
+            // space does not get to give it one.
+            let globalSet = Set(globalIndices)
             for (record, space) in zip(orderedSpaces, targets) {
                 // Two records can merge into one space; each continues the order.
                 var order = nextOrder[space.id] ?? ((linksBySpace[space.id]?.last?.0 ?? -1) + 1)
                 for member in record.members.sorted(by: { $0.sortOrder < $1.sortOrder }) {
                     // A service listed twice in one space gets one link.
-                    guard linked[space.id, default: []].insert(member.service).inserted,
+                    guard !globalSet.contains(member.service),
+                          linked[space.id, default: []].insert(member.service).inserted,
                           let service = created[member.service] else { continue }
                     let link = SpaceServiceLink(sortOrder: order, space: space, service: service)
                     if link.modelContext == nil { context.insert(link) }

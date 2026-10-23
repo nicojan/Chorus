@@ -378,10 +378,12 @@ struct NotificationSettingsView: View {
         }
     }
 
-    /// A space's "emoji  name", or "Ungrouped" for services in no space. The
-    /// same service can appear under several space headers; every row binds to
-    /// the same model object, so their toggles stay in sync.
+    /// A space's "emoji  name", "Global" for services shown in every space, or
+    /// "Ungrouped" for services in no space. The same service can appear under
+    /// several space headers; every row binds to the same model object, so
+    /// their toggles stay in sync.
     private func headerTitle(_ group: NotificationGrouping.Group) -> String {
+        if group.isGlobal { return "🌐  Global" }
         guard let space = group.space else { return "Ungrouped" }
         return "\(space.emoji)  \(space.name)"
     }
@@ -768,18 +770,27 @@ enum NotificationGrouping {
         /// The space, or `nil` for the ungrouped / flat bucket.
         let space: Space?
         let services: [ServiceInstance]
+        /// True for the group of global services, which has no space either.
+        var isGlobal = false
 
-        var id: String { space?.id.uuidString ?? "ungrouped" }
+        var id: String { isGlobal ? "global" : (space?.id.uuidString ?? "ungrouped") }
     }
 
     struct Result {
         let groups: [Group]
-        /// False only when no space has members, so the view renders a plain
-        /// flat list with no space headers.
+        /// False only when no space has members and no service is global, so
+        /// the view renders a plain flat list with no space headers.
         let showsHeaders: Bool
     }
 
     static func grouped(spaces: [Space], services: [ServiceInstance]) -> Result {
+        // Globals have no links, so they would land in "Ungrouped". They get
+        // their own group, first, as they sit first in the rail.
+        let globals = services
+            .filter(\.isGlobalEffective)
+            .sorted { ($0.globalSortOrder ?? Int.max) < ($1.globalSortOrder ?? Int.max) }
+        let globalGroups = globals.isEmpty ? [] : [Group(space: nil, services: globals, isGlobal: true)]
+
         var spaceGroups: [Group] = []
         for space in spaces {
             let members = space.serviceLinks
@@ -795,16 +806,16 @@ enum NotificationGrouping {
         }
 
         // No space has members → flat, headerless list of everything.
-        guard !spaceGroups.isEmpty else {
+        guard !spaceGroups.isEmpty || !globalGroups.isEmpty else {
             let flat = services.sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
             return Result(groups: [Group(space: nil, services: flat)], showsHeaders: false)
         }
 
         let ungrouped = services
-            .filter { $0.spaceLinks.isEmpty }
+            .filter { $0.spaceLinks.isEmpty && !$0.isGlobalEffective }
             .sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
 
-        var groups = spaceGroups
+        var groups = globalGroups + spaceGroups
         if !ungrouped.isEmpty {
             groups.append(Group(space: nil, services: ungrouped))
         }
