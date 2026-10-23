@@ -69,9 +69,9 @@ Anchoring a divider to a neighbour instead ("after service X") was ruled out: dr
 ### Global services
 
 - **Rail on the left:** the global group sits at the top, under the traffic lights, above the space header, with a hairline under it. Then the space header and the space's services as now.
-- **Bar along the top, and the hybrid bar:** global tabs come first, then a short vertical rule, then the space header (top bar only) and the space's tabs.
+- **Bar along the top, and the hybrid bar:** after the space header (top bar only), global tabs come first, then a short vertical rule, then the space's tabs. The header stays at the leading edge because it opens the space list.
 - **All services on the left:** a "Global" group heading (🌐) comes first, above the first space.
-- With no global services, none of this is drawn.
+- With no global services, none of this is drawn. The group's dividers go with its last service, so a group that starts over starts with no lines.
 
 Selecting a global service leaves the current space as it is. Switching space while a global service is showing selects the new space's first service, as switching does today; a global service does not count as "in" the new space for that check (Claude's call: switching space is a request to see that space).
 
@@ -81,7 +81,7 @@ Context menu on a space's service: **Show in Every Space** makes it global (Clau
 
 Context menu on a global service: **Move to Space ▸** moves it into the chosen space (or a new one) and it stops being global. There is no "Remove from this space". **Delete service entirely** works as for any service.
 
-Dragging: a service dropped on the global group becomes global; a global service dropped into a space moves there. As with moves between spaces today, nothing changes until release, so a cancelled drag leaves things where they were.
+Dragging: a service dropped on the global group becomes global; a global service dropped into a space moves there, and the view goes with it if it was showing. The group is only drawn once it holds a service, so the first one is made global from the menu. As with moves between spaces today, nothing changes until release, so a cancelled drag leaves things where they were.
 
 Elsewhere:
 
