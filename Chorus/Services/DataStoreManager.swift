@@ -47,16 +47,18 @@ final class DataStoreManager {
     /// disk.
     ///
     /// Turning ITP off costs little here that isolation is not already paying
-    /// for. Every service gets its own `WKWebsiteDataStore`, so one service can
-    /// never read another's cookies whatever ITP does; what ITP adds is blocking
-    /// third-party cookies *within* a single service's own container, where the
-    /// only participants are that service and the identity provider it chose.
+    /// for. Services only share a `WKWebsiteDataStore` when they share a
+    /// sign-in: by default the services of one space do, and a service can
+    /// keep its own (see `ServiceAdding`). Stores never mix across that line,
+    /// whatever ITP does; what ITP adds is blocking third-party cookies
+    /// *within* one store, where the participants are the services on it and
+    /// the identity providers they chose.
     ///
     /// What is genuinely given up is ITP's cross-site tracking defence *inside*
-    /// one service's container: an ad network embedded on that service's own
-    /// pages can keep a cookie across the sites it appears on there. The
-    /// content blocker already drops most of those requests, and the blast
-    /// radius stops at the one service. Whether that trade is worth making by
+    /// one store: an ad network embedded on the pages of the services sharing
+    /// it can keep a cookie across them. The content blocker already drops
+    /// most of those requests, and the blast radius stops at that store: one
+    /// space's services, or one service kept separate. Whether that trade is worth making by
     /// default, or belongs behind a per-service toggle, is a call for the
     /// project rather than something to assume — the code is written so either
     /// answer is a small change.

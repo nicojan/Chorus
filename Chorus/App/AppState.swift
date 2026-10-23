@@ -55,6 +55,9 @@ final class AppState {
     var pendingAddServiceTab: AddServiceSheet.AddServiceTab?
     /// A service whose Edit sheet the rail should open, set by a tip.
     var pendingEditServiceID: UUID?
+    /// A service dragged into another space or the global group, waiting for
+    /// the confirmation ContentView shows. See `RailMove`.
+    var pendingRailMove: RailMove?
     /// The version whose What's New sheet is up, or nil.
     var whatsNewVersion: String?
     /// The Mac app whose name the Accessibility explanation is about, or nil
@@ -2602,6 +2605,17 @@ final class AppState {
                 let pending = orphans.subtracting(removed).subtracting(transientBadgeFetcher.storesInUse)
                 guard !orphans.subtracting(removed).isEmpty else { break }
                 for identifier in pending {
+                    // A shared store's id comes back: a space's is the space's
+                    // id, so the next service added there claims the very store
+                    // this pass is waiting to remove. Ask again right before
+                    // each removal, and let go of one a service claims again.
+                    // Unreadable claims wait for the next round.
+                    guard let claimedNow = liveDataStoreIdentifiers() else { continue }
+                    if claimedNow.contains(identifier) {
+                        removed.insert(identifier)
+                        AppLogger.dataStore.info("Keeping data store \(identifier): a service claimed it again")
+                        continue
+                    }
                     do {
                         try await WKWebsiteDataStore.remove(forIdentifier: identifier)
                         removed.insert(identifier)
@@ -3501,15 +3515,23 @@ final class AppState {
         context.insert(workSpace)
 
         // Each space gets its own ServiceInstance — even for the same service URL —
-        // so cookies, sessions, and login state are fully isolated between spaces.
+        // and each space's services share that space's sign-in, as services
+        // added later do (see `ServiceAdding`). So the two spaces stay apart:
+        // personal Gmail and work Gmail are two accounts.
         for (index, entry) in DefaultSeed.personalServices.enumerated() {
-            let service = ServiceInstance(label: entry.label, url: entry.url, catalogEntryID: entry.catalogID)
+            let service = ServiceInstance(
+                label: entry.label, url: entry.url, catalogEntryID: entry.catalogID,
+                dataStoreIdentifier: ServiceAdding.sharedStore(forSpace: personalSpace.id)
+            )
             context.insert(service)
             context.insert(SpaceServiceLink(sortOrder: index, space: personalSpace, service: service))
         }
 
         for (index, entry) in DefaultSeed.workServices.enumerated() {
-            let service = ServiceInstance(label: entry.label, url: entry.url, catalogEntryID: entry.catalogID)
+            let service = ServiceInstance(
+                label: entry.label, url: entry.url, catalogEntryID: entry.catalogID,
+                dataStoreIdentifier: ServiceAdding.sharedStore(forSpace: workSpace.id)
+            )
             context.insert(service)
             context.insert(SpaceServiceLink(sortOrder: index, space: workSpace, service: service))
         }

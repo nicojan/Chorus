@@ -1,6 +1,31 @@
 import Foundation
 import SwiftData
 
+/// A service dragged out of its place into another space or the global
+/// group. It is confirmed before it happens, since a drop is easy to make by
+/// accident and the service takes its sign-in with it. Reorders within one
+/// list are not moves and are not confirmed.
+enum RailMove: Identifiable, Equatable {
+    case intoSpace(linkID: UUID, spaceID: UUID, before: UUID?)
+    case intoGlobal(linkID: UUID, before: UUID?)
+    case globalIntoSpace(serviceID: UUID, spaceID: UUID, before: UUID?)
+
+    var id: String {
+        switch self {
+        case .intoSpace(let link, let space, _): return "space-\(link)-\(space)"
+        case .intoGlobal(let link, _): return "global-\(link)"
+        case .globalIntoSpace(let service, let space, _): return "global-space-\(service)-\(space)"
+        }
+    }
+}
+
+/// The words of a move's confirmation.
+struct RailMovePrompt: Equatable {
+    let title: String
+    let message: String
+    let confirm: String
+}
+
 /// Global services and dividers, with the side effects the store edits in
 /// `RailEdits` leave to their caller: selection, badges, web views.
 extension AppState {
@@ -91,5 +116,72 @@ extension AppState {
     @discardableResult
     func reorderRail(_ orderedIDs: [UUID], in scope: RailScope) -> Bool {
         RailEdits.reorder(orderedIDs, in: scope, context: modelContainer.mainContext)
+    }
+
+    // MARK: - Moves that need a yes
+
+    /// The service a move is about.
+    private func moveSubject(_ move: RailMove) -> ServiceInstance? {
+        let context = modelContainer.mainContext
+        switch move {
+        case .intoSpace(let linkID, _, _), .intoGlobal(let linkID, _):
+            let links = (try? context.fetch(FetchDescriptor<SpaceServiceLink>())) ?? []
+            return links.first { $0.id == linkID }?.liveService
+        case .globalIntoSpace(let serviceID, _, _):
+            return try? context.fetch(FetchDescriptor<ServiceInstance>(predicate: #Predicate { $0.id == serviceID })).first
+        }
+    }
+
+    /// What the confirmation says: where the service goes, and that its
+    /// cookies go with it, naming any services it still shares them with.
+    func prompt(for move: RailMove) -> RailMovePrompt? {
+        guard let service = moveSubject(move) else { return nil }
+        let partners = signInPartners(of: service.id).map(\.label)
+        let shared = partners.isEmpty ? "" : " It still shares them with \(Self.listed(partners))."
+        let message = "\(service.label) keeps its sign-in, so its cookies come with it.\(shared)"
+        switch move {
+        case .intoSpace(_, let spaceID, _), .globalIntoSpace(_, let spaceID, _):
+            let spaces = (try? modelContainer.mainContext.fetch(FetchDescriptor<Space>(predicate: #Predicate { $0.id == spaceID }))) ?? []
+            guard let space = spaces.first else { return nil }
+            return RailMovePrompt(title: "Move \(service.label) to \(space.name)?", message: message, confirm: "Move")
+        case .intoGlobal:
+            return RailMovePrompt(
+                title: "Show \(service.label) in every space?",
+                message: message + " It leaves the spaces it is in now.",
+                confirm: "Show in Every Space"
+            )
+        }
+    }
+
+    /// "A", "A and B", "A, B and C".
+    nonisolated static func listed(_ names: [String]) -> String {
+        guard names.count > 1 else { return names.first ?? "" }
+        return names.dropLast().joined(separator: ", ") + " and " + (names.last ?? "")
+    }
+
+    /// Carries out a confirmed move. A service that was showing goes with the
+    /// view, as it does when moved by the menu into a new space.
+    @discardableResult
+    func performRailMove(_ move: RailMove) -> Bool {
+        guard let service = moveSubject(move) else { return false }
+        let serviceID = service.id
+        let wasSelected = selectedServiceID == serviceID
+        switch move {
+        case .intoSpace(let linkID, let spaceID, let before):
+            guard RailEdits.moveMembership(linkID, toSpace: spaceID, before: before, context: modelContainer.mainContext) else {
+                return false
+            }
+            // The new space may be muted when the old one was not.
+            refreshBadgeState(for: serviceID)
+            if wasSelected {
+                selectedSpaceID = spaceID
+                selectedServiceID = serviceID
+            }
+            return true
+        case .intoGlobal(_, let before):
+            return makeServiceGlobal(serviceID, before: before)
+        case .globalIntoSpace(_, let spaceID, let before):
+            return moveGlobalService(serviceID, toSpace: spaceID, before: before, follow: wasSelected)
+        }
     }
 }

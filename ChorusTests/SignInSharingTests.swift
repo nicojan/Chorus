@@ -24,22 +24,22 @@ final class SignInSharingTests: XCTestCase {
         let partner = ServiceInstance(label: "Gmail", url: "https://mail.google.com")
         let mine = UUID()
         XCTAssertEqual(
-            SignInSharing.newIdentifier(current: mine, sharingWith: partner, isSharedNow: false),
+            SignInSharing.newIdentifier(current: mine, target: partner.dataStoreIdentifier, isSharedNow: false),
             partner.dataStoreIdentifier
         )
         XCTAssertNil(
-            SignInSharing.newIdentifier(current: partner.dataStoreIdentifier, sharingWith: partner, isSharedNow: true),
+            SignInSharing.newIdentifier(current: partner.dataStoreIdentifier, target: partner.dataStoreIdentifier, isSharedNow: true),
             "already on the partner's store: nothing changes, and nobody is signed out"
         )
     }
 
     func testItsOwnGivesAFreshStoreOnlyWhenShared() {
         let current = UUID()
-        let fresh = SignInSharing.newIdentifier(current: current, sharingWith: nil, isSharedNow: true)
+        let fresh = SignInSharing.newIdentifier(current: current, target: nil, isSharedNow: true)
         XCTAssertNotNil(fresh)
         XCTAssertNotEqual(fresh, current, "leaving a shared store must not keep using it")
         XCTAssertNil(
-            SignInSharing.newIdentifier(current: current, sharingWith: nil, isSharedNow: false),
+            SignInSharing.newIdentifier(current: current, target: nil, isSharedNow: false),
             "a service on its own store keeps it, and its sign-in"
         )
     }
@@ -179,5 +179,120 @@ final class SignInSharingTests: XCTestCase {
         XCTAssertThrowsError(try SetupArchive.decode(try archive.encoded()))
         archive.sharedSignIns = [[0, 1, 2]]
         XCTAssertNoThrow(try SetupArchive.decode(try archive.encoded()))
+    }
+
+    // MARK: - Shared sign-ins by default
+
+    func testNewServicesShareTheirPlacesSignInUnlessKeptSeparate() {
+        let space = UUID()
+        XCTAssertEqual(ServiceAdding.store(for: .init(spaceID: space)), space, "a space's services share its store")
+        XCTAssertEqual(ServiceAdding.store(for: .init(spaceID: space, global: true)), ServiceAdding.globalStore)
+        let separate = ServiceAdding.store(for: .init(spaceID: space, separate: true))
+        XCTAssertNotEqual(separate, space)
+        XCTAssertNotEqual(separate, ServiceAdding.globalStore)
+        XCTAssertNotEqual(separate, ServiceAdding.store(for: .init(spaceID: space, separate: true)), "each separate one is its own")
+        XCTAssertTrue(SignInSharing.isSharedStore(space, spaceIDs: [space]))
+        XCTAssertTrue(SignInSharing.isSharedStore(ServiceAdding.globalStore, spaceIDs: []))
+        XCTAssertFalse(SignInSharing.isSharedStore(separate, spaceIDs: [space]))
+    }
+
+    func testSiteKeyMatchesACatalogEntryOrAHost() {
+        XCTAssertEqual(ServiceAdding.siteKey(catalogEntryID: "gmail", url: "https://x.example"), "catalog:gmail")
+        XCTAssertEqual(
+            ServiceAdding.siteKey(catalogEntryID: nil, url: "https://www.Notion.so/workspace"),
+            ServiceAdding.siteKey(catalogEntryID: nil, url: "https://notion.so")
+        )
+        XCTAssertNil(ServiceAdding.siteKey(catalogEntryID: nil, url: "not a url"))
+    }
+
+    /// A second copy of a site is only a question when the new one would land
+    /// on the same store as the first: the two would open one account.
+    func testASecondCopyIsFoundOnlyOnTheStoreItWouldShare() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let work = Space(name: "Work", emoji: "💼", sortOrder: 0)
+        let home = Space(name: "Home", emoji: "🏠", sortOrder: 1)
+        let gmail = ServiceInstance(label: "Gmail", url: "https://mail.google.com", catalogEntryID: "gmail",
+                                    dataStoreIdentifier: ServiceAdding.sharedStore(forSpace: work.id))
+        let ownSlack = ServiceInstance(label: "Slack", url: "https://slack.com")
+        [work, home].forEach(ctx.insert)
+        [gmail, ownSlack].forEach(ctx.insert)
+        try ctx.save()
+
+        let sameSpace = ServiceAdding.Destination(spaceID: work.id)
+        XCTAssertEqual(
+            ServiceAdding.sameSiteOnSharedStore(catalogEntryID: "gmail", url: "https://mail.google.com", destination: sameSpace, context: ctx)?.id,
+            gmail.id
+        )
+        XCTAssertNil(
+            ServiceAdding.sameSiteOnSharedStore(catalogEntryID: "gmail", url: "https://mail.google.com", destination: .init(spaceID: work.id, separate: true), context: ctx),
+            "keeping it separate is the answer already"
+        )
+        XCTAssertNil(
+            ServiceAdding.sameSiteOnSharedStore(catalogEntryID: "gmail", url: "https://mail.google.com", destination: .init(spaceID: home.id), context: ctx),
+            "another space's sign-in is another account"
+        )
+        XCTAssertNil(
+            ServiceAdding.sameSiteOnSharedStore(catalogEntryID: nil, url: "https://slack.com", destination: sameSpace, context: ctx),
+            "a Slack on its own store shares nothing with a new one"
+        )
+    }
+
+    func testPlacingANewServiceInASpaceOrInEverySpace() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let work = Space(name: "Work", emoji: "💼", sortOrder: 0)
+        ctx.insert(work)
+        try ctx.save()
+        let divider = try XCTUnwrap(RailEdits.addDivider(in: .space(work.id), after: nil, context: ctx))
+
+        let inSpace = ServiceInstance(label: "Docs", url: "https://docs.google.com",
+                                      dataStoreIdentifier: ServiceAdding.store(for: .init(spaceID: work.id)))
+        ctx.insert(inSpace)
+        XCTAssertTrue(ServiceAdding.place(inSpace, at: .init(spaceID: work.id), context: ctx))
+        let everywhere = ServiceInstance(label: "Calendar", url: "https://calendar.google.com")
+        ctx.insert(everywhere)
+        XCTAssertTrue(ServiceAdding.place(everywhere, at: .init(spaceID: work.id, global: true), context: ctx))
+        try ctx.save()
+
+        XCTAssertEqual(RailEdits.entries(in: .space(work.id), context: ctx).map(\.id).first, divider)
+        XCTAssertEqual(RailEdits.links(inSpace: work.id, context: ctx).compactMap(\.liveService?.id), [inSpace.id], "past the divider")
+        XCTAssertTrue(everywhere.isGlobalEffective)
+        XCTAssertTrue(RailEdits.links(inSpace: work.id, context: ctx).allSatisfy { $0.liveService?.id != everywhere.id }, "a global service has no link")
+        XCTAssertEqual(inSpace.dataStoreIdentifier, work.id)
+    }
+
+    // MARK: - Moving between spaces
+
+    func testMovingAMembershipKeepsTheServiceAndItsStore() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let work = Space(name: "Work", emoji: "💼", sortOrder: 0)
+        let home = Space(name: "Home", emoji: "🏠", sortOrder: 1)
+        let slack = ServiceInstance(label: "Slack", url: "https://slack.com", dataStoreIdentifier: work.id)
+        let mail = ServiceInstance(label: "Mail", url: "https://mail.example")
+        [work, home].forEach(ctx.insert)
+        [slack, mail].forEach(ctx.insert)
+        try ctx.save()
+        link(slack, to: work, order: 0, in: ctx)
+        link(mail, to: home, order: 0, in: ctx)
+        try ctx.save()
+        let linkID = try XCTUnwrap(RailEdits.links(inSpace: work.id, context: ctx).first?.id)
+        let mailLink = try XCTUnwrap(RailEdits.links(inSpace: home.id, context: ctx).first?.id)
+
+        XCTAssertTrue(RailEdits.moveMembership(linkID, toSpace: home.id, before: mailLink, context: ctx))
+
+        XCTAssertTrue(RailEdits.links(inSpace: work.id, context: ctx).isEmpty)
+        let order = RailEdits.links(inSpace: home.id, context: ctx).sorted { $0.sortOrder < $1.sortOrder }.compactMap(\.liveService?.label)
+        XCTAssertEqual(order, ["Slack", "Mail"])
+        XCTAssertEqual(slack.dataStoreIdentifier, work.id, "its cookies come with it")
+        XCTAssertFalse(RailEdits.moveMembership(linkID, toSpace: home.id, context: ctx), "already there")
+    }
+
+    func testListedNamesReadAsASentence() {
+        XCTAssertEqual(AppState.listed([]), "")
+        XCTAssertEqual(AppState.listed(["Gmail"]), "Gmail")
+        XCTAssertEqual(AppState.listed(["Gmail", "Drive"]), "Gmail and Drive")
+        XCTAssertEqual(AppState.listed(["Gmail", "Drive", "Docs"]), "Gmail, Drive and Docs")
     }
 }

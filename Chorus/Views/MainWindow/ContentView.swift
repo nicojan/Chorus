@@ -15,6 +15,12 @@ struct ContentView: View {
     /// How much desktop the window lets through. See `WindowGlassStyle`.
     @AppStorage(WindowGlassStyle.defaultsKey) private var glassStyleRaw = WindowGlassStyle.defaultStyle.rawValue
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The words for the move waiting on a yes. See `RailMove`.
+    private var pendingMovePrompt: RailMovePrompt? {
+        appState.pendingRailMove.flatMap { appState.prompt(for: $0) }
+    }
 
 
     var body: some View {
@@ -100,6 +106,27 @@ struct ContentView: View {
             }
             }
             .coveredWhenLocked()
+        }
+        // A service dragged into another space or the global group. Asked
+        // here, once, for every rail: the drop can come from any of them.
+        .confirmationDialog(
+            pendingMovePrompt?.title ?? "",
+            isPresented: Binding(
+                get: { appState.pendingRailMove != nil && pendingMovePrompt != nil },
+                set: { if !$0 { appState.pendingRailMove = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: appState.pendingRailMove
+        ) { move in
+            Button(pendingMovePrompt?.confirm ?? "Move") {
+                withAnimation(ChorusMotion.animation(ChorusMotion.reorder, reduceMotion: reduceMotion)) {
+                    _ = appState.performRailMove(move)
+                }
+                appState.pendingRailMove = nil
+            }
+            Button("Cancel", role: .cancel) { appState.pendingRailMove = nil }
+        } message: { _ in
+            Text(pendingMovePrompt?.message ?? "")
         }
         .sheet(isPresented: Binding(
             // Never over the store recovery sheet, which has to come first.

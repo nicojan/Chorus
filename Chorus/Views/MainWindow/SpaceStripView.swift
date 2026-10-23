@@ -28,6 +28,8 @@ struct SpaceStripView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
+    /// What any rail is dragging. See `RailDragState`.
+    private var drag: RailDragState { .shared }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @AppStorage(SpaceStripMetrics.defaultsKey) private var showsNames = true
@@ -39,10 +41,6 @@ struct SpaceStripView: View {
     /// cell's `.focused` so the arrow keys move relative to it.
     @FocusState private var focusedSpaceID: UUID?
 
-    /// The space being dragged, so the rows it crosses know what to move.
-    @State private var draggingSpaceID: UUID?
-    /// The divider being dragged. See `RailDividerView`.
-    @State private var draggingDividerID: UUID?
 
     /// The spaces and the dividers between them, as drawn.
     private var items: [RailItem] {
@@ -163,7 +161,7 @@ struct SpaceStripView: View {
         // Live reorder: the space moves as the pointer crosses other spaces,
         // and the order is saved as it goes. See `LiveReorder`.
         .onDrag {
-            draggingSpaceID = space.id
+            drag.spaceID = space.id
             return LiveReorder.itemProvider(for: space.id, type: LiveReorder.spaceType)
         } preview: {
             Text(space.emoji)
@@ -172,7 +170,7 @@ struct SpaceStripView: View {
                 .background(.ultraThickMaterial)
                 .clipShape(RoundedRectangle(cornerRadius: ChorusRadius.control))
         }
-        .liveReorderDrop(lanes(over: space.id))
+        .liveReorderDrop(lanes(over: space.id) + serviceLanes(into: space.id))
         .accessibilityAction(named: "Move up") { step(space.id, forward: false) }
         .accessibilityAction(named: "Move down") { step(space.id, forward: true) }
         .focusable()
@@ -301,13 +299,13 @@ struct SpaceStripView: View {
         let dividerID = divider.id
         return RailDividerView(
             dividerID: dividerID,
-            onDragStart: { draggingDividerID = dividerID },
+            onDragStart: { drag.dividerID = dividerID },
             onRemove: {
                 withAnimation(reorderAnimation) { _ = appState.removeDivider(dividerID) }
             },
             onMove: { step(dividerID, forward: $0) },
-            isDragging: draggingDividerID == dividerID,
-            onDragEnd: { draggingDividerID = nil }
+            isDragging: drag.dividerID == dividerID,
+            onDragEnd: { drag.dividerID = nil }
         )
         .padding(.horizontal, ChorusCard.railPadding)
         .liveReorderDrop(lanes(over: dividerID))
@@ -317,8 +315,29 @@ struct SpaceStripView: View {
     /// pointer, live. See `LiveReorder`.
     private func lanes(over target: UUID) -> [LiveReorderDropDelegate.Lane] {
         [
-            .init(type: LiveReorder.spaceType, draggingID: { draggingSpaceID }, move: { liveMove($0, over: target) }),
-            .init(type: LiveReorder.dividerType, draggingID: { draggingDividerID }, move: { liveMove($0, over: target) }),
+            .init(type: LiveReorder.spaceType, draggingID: { drag.spaceID }, move: { liveMove($0, over: target) }),
+            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: target) }),
+        ]
+    }
+
+    /// A service dragged from the bar beside the strip, or a global service
+    /// from the top of it, goes to the end of the space it is let go on, once
+    /// confirmed (see `RailMove`). A service already in that space is refused.
+    private func serviceLanes(into spaceID: UUID) -> [LiveReorderDropDelegate.Lane] {
+        [
+            .init(type: LiveReorder.serviceType, draggingID: { drag.linkID }, drop: { linkID in
+                let links = RailEdits.links(inSpace: spaceID, context: modelContext)
+                let all = (try? modelContext.fetch(FetchDescriptor<SpaceServiceLink>())) ?? []
+                guard let ends = all.first(where: { $0.id == linkID })?.liveEnds else { return false }
+                guard ends.space.id != spaceID else { return true }
+                guard !links.contains(where: { $0.liveService?.id == ends.service.id }) else { return false }
+                appState.pendingRailMove = .intoSpace(linkID: linkID, spaceID: spaceID, before: nil)
+                return true
+            }),
+            .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, drop: { serviceID in
+                appState.pendingRailMove = .globalIntoSpace(serviceID: serviceID, spaceID: spaceID, before: nil)
+                return true
+            }),
         ]
     }
 

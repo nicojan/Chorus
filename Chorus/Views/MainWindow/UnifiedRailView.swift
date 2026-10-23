@@ -47,6 +47,8 @@ struct UnifiedRailView: View {
     @Query private var allDividers: [RailDivider]
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
+    /// What any rail is dragging. See `RailDragState`.
+    private var drag: RailDragState { .shared }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Draws the focus ring only once the keyboard is in use. See
     /// `FocusVisibility`. Computed, not stored: a private stored property
@@ -81,15 +83,6 @@ struct UnifiedRailView: View {
     /// The all-services rail can show one service in more than one space, so
     /// focus follows the membership link rather than the shared service id.
     @FocusState private var focusedAllServicesLinkID: UUID?
-    /// The space being dragged in the all-services rail. See `LiveReorder`.
-    @State private var draggingSpaceID: UUID?
-    /// The service membership being dragged. See `LiveReorder`.
-    @State private var draggingLinkID: UUID?
-    /// The global service being dragged, by service id.
-    @State private var draggingGlobalID: UUID?
-    /// The divider being dragged. Set by its AppKit drag source as the drag
-    /// starts; see `RailDividerView`.
-    @State private var draggingDividerID: UUID?
 
     /// The horizontal bar is the top band: a 32 point header and 32 point tabs
     /// with 10 points clear above and below.
@@ -242,7 +235,7 @@ struct UnifiedRailView: View {
                 confirmingDelete = nil
             }
         } message: {
-            Text("This will permanently remove the service and all its data.")
+            Text(deleteMessage)
         }
         // Kept on the outside of the service dialog above rather than beside it:
         // two confirmation dialogs bound to one view can race when both are
@@ -426,7 +419,7 @@ struct UnifiedRailView: View {
         // service dropped on a heading moves into that space. See
         // `LiveReorder`.
         .onDrag {
-            draggingSpaceID = space.id
+            drag.spaceID = space.id
             return LiveReorder.itemProvider(for: space.id, type: LiveReorder.spaceType)
         } preview: {
             Text(space.emoji)
@@ -436,15 +429,15 @@ struct UnifiedRailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: ChorusRadius.control))
         }
         .liveReorderDrop([
-            .init(type: LiveReorder.spaceType, draggingID: { draggingSpaceID }, move: { liveMove($0, over: space.id, in: .spaces) }),
-            .init(type: LiveReorder.dividerType, draggingID: { draggingDividerID }, move: { liveMove($0, over: space.id, in: .spaces) }),
+            .init(type: LiveReorder.spaceType, draggingID: { drag.spaceID }, move: { liveMove($0, over: space.id, in: .spaces) }),
+            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: space.id, in: .spaces) }),
             .init(
                 type: LiveReorder.serviceType,
-                draggingID: { draggingLinkID },
+                draggingID: { drag.linkID },
                 move: { liveMoveLinkToTop($0, of: space) },
                 drop: { dropLinkAtTop($0, of: space) }
             ),
-            .init(type: LiveReorder.globalServiceType, draggingID: { draggingGlobalID }, drop: { dragged in
+            .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, drop: { dragged in
                 dropGlobal(dragged, into: space.id, before: orderedIDs(.space(space.id)).first)
             }),
         ])
@@ -479,8 +472,8 @@ struct UnifiedRailView: View {
         .help("\(space.name), empty")
         .accessibilityLabel("\(space.name), empty")
         .liveReorderDrop([
-            .init(type: LiveReorder.serviceType, draggingID: { draggingLinkID }, drop: { dropLinkAtTop($0, of: space) }),
-            .init(type: LiveReorder.globalServiceType, draggingID: { draggingGlobalID }, drop: { dropGlobal($0, into: space.id, before: nil) }),
+            .init(type: LiveReorder.serviceType, draggingID: { drag.linkID }, drop: { dropLinkAtTop($0, of: space) }),
+            .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, drop: { dropGlobal($0, into: space.id, before: nil) }),
         ])
     }
 
@@ -518,7 +511,7 @@ struct UnifiedRailView: View {
         )
         // Live reorder, within a space or into another one. See `LiveReorder`.
         .onDrag {
-            draggingLinkID = link.id
+            drag.linkID = link.id
             return LiveReorder.itemProvider(for: link.id, type: LiveReorder.serviceType)
         } preview: {
             ServiceDragPreview(service: service)
@@ -526,12 +519,12 @@ struct UnifiedRailView: View {
         .liveReorderDrop([
             .init(
                 type: LiveReorder.serviceType,
-                draggingID: { draggingLinkID },
+                draggingID: { drag.linkID },
                 move: { liveMove($0, over: link.id, in: .space(space.id)) },
                 drop: { dropLink($0, over: link, in: space) }
             ),
-            .init(type: LiveReorder.globalServiceType, draggingID: { draggingGlobalID }, drop: { dropGlobal($0, into: space.id, before: link.id) }),
-            .init(type: LiveReorder.dividerType, draggingID: { draggingDividerID }, move: { liveMove($0, over: link.id, in: .space(space.id)) }),
+            .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, drop: { dropGlobal($0, into: space.id, before: link.id) }),
+            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: link.id, in: .space(space.id)) }),
         ])
         .accessibilityAction(named: "Move up") { step(link.id, forward: false, in: .space(space.id)) }
         .accessibilityAction(named: "Move down") { step(link.id, forward: true, in: .space(space.id)) }
@@ -964,7 +957,7 @@ struct UnifiedRailView: View {
                         isEnabled: isSel, appState: appState)
             // Live reorder along the rail or the bar. See `LiveReorder`.
             .onDrag {
-                draggingLinkID = link.id
+                drag.linkID = link.id
                 return LiveReorder.itemProvider(for: link.id, type: LiveReorder.serviceType)
             } preview: {
                 ServiceDragPreview(service: service)
@@ -994,9 +987,9 @@ struct UnifiedRailView: View {
     private func memberLanes(for link: SpaceServiceLink) -> [LiveReorderDropDelegate.Lane] {
         guard let spaceID = link.liveSpace?.id else { return [] }
         return [
-            .init(type: LiveReorder.serviceType, draggingID: { draggingLinkID }, move: { liveMove($0, over: link.id, in: .space(spaceID)) }),
-            .init(type: LiveReorder.globalServiceType, draggingID: { draggingGlobalID }, drop: { dropGlobal($0, into: spaceID, before: link.id) }),
-            .init(type: LiveReorder.dividerType, draggingID: { draggingDividerID }, move: { liveMove($0, over: link.id, in: .space(spaceID)) }),
+            .init(type: LiveReorder.serviceType, draggingID: { drag.linkID }, move: { liveMove($0, over: link.id, in: .space(spaceID)) }),
+            .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, drop: { dropGlobal($0, into: spaceID, before: link.id) }),
+            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: link.id, in: .space(spaceID)) }),
         ]
     }
 
@@ -1035,15 +1028,15 @@ struct UnifiedRailView: View {
             }
         )
         .onDrag {
-            draggingGlobalID = service.id
+            drag.globalID = service.id
             return LiveReorder.itemProvider(for: service.id, type: LiveReorder.globalServiceType)
         } preview: {
             ServiceDragPreview(service: service)
         }
         .liveReorderDrop([
-            .init(type: LiveReorder.globalServiceType, draggingID: { draggingGlobalID }, move: { liveMove($0, over: service.id, in: .global) }),
-            .init(type: LiveReorder.serviceType, draggingID: { draggingLinkID }, drop: { dropLinkIntoGlobal($0, before: service.id) }),
-            .init(type: LiveReorder.dividerType, draggingID: { draggingDividerID }, move: { liveMove($0, over: service.id, in: .global) }),
+            .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, move: { liveMove($0, over: service.id, in: .global) }),
+            .init(type: LiveReorder.serviceType, draggingID: { drag.linkID }, drop: { dropLinkIntoGlobal($0, before: service.id) }),
+            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: service.id, in: .global) }),
         ])
         .accessibilityAction(named: "Move up") { step(service.id, forward: false, in: .global) }
         .accessibilityAction(named: "Move down") { step(service.id, forward: true, in: .global) }
@@ -1064,11 +1057,11 @@ struct UnifiedRailView: View {
             dividerID: dividerID,
             axis: scope == .spaces ? .vertical : axis,
             length: length,
-            onDragStart: { draggingDividerID = dividerID },
+            onDragStart: { drag.dividerID = dividerID },
             onRemove: { removeDivider(dividerID) },
             onMove: { step(dividerID, forward: $0, in: scope) },
-            isDragging: draggingDividerID == dividerID,
-            onDragEnd: { draggingDividerID = nil }
+            isDragging: drag.dividerID == dividerID,
+            onDragEnd: { drag.dividerID = nil }
         )
         .liveReorderDrop(dividerLanes(over: dividerID, in: scope))
     }
@@ -1078,7 +1071,7 @@ struct UnifiedRailView: View {
     /// lands where it is let go.
     private func dividerLanes(over dividerID: UUID, in scope: RailScope) -> [LiveReorderDropDelegate.Lane] {
         let divider = LiveReorderDropDelegate.Lane(
-            type: LiveReorder.dividerType, draggingID: { draggingDividerID }, move: { liveMove($0, over: dividerID, in: scope) }
+            type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: dividerID, in: scope) }
         )
         switch scope {
         case .space(let spaceID):
@@ -1086,22 +1079,22 @@ struct UnifiedRailView: View {
                 divider,
                 .init(
                     type: LiveReorder.serviceType,
-                    draggingID: { draggingLinkID },
+                    draggingID: { drag.linkID },
                     move: { liveMove($0, over: dividerID, in: scope) },
                     drop: { dropLinkOverDivider($0, dividerID: dividerID, spaceID: spaceID) }
                 ),
-                .init(type: LiveReorder.globalServiceType, draggingID: { draggingGlobalID }, drop: { dropGlobal($0, into: spaceID, before: dividerID) }),
+                .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, drop: { dropGlobal($0, into: spaceID, before: dividerID) }),
             ]
         case .global:
             return [
                 divider,
-                .init(type: LiveReorder.globalServiceType, draggingID: { draggingGlobalID }, move: { liveMove($0, over: dividerID, in: scope) }),
-                .init(type: LiveReorder.serviceType, draggingID: { draggingLinkID }, drop: { dropLinkIntoGlobal($0, before: dividerID) }),
+                .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, move: { liveMove($0, over: dividerID, in: scope) }),
+                .init(type: LiveReorder.serviceType, draggingID: { drag.linkID }, drop: { dropLinkIntoGlobal($0, before: dividerID) }),
             ]
         case .spaces:
             return [
                 divider,
-                .init(type: LiveReorder.spaceType, draggingID: { draggingSpaceID }, move: { liveMove($0, over: dividerID, in: scope) }),
+                .init(type: LiveReorder.spaceType, draggingID: { drag.spaceID }, move: { liveMove($0, over: dividerID, in: scope) }),
             ]
         }
     }
@@ -1421,6 +1414,18 @@ struct UnifiedRailView: View {
         }
     }
 
+    /// What deleting the service in `confirmingDelete` removes. A sign-in it
+    /// shares stays for the services still using it.
+    private var deleteMessage: String {
+        guard let service = confirmingDelete else { return "" }
+        let partners = appState.signInPartners(of: service.id).map(\.label)
+        guard !partners.isEmpty else {
+            return "This will permanently remove the service and all its data."
+        }
+        let use = partners.count == 1 ? "uses" : "use"
+        return "This will permanently remove the service. Its sign-in stays, since \(AppState.listed(partners)) still \(use) it."
+    }
+
     // MARK: - Mutations
     //
     // Everything below moved across from `ServiceSidebarView` unchanged. The
@@ -1656,22 +1661,20 @@ struct UnifiedRailView: View {
 
     /// Released in a space: a global service moves into it, before `beforeID`
     /// or at the end, and stops being global.
-    /// A global service that was showing goes along with the view, as a
-    /// service dragged between spaces does.
+    /// Released in a space: a global service moves into it, once confirmed.
+    /// One that was showing goes along with the view.
     private func dropGlobal(_ serviceID: UUID, into spaceID: UUID, before beforeID: UUID?) -> Bool {
-        let follow = selectedServiceID == serviceID
-        return withAnimation(reorderAnimation) {
-            appState.moveGlobalService(serviceID, toSpace: spaceID, before: beforeID, follow: follow)
-        }
+        appState.pendingRailMove = .globalIntoSpace(serviceID: serviceID, spaceID: spaceID, before: beforeID)
+        return true
     }
 
     /// Released in the global group: a space's service becomes global, before
-    /// `beforeID` or at the end of the group. Its other memberships go too.
+    /// `beforeID` or at the end of the group, once confirmed. Its other
+    /// memberships go too.
     private func dropLinkIntoGlobal(_ linkID: UUID, before beforeID: UUID?) -> Bool {
-        guard let serviceID = allLinks.first(where: { $0.id == linkID })?.liveService?.id else { return false }
-        return withAnimation(reorderAnimation) {
-            appState.makeServiceGlobal(serviceID, before: beforeID)
-        }
+        guard allLinks.contains(where: { $0.id == linkID && $0.liveService != nil }) else { return false }
+        appState.pendingRailMove = .intoGlobal(linkID: linkID, before: beforeID)
+        return true
     }
 
     /// Adds a divider at the end of a list, from a + button's menu.
@@ -1688,124 +1691,35 @@ struct UnifiedRailView: View {
     }
 
     /// Released over a row: a service from another space moves into this one
-    /// at that row. `placeService` keeps the membership and its data, and
-    /// refuses a second copy of a service in one space, which reports the
-    /// drop as not taken.
+    /// at that row, once confirmed (see `RailMove`). Within its own space the
+    /// live move has already put it there.
     private func dropLink(_ dragged: UUID, over target: SpaceServiceLink, in space: Space) -> Bool {
-        guard let source = allLinks.first(where: { $0.id == dragged })?.liveSpace else { return false }
-        guard source.id != space.id else { return true }
-        return moveLinkAcrossSpaces(dragged, into: space, relativeTo: target)
+        requestMoveIntoSpace(dragged, spaceID: space.id, before: target.id)
     }
 
-    /// Released over a divider in another space: the service moves into that
-    /// space where the divider is. Within its own space the live move has
-    /// already put it there.
+    /// Released over a divider in another space: as over a row, at the divider.
     private func dropLinkOverDivider(_ dragged: UUID, dividerID: UUID, spaceID: UUID) -> Bool {
-        guard let source = allLinks.first(where: { $0.id == dragged })?.liveSpace else { return false }
-        guard source.id != spaceID else { return true }
-        guard let space = spaces.first(where: { $0.modelContext != nil && $0.id == spaceID }) else { return false }
-        return moveLinkAcrossSpaces(dragged, into: space, relativeToID: dividerID)
+        requestMoveIntoSpace(dragged, spaceID: spaceID, before: dividerID)
     }
 
     /// Released over a space's heading or its empty slot: a service from
-    /// another space goes to the top of this one.
+    /// another space goes to the top of this one, once confirmed.
     private func dropLinkAtTop(_ dragged: UUID, of space: Space) -> Bool {
-        guard let source = allLinks.first(where: { $0.id == dragged })?.liveSpace else { return false }
-        guard source.id != space.id else { return true }
-        return moveLinkAcrossSpaces(dragged, into: space, relativeTo: links(in: space.id).first)
+        requestMoveIntoSpace(dragged, spaceID: space.id, before: orderedIDs(.space(space.id)).first)
     }
 
-    /// Moves a membership into another space and brings its badge up to date,
-    /// since the new space may be muted when the old one was not.
-    private func moveLinkAcrossSpaces(_ dragged: UUID, into space: Space, relativeTo target: SpaceServiceLink?) -> Bool {
-        moveLinkAcrossSpaces(dragged, into: space, relativeToID: target?.id)
-    }
-
-    private func moveLinkAcrossSpaces(_ dragged: UUID, into space: Space, relativeToID targetID: UUID?) -> Bool {
-        let serviceID = allLinks.first(where: { $0.id == dragged })?.liveService?.id
-        let moved = placeService(droppedLinkID: dragged, in: space, relativeTo: targetID, placement: .before)
-        if moved, let serviceID {
-            appState.refreshBadgeState(for: serviceID)
-        }
-        return moved
-    }
-
-    /// Reorders a membership inside one group or repoints it into another. A
-    /// cross-space drop keeps the service instance and its web data intact.
-    /// When the service is already a member of the target space the drop is
-    /// rejected, because two identical links in one space are invalid.
-    @discardableResult
-    private func placeService(
-        droppedLinkID: UUID,
-        in targetSpace: Space,
-        relativeTo targetID: UUID?,
-        placement: ServiceReorderPlacement
-    ) -> Bool {
-        guard let droppedLink = allLinks.first(where: { $0.id == droppedLinkID }),
-              let droppedEnds = droppedLink.liveEnds,
-              targetSpace.modelContext != nil
-        else { return false }
-
-        let sourceSpace = droppedEnds.space
-        let service = droppedEnds.service
-
-        if sourceSpace.id != targetSpace.id,
-           links(in: targetSpace.id).contains(where: { $0.liveService?.id == service.id }) {
-            return false
-        }
-
-        // The target's rows and dividers together, so the drop lands between
-        // the same neighbours it was let go between.
-        guard let reorderedIDs = ServicePlacement.orderedIDs(
-            orderedIDs(.space(targetSpace.id)),
-            moving: droppedLink.id,
-            relativeTo: targetID,
-            placement: placement
-        ) else { return false }
-
-        if sourceSpace.id == targetSpace.id {
-            return appState.reorderRail(reorderedIDs, in: .space(targetSpace.id))
-        }
-
-        return commitServicePlacement(
-            droppedLink: droppedLink,
-            service: service,
-            sourceSpace: sourceSpace,
-            targetSpace: targetSpace,
-            orderedTargetIDs: reorderedIDs
-        )
-    }
-
-    private func commitServicePlacement(
-        droppedLink: SpaceServiceLink,
-        service: ServiceInstance,
-        sourceSpace: Space,
-        targetSpace: Space,
-        orderedTargetIDs: [UUID]
-    ) -> Bool {
-        let wasSelected = selectedSpaceID == sourceSpace.id && selectedServiceID == service.id
-
-        // The source keeps a gap where the link was, which the order does not
-        // mind. The target is renumbered whole, rows and dividers, with the
-        // moved link numbered directly: whether a fetch sees its new space
-        // before the save should not decide where it lands.
-        droppedLink.space = targetSpace
-        RailEdits.applyOrder(
-            orderedTargetIDs,
-            in: .space(targetSpace.id),
-            context: modelContext,
-            extra: (droppedLink.id, { droppedLink.sortOrder = $0 })
-        )
-
-        guard save("move service to space") else { return false }
+    /// Asks to move a membership into another space. A drop in its own space
+    /// is taken and needs nothing more; one into a space that already holds
+    /// the service is refused, as two links to one service there are invalid.
+    private func requestMoveIntoSpace(_ dragged: UUID, spaceID: UUID, before beforeID: UUID?) -> Bool {
+        guard let ends = allLinks.first(where: { $0.id == dragged })?.liveEnds else { return false }
+        guard ends.space.id != spaceID else { return true }
+        guard !links(in: spaceID).contains(where: { $0.liveService?.id == ends.service.id }) else { return false }
         // Drop the keyboard focus before the cell is recreated in the new
         // group. Holding it on the same link id is what left a ring on the
         // moved icon after another service was selected.
         focusedAllServicesLinkID = nil
-        if wasSelected {
-            selectedSpaceID = targetSpace.id
-            selectedServiceID = service.id
-        }
+        appState.pendingRailMove = .intoSpace(linkID: dragged, spaceID: spaceID, before: beforeID)
         return true
     }
 }

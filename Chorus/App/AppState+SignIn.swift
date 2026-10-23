@@ -24,18 +24,22 @@ enum SignInSharing {
     }
 
     /// The store a service should use after the change: a fresh one for
-    /// "its own" (nil), or the chosen service's. Nil when nothing would
-    /// change, so the caller leaves the service and its web view alone.
-    static func newIdentifier(
-        current: UUID,
-        sharingWith partner: ServiceInstance?,
-        isSharedNow: Bool
-    ) -> UUID? {
-        if let partner {
-            return partner.dataStoreIdentifier == current ? nil : partner.dataStoreIdentifier
+    /// "its own" (nil), or the chosen store, a space's or another service's.
+    /// Nil when nothing would change, so the caller leaves the service and its
+    /// web view alone.
+    static func newIdentifier(current: UUID, target: UUID?, isSharedNow: Bool) -> UUID? {
+        if let target {
+            return target == current ? nil : target
         }
         // Already its own: keep it, and keep the sign-in it has.
         return isSharedNow ? UUID() : nil
+    }
+
+    /// Whether a store is one of the shared ones new services join: a space's
+    /// (its id) or the global one. A service on one is sharing even before
+    /// anything else joins it. See `ServiceAdding`.
+    static func isSharedStore(_ store: UUID, spaceIDs: Set<UUID>) -> Bool {
+        store == ServiceAdding.globalStore || spaceIDs.contains(store)
     }
 }
 
@@ -48,28 +52,26 @@ extension AppState {
         return SignInSharing.partners(of: service, among: services)
     }
 
-    /// Points a service at another service's sign-in, or back at one of its
-    /// own (`partnerID` nil). Either way the service starts on a store it has
-    /// not used, so it is signed out of the session it had, and its web view
-    /// is rebuilt on the new store.
+    /// Points a service at another store, a space's shared one or another
+    /// service's (`target`), or back at one of its own (`target` nil). Either
+    /// way the service starts on a store it has not used, so it is signed out
+    /// of the session it had, and its web view is rebuilt on the new store.
     ///
     /// The store it leaves is removed only when no other service still uses
     /// it; `markDataStoreOrphaned` checks that after the save.
     @discardableResult
-    func changeSignIn(for serviceID: UUID, sharingWith partnerID: UUID?) -> Bool {
+    func changeSignIn(for serviceID: UUID, toStore target: UUID?) -> Bool {
         let context = modelContainer.mainContext
         let services = (try? context.fetch(FetchDescriptor<ServiceInstance>())) ?? []
         guard let service = services.first(where: { $0.id == serviceID }),
               service.nativeAppBundleID == nil
         else { return false }
-        let partner = partnerID.flatMap { id in
-            services.first { $0.id == id && $0.modelContext != nil && $0.nativeAppBundleID == nil }
-        }
-        if partnerID != nil && partner == nil { return false }
+        let spaceIDs = Set(((try? context.fetch(FetchDescriptor<Space>())) ?? []).map(\.id))
 
         let previous = service.dataStoreIdentifier
         let isShared = !SignInSharing.partners(of: service, among: services).isEmpty
-        guard let next = SignInSharing.newIdentifier(current: previous, sharingWith: partner, isSharedNow: isShared) else {
+            || SignInSharing.isSharedStore(previous, spaceIDs: spaceIDs)
+        guard let next = SignInSharing.newIdentifier(current: previous, target: target, isSharedNow: isShared) else {
             return true
         }
 

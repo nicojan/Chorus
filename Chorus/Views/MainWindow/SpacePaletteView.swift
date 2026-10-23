@@ -69,16 +69,14 @@ struct SpacePaletteView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
+    /// What any rail is dragging. See `RailDragState`.
+    private var drag: RailDragState { .shared }
 
     /// The row the keyboard is on. Separate from `selectedSpaceID`, which only
     /// changes when a row is actually picked — arrowing through the list should
     /// not switch spaces underneath the palette.
     @State private var highlightedIndex = 0
     @FocusState private var isFocused: Bool
-    /// The space being dragged, so the rows it crosses know what to move.
-    @State private var draggingSpaceID: UUID?
-    /// The divider being dragged. See `RailDividerView`.
-    @State private var draggingDividerID: UUID?
 
     /// The spaces and the dividers between them, as drawn. The keyboard walks
     /// `spaces` alone: a divider is not somewhere to go.
@@ -169,7 +167,7 @@ struct SpacePaletteView: View {
         }
         // Live reorder, as in the strip. See `LiveReorder`.
         .onDrag {
-            draggingSpaceID = space.id
+            drag.spaceID = space.id
             return LiveReorder.itemProvider(for: space.id, type: LiveReorder.spaceType)
         } preview: {
             Text(space.emoji)
@@ -307,13 +305,13 @@ struct SpacePaletteView: View {
         let dividerID = divider.id
         return RailDividerView(
             dividerID: dividerID,
-            onDragStart: { draggingDividerID = dividerID },
+            onDragStart: { drag.dividerID = dividerID },
             onRemove: {
                 withAnimation(reorderAnimation) { _ = appState.removeDivider(dividerID) }
             },
             onMove: { step(dividerID, forward: $0) },
-            isDragging: draggingDividerID == dividerID,
-            onDragEnd: { draggingDividerID = nil }
+            isDragging: drag.dividerID == dividerID,
+            onDragEnd: { drag.dividerID = nil }
         )
         .liveReorderDrop(lanes(over: dividerID))
     }
@@ -322,8 +320,8 @@ struct SpacePaletteView: View {
     /// pointer, live. See `LiveReorder`.
     private func lanes(over target: UUID) -> [LiveReorderDropDelegate.Lane] {
         [
-            .init(type: LiveReorder.spaceType, draggingID: { draggingSpaceID }, move: { liveMove($0, over: target) }),
-            .init(type: LiveReorder.dividerType, draggingID: { draggingDividerID }, move: { liveMove($0, over: target) }),
+            .init(type: LiveReorder.spaceType, draggingID: { drag.spaceID }, move: { liveMove($0, over: target) }),
+            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: target) }),
         ]
     }
 

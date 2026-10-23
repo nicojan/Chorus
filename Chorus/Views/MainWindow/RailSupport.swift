@@ -257,6 +257,24 @@ enum LiveReorder {
     }
 }
 
+/// What is being dragged in any rail, shared by all of them. A rail row only
+/// learns what is being dragged from here: the payload is an id under a
+/// Chorus type, read as the drag starts rather than through a loader callback
+/// (see `LiveReorder.itemProvider`). Keeping it per view meant a service
+/// dragged from the hybrid bar could not land in the space strip beside it,
+/// which is a different view that never saw the drag start.
+@MainActor
+@Observable
+final class RailDragState {
+    static let shared = RailDragState()
+    var linkID: UUID?
+    var globalID: UUID?
+    var dividerID: UUID?
+    var spaceID: UUID?
+
+    private init() {}
+}
+
 /// The drop side of `LiveReorder`, put on each row. A row lists the kinds of
 /// drag it takes, one `Lane` each: a space's heading in the all-services rail
 /// takes a space (to reorder spaces) and a service (to move it into that

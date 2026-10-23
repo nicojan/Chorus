@@ -164,6 +164,19 @@ enum RailEdits {
         return context.saveOrRollBack("make service global")
     }
 
+    /// Puts a new service, not yet linked anywhere, at the end of the global
+    /// group. A group starting over drops any dividers left behind, as
+    /// `makeGlobal` does. Does not save.
+    static func appendGlobal(_ service: ServiceInstance, context: ModelContext) {
+        var group = entries(in: .global, context: context).filter { $0.id != service.id }
+        if !group.contains(where: { !$0.isDivider }) {
+            for divider in dividers(in: .global, context: context) { context.delete(divider) }
+            group = []
+        }
+        service.isGlobal = true
+        service.globalSortOrder = RailOrder.nextOrder(after: group.map(\.sortOrder))
+    }
+
     /// Moves a global service into a space, before `beforeID` (a link or
     /// divider of that space) or at the end. It stops being global.
     @discardableResult
@@ -205,6 +218,42 @@ enum RailEdits {
             )
         }
         return context.saveOrRollBack("move global service into space")
+    }
+
+    /// Moves a membership into another space, before `beforeID` (a link or
+    /// divider there) or at the end. The service and its store are kept; only
+    /// the link is repointed, so it never drops to zero links and is never
+    /// reaped. Refused when the service is already in that space, since two
+    /// links to one service in a space are invalid.
+    @discardableResult
+    static func moveMembership(
+        _ linkID: UUID,
+        toSpace spaceID: UUID,
+        before beforeID: UUID? = nil,
+        context: ModelContext
+    ) -> Bool {
+        let allLinks = (try? context.fetch(FetchDescriptor<SpaceServiceLink>())) ?? []
+        guard let link = allLinks.first(where: { $0.id == linkID }),
+              let ends = link.liveEnds, ends.space.id != spaceID,
+              let target = try? context.fetch(FetchDescriptor<Space>(predicate: #Predicate { $0.id == spaceID })).first
+        else { return false }
+        guard !allLinks.contains(where: { $0.liveEnds?.space.id == spaceID && $0.liveEnds?.service.id == ends.service.id }) else {
+            return false
+        }
+
+        let list = entries(in: .space(spaceID), context: context)
+        let order = RailOrder.nextOrder(after: list.map(\.sortOrder))
+        link.space = target
+        link.sortOrder = order
+        if let beforeID {
+            applyOrder(
+                placing(linkID, before: beforeID, in: list.map(\.id)),
+                in: .space(spaceID),
+                context: context,
+                extra: (linkID, { link.sortOrder = $0 })
+            )
+        }
+        return context.saveOrRollBack("move service to space")
     }
 
     // MARK: - Dividers

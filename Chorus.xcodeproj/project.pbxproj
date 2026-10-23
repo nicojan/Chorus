@@ -76,6 +76,7 @@
 		BAA5421430BDF6F9B918B7B5 /* WebViewPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608B27F538D778C6FC4B1697 /* WebViewPool.swift */; };
 		BAEE46A4791ABB6963914A5D /* NativeAppSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06F91EDD3C2858890FA0B343 /* NativeAppSupport.swift */; };
 		BD6B6CD0E903780B610BD6B5 /* StoreRecoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E05727F83BFEFB338D97E4DF /* StoreRecoveryView.swift */; };
+		C0852A818DF6C7A869CD2B42 /* ServiceAdding.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC87946B5AEAD323DA191E29 /* ServiceAdding.swift */; };
 		C14E7A689411E8DCCC20ED74 /* fanboy-annoyance.json in Resources */ = {isa = PBXBuildFile; fileRef = 0D9CBE47687FB4FF2EF6BED5 /* fanboy-annoyance.json */; };
 		C1E4CE7879BB117DBA721C35 /* SpaceStripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 537DF7ABA3D6DED64273776A /* SpaceStripView.swift */; };
 		C4ADA7C24E806E00FF4709D1 /* ChorusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBA2B8A19B41207F66E51CC3 /* ChorusTests.swift */; };
@@ -207,6 +208,7 @@
 		E88CC47CBB66B4749ACDC068 /* AppLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogger.swift; sourceTree = "<group>"; };
 		EA17C93CEDF437318D536482 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		EB2C3D766E33A238E3561B34 /* SetupArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupArchive.swift; sourceTree = "<group>"; };
+		EC87946B5AEAD323DA191E29 /* ServiceAdding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceAdding.swift; sourceTree = "<group>"; };
 		ECCC4A3133903E40BFB42AA6 /* AddServiceSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddServiceSheet.swift; sourceTree = "<group>"; };
 		F8D1ECB45C649A2DC43CECD5 /* RailItems.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailItems.swift; sourceTree = "<group>"; };
 		FBA2B8A19B41207F66E51CC3 /* ChorusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChorusTests.swift; sourceTree = "<group>"; };
@@ -277,6 +279,7 @@
 				3BEC6FCF1B60E1B9CD89A3A2 /* NotificationManager.swift */,
 				A81455BBBD65D1115E9A8DA3 /* OutsideLinkDefault.swift */,
 				3E445F3C06431DE77892E682 /* RailEdits.swift */,
+				EC87946B5AEAD323DA191E29 /* ServiceAdding.swift */,
 				E30F23AFD0B5D81AF103BF37 /* ServiceCatalog.swift */,
 				EB2C3D766E33A238E3561B34 /* SetupArchive.swift */,
 				CBBF69E002BB39BB6EFF9BDB /* UserScriptManager.swift */,
@@ -630,6 +633,7 @@
 				96AB65EE0864CCD84279C86D /* RailItems.swift in Sources */,
 				E8288CD202E937B4B6087D67 /* RailOrder.swift in Sources */,
 				78C80EEE6E3E6F9D2DB819D5 /* RailSupport.swift in Sources */,
+				C0852A818DF6C7A869CD2B42 /* ServiceAdding.swift in Sources */,
 				C65C95AB514FF50CEE9A75D6 /* ServiceCatalog.swift in Sources */,
 				2D9A102388157D9B3C660F70 /* ServiceCatalogEntry.swift in Sources */,
 				D861B394A60C4CD2F47CF8EA /* ServiceHealth.swift in Sources */,
