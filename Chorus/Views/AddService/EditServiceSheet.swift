@@ -50,6 +50,10 @@ struct EditServiceSheet: View {
     /// to a launcher: name, mute and badge.
     private var nativeBundleID: String? { service.nativeAppBundleID }
 
+    /// How tall the settings may grow before they scroll: room for a short
+    /// sheet to show whole, while a long one fits a 13-inch screen.
+    static let settingsMaxHeight: CGFloat = 460
+
     private var defaultCSS: String {
         ServiceCSSDefaults.css(forCatalogID: service.catalogEntryID) ?? ""
     }
@@ -68,25 +72,31 @@ struct EditServiceSheet: View {
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Name")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    TextField("Service name", text: $label)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityLabel("Service name")
-                }
+            // The settings scroll; the title row and Save stay put. A web
+            // service's settings ran past the bottom of a laptop screen, and the
+            // whole sheet was one long column with Save under the fold.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Name")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        TextField("Service name", text: $label)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityLabel("Service name")
+                    }
 
-                if let nativeBundleID {
-                    nativeAppRow(bundleID: nativeBundleID)
-                    Divider()
-                    notificationsSection
-                } else {
-                    webSettings
+                    if let nativeBundleID {
+                        nativeAppRow(bundleID: nativeBundleID)
+                        Divider()
+                        notificationsSection
+                    } else {
+                        webSettings
+                    }
                 }
+                .padding(20)
             }
-            .padding(20)
+            .frame(maxHeight: Self.settingsMaxHeight)
 
             Divider()
 

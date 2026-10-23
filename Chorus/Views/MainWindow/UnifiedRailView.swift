@@ -255,7 +255,7 @@ struct UnifiedRailView: View {
                 confirmingDeleteSpace = nil
             }
         } message: {
-            Text("Services in this space won't be deleted, but the space will be removed.")
+            Text(AppState.deleteSpaceMessage(goingWithIt: confirmingDeleteSpace.map { appState.servicesOnlyIn(space: $0.id).map(\.label).sorted() } ?? []))
         }
     }
 
@@ -1309,8 +1309,14 @@ struct UnifiedRailView: View {
         Button("Show in Every Space") {
             withAnimation(reorderAnimation) { _ = appState.makeServiceGlobal(service.id) }
         }
-        Button("Remove from this space") {
-            removeFromSpace(link: link)
+        // Only when it is in another space too. In its only space, removing it
+        // deletes the service and its sign-in, which is what Delete does,
+        // except Delete asks first; offering both read as two names for one
+        // thing, one of them without the question.
+        if memberships(of: service) > 1 {
+            Button("Remove from this space") {
+                removeFromSpace(link: link)
+            }
         }
         Divider()
         addDividerButton(after: link.id, in: link.liveSpace.map { .space($0.id) })
@@ -1456,6 +1462,12 @@ struct UnifiedRailView: View {
     /// waiting for the next poll tick.
     private func syncBadge(for service: ServiceInstance) {
         appState.refreshBadgeState(for: service.id)
+    }
+
+    /// How many spaces a service is in, read from the link query rather than
+    /// the inverse relationship, which can be stale.
+    private func memberships(of service: ServiceInstance) -> Int {
+        allLinks.compactMap(\.liveEnds).filter { $0.service.id == service.id }.count
     }
 
     /// Spaces the service can be moved into: every space except the ones it's

@@ -75,7 +75,7 @@ struct SpaceStripView: View {
                     confirmingDeleteSpace = nil
                 }
             } message: {
-                Text("Services in this space won't be deleted, but the space will be removed.")
+                Text(AppState.deleteSpaceMessage(goingWithIt: confirmingDeleteSpace.map { appState.servicesOnlyIn(space: $0.id).map(\.label).sorted() } ?? []))
             }
     }
 

@@ -323,4 +323,11 @@ final class SignInSharingTests: XCTestCase {
         XCTAssertFalse(ServiceAdding.isChat(catalogEntryID: nil, url: "https://nothing-chat.example"))
         XCTAssertNotNil(chat, "the catalog has chat services to test against")
     }
+
+    /// Deleting a space names what goes with it; "won't be deleted" was untrue.
+    func testDeleteSpaceMessageNamesWhatGoesWithIt() {
+        XCTAssertEqual(AppState.deleteSpaceMessage(goingWithIt: []), "Its services are in other spaces too, so they stay there.")
+        XCTAssertTrue(AppState.deleteSpaceMessage(goingWithIt: ["Gmail"]).hasPrefix("Gmail is in no other space, so deleting it deletes it too."))
+        XCTAssertTrue(AppState.deleteSpaceMessage(goingWithIt: ["Drive", "Gmail"]).hasPrefix("Drive and Gmail are in no other space, so deleting it deletes them too."))
+    }
 }

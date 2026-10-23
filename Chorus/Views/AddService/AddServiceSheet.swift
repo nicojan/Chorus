@@ -17,11 +17,10 @@ struct AddServiceSheet: View {
     @State private var showInEverySpace = false
     /// Give the new service its own sign-in instead of the shared one.
     @State private var keepSignInSeparate = false
-    /// A service waiting on the "already here" question, and the name of the
-    /// one it would share an account with.
-    @State private var pendingAdd: PendingAdd?
-    @State private var duplicateLabel = ""
-    /// Why the last add failed, shown under the options.
+    /// The service picked on the first page, now being placed on the second.
+    /// Nil while still picking. See `AddServicePlacementPage`.
+    @State private var configuring: PendingAdd?
+    /// Why the last add failed, shown on the second page.
     @State private var addError: String?
 
     enum AddServiceTab: String, CaseIterable {
@@ -40,59 +39,82 @@ struct AddServiceSheet: View {
             header
             Divider()
 
-            Picker("", selection: $selectedTab) {
-                ForEach(AddServiceTab.allCases, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
-                }
-            }
-            .pickerStyle(.segmented)
-            .accessibilityLabel("Add service by")
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-
-            if !AppCapabilities.passkeysSupported {
-                passkeyNotice
-            }
-
-            switch selectedTab {
-            case .catalog:
-                catalogContent
-            case .custom:
-                customURLContent
-            case .macApp:
-                macAppContent
-            }
-
-            Divider()
-            placementOptions
-        }
-        .frame(width: 520, height: 520)
-        .alert(
-            "\(duplicateLabel) already uses this sign-in",
-            isPresented: Binding(
-                get: { pendingAdd != nil },
-                set: { if !$0 { pendingAdd = nil } }
-            ),
-            presenting: pendingAdd
-        ) { add in
-            Button("Keep Separate") { make(add, separate: true) }
-            if !ServiceAdding.isChat(catalogEntryID: add.catalogEntryID, url: add.url) {
-                Button("Share Sign-In") { make(add, separate: false) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { add in
-            if ServiceAdding.isChat(catalogEntryID: add.catalogEntryID, url: add.url) {
-                Text("A second \(duplicateLabel) on the same sign-in would open the same account, and the two would compete for it. Keep this one's sign-in separate to use another account.")
+            if let add = configuring {
+                placementPage(for: add)
             } else {
-                Text("A second \(duplicateLabel) on the same sign-in would open the same account. To use another account, keep this one's sign-in separate.")
+                pickingPage
             }
         }
+        .frame(width: 520, height: 480)
         .onAppear {
             if let tab = appState.pendingAddServiceTab {
                 selectedTab = tab
                 appState.pendingAddServiceTab = nil
             }
         }
+    }
+
+    /// The first page: find the service, in the catalog, by address, or as a
+    /// Mac app.
+    @ViewBuilder
+    private var pickingPage: some View {
+        Picker("", selection: $selectedTab) {
+            ForEach(AddServiceTab.allCases, id: \.self) { tab in
+                Text(tab.rawValue).tag(tab)
+            }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityLabel("Add service by")
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+
+        if !AppCapabilities.passkeysSupported {
+            passkeyNotice
+        }
+
+        switch selectedTab {
+        case .catalog:
+            catalogContent
+        case .custom:
+            customURLContent
+        case .macApp:
+            macAppContent
+        }
+    }
+
+    /// The second page: where the picked service goes and whose sign-in it
+    /// uses, worked out from the store it would join.
+    private func placementPage(for add: PendingAdd) -> some View {
+        let store = ServiceAdding.store(for: ServiceAdding.Destination(spaceID: spaceID, global: showInEverySpace))
+        let sharers = ServiceAdding.services(on: store, context: modelContext).map(\.label).sorted()
+        let sameSite = add.isMacApp ? nil : ServiceAdding.sameSiteOnSharedStore(
+            catalogEntryID: add.catalogEntryID,
+            url: add.url,
+            destination: ServiceAdding.Destination(spaceID: spaceID, global: showInEverySpace),
+            context: modelContext
+        )?.label
+        return AddServicePlacementPage(
+            serviceName: add.name,
+            spaceName: spaceName,
+            isMacApp: add.isMacApp,
+            showInEverySpace: $showInEverySpace,
+            keepSeparate: $keepSignInSeparate,
+            sharers: sharers,
+            sameSite: sameSite,
+            isChat: ServiceAdding.isChat(catalogEntryID: add.catalogEntryID, url: add.url),
+            error: addError,
+            onBack: {
+                configuring = nil
+                addError = nil
+            },
+            onAdd: { commit(add) }
+        )
+    }
+
+    private var spaceName: String {
+        let id = spaceID
+        let spaces = (try? modelContext.fetch(FetchDescriptor<Space>(predicate: #Predicate { $0.id == id }))) ?? []
+        return spaces.first?.name ?? "this space"
     }
 
     /// Calm, non-blocking heads-up that passkey sign-in won't work in-app yet.
@@ -118,53 +140,9 @@ struct AddServiceSheet: View {
         .accessibilityLabel(AppCapabilities.passkeyUnavailableNotice)
     }
 
-    /// Where the new service goes, and whether it shares the sign-in there.
-    private var placementOptions: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 20) {
-                Toggle("Show in every space", isOn: $showInEverySpace)
-                    .help("Adds it above the spaces, where it shows whichever space you are in.")
-                Toggle("Keep its sign-in separate", isOn: $keepSignInSeparate)
-                    .help("Gives it a sign-in of its own, for a second account of a site.")
-                    // A Mac app has no sign-in to share.
-                    .disabled(selectedTab == .macApp)
-                Spacer(minLength: 0)
-            }
-            .toggleStyle(.checkbox)
-
-            if selectedTab != .macApp {
-                Text(signInCaption)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if let addError {
-                Text(addError)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-    }
-
-    /// What the new service's sign-in will be, read from the store it would
-    /// join: the services already on it, or that it starts signed out. A
-    /// space's older services keep sign-ins of their own, so "the space shares
-    /// one" would often be untrue.
-    private var signInCaption: String {
-        if keepSignInSeparate { return "It gets a sign-in of its own." }
-        let sharers = ServiceAdding.services(on: ServiceAdding.store(for: destination), context: modelContext)
-        if !sharers.isEmpty {
-            return "It shares a sign-in with \(AppState.listed(sharers.map(\.label).sorted()))."
-        }
-        let place = showInEverySpace ? "to every space" : "here"
-        return "It starts signed out. Services you add \(place) after it share its sign-in."
-    }
-
     private var header: some View {
         HStack {
-            Text("Add a service")
+            Text(configuring == nil ? "Add a service" : "Where it goes")
                 .font(.headline)
             Spacer()
             Button("Done") { dismiss() }
@@ -258,9 +236,7 @@ struct AddServiceSheet: View {
             macAppError = "Chorus can't hold itself in a tab."
             return
         }
-        addMacApp(at: appURL, bundleID: bundleID)
-        FeatureTips.markUsed(.addMacApp)
-        appState.explainAccessibility(for: NativeApp.displayName(of: appURL))
+        request(.macApp(appURL: appURL, bundleID: bundleID))
     }
 
     private func addMacApp(at appURL: URL, bundleID: String) {
@@ -272,7 +248,9 @@ struct AddServiceSheet: View {
             hasSeenPasskeyNotice: true
         )
         // A Mac app has no cookies, so it keeps the store it was made with.
-        insert(service, at: destination)
+        guard insert(service, at: destination) else { return }
+        FeatureTips.markUsed(.addMacApp)
+        appState.explainAccessibility(for: NativeApp.displayName(of: appURL))
     }
 
     private func addCustomService() {
@@ -291,6 +269,7 @@ struct AddServiceSheet: View {
     enum PendingAdd: Equatable {
         case catalog(ServiceCatalogEntry)
         case custom(label: String, url: String)
+        case macApp(appURL: URL, bundleID: String)
 
         var catalogEntryID: String? {
             if case .catalog(let entry) = self { return entry.id }
@@ -301,7 +280,21 @@ struct AddServiceSheet: View {
             switch self {
             case .catalog(let entry): return entry.url
             case .custom(_, let url): return url
+            case .macApp(_, let bundleID): return NativeApp.serviceURL(forBundleID: bundleID)
             }
+        }
+
+        var name: String {
+            switch self {
+            case .catalog(let entry): return entry.name
+            case .custom(let label, _): return label
+            case .macApp(let appURL, _): return NativeApp.displayName(of: appURL)
+            }
+        }
+
+        var isMacApp: Bool {
+            if case .macApp = self { return true }
+            return false
         }
     }
 
@@ -310,18 +303,26 @@ struct AddServiceSheet: View {
         ServiceAdding.Destination(spaceID: spaceID, global: showInEverySpace, separate: keepSignInSeparate)
     }
 
-    /// Adds the picked service, or first asks when the place it goes already
-    /// has the same site on the sign-in it would share: the two would open
-    /// the same account, which is rarely what a second copy is for.
+    /// Moves to the second page with the picked service. It starts in this
+    /// space, on the shared sign-in, unless the same site is already on that
+    /// sign-in: then a second copy is most likely a second account, so it
+    /// starts on its own.
     private func request(_ add: PendingAdd) {
-        if let existing = ServiceAdding.sameSiteOnSharedStore(
+        showInEverySpace = false
+        addError = nil
+        keepSignInSeparate = !add.isMacApp && ServiceAdding.sameSiteOnSharedStore(
             catalogEntryID: add.catalogEntryID,
             url: add.url,
-            destination: destination,
+            destination: ServiceAdding.Destination(spaceID: spaceID),
             context: modelContext
-        ) {
-            duplicateLabel = existing.label
-            pendingAdd = add
+        ) != nil
+        configuring = add
+    }
+
+    /// Adds the service as the second page has it.
+    private func commit(_ add: PendingAdd) {
+        if case .macApp(let appURL, let bundleID) = add {
+            addMacApp(at: appURL, bundleID: bundleID)
             return
         }
         make(add, separate: keepSignInSeparate)
@@ -353,6 +354,9 @@ struct AddServiceSheet: View {
             )
         case .custom(let label, let url):
             service = ServiceInstance(label: label, url: url, dataStoreIdentifier: store)
+        case .macApp:
+            // Mac apps are added by `addMacApp`; nothing to make here.
+            return
         }
         guard insert(service, at: place) else { return }
 

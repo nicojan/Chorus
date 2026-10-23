@@ -2681,28 +2681,39 @@ final class AppState {
         return .remove
     }
 
-    /// Readies a store a service is about to start using, for the case where
-    /// its id is reused: a space's store, or the global one, that was left for
-    /// removal when its last service went. Waits out a removal in progress,
-    /// takes the store off the removal list, and clears whatever it still
-    /// holds, so the new service neither lands on a store being deleted nor
-    /// opens signed in to the account whose service was just deleted. Does
-    /// nothing for a store that is not waiting to be removed.
+    /// Readies a store a service is about to start using. When no other
+    /// service uses it, it is cleared first, so the new service starts signed
+    /// out, as Add Service says it will.
     ///
-    /// The caller saves the service right after this returns, with no await
-    /// in between, so the removal pass sees the claim before it can act.
+    /// This matters because shared store ids come back. A space's store is
+    /// the space's id and the global one is fixed, so deleting the last
+    /// service in a space and adding one again lands on the same id. The
+    /// removal pass may not have removed it yet, may be removing it now, or
+    /// may have removed it from disk while WebKit still holds the session's
+    /// cookies in memory, which a store made again with that id picks up:
+    /// a re-added Google service came back signed in to the account whose
+    /// services were all just deleted. Clearing an unused store is safe in
+    /// every case, so it is cleared whatever the removal list says.
+    ///
+    /// Waits out a removal in progress before and after the clear, takes the
+    /// store off the removal list, and drops the cached handle. The caller
+    /// saves the service right after this returns, with no await in between,
+    /// so the removal pass sees the claim before it can act.
     func prepareStore(_ identifier: UUID) async {
+        // Another service on it: it is shared on purpose; leave it be.
+        // Unreadable claims say nothing, so leave it be too.
+        guard let claimed = liveDataStoreIdentifiers(), !claimed.contains(identifier) else { return }
         await waitOutRemoval(of: identifier)
         let tombstones = Self.loadOrphanedIdentifiers()
-        guard tombstones.contains(identifier) || dataStoresBeingRemoved.contains(identifier) else { return }
-        Self.saveOrphanedIdentifiers(tombstones.subtracting([identifier]))
+        if tombstones.contains(identifier) {
+            Self.saveOrphanedIdentifiers(tombstones.subtracting([identifier]))
+        }
         let store = dataStoreManager.dataStore(forIdentifier: identifier)
         await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
         // A removal may have started during the clear; wait for it too, and
         // drop the handle it may have made stale.
         await waitOutRemoval(of: identifier)
         dataStoreManager.evict(identifier: identifier)
-        AppLogger.dataStore.info("Reusing data store \(identifier) after clearing it")
     }
 
     private func waitOutRemoval(of identifier: UUID) async {

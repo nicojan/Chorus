@@ -118,6 +118,28 @@ extension AppState {
         RailEdits.reorder(orderedIDs, in: scope, context: modelContainer.mainContext)
     }
 
+    // MARK: - Deleting a space
+
+    /// The services that are in this space and no other, which deleting it
+    /// deletes too, with their sign-ins (see `deleteSpace`).
+    func servicesOnlyIn(space spaceID: UUID) -> [ServiceInstance] {
+        let links = (try? modelContainer.mainContext.fetch(FetchDescriptor<SpaceServiceLink>())) ?? []
+        let ends = links.compactMap(\.liveEnds)
+        let here = ends.filter { $0.space.id == spaceID }.map(\.service)
+        return here.filter { service in !ends.contains { $0.service.id == service.id && $0.space.id != spaceID } }
+    }
+
+    /// What deleting a space takes with it, said plainly. The old wording,
+    /// "Services in this space won't be deleted", was untrue for every service
+    /// in no other space.
+    nonisolated static func deleteSpaceMessage(goingWithIt names: [String]) -> String {
+        guard !names.isEmpty else {
+            return "Its services are in other spaces too, so they stay there."
+        }
+        let one = names.count == 1
+        return "\(listed(names)) \(one ? "is" : "are") in no other space, so deleting it deletes \(one ? "it" : "them") too. Services that are also in other spaces stay there."
+    }
+
     // MARK: - Moves that need a yes
 
     /// The service a move is about.
