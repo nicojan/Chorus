@@ -1071,7 +1071,12 @@ struct UnifiedRailView: View {
         case .space(let spaceID):
             return [
                 divider,
-                .init(type: LiveReorder.serviceType, draggingID: { draggingLinkID }, move: { liveMove($0, over: dividerID, in: scope) }),
+                .init(
+                    type: LiveReorder.serviceType,
+                    draggingID: { draggingLinkID },
+                    move: { liveMove($0, over: dividerID, in: scope) },
+                    drop: { dropLinkOverDivider($0, dividerID: dividerID, spaceID: spaceID) }
+                ),
                 .init(type: LiveReorder.globalServiceType, draggingID: { draggingGlobalID }, drop: { dropGlobal($0, into: spaceID, before: dividerID) }),
             ]
         case .global:
@@ -1490,7 +1495,9 @@ struct UnifiedRailView: View {
         modelContext.delete(link)
 
         // Check remaining links *after* the delete so the count is current.
-        let hasOtherLinks = service.spaceLinks.contains { $0.id != link.id }
+        // A link deleted earlier can linger in this inverse on macOS 14, and
+        // reading its id faults the freed row: check it is still live first.
+        let hasOtherLinks = service.spaceLinks.contains { $0.modelContext != nil && $0.id != link.id }
         // Capture the identifier before the service is deleted — reading it off a
         // deleted model would fault the freed backing data.
         let orphanedIdentifier: UUID? = hasOtherLinks ? nil : service.dataStoreIdentifier
@@ -1627,9 +1634,12 @@ struct UnifiedRailView: View {
 
     /// Released in a space: a global service moves into it, before `beforeID`
     /// or at the end, and stops being global.
+    /// A global service that was showing goes along with the view, as a
+    /// service dragged between spaces does.
     private func dropGlobal(_ serviceID: UUID, into spaceID: UUID, before beforeID: UUID?) -> Bool {
-        withAnimation(reorderAnimation) {
-            appState.moveGlobalService(serviceID, toSpace: spaceID, before: beforeID)
+        let follow = selectedServiceID == serviceID
+        return withAnimation(reorderAnimation) {
+            appState.moveGlobalService(serviceID, toSpace: spaceID, before: beforeID, follow: follow)
         }
     }
 
@@ -1659,6 +1669,16 @@ struct UnifiedRailView: View {
         return moveLinkAcrossSpaces(dragged, into: space, relativeTo: target)
     }
 
+    /// Released over a divider in another space: the service moves into that
+    /// space where the divider is. Within its own space the live move has
+    /// already put it there.
+    private func dropLinkOverDivider(_ dragged: UUID, dividerID: UUID, spaceID: UUID) -> Bool {
+        guard let source = allLinks.first(where: { $0.id == dragged })?.liveSpace else { return false }
+        guard source.id != spaceID else { return true }
+        guard let space = spaces.first(where: { $0.modelContext != nil && $0.id == spaceID }) else { return false }
+        return moveLinkAcrossSpaces(dragged, into: space, relativeToID: dividerID)
+    }
+
     /// Released over a space's heading or its empty slot: a service from
     /// another space goes to the top of this one.
     private func dropLinkAtTop(_ dragged: UUID, of space: Space) -> Bool {
@@ -1670,26 +1690,16 @@ struct UnifiedRailView: View {
     /// Moves a membership into another space and brings its badge up to date,
     /// since the new space may be muted when the old one was not.
     private func moveLinkAcrossSpaces(_ dragged: UUID, into space: Space, relativeTo target: SpaceServiceLink?) -> Bool {
+        moveLinkAcrossSpaces(dragged, into: space, relativeToID: target?.id)
+    }
+
+    private func moveLinkAcrossSpaces(_ dragged: UUID, into space: Space, relativeToID targetID: UUID?) -> Bool {
         let serviceID = allLinks.first(where: { $0.id == dragged })?.liveService?.id
-        let moved = placeService(droppedLinkID: dragged, in: space, relativeTo: target, placement: .before)
+        let moved = placeService(droppedLinkID: dragged, in: space, relativeTo: targetID, placement: .before)
         if moved, let serviceID {
             appState.refreshBadgeState(for: serviceID)
         }
         return moved
-    }
-
-    private func moveServiceWithinSpace(_ link: SpaceServiceLink, forward: Bool) {
-        guard let spaceID = link.liveSpace?.id else { return }
-        var spaceLinks = links(in: spaceID)
-        guard let index = spaceLinks.firstIndex(where: { $0.id == link.id }) else { return }
-        let destination = forward ? index + 1 : index - 1
-        guard spaceLinks.indices.contains(destination) else { return }
-
-        spaceLinks.swapAt(index, destination)
-        for (order, item) in spaceLinks.enumerated() {
-            item.sortOrder = order
-        }
-        save(forward ? "move service down" : "move service up")
     }
 
     /// Reorders a membership inside one group or repoints it into another. A
@@ -1700,7 +1710,7 @@ struct UnifiedRailView: View {
     private func placeService(
         droppedLinkID: UUID,
         in targetSpace: Space,
-        relativeTo targetLink: SpaceServiceLink?,
+        relativeTo targetID: UUID?,
         placement: ServiceReorderPlacement
     ) -> Bool {
         guard let droppedLink = allLinks.first(where: { $0.id == droppedLinkID }),
@@ -1721,7 +1731,7 @@ struct UnifiedRailView: View {
         guard let reorderedIDs = ServicePlacement.orderedIDs(
             orderedIDs(.space(targetSpace.id)),
             moving: droppedLink.id,
-            relativeTo: targetLink?.id,
+            relativeTo: targetID,
             placement: placement
         ) else { return false }
 

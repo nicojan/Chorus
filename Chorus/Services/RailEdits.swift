@@ -37,12 +37,7 @@ enum RailEdits {
         let services = (try? context.fetch(FetchDescriptor<ServiceInstance>(
             predicate: #Predicate { $0.isGlobal == true }
         ))) ?? []
-        return services.sorted { lhs, rhs in
-            let left = lhs.globalSortOrder ?? Int.max
-            let right = rhs.globalSortOrder ?? Int.max
-            if left != right { return left < right }
-            return lhs.createdAt < rhs.createdAt
-        }
+        return RailItems.orderedGlobals(services)
     }
 
     /// The dividers that belong to one list, in no particular order.
@@ -145,7 +140,13 @@ enum RailEdits {
 
         // Read the group before anything changes, so no fetch below has to
         // see an unsaved edit to get the numbers right.
-        let group = entries(in: .global, context: context)
+        var group = entries(in: .global, context: context)
+        // Dividers left from a group that emptied some other way would show
+        // above nothing now, so a group starting over starts clean.
+        if !group.contains(where: { !$0.isDivider }) {
+            for divider in dividers(in: .global, context: context) { context.delete(divider) }
+            group = []
+        }
         let allLinks = (try? context.fetch(FetchDescriptor<SpaceServiceLink>())) ?? []
         for link in allLinks where link.modelContext != nil && link.liveService?.id == serviceID {
             context.delete(link)
@@ -187,6 +188,14 @@ enum RailEdits {
         if link.modelContext == nil { context.insert(link) }
         service.isGlobal = nil
         service.globalSortOrder = nil
+        // The group is not drawn without services, so its dividers would sit
+        // there unseen and come back above nothing when a service next goes
+        // global. They go with the last service.
+        // Whether or not the fetch already sees this one as no longer global,
+        // "no other global service" is the test.
+        if globalServices(in: context).allSatisfy({ $0.id == serviceID }) {
+            for divider in dividers(in: .global, context: context) { context.delete(divider) }
+        }
         if let beforeID {
             applyOrder(
                 placing(link.id, before: beforeID, in: list.map(\.id)),

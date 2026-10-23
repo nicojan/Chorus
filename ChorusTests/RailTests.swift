@@ -265,6 +265,40 @@ final class RailTests: XCTestCase {
         XCTAssertTrue(AppState.reapable(services).isEmpty)
     }
 
+    /// The global group is not drawn without services, so its dividers go
+    /// with the last one rather than sitting there unseen.
+    func testLastGlobalLeavingTakesTheGroupsDividers() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (work, services, _) = try makeSpace("Work", order: 0, services: ["a", "b"], in: ctx)
+        XCTAssertTrue(RailEdits.makeGlobal(services[0].id, context: ctx))
+        XCTAssertTrue(RailEdits.makeGlobal(services[1].id, context: ctx))
+        let between = try XCTUnwrap(RailEdits.addDivider(in: .global, after: services[0].id, context: ctx))
+        let inWork = try XCTUnwrap(RailEdits.addDivider(in: .space(work.id), after: nil, context: ctx))
+
+        XCTAssertTrue(RailEdits.moveIntoSpace(services[0].id, spaceID: work.id, context: ctx))
+        XCTAssertEqual(RailEdits.dividers(in: .global, context: ctx).map(\.id), [between], "one global is left")
+
+        XCTAssertTrue(RailEdits.moveIntoSpace(services[1].id, spaceID: work.id, context: ctx))
+        XCTAssertTrue(RailEdits.dividers(in: .global, context: ctx).isEmpty)
+        XCTAssertEqual(RailEdits.dividers(in: .space(work.id), context: ctx).map(\.id), [inWork], "other lists keep theirs")
+    }
+
+    /// A group emptied some other way (a delete) starts clean when a service
+    /// next goes global, rather than under a line above nothing.
+    func testAGroupStartingOverDropsLeftoverDividers() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (_, services, _) = try makeSpace("Work", order: 0, services: ["a"], in: ctx)
+        ctx.insert(RailDivider(kind: .services, spaceID: nil, sortOrder: 0))
+        try ctx.save()
+
+        XCTAssertTrue(RailEdits.makeGlobal(services[0].id, context: ctx))
+
+        XCTAssertTrue(RailEdits.dividers(in: .global, context: ctx).isEmpty)
+        XCTAssertEqual(RailEdits.entries(in: .global, context: ctx).map(\.id), [services[0].id])
+    }
+
     // MARK: - Launch reap
 
     func testReapSkipsGlobalServicesButTakesOrphans() throws {

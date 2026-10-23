@@ -1762,7 +1762,10 @@ final class AppState {
         // stores) until the save succeeds. Doing them first meant a failed save
         // left the service still in the store yet logged out with its cookies
         // deleted 2s later — data loss the rest of the code is careful to avoid.
-        let reclaimed = linkedServices.filter { orphanedIDs.contains($0.id) }
+        // A global service is in no space and never belongs to this one. It
+        // should have no link here to be counted at all, but if that rule were
+        // ever broken, deleting a space must still not take it and its sign-in.
+        let reclaimed = linkedServices.filter { orphanedIDs.contains($0.id) && !$0.isGlobalEffective }
         // Capture the identifiers BEFORE deleting — reading them off the models
         // after they're deleted would fault the freed backing data and trap.
         let reclaimedServiceIDs = reclaimed.map(\.id)
@@ -3348,13 +3351,14 @@ final class AppState {
             }
             // Global services show in every space, so a saved global
             // selection is as valid as one of the space's own.
-            let servicesInSpace = railServices(forSpace: spaceID)
+            let visible = railServices(forSpace: spaceID)
             if let savedServiceID = prefs?.selectedServiceID,
-               servicesInSpace.contains(where: { $0.id == savedServiceID }) {
+               visible.contains(where: { $0.id == savedServiceID }) {
                 selectedServiceID = savedServiceID
             } else if selectedServiceID == nil
-                        || !servicesInSpace.contains(where: { $0.id == selectedServiceID }) {
-                selectedServiceID = servicesInSpace.first?.id
+                        || !visible.contains(where: { $0.id == selectedServiceID }) {
+                // The space's own first service, as a space switch picks.
+                selectedServiceID = servicesForSpace(spaceID).first?.id
             }
         } catch {
             AppLogger.dataStore.error("Failed to restore window state: \(error.localizedDescription)")

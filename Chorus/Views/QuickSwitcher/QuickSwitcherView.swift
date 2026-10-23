@@ -101,8 +101,7 @@ struct QuickSwitcherView: View {
         // In rail order, space by space, so an empty search opens the first
         // service of the first space on Return, not whatever the store returned.
         // Globals lead, as they do in the rail.
-        let globalResults = globalServices
-            .sorted { ($0.globalSortOrder ?? Int.max, $0.createdAt) < ($1.globalSortOrder ?? Int.max, $1.createdAt) }
+        let globalResults = RailItems.liveGlobals(globalServices)
             .map { service in
                 QuickSwitcherResult(
                     id: "global-\(service.id)",

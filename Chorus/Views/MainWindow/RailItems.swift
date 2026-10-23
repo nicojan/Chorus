@@ -62,9 +62,17 @@ enum RailItems {
 
     /// Global services in rail order, skipping any already deleted.
     static func liveGlobals(_ services: [ServiceInstance]) -> [ServiceInstance] {
-        services
-            .filter { $0.modelContext != nil && $0.isGlobalEffective }
-            .sorted { ($0.globalSortOrder ?? Int.max, $0.createdAt) < ($1.globalSortOrder ?? Int.max, $1.createdAt) }
+        orderedGlobals(services.filter { $0.modelContext != nil && $0.isGlobalEffective })
+    }
+
+    /// Global services in the order the rail draws them: `RailOrder`'s rule,
+    /// with a missing `globalSortOrder` read as 0, the same as `globals` and
+    /// `RailEdits.entries` read it. One rule, so ⌘1–9, the arrow keys, the
+    /// quick switcher and the menu bar all agree with the rail.
+    nonisolated static func orderedGlobals(_ services: [ServiceInstance]) -> [ServiceInstance] {
+        let byID = Dictionary(services.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let entries = services.map { RailOrderEntry(id: $0.id, sortOrder: $0.globalSortOrder ?? 0, isDivider: false) }
+        return RailOrder.sorted(entries).compactMap { byID[$0.id] }
     }
 
     private static func merge(rows: [(item: RailItem, order: Int)], dividers: [RailDivider]) -> [RailItem] {

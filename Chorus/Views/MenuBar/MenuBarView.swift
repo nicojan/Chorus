@@ -66,9 +66,7 @@ struct MenuBarView: View {
     }
 
     private var sortedGlobals: [ServiceInstance] {
-        globalServices.sorted {
-            ($0.globalSortOrder ?? Int.max, $0.createdAt) < ($1.globalSortOrder ?? Int.max, $1.createdAt)
-        }
+        RailItems.liveGlobals(globalServices)
     }
 
     private func serviceButton(_ service: ServiceInstance, placeName: String, spaceID: UUID?) -> some View {

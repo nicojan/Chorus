@@ -786,9 +786,7 @@ enum NotificationGrouping {
     static func grouped(spaces: [Space], services: [ServiceInstance]) -> Result {
         // Globals have no links, so they would land in "Ungrouped". They get
         // their own group, first, as they sit first in the rail.
-        let globals = services
-            .filter(\.isGlobalEffective)
-            .sorted { ($0.globalSortOrder ?? Int.max) < ($1.globalSortOrder ?? Int.max) }
+        let globals = RailItems.orderedGlobals(services.filter(\.isGlobalEffective))
         let globalGroups = globals.isEmpty ? [] : [Group(space: nil, services: globals, isGlobal: true)]
 
         var spaceGroups: [Group] = []
