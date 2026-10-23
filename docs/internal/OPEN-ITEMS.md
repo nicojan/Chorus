@@ -19,12 +19,18 @@ Built 2026-10-22 in one session at Nico's request, with the questions skipped, s
 
 A copy of the real 1.5.28 store migrated with 4 spaces, 18 services and 18 links intact. The copy was deleted after.
 
+**Shared sign-ins by default** (added 2026-10-22 evening, after Nico's review): new services share their space's sign-in (the store id is the space's id) or the global one (`ServiceAdding.globalStore`) unless Add Service's "Keep its sign-in separate" is ticked. Existing services keep their own stores, so the update signs nobody out. Drags into another space or the global group ask first. A third independent review found no data-loss path; its fixes are in `2327a3e`. Still open from it: a setup import gives each shared group a fresh store rather than the target space's, so an imported space can end up with two sign-ins once more services are added there.
+
 **Left as they were, on purpose** (found by the sign-in review, older than this branch, now also reachable from a sign-in change):
 
 - Rebuilding a service's web view closes its tabs but not a sign-in popup window, which stays on the old store.
 - A service the badge sweep parked behind a sign-in wall stays parked after joining a signed-in store, until it is opened.
 
 **Check by hand before merging:**
+
+- Add two Google services to a space without "Keep its sign-in separate": signing in to one signs in the other. Add a third with it ticked: signed out.
+- Delete the last service in a space and add one straight back: it starts signed out, and nothing crashes (the reused store id).
+- Edit Service on an older service: choose "Shared in <space>", save, and it signs out of its own session onto the space's.
 
 - Two signed-in services on one shared store, both loaded at once, on macOS 14, 15 and 26 (the 2026-10-05 exploration asked for this; not done, pages could not load).
 - Switching a service's Sign-in, then deleting one of two sharers: the other stays signed in.
