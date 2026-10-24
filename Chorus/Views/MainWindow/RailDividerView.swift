@@ -31,6 +31,9 @@ struct RailDividerView: View {
     var isDragging: Bool = false
     /// Called when a drag of it ends, however it ends.
     var onDragEnd: () -> Void = {}
+    /// Called when Escape ends a drag of it, to put back the order the drag
+    /// changed as it went. See `LiveReorder`.
+    var onCancel: () -> Void = {}
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The divider's own thickness along the list: room to grab it, while
@@ -50,6 +53,7 @@ struct RailDividerView: View {
                     dividerID: dividerID,
                     onDragStart: onDragStart,
                     onDragEnd: onDragEnd,
+                    onCancel: onCancel,
                     onRemove: onRemove
                 )
             )
@@ -164,6 +168,7 @@ private struct RailDividerDragSource: NSViewRepresentable {
     let dividerID: UUID
     let onDragStart: () -> Void
     let onDragEnd: () -> Void
+    let onCancel: () -> Void
     let onRemove: () -> Void
     @Environment(\.railDropZone) private var zone
 
@@ -181,8 +186,29 @@ private struct RailDividerDragSource: NSViewRepresentable {
         view.dividerID = dividerID
         view.onDragStart = onDragStart
         view.onDragEnd = onDragEnd
+        view.onCancel = onCancel
         view.onRemove = onRemove
         view.zone = zone
+    }
+}
+
+/// How a divider drag ended, from what AppKit says at its end.
+enum DividerDragEnd: Equatable {
+    /// A row took it, or it was let go over the rail, a gap included: the
+    /// live moves stand.
+    case moved
+    /// Escape: the moves made during the drag are undone, and the divider
+    /// stays, on the rail or off it.
+    case cancelled
+    /// Let go off the rail.
+    case removed
+
+    /// `insideRail` is nil when there is no rail to ask, and then the divider
+    /// is kept.
+    nonisolated static func classify(dropTaken: Bool, endedByKey: Bool, insideRail: Bool?) -> DividerDragEnd {
+        if endedByKey { return .cancelled }
+        if dropTaken || insideRail ?? true { return .moved }
+        return .removed
     }
 }
 
@@ -190,6 +216,7 @@ final class DividerDragView: NSView, NSDraggingSource {
     var dividerID = UUID()
     var onDragStart: () -> Void = {}
     var onDragEnd: () -> Void = {}
+    var onCancel: () -> Void = {}
     var onRemove: () -> Void = {}
     var zone: RailDropZone?
 
@@ -271,12 +298,19 @@ final class DividerDragView: NSView, NSDraggingSource {
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         NSCursor.arrow.set()
+        // Escape ends the drag at once, while the button is still down, and
+        // the key press is then the current event. A release never is.
+        let end = DividerDragEnd.classify(
+            dropTaken: operation != [],
+            endedByKey: NSApp.currentEvent?.type == .keyDown,
+            insideRail: zone?.contains(screenPoint: screenPoint)
+        )
+        switch end {
+        case .moved: break
+        case .cancelled: onCancel()
+        case .removed: onRemove()
+        }
         onDragEnd()
-        // A drop a row took is a move. A drop nothing took counts as a removal
-        // only off the rail: let go over a gap between rows, or press Escape
-        // over the rail, and the divider stays. With no zone to ask, keep it.
-        guard operation == [], let zone, !zone.contains(screenPoint: screenPoint) else { return }
-        onRemove()
     }
 
     /// The line itself as the drag image, drawn rather than captured: this view

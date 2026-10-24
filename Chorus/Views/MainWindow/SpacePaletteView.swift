@@ -305,13 +305,19 @@ struct SpacePaletteView: View {
         let dividerID = divider.id
         return RailDividerView(
             dividerID: dividerID,
-            onDragStart: { drag.dividerID = dividerID },
+            onDragStart: {
+                drag.dividerID = dividerID
+                drag.dividerStartOrder = items.map(\.id)
+            },
             onRemove: {
                 withAnimation(reorderAnimation) { _ = appState.removeDivider(dividerID) }
             },
             onMove: { step(dividerID, forward: $0) },
             isDragging: drag.dividerID == dividerID,
-            onDragEnd: { drag.dividerID = nil }
+            onDragEnd: { drag.dividerID = nil },
+            onCancel: {
+                withAnimation(reorderAnimation) { _ = appState.reorderRail(drag.dividerStartOrder, in: .spaces) }
+            }
         )
         .liveReorderDrop(lanes(over: dividerID))
     }

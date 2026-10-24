@@ -1057,11 +1057,17 @@ struct UnifiedRailView: View {
             dividerID: dividerID,
             axis: scope == .spaces ? .vertical : axis,
             length: length,
-            onDragStart: { drag.dividerID = dividerID },
+            onDragStart: {
+                drag.dividerID = dividerID
+                drag.dividerStartOrder = orderedIDs(scope)
+            },
             onRemove: { removeDivider(dividerID) },
             onMove: { step(dividerID, forward: $0, in: scope) },
             isDragging: drag.dividerID == dividerID,
-            onDragEnd: { drag.dividerID = nil }
+            onDragEnd: { drag.dividerID = nil },
+            onCancel: {
+                withAnimation(reorderAnimation) { _ = appState.reorderRail(drag.dividerStartOrder, in: scope) }
+            }
         )
         .liveReorderDrop(dividerLanes(over: dividerID, in: scope))
     }

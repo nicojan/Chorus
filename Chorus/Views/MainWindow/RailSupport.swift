@@ -270,6 +270,9 @@ final class RailDragState {
     var linkID: UUID?
     var globalID: UUID?
     var dividerID: UUID?
+    /// The divider's list as it stood when its drag began, put back if
+    /// Escape ends the drag, since the moves along the way are saved live.
+    var dividerStartOrder: [UUID] = []
     var spaceID: UUID?
 
     private init() {}
