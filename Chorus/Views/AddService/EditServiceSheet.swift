@@ -360,7 +360,8 @@ struct EditServiceSheet: View {
         guard !partners.isEmpty else {
             return "This clears this service's cookies and storage on this Mac. You'll need to sign in again."
         }
-        return "This clears the cookies and storage this service shares with \(partners.joined(separator: ", ")), so all of them sign out on this Mac."
+        let everyone = partners.count == 1 ? "both" : "all of them"
+        return "This clears the cookies and storage this service shares with \(AppState.listed(partners)), so \(everyone) sign out on this Mac."
     }
 
     private func loadFields() {
