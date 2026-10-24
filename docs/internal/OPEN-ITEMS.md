@@ -1,6 +1,6 @@
 # Open items
 
-## Open: global services, dividers and shared sign-ins, on `feat/global-services-dividers`, not merged
+## Open: global services, dividers and shared sign-ins, merged to `main` on 2026-10-24 (`ba7383d`), not released
 
 Built 2026-10-22 in one long session. Nico skipped the questions, so the design calls are Claude's; they are in `docs/superpowers/specs/2026-10-22-global-services-and-dividers-design.md` (with the later additions at its end) and in the commit messages. The branch ends at `dfce48c` plus this docs commit; 368 tests pass; CI green on 14 and 15 at `dfce48c`. Three independent reviews found no data-loss path, and their findings are fixed (`63bce54`, `95e0182`, `2327a3e`). Nothing merged or released.
 
@@ -49,14 +49,21 @@ The two changes most likely to be noticed:
 - **Camera and mic from another site always prompt now** (`AppState.foreignCaptureOutcome`). The `firstParty` silent grant for six call vendors is gone, with its catalog flag. It rested on clicked foreign links always leaving for the browser, which stopped being true in 1.5.22 (`isSignInRoundTrip`, and `authTenantDomains` such as `*.auth0.com`, which anyone can register). A Messenger or Teams call whose media runs on another domain now asks once per request, naming the domain, as it always did for services on Ask.
 - **A service out of sight can't open a window by script** (`WebViewCoordinator.refusesBackgroundWindow`). Clicks, and windows a sign-in popup opens, are unaffected.
 
-**Check by hand before releasing** (none of this was seen live; the quit-time selection save was):
+**Check by hand before releasing.** Passed on 2026-10-24, run by Claude in the Debug build:
 
-- A Messenger and a Teams call with the service on Allow: one prompt naming the call's domain, then the call works.
-- Sign-in popups that open by script from the service on screen (Google, Microsoft, Slack) still open.
-- App lock: lock with the Edit Service sheet and a sign-in popup open; the sheet shows the lock cover with no second Touch ID prompt, the popup hides and comes back on unlock, and Settings shows only Unlock.
-- A notification shows the service's name as its subtitle. Passed 2026-10-24 in the Debug build: a test page's notification sat in Notification Center as "Test title", "Cookie A", "Test body". No banner, since this Mac denies Chorus notifications.
-- Favicons fetched after this build look sharp (stored as 256 px PNGs; an ICO now gives its largest size). Passed 2026-10-24: Gmail's favicon, fetched by the Debug build, is stored as a clean 256 by 256 PNG. No ICO was tried.
-- Menu-bar-only mode: close the window, then Show Chorus brings it back. Passed 2026-10-24 in the Debug build.
+- A notification shows the service's name as its subtitle: a test page's notification sat in Notification Center as "Test title", "Cookie A", "Test body". No banner, since this Mac denies Chorus notifications.
+- Favicons fetched after this build look sharp (stored as 256 px PNGs; an ICO now gives its largest size): Gmail's favicon, fetched by the Debug build, is stored as a clean 256 by 256 PNG. No ICO was tried.
+- Menu-bar-only mode: close the window, then Show Chorus brings it back.
+
+**Still to run.** These need real accounts, so Nico runs them.
+
+Set up: open `Chorus.xcodeproj` on `main` and run the Debug build (⌘R). It keeps its own data and sign-ins in `Application Support/Chorus-debug`, so sign in to real accounts there; the release app in `/Applications` is not touched, and it can stay open. Its Dock icon looks the same, so switch to it with ⌘-Tab from Xcode, not from the Dock.
+
+1. **Calls on Allow.** Sign in to Messenger in the Debug build (it is in Personal). Right-click it, choose Edit Service, set Camera and Microphone to Allow, and save. Start a video call to someone who can pick up. Pass: Chorus asks once for the call, and the question names a domain that is not `messenger.com`; after Allow, both sides see and hear each other. Fail: the call starts with no question (the old silent grant), the same question comes back over and over, or the call has no camera or mic after Allow. Then do the same with Teams: add it from Add Service, sign in, set Allow, and start a call with Meet now.
+2. **Sign-in popups.** Sign out of a service, then sign in with a button that opens a separate window: Slack's "Sign in with Google", Microsoft's sign-in from Teams or Outlook, and Google's account chooser from Gmail. Pass: each popup opens, the sign-in finishes, and the popup closes. Fail: the button does nothing, which would mean the new block on windows from services out of sight caught the service on screen.
+3. **App lock.** In Settings, Privacy, App Lock, turn on Require Touch ID or password. Open a sign-in popup as in check 2 and leave it open. Back in the main window, right-click a service and choose Edit Service, and leave the sheet open. Press ⇧⌘L (Lock Now). Pass: the window and the sheet both show the lock screen, Touch ID asks only once, and the popup disappears. Press ⌘, while locked: Settings shows only an Unlock button. Unlock: the popup comes back and the sheet works. Turn App Lock off afterwards if you don't want it in the Debug build.
+
+When all three pass, release 1.5.29 (`release/DISTRIBUTION.md`, Homebrew cask too). If one fails, it goes to Claude to fix first.
 
 **Left as they were, on purpose:**
 
