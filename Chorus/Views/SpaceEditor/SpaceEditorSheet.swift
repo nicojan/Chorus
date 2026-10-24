@@ -102,7 +102,8 @@ struct SpaceEditorSheet: View {
             space.name = trimmed
             space.emoji = selectedEmoji
         } else {
-            let nextOrder = (spaces.map(\.sortOrder).max() ?? -1) + 1
+            // Space dividers share this numbering, so count past them too.
+            let nextOrder = RailEdits.nextOrder(in: .spaces, context: modelContext)
             let space = Space(name: trimmed, emoji: selectedEmoji, sortOrder: nextOrder)
             modelContext.insert(space)
             createdSpace = space

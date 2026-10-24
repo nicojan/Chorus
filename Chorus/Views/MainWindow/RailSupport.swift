@@ -227,6 +227,12 @@ final class FocusVisibility {
 enum LiveReorder {
     static let spaceType = UTType(exportedAs: "com.nicojan.chorus.space-id")
     static let serviceType = UTType(exportedAs: "com.nicojan.chorus.service-link-id")
+    /// A global service, by its service id: it has no membership link.
+    static let globalServiceType = UTType(exportedAs: "com.nicojan.chorus.global-service-id")
+    /// A divider, by its id. Started from AppKit rather than `onDrag`, since
+    /// removing one depends on knowing where the drag ended. See
+    /// `RailDividerDragSource`.
+    static let dividerType = UTType(exportedAs: "com.nicojan.chorus.divider-id")
 
     /// The order after `dragged` takes the slot of `target`: it lands after
     /// the target when it came from above, and before it when it came from
@@ -249,6 +255,27 @@ enum LiveReorder {
     nonisolated static func itemProvider(for id: UUID, type: UTType) -> NSItemProvider {
         NSItemProvider(item: Data(id.uuidString.utf8) as NSData, typeIdentifier: type.identifier)
     }
+}
+
+/// What is being dragged in any rail, shared by all of them. A rail row only
+/// learns what is being dragged from here: the payload is an id under a
+/// Chorus type, read as the drag starts rather than through a loader callback
+/// (see `LiveReorder.itemProvider`). Keeping it per view meant a service
+/// dragged from the hybrid bar could not land in the space strip beside it,
+/// which is a different view that never saw the drag start.
+@MainActor
+@Observable
+final class RailDragState {
+    static let shared = RailDragState()
+    var linkID: UUID?
+    var globalID: UUID?
+    var dividerID: UUID?
+    /// The divider's list as it stood when its drag began, put back if
+    /// Escape ends the drag, since the moves along the way are saved live.
+    var dividerStartOrder: [UUID] = []
+    var spaceID: UUID?
+
+    private init() {}
 }
 
 /// The drop side of `LiveReorder`, put on each row. A row lists the kinds of

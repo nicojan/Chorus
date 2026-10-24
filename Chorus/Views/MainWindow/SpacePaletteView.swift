@@ -65,17 +65,24 @@ struct SpacePaletteView: View {
     var onAddSpace: () -> Void = {}
 
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
+    @Query private var allDividers: [RailDivider]
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
+    /// What any rail is dragging. See `RailDragState`.
+    private var drag: RailDragState { .shared }
 
     /// The row the keyboard is on. Separate from `selectedSpaceID`, which only
     /// changes when a row is actually picked — arrowing through the list should
     /// not switch spaces underneath the palette.
     @State private var highlightedIndex = 0
     @FocusState private var isFocused: Bool
-    /// The space being dragged, so the rows it crosses know what to move.
-    @State private var draggingSpaceID: UUID?
+
+    /// The spaces and the dividers between them, as drawn. The keyboard walks
+    /// `spaces` alone: a divider is not somewhere to go.
+    private var items: [RailItem] {
+        RailItems.spaces(spaces.filter { $0.modelContext != nil }, dividers: RailItems.dividers(allDividers, in: .spaces))
+    }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     static let paletteWidth: CGFloat = 260
@@ -89,6 +96,7 @@ struct SpacePaletteView: View {
             addSpaceButton
         }
         .frame(width: Self.paletteWidth)
+        .railDropZone()
         .background(.ultraThickMaterial)
         .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius))
         .focusable()
@@ -105,17 +113,23 @@ struct SpacePaletteView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 2) {
-                    ForEach(Array(spaces.enumerated()), id: \.element.id) { index, space in
+                    ForEach(items) { item in
                         // Keyed by the space, not its index, so a row keeps its
                         // identity when a drag moves it and slides into place.
-                        row(space, index: index)
-                            .id(space.id)
+                        switch item {
+                        case .space(let space):
+                            if let index = spaces.firstIndex(where: { $0.id == space.id }) {
+                                row(space, index: index)
+                                    .id(space.id)
+                            }
+                        case .divider(let divider):
+                            dividerRow(divider)
+                        case .member, .global:
+                            EmptyView()
+                        }
                     }
                 }
-                .animation(
-                    ChorusMotion.animation(ChorusMotion.reorder, reduceMotion: reduceMotion),
-                    value: ReorderKey(ids: spaces.map(\.id))
-                )
+                .animation(reorderAnimation, value: ReorderKey(ids: items.map(\.id)))
                 .padding(6)
             }
             // 4 rows and a bit, so a fifth space reads as "there is more here"
@@ -153,7 +167,7 @@ struct SpacePaletteView: View {
         }
         // Live reorder, as in the strip. See `LiveReorder`.
         .onDrag {
-            draggingSpaceID = space.id
+            drag.spaceID = space.id
             return LiveReorder.itemProvider(for: space.id, type: LiveReorder.spaceType)
         } preview: {
             Text(space.emoji)
@@ -162,11 +176,9 @@ struct SpacePaletteView: View {
                 .background(.ultraThickMaterial)
                 .clipShape(RoundedRectangle(cornerRadius: ChorusRadius.control))
         }
-        .liveReorderDrop([
-            .init(type: LiveReorder.spaceType, draggingID: { draggingSpaceID }, move: { liveMoveSpace($0, over: space.id) }),
-        ])
-        .accessibilityAction(named: "Move up") { move(space, forward: false) }
-        .accessibilityAction(named: "Move down") { move(space, forward: true) }
+        .liveReorderDrop(lanes(over: space.id))
+        .accessibilityAction(named: "Move up") { step(space.id, forward: false) }
+        .accessibilityAction(named: "Move down") { step(space.id, forward: true) }
         .contextMenu {
             Toggle("Mute Notifications", isOn: Binding(
                 get: { space.isMutedEffective },
@@ -182,6 +194,11 @@ struct SpacePaletteView: View {
                     }
                 }
             ))
+
+            Divider()
+            Button("Add Divider Below") {
+                withAnimation(reorderAnimation) { _ = appState.addDivider(in: .spaces, after: space.id) }
+            }
 
             Divider()
             Button("Edit Space...") {
@@ -220,6 +237,17 @@ struct SpacePaletteView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("New space")
+        .help("New space. Right-click to add a divider.")
+        // A divider between spaces, at the end, found without right-clicking
+        // a space first. The palette stays open to show where it went.
+        .contextMenu {
+            Button("New Space…") {
+                dismiss()
+                onAddSpace()
+            }
+            Button("Add Divider") { addDividerAtEnd() }
+        }
+        .accessibilityAction(named: "Add divider") { addDividerAtEnd() }
     }
 
     // MARK: - Keyboard
@@ -263,25 +291,64 @@ struct SpacePaletteView: View {
 
     // MARK: - Reordering
 
-    private func move(_ space: Space, forward: Bool) {
-        var ordered = Array(spaces)
-        guard let index = ordered.firstIndex(where: { $0.id == space.id }) else { return }
-        let target = forward ? index + 1 : index - 1
-        guard ordered.indices.contains(target) else { return }
-        ordered.swapAt(index, target)
-        for (i, s) in ordered.enumerated() { s.sortOrder = i }
-        save(forward ? "move space down" : "move space up")
+    private func addDividerAtEnd() {
+        withAnimation(reorderAnimation) { _ = appState.addDivider(in: .spaces, after: nil) }
     }
 
-    /// Moves the dragged space into the slot of the one under the pointer and
-    /// saves at once. See `LiveReorder`.
-    private func liveMoveSpace(_ dragged: UUID, over target: UUID) {
-        guard let ids = LiveReorder.moving(dragged, over: target, in: spaces.map(\.id)) else { return }
-        let spacesByID = Dictionary(uniqueKeysWithValues: spaces.map { ($0.id, $0) })
-        for (index, id) in ids.enumerated() {
-            spacesByID[id]?.sortOrder = index
-        }
-        save("reorder spaces")
+    private var reorderAnimation: Animation? {
+        ChorusMotion.animation(ChorusMotion.reorder, reduceMotion: reduceMotion)
+    }
+
+    /// A divider between spaces. Spaces pass over it live; dragged out of the
+    /// palette it is removed.
+    private func dividerRow(_ divider: RailDivider) -> some View {
+        let dividerID = divider.id
+        return RailDividerView(
+            dividerID: dividerID,
+            onDragStart: {
+                drag.dividerID = dividerID
+                drag.dividerStartOrder = items.map(\.id)
+            },
+            onRemove: {
+                withAnimation(reorderAnimation) { _ = appState.removeDivider(dividerID) }
+            },
+            onMove: { step(dividerID, forward: $0) },
+            isDragging: drag.dividerID == dividerID,
+            onDragEnd: { drag.dividerID = nil },
+            onCancel: {
+                withAnimation(reorderAnimation) { _ = appState.reorderRail(drag.dividerStartOrder, in: .spaces) }
+            }
+        )
+        .liveReorderDrop(lanes(over: dividerID))
+    }
+
+    /// A space or a divider moves into the slot of the entry under the
+    /// pointer, live. See `LiveReorder`.
+    private func lanes(over target: UUID) -> [LiveReorderDropDelegate.Lane] {
+        [
+            .init(type: LiveReorder.spaceType, draggingID: { drag.spaceID }, move: { liveMove($0, over: target) }),
+            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: target) }),
+        ]
+    }
+
+    /// Moves the dragged entry into the slot of the one under the pointer and
+    /// saves at once. Spaces and dividers are numbered together (see
+    /// `RailOrder`).
+    private func liveMove(_ dragged: UUID, over target: UUID) {
+        let ids = items.map(\.id)
+        guard let moved = LiveReorder.moving(dragged, over: target, in: ids) else { return }
+        withAnimation(reorderAnimation) { _ = appState.reorderRail(moved, in: .spaces) }
+    }
+
+    /// Moves an entry one place along the list, for VoiceOver.
+    private func step(_ id: UUID, forward: Bool) {
+        let ids = items.map(\.id)
+        guard let index = ids.firstIndex(of: id) else { return }
+        let destination = forward ? index + 1 : index - 1
+        guard ids.indices.contains(destination),
+              let moved = LiveReorder.moving(id, over: ids[destination], in: ids)
+        else { return }
+        withAnimation(reorderAnimation) { _ = appState.reorderRail(moved, in: .spaces) }
     }
 
     private func save(_ context: String) {

@@ -225,6 +225,21 @@ final class ServiceInstance {
     /// which clamps to 1...120 (nil → 10). Ignored for the other policies.
     var hibernateAfterMinutes: Int?
 
+    /// Whether this service belongs to no space and shows in the rail whatever
+    /// space is selected. Optional for SwiftData lightweight migration; nil is
+    /// treated as false. Read via `isGlobalEffective`.
+    ///
+    /// A global service has no `SpaceServiceLink` rows, and every path that
+    /// changes this flag keeps it that way in the same save: making a service
+    /// global deletes its links, moving it into a space inserts one and clears
+    /// the flag. The launch reaper deletes link-less services, so it must skip
+    /// these or the first relaunch deletes them with their sign-in.
+    var isGlobal: Bool?
+
+    /// This service's place in the global group, in the same numbering as the
+    /// group's dividers (see `RailOrder`). Meaningless unless `isGlobal`.
+    var globalSortOrder: Int?
+
     @Relationship(deleteRule: .cascade, inverse: \SpaceServiceLink.service)
     var spaceLinks: [SpaceServiceLink]
 
@@ -283,6 +298,9 @@ final class ServiceInstance {
     /// Materialises the storage-optional stay-active flag (nil → false), so a
     /// service only fakes focus when the user has explicitly opted in.
     var staysActiveInBackgroundEffective: Bool { stayActiveInBackground ?? false }
+
+    /// Materialises the storage-optional global flag (nil → false).
+    var isGlobalEffective: Bool { isGlobal ?? false }
 
     /// Catalog categories whose services must never auto-hibernate (chat apps).
     /// A hibernated web app can only refresh its badge on the periodic sweep, not
@@ -360,7 +378,9 @@ final class ServiceInstance {
         openExternalLinksInApp: Bool? = nil,
         stayActiveInBackground: Bool? = nil,
         hibernationPolicyRaw: String? = nil,
-        hibernateAfterMinutes: Int? = nil
+        hibernateAfterMinutes: Int? = nil,
+        isGlobal: Bool? = nil,
+        globalSortOrder: Int? = nil
     ) {
         self.id = id
         self.label = label
@@ -386,6 +406,8 @@ final class ServiceInstance {
         self.stayActiveInBackground = stayActiveInBackground
         self.hibernationPolicyRaw = hibernationPolicyRaw
         self.hibernateAfterMinutes = hibernateAfterMinutes
+        self.isGlobal = isGlobal
+        self.globalSortOrder = globalSortOrder
         self.spaceLinks = []
         self.createdAt = Date()
         self.lastAccessedAt = Date()

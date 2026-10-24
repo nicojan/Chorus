@@ -1,7 +1,9 @@
 import SwiftUI
 
 struct ServiceShortcutDestination: Equatable {
-    let spaceID: UUID
+    /// The space to switch to. Nil for a global service, which shows in every
+    /// space, so selecting it leaves the current space alone.
+    let spaceID: UUID?
     let serviceID: UUID
 }
 
@@ -21,8 +23,10 @@ enum ServiceShortcutNavigation {
         in destinations: [ServiceShortcutDestination]
     ) -> ServiceShortcutDestination? {
         guard !destinations.isEmpty else { return nil }
+        // A global destination matches in whatever space is current, so a
+        // selected global service steps from its own place, not from index 0.
         guard let currentIndex = destinations.firstIndex(where: {
-            $0.spaceID == spaceID && $0.serviceID == serviceID
+            $0.serviceID == serviceID && ($0.spaceID == nil || $0.spaceID == spaceID)
         }) else {
             return offset < 0 ? destinations.last : destinations.first
         }
@@ -125,7 +129,7 @@ struct KeyboardShortcutCommands: Commands {
     }
 
     private func select(_ destination: ServiceShortcutDestination) {
-        selectedSpaceID = destination.spaceID
+        if let spaceID = destination.spaceID { selectedSpaceID = spaceID }
         selectedServiceID = destination.serviceID
     }
 }

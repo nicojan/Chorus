@@ -1,5 +1,45 @@
 # Open items
 
+## Open: global services, dividers and shared sign-ins, on `feat/global-services-dividers`, not merged
+
+Built 2026-10-22 in one long session. Nico skipped the questions, so the design calls are Claude's; they are in `docs/superpowers/specs/2026-10-22-global-services-and-dividers-design.md` (with the later additions at its end) and in the commit messages. The branch ends at `dfce48c` plus this docs commit; 368 tests pass; CI green on 14 and 15 at `dfce48c`. Three independent reviews found no data-loss path, and their findings are fixed (`63bce54`, `95e0182`, `2327a3e`). Nothing merged or released.
+
+What it does:
+
+- **Global services.** Schema 1.5.29, lightweight from a newly frozen 1.5.19: `ServiceInstance.isGlobal` and `.globalSortOrder`. A global service has no links, and the launch reap (`AppState.reapable`) skips it. Shown first in every layout; in the hybrid layout it sits in the space strip above the spaces, and in the all-services rail in a card with no heading.
+- **Dividers.** A `RailDivider` entity with no relationships. Rows and dividers share one numbering, so every reorder goes through `RailOrder` and `RailEdits`. The drag starts from AppKit (`RailDividerView`) so its end is known; dragged off the rail it is removed. It shows as an accent bar in its slot while dragged. Every + button's right-click menu has Add Divider.
+- **Shared sign-ins.** A new service shares its space's sign-in (the store id is the space's id) or the global services' one (`ServiceAdding.globalStore`), unless it is given its own on the second page of Add Service. Existing services keep their own stores, so the update signs nobody out; Edit Service's Sign-in picker can move one onto its space's. A shared store nobody uses is cleared before a service starts on it (`AppState.prepareStore`), since its id comes back and WebKit can keep its cookies in memory.
+- **Moves.** Dragging a service into another space or the global group asks first and keeps its cookies. Menu moves do not ask.
+
+Seen working in the Debug build:
+
+- Every layout, and dividers added, moved, dropped on a gap and dragged off in the rail, bar, strip and palette.
+- A service made global and moved back, by menu and by drag, with the move confirmation.
+- The two-page Add Service.
+- Against a local cookie page: shared and separate sign-ins, and a service deleted and added back starting signed out, both at once and after the cleanup ran.
+
+A copy of the real 1.5.28 store migrated with 4 spaces, 18 services and 18 links intact.
+
+**Checked by hand on 2026-10-23**, Debug build, macOS 27.0.1. All pass after two fixes:
+
+- Gmail added to a space opened signed in through Drive's sign-in, and both stayed loaded and signed in.
+- Gmail and Drive deleted, Gmail added back to the same space: it opened at Google's sign-in page.
+- Gmail dragged to another space: the dialog said its cookies come with it, and it stayed signed in.
+- Edit Service, "Shared in Personal": the service moved onto the space's sign-in.
+- Clear session on a service sharing with one other: the dialog named it, and both signed out. The dialog now says "both" for two (`8092ef1`).
+- A divider dragged off the rail on a second display was removed. Escape during the drag first left the divider where the pointer had taken it, and off the rail deleted it; fixed in `8b15c09`, so Escape puts it back, and Nico confirmed it.
+- VoiceOver actions on dividers and global services (Nico).
+
+Not checked: two Google services on macOS 14 and 15.
+
+**Still open:**
+
+- Escape does not undo a live reorder of a service or a space either. Their drags are SwiftUI's `onDrag`, which never says when a drag ends, so the divider's fix does not carry over. Older than this branch.
+- A setup import gives each shared group a fresh store rather than its space's, so an imported space can end up with two sign-ins as services are added.
+- Offered, not decided: the move confirmation could let the person choose between keeping the service's sign-in and taking the new space's.
+- Older gaps a sign-in change can now reach: rebuilding a web view leaves a sign-in popup window on the old store; a service the badge sweep parked behind a sign-in wall stays parked after joining a signed-in store until it is opened.
+- Not built from the 2026-10-05 plan: "use your sign-in from Gmail" in Add Service for a matching site. The second page covers most of it.
+
 ## Open: full code review of 2026-10-18, fixed on `main`, not released
 
 A full review of the app in five slices (app core, store and setup import, web views, background services, views), each by an independent read-only reviewer, then a sixth review of the fixes themselves. Nothing malicious turned up. The supply chain checks out: `darkreader.js` is byte-identical to npm 4.9.128, the two blocklists match the hashes in `vendor/blocklists/manifest.json` and hold only block and hide rules, Sparkle's pin is the 2.9.3 tag, gitleaks finds nothing in 521 commits, CI uses `pull_request` (no secrets to forks) and the repo's default token is read-only, and the appcast Worker stores only a salted daily hash. Seven commits on `fix/code-review-2026-10`, merged to `main`; 326 tests and CI on 14 and 15 green. What each changed is in the CHANGELOG and the commit messages.
@@ -23,7 +63,7 @@ The two changes most likely to be noticed:
 - A WebContent crash still cancels the service's downloads (`cancelActiveDownloads`). The reviewer says WKDownload survives that crash; the code's own note says terminal callbacks didn't arrive. Needs a live crash test before changing.
 - Notifications are still accepted from any origin in the service's main frame; the subtitle now names the service. Gating them on the service's own domain would break Teams, which moves between `teams.cloud.microsoft` and `teams.microsoft.com`.
 - `javaScriptCanOpenWindowsAutomatically` stays on. Turning it off matches Safari but can break OAuth popups that open after an async step.
-- Not done, lower value: the weekly catalog icon refresh still contacts every catalog host through `URLSession.shared` (skip entries with a bundled brand mark; use an ephemeral session); favicon URLs drop IPv6 brackets, and a self-hosted service's same-host icon links are refused; the Mac-app docker can grab a Settings window instead of the main one, and its badge reader fetches every service every 3 s; the feature tips anchor carries `allowsHitTesting(false)` though its own comment says that stops TipKit (check with `debugShowAllTips`); Edit Service has no scroll view; Restore from a backup can latch when another sheet is up; Launch at login reads `.requiresApproval` as off; `ChorusAppDelegate.appState` is only set when the window appears; three add-service paths, three copies of space reorder, and two icon-drawing paths have drifted; a snapshot retried after a failure is labelled pre-migration though the store has migrated; the old `~/Library/Caches/CatalogIcons` is left behind, since another app may own that name.
+- Not done, lower value: the weekly catalog icon refresh still contacts every catalog host through `URLSession.shared` (skip entries with a bundled brand mark; use an ephemeral session); favicon URLs drop IPv6 brackets, and a self-hosted service's same-host icon links are refused; the Mac-app docker can grab a Settings window instead of the main one, and its badge reader fetches every service every 3 s; the feature tips anchor carries `allowsHitTesting(false)` though its own comment says that stops TipKit (check with `debugShowAllTips`); Restore from a backup can latch when another sheet is up; Launch at login reads `.requiresApproval` as off; `ChorusAppDelegate.appState` is only set when the window appears; three copies of space reorder, and two icon-drawing paths have drifted; a snapshot retried after a failure is labelled pre-migration though the store has migrated; the old `~/Library/Caches/CatalogIcons` is left behind, since another app may own that name.
 
 ## Open: WhatsApp voice messages crackle and drop words (#38)
 
@@ -99,7 +139,9 @@ Released 2026-10-05 as 1.5.27: build 40, tag `4ab767f`, DMG 10,520,614 bytes, sh
 - **#35 (mailto links) and #37 (Gmail actions across hide and switch), jpagh.** The author pushed fixes on 2026-10-12, then closed both the same day: "I couldn't get it to a standard I can stand behind." The branches stay on their fork. Nothing to do unless they reopen.
 - **#36, memory watch (marcioviniciusspiridigliozzi-dot).** Reshaped to log only, as asked, and merged on 2026-10-18 with maintainer fixups. See "A memory watch, log only" under the memory item below.
 
-## Open: sign-in groups (services sharing cookies), explored, not built
+## Built on `feat/global-services-dividers`: sign-in groups (services sharing cookies)
+
+Built 2026-10-22 as the Edit Service picker below proposed; see the top section. The notes from the exploration stay for reference.
 
 Asked on 2026-10-05 and parked for its own session. No code exists yet. The exploration found:
 

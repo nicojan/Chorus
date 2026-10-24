@@ -55,6 +55,9 @@ final class AppState {
     var pendingAddServiceTab: AddServiceSheet.AddServiceTab?
     /// A service whose Edit sheet the rail should open, set by a tip.
     var pendingEditServiceID: UUID?
+    /// A service dragged into another space or the global group, waiting for
+    /// the confirmation ContentView shows. See `RailMove`.
+    var pendingRailMove: RailMove?
     /// The version whose What's New sheet is up, or nil.
     var whatsNewVersion: String?
     /// The Mac app whose name the Accessibility explanation is about, or nil
@@ -221,6 +224,10 @@ final class AppState {
     /// and issue `WKWebsiteDataStore.remove(...)` for the same store at once.
     /// Main-actor only.
     @ObservationIgnored private var dataStoresBeingRemoved: Set<UUID> = []
+    /// The store a `WKWebsiteDataStore.remove` call is working on right now,
+    /// if any. A service about to use a reused store id waits this out; see
+    /// `prepareStore(_:)`.
+    @ObservationIgnored var storeBeingRemovedNow: UUID?
 
     /// Scheduled "quiet hours" Do Not Disturb, loaded from AppPreferences.
     /// `doNotDisturb` above stays the manual toggle; the effective DND that
@@ -984,10 +991,11 @@ final class AppState {
         if matches.count == 1 { return matches.first }
 
         // Multiple instances of the same site (e.g. personal + work Notion).
-        // Prefer one inside the current space; fall back to any match.
+        // Prefer one inside the current space, where a global service counts
+        // as inside every space; fall back to any match.
         if let spaceID,
            let inCurrentSpace = matches.first(where: { service in
-               service.spaceLinks.contains { link in
+               service.isGlobalEffective || service.spaceLinks.contains { link in
                    link.modelContext != nil && link.liveSpace?.id == spaceID
                }
            }) {
@@ -1303,19 +1311,29 @@ final class AppState {
     func clearSession(for serviceID: UUID) {
         guard let service = currentServiceInstance(id: serviceID) else { return }
         let store = dataStoreManager.dataStore(forIdentifier: service.dataStoreIdentifier)
-        let homeURL = URL(string: service.url)
+        // Every service on this store loses the sign-in, not only this one, so
+        // each live page is sent home to show it. See `SignInSharing`.
+        let affected = [service] + signInPartners(of: serviceID)
+        let homes = affected.map { (id: $0.id, url: URL(string: $0.url)) }
         let pool = webViewPool
         Task { @MainActor in
             let types = WKWebsiteDataStore.allWebsiteDataTypes()
             await store.removeData(ofTypes: types, modifiedSince: .distantPast)
-            if let webView = pool.liveWebView(for: serviceID) {
-                if let homeURL {
-                    webView.load(URLRequest(url: homeURL))
-                } else {
+            for home in homes {
+                // The service's own page goes home; its tabs reload, so none
+                // of them keeps showing a signed-in page.
+                let main = pool.liveWebView(for: home.id)
+                for webView in pool.allWebViews(for: home.id) where webView !== main {
                     webView.reload()
                 }
+                guard let main else { continue }
+                if let url = home.url {
+                    main.load(URLRequest(url: url))
+                } else {
+                    main.reload()
+                }
             }
-            AppLogger.dataStore.info("Cleared session for service \(serviceID)")
+            AppLogger.dataStore.info("Cleared session for service \(serviceID) and \(homes.count - 1) sharing it")
         }
     }
 
@@ -1757,7 +1775,10 @@ final class AppState {
         // stores) until the save succeeds. Doing them first meant a failed save
         // left the service still in the store yet logged out with its cookies
         // deleted 2s later — data loss the rest of the code is careful to avoid.
-        let reclaimed = linkedServices.filter { orphanedIDs.contains($0.id) }
+        // A global service is in no space and never belongs to this one. It
+        // should have no link here to be counted at all, but if that rule were
+        // ever broken, deleting a space must still not take it and its sign-in.
+        let reclaimed = linkedServices.filter { orphanedIDs.contains($0.id) && !$0.isGlobalEffective }
         // Capture the identifiers BEFORE deleting — reading them off the models
         // after they're deleted would fault the freed backing data and trap.
         let reclaimedServiceIDs = reclaimed.map(\.id)
@@ -1782,6 +1803,9 @@ final class AppState {
             context.delete(link)
         }
         for service in reclaimed { context.delete(service) }
+        // Dividers point at their space by id, not by a relationship, so no
+        // cascade takes them. Delete them in this same save.
+        RailEdits.deleteDividers(ofSpace: spaceID, context: context)
         context.delete(space)
 
         do {
@@ -2460,7 +2484,7 @@ final class AppState {
             return
         }
 
-        let orphans = services.filter { $0.spaceLinks.isEmpty }
+        let orphans = Self.reapable(services)
         guard !orphans.isEmpty else { return }
 
         // Capture identifiers before deleting; tombstoning + removing the on-disk
@@ -2482,14 +2506,37 @@ final class AppState {
         cleanUpOrphanedDataStores()
     }
 
+    /// The services the launch reap deletes: those in no space. A global
+    /// service is in no space on purpose (see `ServiceInstance.isGlobal`), and
+    /// reaping it would delete it and wipe its sign-in on every launch.
+    static func reapable(_ services: [ServiceInstance]) -> [ServiceInstance] {
+        services.filter { $0.spaceLinks.isEmpty && !$0.isGlobalEffective }
+    }
+
     /// Mark a per-service data store identifier as orphaned. Called from
     /// the delete paths; the actual `WKWebsiteDataStore.remove(...)` is
     /// deferred to `cleanUpOrphanedDataStores()` so the live WKWebView has
     /// time to tear down first.
     func markDataStoreOrphaned(_ identifier: UUID) {
-        var orphans = Self.loadOrphanedIdentifiers()
-        orphans.insert(identifier)
-        Self.saveOrphanedIdentifiers(orphans)
+        let current = Self.loadOrphanedIdentifiers()
+        let next = Self.tombstones(adding: identifier, to: current, claimed: liveDataStoreIdentifiers())
+        guard next != current else {
+            if !current.contains(identifier) {
+                AppLogger.dataStore.info("Keeping data store \(identifier): another service uses it, or the store could not be read")
+            }
+            return
+        }
+        Self.saveOrphanedIdentifiers(next)
+    }
+
+    /// The tombstone list after asking to remove `identifier`. Services can
+    /// share one store (a shared sign-in), so deleting one of them must not
+    /// wipe the sign-in the others still use: a store a live service claims,
+    /// or any store while the claims can't be read, is left off. The cleanup's
+    /// reconcile would drop such a tombstone too; this keeps it from being
+    /// written at all. Pure, so the rule is pinned by a test.
+    nonisolated static func tombstones(adding identifier: UUID, to current: Set<UUID>, claimed: Set<UUID>?) -> Set<UUID> {
+        shouldTombstone(identifier, claimed: claimed) ? current.union([identifier]) : current
     }
 
     /// Removes any data store identifiers previously marked as orphaned.
@@ -2508,9 +2555,15 @@ final class AppState {
         // reconcile, the next launch wipes the cookies of a service the user can
         // see and is using. Nothing legitimate is lost — a tombstone whose
         // service exists again is, by definition, wrong.
+        // An unreadable store says nothing about what is claimed, so this pass
+        // waits for a launch that can read it.
+        guard let claimed = liveDataStoreIdentifiers() else {
+            AppLogger.dataStore.warning("Skipping data store cleanup: could not read which stores services use")
+            return
+        }
         let reconciled = Self.reconciledTombstones(
             tombstoned: Self.loadOrphanedIdentifiers(),
-            claimed: liveDataStoreIdentifiers()
+            claimed: claimed
         )
         let tombstoned = reconciled.keep
         if !reconciled.dropped.isEmpty {
@@ -2548,12 +2601,35 @@ final class AppState {
             // reports as in use. Anything that never succeeds stays in the
             // tombstone list and is retried at the next launch, so no store leaks.
             var removed: Set<UUID> = []
+            // Stores a service claimed again before their turn: settled, but
+            // not removed. Kept apart from `removed` so a store deleted again
+            // while this pass runs keeps its new tombstone.
+            var kept: Set<UUID> = []
             let backoff: [Duration] = [.seconds(2), .seconds(3), .seconds(5)]
             for delay in backoff {
                 try? await Task.sleep(for: delay)
-                let pending = orphans.subtracting(removed)
+                let pending = orphans.subtracting(removed).subtracting(kept)
                 guard !pending.isEmpty else { break }
                 for identifier in pending {
+                    // A shared store's id comes back: a space's is the space's
+                    // id, so the next service added there can claim the very
+                    // store this pass is waiting to remove. Decided right before
+                    // each removal; see `removalDecision`.
+                    switch Self.removalDecision(
+                        for: identifier,
+                        claimedNow: liveDataStoreIdentifiers(),
+                        inUseOffscreen: transientBadgeFetcher.storesInUse
+                    ) {
+                    case .keep:
+                        kept.insert(identifier)
+                        AppLogger.dataStore.info("Keeping data store \(identifier): a service claimed it again")
+                        continue
+                    case .wait:
+                        continue
+                    case .remove:
+                        break
+                    }
+                    storeBeingRemovedNow = identifier
                     do {
                         try await WKWebsiteDataStore.remove(forIdentifier: identifier)
                         removed.insert(identifier)
@@ -2561,6 +2637,7 @@ final class AppState {
                     } catch {
                         AppLogger.dataStore.warning("Data store \(identifier) not yet removable, will retry: \(error.localizedDescription)")
                     }
+                    storeBeingRemovedNow = nil
                 }
             }
 
@@ -2571,18 +2648,98 @@ final class AppState {
             // Read-modify-write rather than overwriting with a stale snapshot:
             // another delete may have appended new orphans while we slept, and
             // blindly saving `orphans − removed` would drop them, leaking those
-            // stores permanently.
+            // stores permanently. A kept store's tombstone goes only while a
+            // service still claims it.
+            let stillClaimed = kept.intersection(liveDataStoreIdentifiers() ?? [])
             let current = Self.loadOrphanedIdentifiers()
-            Self.saveOrphanedIdentifiers(current.subtracting(removed))
+            Self.saveOrphanedIdentifiers(current.subtracting(removed).subtracting(stillClaimed))
         }
     }
 
-    /// Every data store identifier a service currently claims. Empty when the
-    /// store can't be read — callers must treat that as "unknown", never as
-    /// "nothing is claimed".
-    private func liveDataStoreIdentifiers() -> Set<UUID> {
-        let services = (try? modelContainer.mainContext.fetch(FetchDescriptor<ServiceInstance>())) ?? []
+    /// What to do with one tombstoned store when its turn comes.
+    enum RemovalDecision: Equatable {
+        /// Nobody uses it: remove it.
+        case remove
+        /// A service claims it again: settle the tombstone, keep the store.
+        case keep
+        /// Not now: the claims can't be read, or an offscreen badge fetch has
+        /// a view on it. Try again next round, or next launch.
+        case wait
+    }
+
+    /// The per-store rule of the removal pass. Pure, so the case that stops a
+    /// reused store id (a space's, or the global one) being removed under a
+    /// service that has just claimed it is pinned by a test.
+    nonisolated static func removalDecision(
+        for identifier: UUID,
+        claimedNow: Set<UUID>?,
+        inUseOffscreen: Set<UUID>
+    ) -> RemovalDecision {
+        guard let claimedNow else { return .wait }
+        if claimedNow.contains(identifier) { return .keep }
+        if inUseOffscreen.contains(identifier) { return .wait }
+        return .remove
+    }
+
+    /// Readies a store a service is about to start using. When no other
+    /// service uses it, it is cleared first, so the new service starts signed
+    /// out, as Add Service says it will.
+    ///
+    /// This matters because shared store ids come back. A space's store is
+    /// the space's id and the global one is fixed, so deleting the last
+    /// service in a space and adding one again lands on the same id. The
+    /// removal pass may not have removed it yet, may be removing it now, or
+    /// may have removed it from disk while WebKit still holds the session's
+    /// cookies in memory, which a store made again with that id picks up:
+    /// a re-added Google service came back signed in to the account whose
+    /// services were all just deleted. Clearing an unused store is safe in
+    /// every case, so it is cleared whatever the removal list says.
+    ///
+    /// Waits out a removal in progress before and after the clear, takes the
+    /// store off the removal list, and drops the cached handle. The caller
+    /// saves the service right after this returns, with no await in between,
+    /// so the removal pass sees the claim before it can act.
+    func prepareStore(_ identifier: UUID) async {
+        // Another service on it: it is shared on purpose; leave it be.
+        // Unreadable claims say nothing, so leave it be too.
+        guard let claimed = liveDataStoreIdentifiers(), !claimed.contains(identifier) else { return }
+        await waitOutRemoval(of: identifier)
+        let tombstones = Self.loadOrphanedIdentifiers()
+        if tombstones.contains(identifier) {
+            Self.saveOrphanedIdentifiers(tombstones.subtracting([identifier]))
+        }
+        let store = dataStoreManager.dataStore(forIdentifier: identifier)
+        await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
+        // A removal may have started during the clear; wait for it too, and
+        // drop the handle it may have made stale.
+        await waitOutRemoval(of: identifier)
+        dataStoreManager.evict(identifier: identifier)
+    }
+
+    private func waitOutRemoval(of identifier: UUID) async {
+        var waited = 0
+        while storeBeingRemovedNow == identifier, waited < 100 {
+            try? await Task.sleep(for: .milliseconds(100))
+            waited += 1
+        }
+    }
+
+    /// Every data store identifier a service currently claims, or nil when
+    /// the store can't be read. Nil is "unknown", never "nothing is claimed":
+    /// a failed fetch read as empty would mark every shared store unclaimed.
+    func liveDataStoreIdentifiers() -> Set<UUID>? {
+        guard let services = try? modelContainer.mainContext.fetch(FetchDescriptor<ServiceInstance>()) else {
+            return nil
+        }
         return Set(services.map(\.dataStoreIdentifier))
+    }
+
+    /// Whether a store may be tombstoned: only when the claims could be read
+    /// and no service, such as one sharing its sign-in, still uses it. Pure,
+    /// so the rule is pinned by a test.
+    nonisolated static func shouldTombstone(_ identifier: UUID, claimed: Set<UUID>?) -> Bool {
+        guard let claimed else { return false }
+        return !claimed.contains(identifier)
     }
 
     /// Where WebKit keeps the identifier-scoped stores made by
@@ -2634,9 +2791,10 @@ final class AppState {
               let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return }
 
         let onDisk = Set(names.compactMap(UUID.init(uuidString:)))
+        guard let claimed = liveDataStoreIdentifiers() else { return }
         let unreferenced = Self.unreferencedDataStoreIdentifiers(
             onDisk: onDisk,
-            claimed: liveDataStoreIdentifiers()
+            claimed: claimed
         )
         guard !unreferenced.isEmpty else { return }
 
@@ -2679,12 +2837,21 @@ final class AppState {
         }
     }
 
+    /// What the rail shows in a space, in its order: the global services,
+    /// then the space's own. Use this wherever "the services you can see" is
+    /// meant — preloading, ⌘1–9, launch restore — and `servicesForSpace`
+    /// where membership is meant, such as a space's badge total or the
+    /// selection check when switching spaces.
+    func railServices(forSpace spaceID: UUID) -> [ServiceInstance] {
+        RailEdits.globalServices(in: modelContainer.mainContext) + servicesForSpace(spaceID)
+    }
+
     /// Preloads web views for all services in the currently selected space.
     /// Runs after window state is restored so `selectedSpaceID` is already set.
     /// The selected service (if any) loads first, then the rest stagger at 500ms intervals.
     private func preloadActiveSpaceServices() {
         guard let spaceID = selectedSpaceID else { return }
-        let services = servicesForSpace(spaceID)
+        let services = railServices(forSpace: spaceID)
         guard !services.isEmpty else { return }
 
         // Move the selected service to the front so it preloads first.
@@ -2841,6 +3008,10 @@ final class AppState {
             self?.webViewPool.hasWebView(for: id) ?? false
         }
 
+        transientBadgeFetcher.currentDataStoreIdentifier = { [weak self] id in
+            self?.currentServiceInstance(id: id)?.dataStoreIdentifier
+        }
+
         transientBadgeFetcher.currentBadgeParams = { [weak self] id in
             guard let self, let service = self.currentServiceInstance(id: id) else { return nil }
             return (self.isServiceEffectivelyMuted(id), service.showBadge)
@@ -2919,7 +3090,7 @@ final class AppState {
 
     /// Preloads services when the user switches to a different space.
     func preloadServicesForSpace(_ spaceID: UUID) {
-        let services = servicesForSpace(spaceID)
+        let services = railServices(forSpace: spaceID)
         Task {
             await webViewPool.preloadAll(services)
         }
@@ -3243,11 +3414,13 @@ final class AppState {
             queue: .main
         ) { [weak self] notification in
             guard let userInfo = notification.userInfo,
-                  let serviceID = userInfo["serviceID"] as? UUID,
-                  let spaceID = userInfo["spaceID"] as? UUID
+                  let serviceID = userInfo["serviceID"] as? UUID
             else { return }
+            // A global service comes with no space: it shows in every space,
+            // so the current one stays.
+            let spaceID = userInfo["spaceID"] as? UUID
             Task { @MainActor in
-                self?.selectedSpaceID = spaceID
+                if let spaceID { self?.selectedSpaceID = spaceID }
                 self?.selectedServiceID = serviceID
             }
         })
@@ -3311,13 +3484,16 @@ final class AppState {
                 selectedServiceID = nil
                 return
             }
-            let servicesInSpace = servicesForSpace(spaceID)
+            // Global services show in every space, so a saved global
+            // selection is as valid as one of the space's own.
+            let visible = railServices(forSpace: spaceID)
             if let savedServiceID = prefs?.selectedServiceID,
-               servicesInSpace.contains(where: { $0.id == savedServiceID }) {
+               visible.contains(where: { $0.id == savedServiceID }) {
                 selectedServiceID = savedServiceID
             } else if selectedServiceID == nil
-                        || !servicesInSpace.contains(where: { $0.id == selectedServiceID }) {
-                selectedServiceID = servicesInSpace.first?.id
+                        || !visible.contains(where: { $0.id == selectedServiceID }) {
+                // The space's own first service, as a space switch picks.
+                selectedServiceID = servicesForSpace(spaceID).first?.id
             }
         } catch {
             AppLogger.dataStore.error("Failed to restore window state: \(error.localizedDescription)")
@@ -3424,15 +3600,23 @@ final class AppState {
         context.insert(workSpace)
 
         // Each space gets its own ServiceInstance — even for the same service URL —
-        // so cookies, sessions, and login state are fully isolated between spaces.
+        // and each space's services share that space's sign-in, as services
+        // added later do (see `ServiceAdding`). So the two spaces stay apart:
+        // personal Gmail and work Gmail are two accounts.
         for (index, entry) in DefaultSeed.personalServices.enumerated() {
-            let service = ServiceInstance(label: entry.label, url: entry.url, catalogEntryID: entry.catalogID)
+            let service = ServiceInstance(
+                label: entry.label, url: entry.url, catalogEntryID: entry.catalogID,
+                dataStoreIdentifier: ServiceAdding.sharedStore(forSpace: personalSpace.id)
+            )
             context.insert(service)
             context.insert(SpaceServiceLink(sortOrder: index, space: personalSpace, service: service))
         }
 
         for (index, entry) in DefaultSeed.workServices.enumerated() {
-            let service = ServiceInstance(label: entry.label, url: entry.url, catalogEntryID: entry.catalogID)
+            let service = ServiceInstance(
+                label: entry.label, url: entry.url, catalogEntryID: entry.catalogID,
+                dataStoreIdentifier: ServiceAdding.sharedStore(forSpace: workSpace.id)
+            )
             context.insert(service)
             context.insert(SpaceServiceLink(sortOrder: index, space: workSpace, service: service))
         }

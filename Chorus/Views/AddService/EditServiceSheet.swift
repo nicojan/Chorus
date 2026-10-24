@@ -10,6 +10,12 @@ struct EditServiceSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
+    /// Every service, for the sign-in picker's choices.
+    @Query(sort: \ServiceInstance.label) private var allServices: [ServiceInstance]
+    /// Spaces and memberships, for the shared sign-ins of the spaces this
+    /// service is in.
+    @Query(sort: \Space.sortOrder) private var spaces: [Space]
+    @Query private var allLinks: [SpaceServiceLink]
 
     @State private var label: String = ""
     @State private var url: String = ""
@@ -35,10 +41,18 @@ struct EditServiceSheet: View {
     @State private var initialUserAgent: String?
     @State private var errorMessage: String?
     @State private var confirmingClearSession = false
+    /// The store this service's sign-in should use, a space's shared one or
+    /// another service's, or nil for one of its own. See `SignInSharing`.
+    @State private var signInTarget: UUID?
+    @State private var initialSignInTarget: UUID?
 
     /// A Mac-app service has no page, so it gets only the settings that apply
     /// to a launcher: name, mute and badge.
     private var nativeBundleID: String? { service.nativeAppBundleID }
+
+    /// How tall the settings may grow before they scroll: room for a short
+    /// sheet to show whole, while a long one fits a 13-inch screen.
+    static let settingsMaxHeight: CGFloat = 460
 
     private var defaultCSS: String {
         ServiceCSSDefaults.css(forCatalogID: service.catalogEntryID) ?? ""
@@ -58,25 +72,31 @@ struct EditServiceSheet: View {
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Name")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    TextField("Service name", text: $label)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityLabel("Service name")
-                }
+            // The settings scroll; the title row and Save stay put. A web
+            // service's settings ran past the bottom of a laptop screen, and the
+            // whole sheet was one long column with Save under the fold.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Name")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        TextField("Service name", text: $label)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityLabel("Service name")
+                    }
 
-                if let nativeBundleID {
-                    nativeAppRow(bundleID: nativeBundleID)
-                    Divider()
-                    notificationsSection
-                } else {
-                    webSettings
+                    if let nativeBundleID {
+                        nativeAppRow(bundleID: nativeBundleID)
+                        Divider()
+                        notificationsSection
+                    } else {
+                        webSettings
+                    }
                 }
+                .padding(20)
             }
-            .padding(20)
+            .frame(maxHeight: Self.settingsMaxHeight)
 
             Divider()
 
@@ -107,7 +127,7 @@ struct EditServiceSheet: View {
                 dismiss()
             }
         } message: {
-            Text("This clears this service's cookies and storage on this Mac. You'll need to sign in again.")
+            Text(clearSessionMessage)
         }
     }
 
@@ -198,6 +218,8 @@ struct EditServiceSheet: View {
         .pickerStyle(.segmented)
         .help("On applies a dark theme to this service while the app is dark. Off never does.")
 
+        signInSection
+
         if let errorMessage {
             Text(errorMessage)
                 .font(.caption)
@@ -227,7 +249,124 @@ struct EditServiceSheet: View {
         .help("Signs you out by clearing this service's cookies and storage. Its place in your spaces is kept.")
     }
 
+    /// One choice in the Sign-in picker.
+    private struct SignInOption: Identifiable {
+        /// The store it puts the service on; nil for one of its own.
+        let store: UUID?
+        let title: String
+        /// How the note under the picker names it.
+        let phrase: String
+        var id: String { store?.uuidString ?? "own" }
+    }
+
+    /// The services that share this one's sign-in as saved now.
+    private var currentPartners: [ServiceInstance] {
+        SignInSharing.partners(of: service, among: allServices)
+    }
+
+    /// The shared sign-ins this service can join: those of the spaces it is
+    /// in, the global one when it is global, and the one it is on now.
+    private var sharedOptions: [SignInOption] {
+        let memberSpaceIDs = Set(allLinks.compactMap(\.liveEnds).filter { $0.service.id == service.id }.map(\.space.id))
+        var options = spaces
+            .filter { $0.modelContext != nil && (memberSpaceIDs.contains($0.id) || $0.id == service.dataStoreIdentifier) }
+            .map { space in
+                SignInOption(
+                    store: ServiceAdding.sharedStore(forSpace: space.id),
+                    title: "Shared in \(space.name)",
+                    phrase: "the sign-in \(space.name) shares"
+                )
+            }
+        if service.isGlobalEffective || service.dataStoreIdentifier == ServiceAdding.globalStore {
+            options.append(SignInOption(
+                store: ServiceAdding.globalStore,
+                title: "Shared by every-space services",
+                phrase: "the sign-in every-space services share"
+            ))
+        }
+        return options
+    }
+
+    /// Every choice: its own, the shared ones, then each other store some web
+    /// service uses, named after the services on it. A Mac app has no cookies.
+    private var signInOptions: [SignInOption] {
+        let shared = sharedOptions
+        let listed = Set(shared.compactMap(\.store))
+        let others = allServices.filter {
+            $0.id != service.id && $0.modelContext != nil && $0.nativeAppBundleID == nil && !listed.contains($0.dataStoreIdentifier)
+        }
+        let byStore = Dictionary(grouping: others, by: \.dataStoreIdentifier)
+        let storeOptions = byStore
+            .map { store, members -> SignInOption in
+                let names = AppState.listed(members.map(\.label).sorted())
+                return SignInOption(store: store, title: "Same as \(names)", phrase: "\(names)'s sign-in")
+            }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        let own = SignInOption(store: nil, title: "Its own", phrase: "a new sign-in of its own, signed out")
+        return [own] + shared + storeOptions
+    }
+
+    /// Where the picker starts: the store it is on, when that is shared with
+    /// anything or is a space's or the global one; otherwise its own.
+    private var savedSignInTarget: UUID? {
+        let current = service.dataStoreIdentifier
+        let spaceIDs = Set(spaces.map(\.id))
+        let shared = !currentPartners.isEmpty || SignInSharing.isSharedStore(current, spaceIDs: spaceIDs)
+        return shared ? current : nil
+    }
+
+    @ViewBuilder
+    private var signInSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Picker("Sign-in", selection: $signInTarget) {
+                ForEach(signInOptions) { option in
+                    Text(option.title).tag(option.store)
+                }
+            }
+            .help("Services on the same sign-in share cookies and storage, so signing in to one signs in the others. A service added to a space goes on that space's shared sign-in unless it is kept separate.")
+
+            if let signInNote {
+                Text(signInNote)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// What saving the picker's choice will do, in the words that matter:
+    /// which sign-in this service ends up on, and whether the one it has now
+    /// is deleted. Nil when saving changes nothing and nothing needs saying.
+    private var signInNote: String? {
+        let partners = currentPartners.map(\.label)
+        let partnerNames = AppState.listed(partners)
+        let keep = partners.count == 1 ? "keeps" : "keep"
+        let current = service.dataStoreIdentifier
+        guard signInTarget != initialSignInTarget else {
+            if !partners.isEmpty { return "Shares its sign-in with \(partnerNames)." }
+            if let option = sharedOptions.first(where: { $0.store == current }) {
+                return "Uses \(option.phrase). Services added there join it."
+            }
+            return nil
+        }
+        let phrase = signInOptions.first { $0.store == signInTarget }?.phrase ?? "another sign-in"
+        if partners.isEmpty {
+            return "Saving deletes this service's saved sign-in on this Mac and moves it to \(phrase)."
+        }
+        return "Saving moves this service to \(phrase). \(partnerNames) \(keep) the current one."
+    }
+
+    private var clearSessionMessage: String {
+        let partners = currentPartners.map(\.label)
+        guard !partners.isEmpty else {
+            return "This clears this service's cookies and storage on this Mac. You'll need to sign in again."
+        }
+        let everyone = partners.count == 1 ? "both" : "all of them"
+        return "This clears the cookies and storage this service shares with \(AppState.listed(partners)), so \(everyone) sign out on this Mac."
+    }
+
     private func loadFields() {
+        signInTarget = savedSignInTarget
+        initialSignInTarget = signInTarget
         label = service.label
         url = service.url
         hibernationPolicy = service.hibernationPolicyEffective
@@ -418,7 +557,19 @@ struct EditServiceSheet: View {
             if muteChanged || badgeChanged {
                 appState.refreshBadgeState(for: service.id)
             }
-            dismiss()
+            guard signInTarget != initialSignInTarget else {
+                dismiss()
+                return
+            }
+            let target = signInTarget
+            Task {
+                if await appState.changeSignIn(for: service.id, toStore: target) {
+                    dismiss()
+                } else {
+                    // The other changes are saved by now; only the sign-in failed.
+                    errorMessage = "Chorus couldn't change the sign-in. Your other changes are saved."
+                }
+            }
         }
     }
 

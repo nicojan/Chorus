@@ -13,6 +13,15 @@ struct AddServiceSheet: View {
     @State private var customLabel = ""
     @State private var urlError: String?
     @State private var macAppError: String?
+    /// Show the new service in every space instead of this one.
+    @State private var showInEverySpace = false
+    /// Give the new service its own sign-in instead of the shared one.
+    @State private var keepSignInSeparate = false
+    /// The service picked on the first page, now being placed on the second.
+    /// Nil while still picking. See `AddServicePlacementPage`.
+    @State private var configuring: PendingAdd?
+    /// Why the last add failed, shown on the second page.
+    @State private var addError: String?
 
     enum AddServiceTab: String, CaseIterable {
         case catalog = "Browse"
@@ -30,27 +39,10 @@ struct AddServiceSheet: View {
             header
             Divider()
 
-            Picker("", selection: $selectedTab) {
-                ForEach(AddServiceTab.allCases, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
-                }
-            }
-            .pickerStyle(.segmented)
-            .accessibilityLabel("Add service by")
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-
-            if !AppCapabilities.passkeysSupported {
-                passkeyNotice
-            }
-
-            switch selectedTab {
-            case .catalog:
-                catalogContent
-            case .custom:
-                customURLContent
-            case .macApp:
-                macAppContent
+            if let add = configuring {
+                placementPage(for: add)
+            } else {
+                pickingPage
             }
         }
         .frame(width: 520, height: 480)
@@ -60,6 +52,69 @@ struct AddServiceSheet: View {
                 appState.pendingAddServiceTab = nil
             }
         }
+    }
+
+    /// The first page: find the service, in the catalog, by address, or as a
+    /// Mac app.
+    @ViewBuilder
+    private var pickingPage: some View {
+        Picker("", selection: $selectedTab) {
+            ForEach(AddServiceTab.allCases, id: \.self) { tab in
+                Text(tab.rawValue).tag(tab)
+            }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityLabel("Add service by")
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+
+        if !AppCapabilities.passkeysSupported {
+            passkeyNotice
+        }
+
+        switch selectedTab {
+        case .catalog:
+            catalogContent
+        case .custom:
+            customURLContent
+        case .macApp:
+            macAppContent
+        }
+    }
+
+    /// The second page: where the picked service goes and whose sign-in it
+    /// uses, worked out from the store it would join.
+    private func placementPage(for add: PendingAdd) -> some View {
+        let store = ServiceAdding.store(for: ServiceAdding.Destination(spaceID: spaceID, global: showInEverySpace))
+        let sharers = ServiceAdding.services(on: store, context: modelContext).map(\.label).sorted()
+        let sameSite = add.isMacApp ? nil : ServiceAdding.sameSiteOnSharedStore(
+            catalogEntryID: add.catalogEntryID,
+            url: add.url,
+            destination: ServiceAdding.Destination(spaceID: spaceID, global: showInEverySpace),
+            context: modelContext
+        )?.label
+        return AddServicePlacementPage(
+            serviceName: add.name,
+            spaceName: spaceName,
+            isMacApp: add.isMacApp,
+            showInEverySpace: $showInEverySpace,
+            keepSeparate: $keepSignInSeparate,
+            sharers: sharers,
+            sameSite: sameSite,
+            isChat: ServiceAdding.isChat(catalogEntryID: add.catalogEntryID, url: add.url),
+            error: addError,
+            onBack: {
+                configuring = nil
+                addError = nil
+            },
+            onAdd: { commit(add) }
+        )
+    }
+
+    private var spaceName: String {
+        let id = spaceID
+        let spaces = (try? modelContext.fetch(FetchDescriptor<Space>(predicate: #Predicate { $0.id == id }))) ?? []
+        return spaces.first?.name ?? "this space"
     }
 
     /// Calm, non-blocking heads-up that passkey sign-in won't work in-app yet.
@@ -87,7 +142,7 @@ struct AddServiceSheet: View {
 
     private var header: some View {
         HStack {
-            Text("Add a service")
+            Text(configuring == nil ? "Add a service" : "Where it goes")
                 .font(.headline)
             Spacer()
             Button("Done") { dismiss() }
@@ -116,11 +171,9 @@ struct AddServiceSheet: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 12)
 
-            CatalogGridView(
-                searchText: searchText,
-                spaceID: spaceID,
-                onAdd: { dismiss() }
-            )
+            CatalogGridView(searchText: searchText) { entry in
+                request(.catalog(entry))
+            }
         }
     }
 
@@ -183,13 +236,10 @@ struct AddServiceSheet: View {
             macAppError = "Chorus can't hold itself in a tab."
             return
         }
-        addMacApp(at: appURL, bundleID: bundleID)
-        FeatureTips.markUsed(.addMacApp)
-        appState.explainAccessibility(for: NativeApp.displayName(of: appURL))
+        request(.macApp(appURL: appURL, bundleID: bundleID))
     }
 
     private func addMacApp(at appURL: URL, bundleID: String) {
-        guard let space = fetchSpace(id: spaceID) else { return }
         let service = ServiceInstance(
             label: NativeApp.displayName(of: appURL),
             url: NativeApp.serviceURL(forBundleID: bundleID),
@@ -197,23 +247,10 @@ struct AddServiceSheet: View {
             // A launcher has no page, so there is no passkey sign-in to warn about.
             hasSeenPasskeyNotice: true
         )
-        modelContext.insert(service)
-        let link = SpaceServiceLink(
-            sortOrder: space.serviceLinks.count,
-            space: space,
-            service: service
-        )
-        // Wiring the inverses already registers the row on macOS 14; a second
-        // insert there is fatal.
-        if link.modelContext == nil { modelContext.insert(link) }
-        do {
-            try modelContext.save()
-        } catch {
-            AppLogger.dataStore.error("Failed to save Mac app service: \(error.localizedDescription)")
-        }
-        appState.selectedSpaceID = spaceID
-        appState.selectedServiceID = service.id
-        dismiss()
+        // A Mac app has no cookies, so it keeps the store it was made with.
+        guard insert(service, at: destination) else { return }
+        FeatureTips.markUsed(.addMacApp)
+        appState.explainAccessibility(for: NativeApp.displayName(of: appURL))
     }
 
     private func addCustomService() {
@@ -222,40 +259,144 @@ struct AddServiceSheet: View {
             urlError = error
             return
         case .valid(let label, let url):
-            addCustomService(label: label, url: url)
+            request(.custom(label: label, url: url))
         }
     }
 
-    private func addCustomService(label: String, url: String) {
-        guard let space = fetchSpace(id: spaceID) else { return }
-        let existingCount = space.serviceLinks.count
+    // MARK: - Adding
 
-        let service = ServiceInstance(
-            label: label,
-            url: url
-        )
-        modelContext.insert(service)
+    /// A service the person has picked, before it is made.
+    enum PendingAdd: Equatable {
+        case catalog(ServiceCatalogEntry)
+        case custom(label: String, url: String)
+        case macApp(appURL: URL, bundleID: String)
 
-        let link = SpaceServiceLink(
-            sortOrder: existingCount,
-            space: space,
-            service: service
-        )
-        modelContext.insert(link)
-
-        do {
-            try modelContext.save()
-        } catch {
-            AppLogger.dataStore.error("Failed to save custom service: \(error.localizedDescription)")
+        var catalogEntryID: String? {
+            if case .catalog(let entry) = self { return entry.id }
+            return nil
         }
 
-        // Switch to the service the user just added.
-        appState.selectedSpaceID = spaceID
-        appState.selectedServiceID = service.id
+        var url: String {
+            switch self {
+            case .catalog(let entry): return entry.url
+            case .custom(_, let url): return url
+            case .macApp(_, let bundleID): return NativeApp.serviceURL(forBundleID: bundleID)
+            }
+        }
 
-        // Fetch favicon in background — capture ID before the await
-        let serviceID = service.id
-        let serviceURL = url
+        var name: String {
+            switch self {
+            case .catalog(let entry): return entry.name
+            case .custom(let label, _): return label
+            case .macApp(let appURL, _): return NativeApp.displayName(of: appURL)
+            }
+        }
+
+        var isMacApp: Bool {
+            if case .macApp = self { return true }
+            return false
+        }
+    }
+
+    /// Where the checkboxes say the new service goes.
+    private var destination: ServiceAdding.Destination {
+        ServiceAdding.Destination(spaceID: spaceID, global: showInEverySpace, separate: keepSignInSeparate)
+    }
+
+    /// Moves to the second page with the picked service. It starts in this
+    /// space, on the shared sign-in, unless the same site is already on that
+    /// sign-in: then a second copy is most likely a second account, so it
+    /// starts on its own.
+    private func request(_ add: PendingAdd) {
+        showInEverySpace = false
+        addError = nil
+        keepSignInSeparate = !add.isMacApp && ServiceAdding.sameSiteOnSharedStore(
+            catalogEntryID: add.catalogEntryID,
+            url: add.url,
+            destination: ServiceAdding.Destination(spaceID: spaceID),
+            context: modelContext
+        ) != nil
+        configuring = add
+    }
+
+    /// Adds the service as the second page has it.
+    private func commit(_ add: PendingAdd) {
+        if case .macApp(let appURL, let bundleID) = add {
+            addMacApp(at: appURL, bundleID: bundleID)
+            return
+        }
+        make(add, separate: keepSignInSeparate)
+    }
+
+    private func make(_ add: PendingAdd, separate: Bool) {
+        var place = destination
+        place.separate = separate
+        let store = ServiceAdding.store(for: place)
+        Task {
+            // A space's shared store, or the global one, may be waiting to be
+            // removed since its last service went; ready it first. Nothing
+            // awaits between this and the save, so the removal sees the claim.
+            await appState.prepareStore(store)
+            finishMaking(add, at: place, store: store)
+        }
+    }
+
+    private func finishMaking(_ add: PendingAdd, at place: ServiceAdding.Destination, store: UUID) {
+        let service: ServiceInstance
+        switch add {
+        case .catalog(let entry):
+            service = ServiceInstance(
+                label: entry.name,
+                url: entry.url,
+                catalogEntryID: entry.id,
+                userAgent: entry.userAgent,
+                dataStoreIdentifier: store
+            )
+        case .custom(let label, let url):
+            service = ServiceInstance(label: label, url: url, dataStoreIdentifier: store)
+        case .macApp:
+            // Mac apps are added by `addMacApp`; nothing to make here.
+            return
+        }
+        guard insert(service, at: place) else { return }
+
+        if case .catalog(let entry) = add {
+            // Offer "always appear active" for presence services (Teams) so
+            // backgrounding Chorus doesn't flip the user to away. Set before the
+            // sheet dismisses; ContentView hosts the alert and shows it after.
+            appState.offerPresenceActivationIfNeeded(serviceID: service.id, catalogEntryID: entry.id)
+        }
+        fetchFavicon(for: service.id, url: add.url)
+    }
+
+    /// Saves a new service in its place and switches to it. False when the
+    /// save failed and nothing was added.
+    @discardableResult
+    private func insert(_ service: ServiceInstance, at place: ServiceAdding.Destination) -> Bool {
+        modelContext.insert(service)
+        guard ServiceAdding.place(service, at: place, context: modelContext) else {
+            // The space went while the sheet was open. Take the unsaved
+            // service back out, or the next save would keep it with no place.
+            modelContext.rollback()
+            addError = "Chorus couldn't add it: the space is gone."
+            return false
+        }
+        guard modelContext.saveOrRollBack("add service") else {
+            addError = "Chorus couldn't save the new service."
+            return false
+        }
+
+        // Switch to the service just added. A global one shows in every space,
+        // so the space stays as it is.
+        if !place.global { appState.selectedSpaceID = spaceID }
+        appState.selectedServiceID = service.id
+        dismiss()
+        return true
+    }
+
+    /// Fetches the favicon in the background. The service may be deleted in
+    /// the meantime, so it is looked up again by id after the await.
+    private func fetchFavicon(for serviceID: UUID, url serviceURL: String) {
         Task {
             let data = await FaviconFetcher.shared.fetchFavicon(for: serviceURL)
             guard let data else { return }
@@ -269,8 +410,6 @@ struct AddServiceSheet: View {
                 AppLogger.dataStore.error("Failed to save fetched favicon: \(error.localizedDescription)")
             }
         }
-
-        dismiss()
     }
 
     static func validatedCustomServiceInput(
@@ -302,15 +441,5 @@ struct AddServiceSheet: View {
         }
 
         return .valid(label: label, url: url.absoluteString)
-    }
-
-    private func fetchSpace(id: UUID) -> Space? {
-        let descriptor = FetchDescriptor<Space>(predicate: #Predicate { $0.id == id })
-        do {
-            return try modelContext.fetch(descriptor).first
-        } catch {
-            AppLogger.dataStore.error("Failed to fetch space: \(error.localizedDescription)")
-            return nil
-        }
     }
 }

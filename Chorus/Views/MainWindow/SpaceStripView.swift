@@ -16,7 +16,11 @@ import SwiftData
 /// the space as its header.
 struct SpaceStripView: View {
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
+    @Query private var allDividers: [RailDivider]
     @Binding var selectedSpaceID: UUID?
+    /// The selected service, for the global services the strip holds above
+    /// its spaces.
+    @Binding var selectedServiceID: UUID?
     /// Room above the card for the window traffic lights. The hybrid layout
     /// passes the bar's height, so the card's top edge is level with the web
     /// card's.
@@ -24,6 +28,8 @@ struct SpaceStripView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
+    /// What any rail is dragging. See `RailDragState`.
+    private var drag: RailDragState { .shared }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @AppStorage(SpaceStripMetrics.defaultsKey) private var showsNames = true
@@ -35,8 +41,11 @@ struct SpaceStripView: View {
     /// cell's `.focused` so the arrow keys move relative to it.
     @FocusState private var focusedSpaceID: UUID?
 
-    /// The space being dragged, so the rows it crosses know what to move.
-    @State private var draggingSpaceID: UUID?
+
+    /// The spaces and the dividers between them, as drawn.
+    private var items: [RailItem] {
+        RailItems.spaces(spaces.filter { $0.modelContext != nil }, dividers: RailItems.dividers(allDividers, in: .spaces))
+    }
 
     /// The card is the strip's width less the gutter beside it.
     private var cardWidth: CGFloat { SpaceStripMetrics.width(showingNames: showsNames) - ChorusCard.gutter }
@@ -66,27 +75,43 @@ struct SpaceStripView: View {
                     confirmingDeleteSpace = nil
                 }
             } message: {
-                Text("Services in this space won't be deleted, but the space will be removed.")
+                Text(AppState.deleteSpaceMessage(goingWithIt: confirmingDeleteSpace.map { appState.servicesOnlyIn(space: $0.id).map(\.label).sorted() } ?? []))
             }
     }
 
     private var content: some View {
         VStack(spacing: 2) {
+            // Global services sit above the spaces, under a rule, since they
+            // belong to none of them. The bar beside the strip then holds only
+            // the selected space's own services. Draws nothing while there are
+            // no global services.
+            UnifiedRailView(
+                selectedSpaceID: $selectedSpaceID,
+                selectedServiceID: $selectedServiceID,
+                axis: .vertical,
+                showsSpaceHeader: false,
+                globalsOnly: true
+            )
+
             // Scroll the cells so more spaces than fit the window height stay
             // reachable; the divider and add button below stay pinned.
             // No scroller: with "Always show scroll bars" on, it took width from
             // the fixed-width cells and pushed them off the rail's centre line.
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(spacing: 2) {
-                    ForEach(spaces) { space in
-                        spaceCell(space)
+                    ForEach(items) { item in
+                        switch item {
+                        case .space(let space):
+                            spaceCell(space)
+                        case .divider(let divider):
+                            dividerRow(divider)
+                        case .member, .global:
+                            EmptyView()
+                        }
                     }
                 }
                 // Only a reorder animates. See `ReorderKey`.
-                .animation(
-                    ChorusMotion.animation(ChorusMotion.reorder, reduceMotion: reduceMotion),
-                    value: ReorderKey(ids: spaces.map(\.id))
-                )
+                .animation(reorderAnimation, value: ReorderKey(ids: items.map(\.id)))
                 .padding(.vertical, ChorusCard.railPadding)
             }
 
@@ -100,6 +125,7 @@ struct SpaceStripView: View {
         }
         // One list, so no card: it sits on the window beside the web card.
         .railCardFrame(width: cardWidth, topInset: contentInset, carded: false)
+        .railDropZone()
         // The OS window drag is off in this layout, because the service bar
         // beside the strip holds draggable tabs in the title-bar band (see
         // WindowMovableConfigurator). Without a handle of its own the strip
@@ -135,7 +161,7 @@ struct SpaceStripView: View {
         // Live reorder: the space moves as the pointer crosses other spaces,
         // and the order is saved as it goes. See `LiveReorder`.
         .onDrag {
-            draggingSpaceID = space.id
+            drag.spaceID = space.id
             return LiveReorder.itemProvider(for: space.id, type: LiveReorder.spaceType)
         } preview: {
             Text(space.emoji)
@@ -144,11 +170,9 @@ struct SpaceStripView: View {
                 .background(.ultraThickMaterial)
                 .clipShape(RoundedRectangle(cornerRadius: ChorusRadius.control))
         }
-        .liveReorderDrop([
-            .init(type: LiveReorder.spaceType, draggingID: { draggingSpaceID }, move: { liveMoveSpace($0, over: space.id) }),
-        ])
-        .accessibilityAction(named: "Move up") { moveSpaceUp(space) }
-        .accessibilityAction(named: "Move down") { moveSpaceDown(space) }
+        .liveReorderDrop(lanes(over: space.id) + serviceLanes(into: space.id))
+        .accessibilityAction(named: "Move up") { step(space.id, forward: false) }
+        .accessibilityAction(named: "Move down") { step(space.id, forward: true) }
         .focusable()
         .focused($focusedSpaceID, equals: space.id)
         // Suppress the rectangular system focus ring, matching the service rail.
@@ -177,6 +201,11 @@ struct SpaceStripView: View {
                     }
                 }
             ))
+
+            Divider()
+            Button("Add Divider Below") {
+                withAnimation(reorderAnimation) { _ = appState.addDivider(in: .spaces, after: space.id) }
+            }
 
             Divider()
             Button("Edit Space...") {
@@ -215,8 +244,15 @@ struct SpaceStripView: View {
         // In from the column's edges, as the space rows are, so the hover
         // fill lines up with theirs.
         .padding(.horizontal, ChorusCard.railPadding)
-        .help("Add space")
+        .help("Add space. Right-click to add a divider.")
         .accessibilityLabel("Add space")
+        // A divider between spaces, at the end, found without right-clicking
+        // a space first.
+        .contextMenu {
+            Button("Add Space…") { showingAddSpace = true }
+            Button("Add Divider") { addDividerAtEnd() }
+        }
+        .accessibilityAction(named: "Add divider") { addDividerAtEnd() }
     }
 
     private func save(_ context: String) {
@@ -235,7 +271,7 @@ struct SpaceStripView: View {
         }
 
         if press.modifiers.contains(.option) {
-            if forward { moveSpaceDown(space) } else { moveSpaceUp(space) }
+            step(space.id, forward: forward)
             focusedSpaceID = space.id
             return .handled
         }
@@ -249,31 +285,91 @@ struct SpaceStripView: View {
         return .handled
     }
 
-    private func moveSpaceUp(_ space: Space) {
-        var orderedSpaces = Array(spaces)
-        guard let index = orderedSpaces.firstIndex(where: { $0.id == space.id }), index > 0 else { return }
-        orderedSpaces.swapAt(index, index - 1)
-        for (i, s) in orderedSpaces.enumerated() { s.sortOrder = i }
-        save("move space up")
+    private func addDividerAtEnd() {
+        withAnimation(reorderAnimation) { _ = appState.addDivider(in: .spaces, after: nil) }
     }
 
-    private func moveSpaceDown(_ space: Space) {
-        var orderedSpaces = Array(spaces)
-        guard let index = orderedSpaces.firstIndex(where: { $0.id == space.id }), index < orderedSpaces.count - 1 else { return }
-        orderedSpaces.swapAt(index, index + 1)
-        for (i, s) in orderedSpaces.enumerated() { s.sortOrder = i }
-        save("move space down")
+    private var reorderAnimation: Animation? {
+        ChorusMotion.animation(ChorusMotion.reorder, reduceMotion: reduceMotion)
     }
 
-    /// Moves the dragged space into the slot of the one under the pointer and
-    /// saves at once, so a drag that ends outside the strip keeps what it showed.
-    private func liveMoveSpace(_ dragged: UUID, over target: UUID) {
-        guard let ids = LiveReorder.moving(dragged, over: target, in: spaces.map(\.id)) else { return }
-        let spacesByID = Dictionary(uniqueKeysWithValues: spaces.map { ($0.id, $0) })
-        for (index, id) in ids.enumerated() {
-            spacesByID[id]?.sortOrder = index
-        }
-        save("reorder spaces")
+    /// A divider between spaces. Spaces pass over it live; dragged off the
+    /// strip it is removed.
+    private func dividerRow(_ divider: RailDivider) -> some View {
+        let dividerID = divider.id
+        return RailDividerView(
+            dividerID: dividerID,
+            onDragStart: {
+                drag.dividerID = dividerID
+                drag.dividerStartOrder = items.map(\.id)
+            },
+            onRemove: {
+                withAnimation(reorderAnimation) { _ = appState.removeDivider(dividerID) }
+            },
+            onMove: { step(dividerID, forward: $0) },
+            isDragging: drag.dividerID == dividerID,
+            onDragEnd: { drag.dividerID = nil },
+            onCancel: {
+                withAnimation(reorderAnimation) { _ = appState.reorderRail(drag.dividerStartOrder, in: .spaces) }
+            }
+        )
+        .padding(.horizontal, ChorusCard.railPadding)
+        .liveReorderDrop(lanes(over: dividerID))
+    }
+
+    /// A space or a divider moves into the slot of the entry under the
+    /// pointer, live. See `LiveReorder`.
+    private func lanes(over target: UUID) -> [LiveReorderDropDelegate.Lane] {
+        [
+            .init(type: LiveReorder.spaceType, draggingID: { drag.spaceID }, move: { liveMove($0, over: target) }),
+            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: target) }),
+        ]
+    }
+
+    /// A service dragged from the bar beside the strip, or a global service
+    /// from the top of it, goes to the end of the space it is let go on, once
+    /// confirmed (see `RailMove`). A service already in that space is refused.
+    private func serviceLanes(into spaceID: UUID) -> [LiveReorderDropDelegate.Lane] {
+        [
+            .init(type: LiveReorder.serviceType, draggingID: { drag.linkID }, drop: { linkID in
+                let links = RailEdits.links(inSpace: spaceID, context: modelContext)
+                let all = (try? modelContext.fetch(FetchDescriptor<SpaceServiceLink>())) ?? []
+                guard let ends = all.first(where: { $0.id == linkID })?.liveEnds else { return false }
+                guard ends.space.id != spaceID else { return true }
+                guard appState.pendingRailMove == nil,
+                      !links.contains(where: { $0.liveService?.id == ends.service.id })
+                else { return false }
+                appState.pendingRailMove = .intoSpace(linkID: linkID, spaceID: spaceID, before: nil)
+                return true
+            }),
+            .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, drop: { serviceID in
+                // Still global, and no other move waiting for its answer.
+                let globals = RailEdits.globalServices(in: modelContext)
+                guard appState.pendingRailMove == nil, globals.contains(where: { $0.id == serviceID }) else { return false }
+                appState.pendingRailMove = .globalIntoSpace(serviceID: serviceID, spaceID: spaceID, before: nil)
+                return true
+            }),
+        ]
+    }
+
+    /// Moves the dragged entry into the slot of the one under the pointer and
+    /// saves at once, so a drag that ends outside the strip keeps what it
+    /// showed. Spaces and dividers are numbered together (see `RailOrder`).
+    private func liveMove(_ dragged: UUID, over target: UUID) {
+        let ids = items.map(\.id)
+        guard let moved = LiveReorder.moving(dragged, over: target, in: ids) else { return }
+        withAnimation(reorderAnimation) { _ = appState.reorderRail(moved, in: .spaces) }
+    }
+
+    /// Moves an entry one place along the strip, for VoiceOver and Option-arrow.
+    private func step(_ id: UUID, forward: Bool) {
+        let ids = items.map(\.id)
+        guard let index = ids.firstIndex(of: id) else { return }
+        let destination = forward ? index + 1 : index - 1
+        guard ids.indices.contains(destination),
+              let moved = LiveReorder.moving(id, over: ids[destination], in: ids)
+        else { return }
+        withAnimation(reorderAnimation) { _ = appState.reorderRail(moved, in: .spaces) }
     }
 
     private func deleteSpace(_ space: Space) {

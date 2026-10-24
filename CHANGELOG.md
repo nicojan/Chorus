@@ -7,6 +7,10 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ### Added
 
+- A service can now show in every space. Right-click it and choose Show in Every Space, or drag it onto the Global group at the top of the rail. It keeps one sign-in and one badge wherever you are. Move to Space puts it back in a space.
+- Dividers. Right-click a service or a space and choose Add Divider Below to put a line under it, or right-click a + button to add one at the end. Drag a divider to move it, and drag it off the rail and let go to remove it.
+- The services in a space now share one sign-in, and so do the services shown in every space, so signing in to Google once signs in every Google app beside it. Services you already have keep their own sign-ins, so this update signs nobody out; Edit Service can move one onto its space's. When you add a service, a second page asks where it shows and whether it shares the sign-in there or keeps its own, for a second account, and it warns when the same site already uses that sign-in. Asked for in #39.
+- Dragging a service into another space, or into every space, now asks first and says its cookies come with it. In the layout with spaces on the left, a service can be dragged from the bar onto a space.
 - Every five minutes, Chorus writes the memory each service's page uses to the system log, under the service's name in the catalog, never your own label. Chorus behaves as before. The log will show whether a page left in the background keeps growing, and later releases may use that to reload such a page. Marcio Vinicius Spiridigliozzi da Silva Leite wrote it.
 
 ### Security
@@ -20,6 +24,9 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ### Fixed
 
+- Deleting a space said its services would stay, but the ones in no other space were deleted with it. The question now names them.
+- Remove from this space only shows for a service that is in another space too. In its only space it deleted the service and its sign-in without asking, as Delete does after asking.
+- Edit Service scrolls, so Save stays in view.
 - A camera or microphone question that went away without an answer, because Chorus locked or the page reloaded, was remembered as Don't Allow, and the service never asked again.
 - Chorus forgot the service you had open if you quit with ⌘Q.
 - Opening a link to a service that sits in two spaces could move you to the other space.

@@ -101,6 +101,11 @@ struct ContentView: View {
             }
             .coveredWhenLocked()
         }
+        // A service dragged into another space or the global group. Asked
+        // here, once, for every rail: the drop can come from any of them.
+        // A modifier of its own, since the body's chain grew past what the
+        // macOS 15 runner's compiler will type-check in time.
+        .modifier(RailMoveConfirmation())
         .sheet(isPresented: Binding(
             // Never over the store recovery sheet, which has to come first.
             get: { appState.whatsNewVersion != nil && !appState.isShowingStoreRecovery },
@@ -215,7 +220,11 @@ struct ContentView: View {
             HStack(spacing: 0) {
                 // The strip's card starts under the bar's height, level with
                 // the web card beside it.
-                SpaceStripView(selectedSpaceID: spaceSelection, contentInset: UnifiedRailView.barHeight)
+                SpaceStripView(
+                    selectedSpaceID: spaceSelection,
+                    selectedServiceID: serviceSelection,
+                    contentInset: UnifiedRailView.barHeight
+                )
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel("Spaces")
                 VStack(spacing: 0) {
@@ -231,7 +240,8 @@ struct ContentView: View {
                             stripWidth: SpaceStripMetrics.width(showingNames: showSpaceNames),
                             lightsWidth: lightsWidth
                         ),
-                        showsSpaceHeader: false
+                        showsSpaceHeader: false,
+                        showsGlobals: false
                     )
                     // The strip's edge sets its names, as the rail's does.
                     webContent
@@ -267,7 +277,8 @@ struct ContentView: View {
         serviceSelection: Binding<UUID?>,
         contentInset: CGFloat = 0,
         showsSpaceHeader: Bool = true,
-        showsAllSpaces: Bool = false
+        showsAllSpaces: Bool = false,
+        showsGlobals: Bool = true
     ) -> some View {
         UnifiedRailView(
             selectedSpaceID: spaceSelection,
@@ -275,7 +286,8 @@ struct ContentView: View {
             axis: axis,
             contentInset: contentInset,
             showsSpaceHeader: showsSpaceHeader,
-            showsAllSpaces: showsAllSpaces
+            showsAllSpaces: showsAllSpaces,
+            showsGlobals: showsGlobals
         )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Space and services")
@@ -539,5 +551,47 @@ struct WindowNotices: View {
         appState.storeError != nil
             || appState.storeRecoveryOffer != nil
             || !appState.networkMonitor.isOnline
+    }
+}
+
+/// Asks before a dragged service moves into another space or the global
+/// group, saying its cookies come with it. See `RailMove`.
+private struct RailMoveConfirmation: ViewModifier {
+    @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The words for the move waiting on a yes.
+    private var prompt: RailMovePrompt? {
+        appState.pendingRailMove.flatMap { appState.prompt(for: $0) }
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .confirmationDialog(
+                prompt?.title ?? "",
+                isPresented: Binding(
+                    get: { appState.pendingRailMove != nil && prompt != nil },
+                    set: { if !$0 { appState.pendingRailMove = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: appState.pendingRailMove
+            ) { move in
+                Button(prompt?.confirm ?? "Move") {
+                    withAnimation(ChorusMotion.animation(ChorusMotion.reorder, reduceMotion: reduceMotion)) {
+                        _ = appState.performRailMove(move)
+                    }
+                    appState.pendingRailMove = nil
+                }
+                Button("Cancel", role: .cancel) { appState.pendingRailMove = nil }
+            } message: { _ in
+                Text(prompt?.message ?? "")
+            }
+            // A move whose service or space went before it was answered has
+            // nothing to ask about; let it go rather than block the next one.
+            .onChange(of: appState.pendingRailMove) { _, move in
+                if move != nil, prompt == nil {
+                    appState.pendingRailMove = nil
+                }
+            }
     }
 }
