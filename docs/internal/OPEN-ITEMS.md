@@ -54,9 +54,9 @@ The two changes most likely to be noticed:
 - A Messenger and a Teams call with the service on Allow: one prompt naming the call's domain, then the call works.
 - Sign-in popups that open by script from the service on screen (Google, Microsoft, Slack) still open.
 - App lock: lock with the Edit Service sheet and a sign-in popup open; the sheet shows the lock cover with no second Touch ID prompt, the popup hides and comes back on unlock, and Settings shows only Unlock.
-- A notification shows the service's name as its subtitle.
-- Favicons fetched after this build look sharp (stored as 256 px PNGs; an ICO now gives its largest size).
-- Menu-bar-only mode: close the window, then Show Chorus brings it back.
+- A notification shows the service's name as its subtitle. Passed 2026-10-24 in the Debug build: a test page's notification sat in Notification Center as "Test title", "Cookie A", "Test body". No banner, since this Mac denies Chorus notifications.
+- Favicons fetched after this build look sharp (stored as 256 px PNGs; an ICO now gives its largest size). Passed 2026-10-24: Gmail's favicon, fetched by the Debug build, is stored as a clean 256 by 256 PNG. No ICO was tried.
+- Menu-bar-only mode: close the window, then Show Chorus brings it back. Passed 2026-10-24 in the Debug build.
 
 **Left as they were, on purpose:**
 
