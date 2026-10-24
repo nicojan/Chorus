@@ -20,18 +20,21 @@ Seen working in the Debug build:
 
 A copy of the real 1.5.28 store migrated with 4 spaces, 18 services and 18 links intact.
 
-**Check by hand before merging** (Nico, next session):
+**Checked by hand on 2026-10-23**, Debug build, macOS 27.0.1. All pass after two fixes:
 
-- Two Google services on one shared sign-in: signing in to Gmail signs in Drive, and both stay loaded together. On macOS 14 and 15 too if possible.
-- Delete every service in a space after signing in, add a Google service back: it starts signed out.
-- Move a signed-in service to another space: the dialog says its cookies come with it, and it stays signed in.
-- Edit Service on an older service: choose "Shared in <space>", save, and it moves onto the space's sign-in.
-- Clear session on a service that shares: the dialog names the others, and all of them sign out.
-- A second display: drag a divider off; Escape during a divider drag over the rail keeps it.
-- VoiceOver: Remove divider, Move up and Move down on a divider and on a global service.
+- Gmail added to a space opened signed in through Drive's sign-in, and both stayed loaded and signed in.
+- Gmail and Drive deleted, Gmail added back to the same space: it opened at Google's sign-in page.
+- Gmail dragged to another space: the dialog said its cookies come with it, and it stayed signed in.
+- Edit Service, "Shared in Personal": the service moved onto the space's sign-in.
+- Clear session on a service sharing with one other: the dialog named it, and both signed out. The dialog now says "both" for two (`8092ef1`).
+- A divider dragged off the rail on a second display was removed. Escape during the drag first left the divider where the pointer had taken it, and off the rail deleted it; fixed in `8b15c09`, so Escape puts it back, and Nico confirmed it.
+- VoiceOver actions on dividers and global services (Nico).
+
+Not checked: two Google services on macOS 14 and 15.
 
 **Still open:**
 
+- Escape does not undo a live reorder of a service or a space either. Their drags are SwiftUI's `onDrag`, which never says when a drag ends, so the divider's fix does not carry over. Older than this branch.
 - A setup import gives each shared group a fresh store rather than its space's, so an imported space can end up with two sign-ins as services are added.
 - Offered, not decided: the move confirmation could let the person choose between keeping the service's sign-in and taking the new space's.
 - Older gaps a sign-in change can now reach: rebuilding a web view leaves a sign-in popup window on the old store; a service the badge sweep parked behind a sign-in wall stays parked after joining a signed-in store until it is opened.
