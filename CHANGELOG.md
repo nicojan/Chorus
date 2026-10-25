@@ -38,6 +38,7 @@ All notable changes to Chorus are documented here. Format loosely follows
 - If an automatic recovery replaces your data, it now always keeps a copy of what it replaced first, and stops if it can't.
 - Notifications that arrive while Chorus is in front stay in Notification Center.
 - Two downloads with the same name no longer clash.
+- In the narrow space strip, the spaces now sit as far apart as the service tabs beside them.
 
 ## [1.5.28] - 2026-10-11
 
