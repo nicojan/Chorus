@@ -332,8 +332,9 @@ it to `project.yml` `packages`, or Chorus (MIT) becomes a GPL derivative. HaGezi
 - **Camera/microphone**: shipped in 1.5.3. A `WKUIDelegate`
   `requestMediaCapturePermissionFor` handler grants capture from a per-service
   Allow, Ask, or Deny policy, with a global default and a mute-all command.
-  First-party call vendors are trusted across their own domains so cross-domain
-  calls work without a prompt.
+  Since 1.5.29 a page from another site inside a service always asks first and
+  names that site, even when the service is set to Allow; nothing is trusted
+  across domains.
 - **Passkeys (WebAuthn)**: gated off in `AppCapabilities.passkeysSupported`. The
   `com.apple.developer.web-browser.public-key-credential` entitlement is
   Apple-managed and must be requested/granted before flipping it on (it also

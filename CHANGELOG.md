@@ -3,7 +3,7 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [1.5.29] - 2026-10-25
 
 ### Added
 
