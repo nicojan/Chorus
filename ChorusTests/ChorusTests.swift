@@ -6610,33 +6610,51 @@ final class ChorusTests: XCTestCase {
     /// dropped, not deferred. The picker hit this for real: it quit from inside
     /// its own sheet, so the app stayed running, the relaunch poller expired,
     /// and the restore only landed when the user next opened Chorus by hand.
-    /// The rule below is what keeps the quit waiting for the sheet to go.
-    func testWaitsForAnAttachedSheetBeforeQuitting() {
-        XCTAssertTrue(
-            AppRelauncher.shouldWaitForSheet(sheetAttached: true, attempt: 0),
-            "a quit through an attached sheet is dropped, so it has to wait"
+    /// Every quit now closes the sheets first.
+    func testClosesAnAttachedSheetBeforeQuitting() {
+        XCTAssertEqual(
+            SheetQuit.step(sheetAttached: true, tries: 0), .pressEscape,
+            "a quit through an attached sheet is dropped, so the sheet has to go first"
         )
-        XCTAssertTrue(AppRelauncher.shouldWaitForSheet(sheetAttached: true, attempt: 1))
+        XCTAssertEqual(SheetQuit.step(sheetAttached: true, tries: 1), .pressEscape)
     }
 
-    /// Nothing in the way means quit now: waiting on every restart would add a
-    /// delay to the one path this feature exists for.
+    /// An alert with only an OK button ignores Escape, so AppKit's own sheets
+    /// are ended directly once Escape alone has had a few tries.
+    func testEndsAppKitSheetsOnceEscapeHasNotWorked() {
+        XCTAssertEqual(SheetQuit.step(sheetAttached: true, tries: SheetQuit.escapeOnlyTries - 1), .pressEscape)
+        XCTAssertEqual(
+            SheetQuit.step(sheetAttached: true, tries: SheetQuit.escapeOnlyTries),
+            .pressEscapeAndEndAppKitSheets
+        )
+    }
+
+    /// Nothing in the way means quit now: waiting on every quit would add a
+    /// delay to every quit.
     func testQuitsImmediatelyWithNoSheetAttached() {
-        XCTAssertFalse(AppRelauncher.shouldWaitForSheet(sheetAttached: false, attempt: 0))
-        XCTAssertFalse(
-            AppRelauncher.shouldWaitForSheet(sheetAttached: false, attempt: 99),
-            "no sheet is no sheet, whatever the attempt count"
+        XCTAssertEqual(SheetQuit.step(sheetAttached: false, tries: 0), .quit)
+        XCTAssertEqual(
+            SheetQuit.step(sheetAttached: false, tries: 99), .quit,
+            "no sheet is no sheet, whatever the try count"
         )
     }
 
-    /// The wait is bounded. A sheet that never closes must not strand a restore
-    /// the user already picked and that is already written to disk; past the
-    /// bound Chorus quits anyway and lets AppKit decide.
+    /// The wait is bounded. A sheet that never closes must not hold the quit
+    /// forever; past the bound Chorus gives up rather than send a quit AppKit
+    /// would drop.
     func testStopsWaitingForASheetThatNeverCloses() {
-        XCTAssertFalse(
-            AppRelauncher.shouldWaitForSheet(sheetAttached: true, attempt: 1_000),
+        XCTAssertEqual(
+            SheetQuit.step(sheetAttached: true, tries: SheetQuit.maxTries), .giveUp,
             "an unbounded wait would leave the app up with a restore pending"
         )
+    }
+
+    /// A second quit while the first is saving pages would make
+    /// `applicationShouldTerminate` answer `.terminateNow` and cut the save
+    /// short, so it joins the first instead of starting its own.
+    func testASecondQuitJoinsTheFirst() {
+        XCTAssertTrue(SheetQuit.startsQuit(alreadyQuitting: false))
+        XCTAssertFalse(SheetQuit.startsQuit(alreadyQuitting: true))
     }
 
     /// `scheduleRestore` is the guards-plus-write half of `chooseStoreRestore`,

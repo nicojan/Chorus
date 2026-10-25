@@ -805,6 +805,15 @@ final class AppState {
         if headWasStranded { presentNextMediaRequest() }
     }
 
+    /// Clears the app's own prompts as unanswered before a quit closes the
+    /// sheets left open with Escape (`SheetQuit`). Escape on the camera
+    /// question is Don't Allow, and that answer is remembered, so a quit in the
+    /// middle of a call prompt would deny the service the camera for good.
+    func clearPromptsForQuit() {
+        drainAllMediaRequests()
+        presencePrompt = nil
+    }
+
     /// Denies, without remembering, and clears every queued prompt. Used when the app locks — a capture
     /// prompt must not sit above the lock screen leaking a service name or letting
     /// the user grant capture without unlocking.
@@ -2417,7 +2426,7 @@ final class AppState {
     func quitForScheduledRestore() {
         guard isRestoreRestartArmed else { return }
         isRestoreRestartArmed = false
-        AppRelauncher.quit()
+        SheetQuit.quit()
     }
 
     /// Records a request to abandon the current store and start on a new empty
@@ -2459,7 +2468,7 @@ final class AppState {
     func quitForScheduledFreshStart() {
         guard isFreshStartRestartArmed else { return }
         isFreshStartRestartArmed = false
-        AppRelauncher.quit()
+        SheetQuit.quit()
     }
 
     /// Safety net for crash-mid-delete (or stores written by a build that

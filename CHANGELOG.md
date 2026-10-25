@@ -9,6 +9,10 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 - In the narrow space strip, the spaces sit as far apart as the service tabs in the bar, and a darker line sets off the services shown in every space.
 
+### Fixed
+
+- Chorus now quits while a sheet such as Edit Service or What's New is open. Before, ⌘Q, Quit in the Dock and the relaunch after an update did nothing until you closed the sheet.
+
 ## [1.5.29] - 2026-10-25
 
 ### Added

@@ -59,7 +59,7 @@ struct MenuBarView: View {
             .keyboardShortcut(",", modifiers: .command)
 
             Button("Quit Chorus") {
-                NSApp.terminate(nil)
+                SheetQuit.quit()
             }
             .keyboardShortcut("q", modifiers: .command)
         }

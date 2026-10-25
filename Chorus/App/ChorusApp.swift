@@ -13,14 +13,19 @@ struct ChorusApp: App {
     /// Owns the Sparkle updater for the app's lifetime: drives the
     /// "Check for Updates…" command and runs scheduled background checks.
     private let updaterController: SPUStandardUpdaterController
+    /// Closes open sheets before Sparkle relaunches. Sparkle keeps its
+    /// delegate weakly, so the app holds it.
+    private let updaterDelegate: UpdaterQuitDelegate
     #endif
 
     init() {
         _appState = State(initialValue: AppState())
         #if canImport(Sparkle)
+        let delegate = UpdaterQuitDelegate()
+        updaterDelegate = delegate
         updaterController = SPUStandardUpdaterController(
             startingUpdater: true,
-            updaterDelegate: nil,
+            updaterDelegate: delegate,
             userDriverDelegate: nil
         )
         #endif
@@ -42,6 +47,12 @@ struct ChorusApp: App {
         .defaultSize(width: 1100, height: 700)
         .windowStyle(.hiddenTitleBar)
         .commands {
+            // AppKit drops a quit while a sheet is open; see `SheetQuit`.
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit Chorus") { SheetQuit.quit() }
+                    .keyboardShortcut("q")
+            }
+
             // The stock About panel, with the donation link added to its credits
             // field. Replacing the item rather than adding a second one keeps the
             // menu at one About; Sparkle's group below still lands after it.
@@ -296,6 +307,24 @@ struct CheckForUpdatesView: View {
     var body: some View {
         Button("Check for Updates…", action: updater.checkForUpdates)
             .disabled(!viewModel.canCheckForUpdates)
+    }
+}
+
+/// Holds Sparkle's install-and-relaunch until open sheets are closed, since
+/// AppKit drops a quit while one is open (see `SheetQuit`).
+@MainActor
+final class UpdaterQuitDelegate: NSObject, SPUUpdaterDelegate {
+    func updater(
+        _ updater: SPUUpdater,
+        shouldPostponeRelaunchForUpdate item: SUAppcastItem,
+        untilInvokingBlock installHandler: @escaping () -> Void
+    ) -> Bool {
+        guard SheetQuit.hasSheet else { return false }
+        // Sparkle asks on the main thread, and the handler is called back on
+        // it too, so it never crosses threads.
+        nonisolated(unsafe) let handler = installHandler
+        SheetQuit.closeSheets { _ in handler() }
+        return true
     }
 }
 #endif

@@ -102,6 +102,7 @@
 		E2BFB66EDC3B4F7CD92A1836 /* TrafficLights.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6161E11C236922FC7AEFB3DF /* TrafficLights.swift */; };
 		E8288CD202E937B4B6087D67 /* RailOrder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7264BBC99612EDA5183912E7 /* RailOrder.swift */; };
 		F1E3E4A757954012789BD79D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = F63EF11A2754495AEB09C97E /* Sparkle */; };
+		F485F694BEA64C6EDA2CD167 /* SheetQuit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29C26C37D627ADE04B904988 /* SheetQuit.swift */; };
 		F709F5524B2146C260A0BCB0 /* BadgeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 706D85D3C09C182826CD4EBA /* BadgeManager.swift */; };
 		FC24793EEE444C3F48F17559 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BEC6FCF1B60E1B9CD89A3A2 /* NotificationManager.swift */; };
 /* End PBXBuildFile section */
@@ -135,6 +136,7 @@
 		200FB7DAF9279B0E2764474D /* ServicePopup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServicePopup.swift; sourceTree = "<group>"; };
 		24ECDB7D8F7F0F324289AD37 /* RailDividerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailDividerView.swift; sourceTree = "<group>"; };
 		24EE83C0600AFD4A12914883 /* HibernatedBadgePoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HibernatedBadgePoller.swift; sourceTree = "<group>"; };
+		29C26C37D627ADE04B904988 /* SheetQuit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SheetQuit.swift; sourceTree = "<group>"; };
 		311EEF2D99711EA929371A79 /* ChorusSchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChorusSchema.swift; sourceTree = "<group>"; };
 		312995FF05808961FD519D76 /* SpaceServiceLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceServiceLink.swift; sourceTree = "<group>"; };
 		313680424148829FCBEAA9BC /* ModelContext+Save.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ModelContext+Save.swift"; sourceTree = "<group>"; };
@@ -339,6 +341,7 @@
 				1ACFB877AD2138035F9E3EAE /* FaviconFetcher.swift */,
 				D01CC2330887CF5293843BF3 /* IconThumbnail.swift */,
 				313680424148829FCBEAA9BC /* ModelContext+Save.swift */,
+				29C26C37D627ADE04B904988 /* SheetQuit.swift */,
 				E1E431CF7CE145D536081A23 /* UserAgentProvider.swift */,
 			);
 			path = Utilities;
@@ -650,6 +653,7 @@
 				69FF2932CDD4A1208CA5DA71 /* SettingsView.swift in Sources */,
 				074FE22389F3BF8A951A80CA /* SetupArchive.swift in Sources */,
 				C4F49AC21F05DCC84FE0D96F /* SetupTransferSection.swift in Sources */,
+				F485F694BEA64C6EDA2CD167 /* SheetQuit.swift in Sources */,
 				1C5CD1937EFECD06DA479F86 /* Space.swift in Sources */,
 				C87E607C9406DB3117992594 /* SpaceEditorSheet.swift in Sources */,
 				1CC3A629AEC1BBF9ACDC5FB0 /* SpaceHeaderView.swift in Sources */,
