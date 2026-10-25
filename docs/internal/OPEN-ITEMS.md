@@ -7,7 +7,8 @@ Build 42, tag `v1.5.29` on `67cec72`. DMG 10,209,644 bytes, sha256 `84544ea8…2
 Installed over `/Applications` before publishing and run on the real store: 4 spaces, 18 services and 18 links came through the migration, and the What's New sheet showed after the update. Two things to look at:
 
 - The pre-migration snapshot is there and good. It is named for the version about to open the store, `default.store.snapshot-1792961740-1.5.29+42.bak`, not the one before it, which is why a search for `1.5.28+41` missed it. It holds the old schema (no `isGlobal`) and all 4 spaces, 18 services and 18 links.
-- Quit does nothing while a sheet is open, and the What's New sheet is one. A Sparkle update that tries to relaunch while it is up may wait. Older than this release.
+- Fixed on `main` (`155a5ad`, `dfb51d9`), not released: Chorus quits while a sheet is open. Checked live in the Debug build with ⌘Q, the Quit menu item, AppleScript, Edit Service, a focused Custom CSS editor, a page's alert(), the camera prompt and a double ⌘Q; each saved pages before exiting, and the camera prompt left the service on Ask. Not checked: a real logout with a sheet open, and Sparkle's relaunch, which needs a published update. Left as it was: Escape on What's New marks it as seen, so a quit right after an update means the sheet won't come back.
+- Also on `main`, not released: the strip's spaces 40 points apart (`e0fcf76`) and a darker 2 point rule under the global services.
 
 Replied on #39 on 2026-10-25 and closed it as completed; the reply asks the reporter to say if it does not fit.
 
