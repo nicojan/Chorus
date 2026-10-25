@@ -3,6 +3,51 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.29</title>
+            <pubDate>Sun, 25 Oct 2026 14:06:09 -0700</pubDate>
+            <sparkle:version>42</sparkle:version>
+            <sparkle:shortVersionString>1.5.29</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Added</h3>
+<ul>
+<li>A service can now show in every space. Right-click it and choose Show in Every Space, or drag it onto the Global group at the top of the rail. It keeps one sign-in and one badge wherever you are. Move to Space puts it back in a space.</li>
+<li>Dividers. Right-click a service or a space and choose Add Divider Below to put a line under it, or right-click a + button to add one at the end. Drag a divider to move it, and drag it off the rail and let go to remove it.</li>
+<li>The services in a space now share one sign-in, and so do the services shown in every space, so signing in to Google once signs in every Google app beside it. Services you already have keep their own sign-ins, so this update signs nobody out; Edit Service can move one onto its space's. When you add a service, a second page asks where it shows and whether it shares the sign-in there or keeps its own, for a second account, and it warns when the same site already uses that sign-in. Asked for in #39.</li>
+<li>Dragging a service into another space, or into every space, now asks first and says its cookies come with it. In the layout with spaces on the left, a service can be dragged from the bar onto a space.</li>
+<li>Every five minutes, Chorus writes the memory each service's page uses to the system log, under the service's name in the catalog, never your own label. Chorus behaves as before. The log will show whether a page left in the background keeps growing, and later releases may use that to reload such a page. Marcio Vinicius Spiridigliozzi da Silva Leite wrote it.</li>
+</ul>
+<h3>Security</h3>
+<ul>
+<li>A page from another site, open inside a call service, could use your camera and microphone without asking if you had set that service to Allow. A crafted link shaped like a sign-in could put such a page there. Chorus now always asks first, and the question names the real site.</li>
+<li>Settings opened while Chorus was locked, so anyone at your Mac could switch the lock off there, and sheets left open stayed usable above the lock screen. While Chorus is locked, Settings now shows only an Unlock button, open sheets show the lock screen too, and sign-in and link windows hide until you unlock.</li>
+<li>A service you are not looking at can no longer open a window on its own. Links you click work as before.</li>
+<li>Each notification now shows which service sent it, so a page can't post one that looks like it came from another service. A page can post at most five in ten seconds.</li>
+<li>A setup file can come from anyone. Importing one now drops CSS that could send what a page shows to another site, refuses a file that adds Chorus itself as a Mac app, and names any Mac apps it adds.</li>
+<li>The window you open from a link inside a service hands email and phone links to your Mac only when you click them, so a page can't start a call prompt over and over.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Deleting a space said its services would stay, but the ones in no other space were deleted with it. The question now names them.</li>
+<li>Remove from this space only shows for a service that is in another space too. In its only space it deleted the service and its sign-in without asking, as Delete does after asking.</li>
+<li>Edit Service scrolls, so Save stays in view.</li>
+<li>A camera or microphone question that went away without an answer, because Chorus locked or the page reloaded, was remembered as Don't Allow, and the service never asked again.</li>
+<li>Chorus forgot the service you had open if you quit with ⌘Q.</li>
+<li>Opening a link to a service that sits in two spaces could move you to the other space.</li>
+<li>Reload on the Unable to connect page now tries the page that failed. Before, it reloaded the error, and a service put to sleep there came back blank.</li>
+<li>Counts written as (99+) or (1,234) read as zero.</li>
+<li>A service whose site moved to a new address, such as threads.net to threads.com, stopped updating its count while it had none.</li>
+<li>Google Chat, Calendar and Drive now show their own icons, and icons from a site's favicon.ico use its largest size.</li>
+<li>In menu-bar-only mode, Show Chorus brings the window back after you close it.</li>
+<li>If an automatic recovery replaces your data, it now always keeps a copy of what it replaced first, and stops if it can't.</li>
+<li>Notifications that arrive while Chorus is in front stay in Notification Center.</li>
+<li>Two downloads with the same name no longer clash.</li>
+<li>In the narrow space strip, the spaces now sit as far apart as the service tabs beside them.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.29/Chorus-1.5.29.dmg" length="10209644" type="application/octet-stream" sparkle:edSignature="9+l/z8g+lctdu58s7URYDRZ33x76zNATWrBghb5RnI3C/zvKbs2UJgEwNTgBEIwoohryHCMTsXS4sDSXFkgPAQ=="/>
+        </item>
+        <item>
             <title>1.5.28</title>
             <pubDate>Sun, 11 Oct 2026 23:58:00 -0700</pubDate>
             <sparkle:version>41</sparkle:version>
