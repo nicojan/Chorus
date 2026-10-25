@@ -9,7 +9,7 @@ Installed over `/Applications` before publishing and run on the real store: 4 sp
 - No new pre-migration snapshot appeared in `Application Support/Chorus`; the only `1.5.28+41` snapshot there is from 2026-10-11. Check `StoreRepair.backupBeforeMigrationIfNeeded` against a store that already has a snapshot for the same old version. A copy taken by hand before the update is in the session scratchpad.
 - Quit does nothing while a sheet is open, and the What's New sheet is one. A Sparkle update that tries to relaunch while it is up may wait. Older than this release.
 
-After release: reply on #39.
+Replied on #39 on 2026-10-25 (left open for the reporter).
 
 ## Shipped in 1.5.29: global services, dividers and shared sign-ins
 
