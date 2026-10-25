@@ -3,6 +3,12 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Changed
+
+- In the narrow space strip, the spaces sit as far apart as the service tabs in the bar, and a darker line sets off the services shown in every space.
+
 ## [1.5.29] - 2026-10-25
 
 ### Added

@@ -446,6 +446,15 @@ struct UnifiedRailView: View {
         .accessibilityAction(named: "Move down") { step(space.id, forward: true, in: .spaces) }
     }
 
+    /// The rule under the global services: heavier than a divider, since it
+    /// marks where the services in every space stop.
+    private var globalsRule: some View {
+        Capsule()
+            .fill(ChorusColor.groupRule)
+            .frame(height: 2)
+            .padding(.horizontal, 8)
+    }
+
     /// The rule over the add buttons, inset to the rows' width.
     private var railRule: some View {
         Rectangle()
@@ -671,7 +680,7 @@ struct UnifiedRailView: View {
                 .animation(reorderAnimation, value: ReorderKey(ids: globals.map(\.id)))
                 .padding(.vertical, ChorusCard.railPadding)
 
-                railRule
+                globalsRule
             }
             .environment(\.railWidth, railFootprint)
         }
@@ -696,7 +705,7 @@ struct UnifiedRailView: View {
                 .padding(.top, ChorusCard.railPadding)
                 .padding(.bottom, 4)
 
-                railRule
+                globalsRule
             }
 
             spaceHeader
@@ -882,7 +891,9 @@ struct UnifiedRailView: View {
                     .id(item.service?.id ?? item.id)
             }
             if !globals.isEmpty {
-                Divider().frame(width: 1, height: 20)
+                Capsule()
+                    .fill(ChorusColor.groupRule)
+                    .frame(width: 2, height: 20)
                     .padding(.horizontal, 2)
             }
             ForEach(spaceItems) { item in

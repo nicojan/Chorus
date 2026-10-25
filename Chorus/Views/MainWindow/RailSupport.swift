@@ -164,11 +164,12 @@ enum SpaceStripMetrics {
         showingNames ? namedWidth : compactWidth
     }
 
-    /// The gap between spaces. The emoji tiles take the 4 points the service
-    /// bar leaves between its tabs, so the two rows of icons read alike; the
-    /// named rows keep the 2 of the service rows they are laid out like.
+    /// The gap between spaces. The 32 point emoji tiles sit 40 points apart,
+    /// the pitch of the 36 point service tabs in the bar beside them, so the
+    /// two rows of icons read alike; the named rows keep the 2 of the service
+    /// rows they are laid out like.
     static func spacing(showingNames: Bool) -> CGFloat {
-        showingNames ? 2 : 4
+        showingNames ? 2 : 8
     }
 
     /// How far the window's traffic lights reach in from the leading edge,
