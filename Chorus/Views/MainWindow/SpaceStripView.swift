@@ -98,7 +98,7 @@ struct SpaceStripView: View {
             // No scroller: with "Always show scroll bars" on, it took width from
             // the fixed-width cells and pushed them off the rail's centre line.
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 2) {
+                LazyVStack(spacing: SpaceStripMetrics.spacing(showingNames: showsNames)) {
                     ForEach(items) { item in
                         switch item {
                         case .space(let space):
