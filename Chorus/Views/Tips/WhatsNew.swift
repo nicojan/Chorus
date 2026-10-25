@@ -14,6 +14,32 @@ enum WhatsNew {
     }
 
     static let releases: [String: [Item]] = [
+        "1.5.29": [
+            Item(
+                id: "global-services",
+                systemImage: "square.stack.3d.up",
+                title: "Services in every space",
+                detail: "Right-click a service and choose Show in Every Space. It stays at the top of the rail wherever you are, with one sign-in and one badge.",
+                action: nil,
+                actionTitle: ""
+            ),
+            Item(
+                id: "dividers",
+                systemImage: "minus",
+                title: "Dividers",
+                detail: "Right-click a service and choose Add Divider to draw a line after it. Drag a divider to move it, or drag it off the rail to remove it.",
+                action: nil,
+                actionTitle: ""
+            ),
+            Item(
+                id: "shared-sign-in",
+                systemImage: "person.2",
+                title: "One sign-in per space",
+                detail: "Services you add to a space now share its sign-in, so signing in to Google once covers Gmail and Calendar there. The services you had keep their own sign-ins, so nobody is signed out. To keep a second account apart, choose its own sign-in when you add it.",
+                action: nil,
+                actionTitle: ""
+            ),
+        ],
         "1.5.27": [
             Item(
                 id: "service-tabs",
