@@ -1,6 +1,17 @@
 # Open items
 
-## Open: global services, dividers and shared sign-ins, merged to `main` on 2026-10-24 (`ba7383d`), not released
+## Released: 1.5.29 on 2026-10-25
+
+Build 42, tag `v1.5.29` on `67cec72`. DMG 10,209,644 bytes, sha256 `84544ea8…235b8a`, signed, notarized and stapled. Appcast `c507180`, served by both feeds; cask `eeb5e61` here and `9dc1627` in the tap, and `brew style`, `livecheck` and `audit` all pass. Last changes before the cut: the What's New sheet for the three new features (`c974772`), and a 4 point gap between spaces in the emoji strip to match the service tabs (`9658bcc`).
+
+Installed over `/Applications` before publishing and run on the real store: 4 spaces, 18 services and 18 links came through the migration, and the What's New sheet showed after the update. Two things to look at:
+
+- No new pre-migration snapshot appeared in `Application Support/Chorus`; the only `1.5.28+41` snapshot there is from 2026-10-11. Check `StoreRepair.backupBeforeMigrationIfNeeded` against a store that already has a snapshot for the same old version. A copy taken by hand before the update is in the session scratchpad.
+- Quit does nothing while a sheet is open, and the What's New sheet is one. A Sparkle update that tries to relaunch while it is up may wait. Older than this release.
+
+After release: reply on #39.
+
+## Shipped in 1.5.29: global services, dividers and shared sign-ins
 
 Built 2026-10-22 in one long session. Nico skipped the questions, so the design calls are Claude's; they are in `docs/superpowers/specs/2026-10-22-global-services-and-dividers-design.md` (with the later additions at its end) and in the commit messages. The branch ends at `dfce48c` plus this docs commit; 368 tests pass; CI green on 14 and 15 at `dfce48c`. Three independent reviews found no data-loss path, and their findings are fixed (`63bce54`, `95e0182`, `2327a3e`). Nothing merged or released.
 
@@ -40,7 +51,7 @@ Not checked: two Google services on macOS 14 and 15.
 - Older gaps a sign-in change can now reach: rebuilding a web view leaves a sign-in popup window on the old store; a service the badge sweep parked behind a sign-in wall stays parked after joining a signed-in store until it is opened.
 - Not built from the 2026-10-05 plan: "use your sign-in from Gmail" in Add Service for a matching site. The second page covers most of it.
 
-## Open: full code review of 2026-10-18, fixed on `main`, not released
+## Shipped in 1.5.29: fixes from the full code review of 2026-10-18
 
 A full review of the app in five slices (app core, store and setup import, web views, background services, views), each by an independent read-only reviewer, then a sixth review of the fixes themselves. Nothing malicious turned up. The supply chain checks out: `darkreader.js` is byte-identical to npm 4.9.128, the two blocklists match the hashes in `vendor/blocklists/manifest.json` and hold only block and hide rules, Sparkle's pin is the 2.9.3 tag, gitleaks finds nothing in 521 commits, CI uses `pull_request` (no secrets to forks) and the repo's default token is read-only, and the appcast Worker stores only a salted daily hash. Seven commits on `fix/code-review-2026-10`, merged to `main`; 326 tests and CI on 14 and 15 green. What each changed is in the CHANGELOG and the commit messages.
 
@@ -72,7 +83,7 @@ Set up: open `Chorus.xcodeproj` on `main` and run the Debug build (⌘R). It kee
 
 Still for Nico: a call in Messenger and in Teams, and the three sign-in popups (Slack with Google, Microsoft, Google's account chooser). Little Snitch also asked about the rebuilt Debug app reaching `calendar.google.com`; answer it before signing in.
 
-When all three pass, release 1.5.29 (`release/DISTRIBUTION.md`, Homebrew cask too). If one fails, it goes to Claude to fix first.
+Nico checked Slack's "Sign in with Google" by hand on 2026-10-25, and it passed. The calls in Messenger and Teams were not run; 1.5.29 shipped without them, so watch for reports of calls that ask for the camera and mic and then fail.
 
 **Left as they were, on purpose:**
 
