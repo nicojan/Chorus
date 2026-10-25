@@ -6,7 +6,7 @@ Build 42, tag `v1.5.29` on `67cec72`. DMG 10,209,644 bytes, sha256 `84544ea8…2
 
 Installed over `/Applications` before publishing and run on the real store: 4 spaces, 18 services and 18 links came through the migration, and the What's New sheet showed after the update. Two things to look at:
 
-- No new pre-migration snapshot appeared in `Application Support/Chorus`; the only `1.5.28+41` snapshot there is from 2026-10-11. Check `StoreRepair.backupBeforeMigrationIfNeeded` against a store that already has a snapshot for the same old version. A copy taken by hand before the update is in the session scratchpad.
+- The pre-migration snapshot is there and good. It is named for the version about to open the store, `default.store.snapshot-1792961740-1.5.29+42.bak`, not the one before it, which is why a search for `1.5.28+41` missed it. It holds the old schema (no `isGlobal`) and all 4 spaces, 18 services and 18 links.
 - Quit does nothing while a sheet is open, and the What's New sheet is one. A Sparkle update that tries to relaunch while it is up may wait. Older than this release.
 
 Replied on #39 on 2026-10-25 and closed it as completed; the reply asks the reporter to say if it does not fit.
@@ -92,13 +92,13 @@ Nico checked Slack's "Sign in with Google" by hand on 2026-10-25, and it passed.
 - `javaScriptCanOpenWindowsAutomatically` stays on. Turning it off matches Safari but can break OAuth popups that open after an async step.
 - Not done, lower value: the weekly catalog icon refresh still contacts every catalog host through `URLSession.shared` (skip entries with a bundled brand mark; use an ephemeral session); favicon URLs drop IPv6 brackets, and a self-hosted service's same-host icon links are refused; the Mac-app docker can grab a Settings window instead of the main one, and its badge reader fetches every service every 3 s; the feature tips anchor carries `allowsHitTesting(false)` though its own comment says that stops TipKit (check with `debugShowAllTips`); Restore from a backup can latch when another sheet is up; Launch at login reads `.requiresApproval` as off; `ChorusAppDelegate.appState` is only set when the window appears; three copies of space reorder, and two icon-drawing paths have drifted; a snapshot retried after a failure is labelled pre-migration though the store has migrated; the old `~/Library/Caches/CatalogIcons` is left behind, since another app may own that name.
 
-## Open: WhatsApp voice messages crackle and drop words (#38)
+## Closed: WhatsApp voice messages crackle and drop words (#38)
 
 Reported 2026-10-13 on 1.5.27 and 1.5.28, Apple silicon, mic permission granted. The WhatsApp Mac app records cleanly on the same mic, and Always appear active made no difference. Chorus has no code that touches capture: no `getUserMedia` or `AudioContext` patching, no capture SPI, only the permission prompt (`requestMediaCapturePermissionFor`). So the likely causes are WebKit's own capture path (its echo cancellation) or WhatsApp Web, and the one Chorus-side suspect is Dark Reader, which could slow the page while the waveform animates.
 
 Asked the reporter on 2026-10-18 for the macOS version, whether Safari does the same on web.whatsapp.com, which mic (built-in, USB or Bluetooth, which drops to a low-quality mode when the mic is in use), and whether the dark theme is on for WhatsApp. If Safari crackles too, report it to WebKit with their details; the nearest existing bug, WebKit 326286, is iOS 27 playback, not a match. If only Chorus crackles, compare the dark theme off, then a plain WKWebView with nothing injected.
 
-Reporter replied 2026-10-18 11:12 UTC: it "seems to have improved on its own", they will keep watching. None of the four questions answered. Nothing changed in Chorus between the report and the reply (no release), which points away from Chorus. If it stays quiet for a week or so, close it as not reproducible with a reopen note.
+Reporter replied 2026-10-18 11:12 UTC: it "seems to have improved on its own", they will keep watching. None of the four questions answered. Nothing changed in Chorus between the report and the reply (no release), which points away from Chorus. Quiet for a week, so closed on 2026-10-25 as not planned, with a note asking for the same four details if it comes back.
 
 ## Shipped in 1.5.28: grey nameless badges and the orange failed dot
 
