@@ -7,7 +7,7 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ### Changed
 
-- In the narrow space strip, the spaces sit as far apart as the service tabs in the bar, and a darker line sets off the services shown in every space.
+- In the narrow space strip, the spaces sit as far apart as the service tabs in the bar, and the services shown in every space sit in a box of their own above them.
 
 ### Fixed
 

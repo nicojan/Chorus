@@ -663,7 +663,7 @@ struct UnifiedRailView: View {
     }
 
     /// The global group alone, as a column for the hybrid layout's space
-    /// strip, with a rule under it. Nothing at all while there are no global
+    /// strip, in a card of its own. Nothing at all while there are no global
     /// services. It takes the strip's drop zone from the environment rather
     /// than marking its own, so a divider dragged from here onto the spaces
     /// below is still on the rail.
@@ -678,9 +678,13 @@ struct UnifiedRailView: View {
                     }
                 }
                 .animation(reorderAnimation, value: ReorderKey(ids: globals.map(\.id)))
-                .padding(.vertical, ChorusCard.railPadding)
-
-                globalsRule
+                // In a card of their own, as in the all-services rail, which
+                // sets them apart from the spaces better than a rule did. Padded
+                // on every side so a row's 8 point fill sits inside the card's
+                // 14 point corners, the same distance from each edge.
+                .padding(ChorusCard.railPadding)
+                .railCard()
+                .padding(.bottom, ChorusCard.railPadding)
             }
             .environment(\.railWidth, railFootprint)
         }
