@@ -152,7 +152,9 @@ enum SheetQuit {
 
     @MainActor
     private static func pressEscapeInSheets() {
-        sheetsInnermostFirst.forEach(pressEscape)
+        for sheet in sheetsInnermostFirst {
+            pressEscape(in: sheet)
+        }
     }
 
     /// Ends the sheets AppKit runs itself: a page's alert, confirm or prompt
