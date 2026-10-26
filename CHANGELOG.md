@@ -5,6 +5,10 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Service groups. Drag a service onto another and pause, or right-click it and choose Group with, and the two sit together in a box. The box shows in every layout. You can name a group, rename it and move it to another space as one, and dividers still work around it.
+
 ### Changed
 
 - In the narrow space strip, the spaces sit as far apart as the service tabs in the bar, and the services shown in every space sit in a box of their own above them.
