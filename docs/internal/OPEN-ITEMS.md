@@ -6,6 +6,8 @@ Built 2026-10-25 from `docs/superpowers/plans/2026-10-25-service-groups.md`. A g
 
 **Real store.** A copy of the live store (3 spaces, 18 services, 16 links, 1 divider) went through the new schema with `testMigratesARealStoreCopy`. It came out with the same 3 spaces, 18 services, 16 links and 1 divider, every link still joined to its space and service, and no link in a group. The live store was not opened. The copy and the marker file are deleted.
 
+**Status on 2026-10-25:** PR #40 is ready for review at `7addf88`, CI green on macOS 14 and 15. A new session runs the list below in the Debug build, driving each drag with simulated mouse events and checking by screenshot and log. Steps 1 and 8 still need Nico: Claude can measure the grab area and try the keys, but whether they feel right is his call. Step 14 needs a Mac on macOS 14 or 15.
+
 **Still to run.** Run the Debug build from the branch (it uses `Chorus-debug`, so your real spaces are safe), with at least two spaces, a divider, and four or more services in one space. The builders drove every drag with synthetic events on macOS 26, so each step below needs a real mouse. Pass or fail is stated per step.
 
 1. **Thin grab area.** Make a group of two. In the top bar, press the box where it shows between tabs and drag it. In the sidebar with names off, do the same on the top or bottom padding. Pass: the whole box moves on the first try. Fail: you miss it often or drag a single service instead. A wider grab band would be the fix.
