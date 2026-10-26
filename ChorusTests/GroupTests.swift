@@ -518,4 +518,90 @@ final class GroupTests: XCTestCase {
         XCTAssertTrue(try groups(ctx).isEmpty)
         XCTAssertEqual(order(space, ctx), before)
     }
+
+    // MARK: Moving a whole group
+
+    func testMoveGroupTakesEveryMemberAndTheName() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (work, _, l) = try makeSpace("Work", order: 0, services: ["a", "b", "c", "d"], in: ctx)
+        let (home, _, h) = try makeSpace("Home", order: 1, services: ["x", "y"], in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(l[2].id, onto: l[1].id, context: ctx))
+        let group = try XCTUnwrap(l[1].groupID)
+        XCTAssertTrue(RailEdits.nameGroup(group, "Mail", context: ctx))
+
+        XCTAssertTrue(RailEdits.moveGroup(group, toSpace: home.id, before: h[1].id, context: ctx))
+
+        XCTAssertEqual(order(home, ctx), [h[0].id, l[1].id, l[2].id, h[1].id])
+        XCTAssertEqual(order(work, ctx), [l[0].id, l[3].id])
+        XCTAssertEqual(l[1].groupID, group)
+        XCTAssertEqual(l[2].groupID, group)
+        let row = try XCTUnwrap(try groups(ctx).first)
+        XCTAssertEqual(try groups(ctx).count, 1)
+        XCTAssertEqual(row.spaceID, home.id)
+        XCTAssertEqual(row.name, "Mail")
+        XCTAssertEqual(RailEdits.groupEntries(inSpace: home.id, context: ctx).compactMap(\.groupID), [group, group])
+    }
+
+    func testMoveGroupIsRefusedWhenAMemberIsAlreadyThere() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (work, services, l) = try makeSpace("Work", order: 0, services: ["a", "b", "c"], in: ctx)
+        let (home, _, _) = try makeSpace("Home", order: 1, services: ["x"], in: ctx)
+        try addLink(services[1], to: home, in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(l[1].id, onto: l[0].id, context: ctx))
+        let group = try XCTUnwrap(l[0].groupID)
+        let before = order(work, ctx)
+        let homeBefore = order(home, ctx)
+
+        XCTAssertFalse(RailEdits.moveGroup(group, toSpace: home.id, before: nil, context: ctx))
+
+        XCTAssertEqual(order(work, ctx), before)
+        XCTAssertEqual(order(home, ctx), homeBefore)
+        XCTAssertEqual(try groups(ctx).first?.spaceID, work.id)
+        XCTAssertEqual(l[0].groupID, group)
+    }
+
+    func testEligibleSpacesLeaveOutSpacesHoldingAMember() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (work, services, l) = try makeSpace("Work", order: 0, services: ["a", "b"], in: ctx)
+        let (home, _, _) = try makeSpace("Home", order: 1, services: ["x"], in: ctx)
+        let (play, _, _) = try makeSpace("Play", order: 2, services: ["z"], in: ctx)
+        try addLink(services[0], to: play, in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(l[1].id, onto: l[0].id, context: ctx))
+        let group = try XCTUnwrap(l[0].groupID)
+
+        let eligible = RailEdits.eligibleSpaces(forGroup: group, context: ctx)
+
+        XCTAssertEqual(eligible, [home.id])
+        XCTAssertFalse(eligible.contains(work.id))
+    }
+
+    func testReorderGroupMovesTheRunAsOne() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (space, _, l) = try makeSpace("Work", order: 0, services: ["a", "b", "c", "d"], in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(l[1].id, onto: l[0].id, context: ctx))
+        let group = try XCTUnwrap(l[0].groupID)
+
+        let ok = RailEdits.reorderGroup(group, order: [l[2].id, l[3].id, l[0].id, l[1].id], inSpace: space.id, context: ctx)
+
+        XCTAssertTrue(ok)
+        XCTAssertEqual(order(space, ctx), [l[2].id, l[3].id, l[0].id, l[1].id])
+        XCTAssertEqual(l[0].groupID, group)
+        XCTAssertEqual(l[1].groupID, group)
+        XCTAssertNil(l[2].groupID)
+        XCTAssertFalse(RailEdits.reorderGroup(UUID(), order: [], inSpace: space.id, context: ctx))
+    }
+
+    func testGroupMovePromptNamesTheServices() {
+        let unnamed = AppState.groupMovePrompt(name: nil, labels: ["Gmail", "Slack", "Teams"], spaceName: "Home")
+        XCTAssertEqual(unnamed.title, "Move these services to Home?")
+        XCTAssertTrue(unnamed.message.contains("Gmail, Slack and Teams"))
+        XCTAssertTrue(unnamed.message.contains("sign-in"))
+        XCTAssertEqual(unnamed.confirm, "Move")
+        let named = AppState.groupMovePrompt(name: "Mail", labels: ["Gmail", "Slack"], spaceName: "Home")
+        XCTAssertEqual(named.title, "Move Mail to Home?")
+    }
 }

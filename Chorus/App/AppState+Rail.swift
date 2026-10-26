@@ -9,12 +9,14 @@ enum RailMove: Identifiable, Equatable {
     case intoSpace(linkID: UUID, spaceID: UUID, before: UUID?)
     case intoGlobal(linkID: UUID, before: UUID?)
     case globalIntoSpace(serviceID: UUID, spaceID: UUID, before: UUID?)
+    case groupIntoSpace(groupID: UUID, spaceID: UUID, before: UUID?)
 
     var id: String {
         switch self {
         case .intoSpace(let link, let space, _): return "space-\(link)-\(space)"
         case .intoGlobal(let link, _): return "global-\(link)"
         case .globalIntoSpace(let service, let space, _): return "global-space-\(service)-\(space)"
+        case .groupIntoSpace(let group, let space, _): return "group-space-\(group)-\(space)"
         }
     }
 }
@@ -66,6 +68,30 @@ extension AppState {
             selectedServiceID = nil
         }
         return true
+    }
+
+    /// Moves a group with all its members into a space. Selection follows
+    /// `moveGlobalService`: with `follow` the view goes to the space, without it
+    /// a showing member clears the selection.
+    @discardableResult
+    func moveGroup(_ groupID: UUID, toSpace spaceID: UUID, before beforeID: UUID? = nil, follow: Bool = false) -> Bool {
+        let context = modelContainer.mainContext
+        let serviceIDs = RailEdits.groupMembers(groupID, context: context).compactMap { $0.liveEnds?.service.id }
+        let wasShowing = selectedServiceID.map { serviceIDs.contains($0) } ?? false
+        guard RailEdits.moveGroup(groupID, toSpace: spaceID, before: beforeID, context: context) else { return false }
+        for id in serviceIDs { refreshBadgeState(for: id) }
+        if follow {
+            selectedSpaceID = spaceID
+        } else if wasShowing, selectedSpaceID != spaceID {
+            selectedServiceID = nil
+        }
+        return true
+    }
+
+    /// Reorders a space with one group's run moved. See `RailEdits.reorderGroup`.
+    @discardableResult
+    func reorderGroup(_ groupID: UUID, order: [UUID], inSpace spaceID: UUID) -> Bool {
+        RailEdits.reorderGroup(groupID, order: order, inSpace: spaceID, context: modelContainer.mainContext)
     }
 
     /// Deletes a service from every space and the global group, then tears
@@ -153,12 +179,22 @@ extension AppState {
             return links.first { $0.id == linkID }?.liveService
         case .globalIntoSpace(let serviceID, _, _):
             return try? context.fetch(FetchDescriptor<ServiceInstance>(predicate: #Predicate { $0.id == serviceID })).first
+        case .groupIntoSpace:
+            return nil
         }
     }
 
     /// What the confirmation says: where the service goes, and that its
     /// cookies go with it, naming any services it still shares them with.
     func prompt(for move: RailMove) -> RailMovePrompt? {
+        if case .groupIntoSpace(let groupID, let spaceID, _) = move {
+            let context = modelContainer.mainContext
+            let labels = RailEdits.groupMembers(groupID, context: context).compactMap { $0.liveService?.label }
+            let spaces = (try? context.fetch(FetchDescriptor<Space>(predicate: #Predicate { $0.id == spaceID }))) ?? []
+            guard !labels.isEmpty, let space = spaces.first else { return nil }
+            let groups = (try? context.fetch(FetchDescriptor<ServiceGroup>(predicate: #Predicate { $0.id == groupID }))) ?? []
+            return Self.groupMovePrompt(name: groups.first?.name, labels: labels, spaceName: space.name)
+        }
         guard let service = moveSubject(move) else { return nil }
         let partners = signInPartners(of: service.id).map(\.label)
         let shared = partners.isEmpty ? "" : " It still shares them with \(Self.listed(partners))."
@@ -171,6 +207,8 @@ extension AppState {
             let spaces = (try? modelContainer.mainContext.fetch(FetchDescriptor<Space>(predicate: #Predicate { $0.id == spaceID }))) ?? []
             guard let space = spaces.first else { return nil }
             return RailMovePrompt(title: "Move \(service.label) to \(space.name)?", message: message, confirm: "Move")
+        case .groupIntoSpace:
+            return nil
         case .intoGlobal:
             return RailMovePrompt(
                 title: "Show \(service.label) in every space?",
@@ -178,6 +216,17 @@ extension AppState {
                 confirm: "Show in Every Space"
             )
         }
+    }
+
+    /// The words for moving a group: its services by name, and that each keeps
+    /// its sign-in.
+    nonisolated static func groupMovePrompt(name: String?, labels: [String], spaceName: String) -> RailMovePrompt {
+        let title = name.map { "Move \($0) to \(spaceName)?" } ?? "Move these services to \(spaceName)?"
+        return RailMovePrompt(
+            title: title,
+            message: "\(listed(labels)) move together. Each keeps its sign-in, so its cookies come with it.",
+            confirm: "Move"
+        )
     }
 
     /// "A", "A and B", "A, B and C".
@@ -190,6 +239,12 @@ extension AppState {
     /// view, as it does when moved by the menu into a new space.
     @discardableResult
     func performRailMove(_ move: RailMove) -> Bool {
+        if case .groupIntoSpace(let groupID, let spaceID, let before) = move {
+            let context = modelContainer.mainContext
+            let showing = RailEdits.groupMembers(groupID, context: context)
+                .contains { $0.liveEnds?.service.id == selectedServiceID }
+            return moveGroup(groupID, toSpace: spaceID, before: before, follow: showing)
+        }
         guard let service = moveSubject(move) else { return false }
         let serviceID = service.id
         let wasSelected = selectedServiceID == serviceID
@@ -209,6 +264,8 @@ extension AppState {
             return makeServiceGlobal(serviceID, before: before)
         case .globalIntoSpace(_, let spaceID, let before):
             return moveGlobalService(serviceID, toSpace: spaceID, before: before, follow: wasSelected)
+        case .groupIntoSpace:
+            return false
         }
     }
 }

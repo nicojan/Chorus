@@ -353,6 +353,9 @@ enum RailEdits {
         for group in (try? context.fetch(FetchDescriptor<ServiceGroup>())) ?? [] where !group.isDeleted {
             groupSpaces[group.id] = group.spaceID
         }
+        // A group moved or inserted in this unsaved edit: the caller's word
+        // beats whatever the fetch shows.
+        for (group, space) in knownGroups { groupSpaces[group] = space }
         let groupOf = Dictionary(
             links(inSpace: spaceID, context: context).map { ($0.id, $0.groupID) },
             uniquingKeysWith: { first, _ in first }
@@ -505,6 +508,92 @@ enum RailEdits {
         for group in groups(inSpace: spaceID, context: context) {
             context.delete(group)
         }
+    }
+
+    /// A group's member links in rail order, read by fetch.
+    static func groupMembers(_ groupID: UUID, context: ModelContext) -> [SpaceServiceLink] {
+        let all = (try? context.fetch(FetchDescriptor<SpaceServiceLink>())) ?? []
+        return all
+            .filter { $0.modelContext != nil && !$0.isDeleted && $0.groupID == groupID && $0.liveEnds != nil }
+            .sorted { $0.sortOrder < $1.sortOrder }
+    }
+
+    /// The new order of a space that moves one group's run. Membership is
+    /// untouched; `order` is the whole list as the caller wants it, and a run
+    /// that comes out broken is repaired. False when the group is not in that
+    /// space or the save failed.
+    @discardableResult
+    static func reorderGroup(_ groupID: UUID, order: [UUID], inSpace spaceID: UUID, context: ModelContext) -> Bool {
+        guard let row = group(groupID, context: context), row.spaceID == spaceID,
+              groupMembers(groupID, context: context).contains(where: { $0.liveEnds?.space.id == spaceID })
+        else { return false }
+        applyOrder(order, in: .space(spaceID), context: context)
+        tidyGroups(inSpace: spaceID, context: context)
+        return context.saveOrRollBack("reorder group")
+    }
+
+    /// Spaces a group can move to, in rail order: every space but its own that
+    /// holds none of its members' services.
+    static func eligibleSpaces(forGroup groupID: UUID, context: ModelContext) -> [UUID] {
+        let members = groupMembers(groupID, context: context)
+        let ownSpaces = Set(members.compactMap { $0.liveEnds?.space.id })
+        let serviceIDs = Set(members.compactMap { $0.liveEnds?.service.id })
+        let all = (try? context.fetch(FetchDescriptor<SpaceServiceLink>())) ?? []
+        let taken = Set(all.compactMap { link -> UUID? in
+            guard let ends = link.liveEnds, serviceIDs.contains(ends.service.id) else { return nil }
+            return ends.space.id
+        })
+        let spaces = (try? context.fetch(FetchDescriptor<Space>())) ?? []
+        return spaces
+            .filter { !ownSpaces.contains($0.id) && !taken.contains($0.id) }
+            .sorted { $0.sortOrder < $1.sortOrder }
+            .map(\.id)
+    }
+
+    /// Moves a group and all its members into another space, before `beforeID`
+    /// (a link or divider there) or at the end, as one run in the same order.
+    /// The members keep their group and the group row follows them. Refused,
+    /// with nothing changed, when any member's service is already in that space.
+    @discardableResult
+    static func moveGroup(
+        _ groupID: UUID,
+        toSpace spaceID: UUID,
+        before beforeID: UUID? = nil,
+        context: ModelContext
+    ) -> Bool {
+        guard let row = group(groupID, context: context),
+              let target = try? context.fetch(FetchDescriptor<Space>(predicate: #Predicate { $0.id == spaceID })).first
+        else { return false }
+        let members = groupMembers(groupID, context: context)
+        let sources = Set(members.compactMap { $0.liveEnds?.space.id })
+        guard !members.isEmpty, sources.count == 1, let sourceID = sources.first, sourceID != spaceID else { return false }
+        let all = (try? context.fetch(FetchDescriptor<SpaceServiceLink>())) ?? []
+        let serviceIDs = Set(members.compactMap { $0.liveEnds?.service.id })
+        guard !all.contains(where: {
+            guard let ends = $0.liveEnds else { return false }
+            return ends.space.id == spaceID && serviceIDs.contains(ends.service.id)
+        }) else { return false }
+
+        let memberIDs = members.map(\.id)
+        let list = entries(in: .space(spaceID), context: context).map(\.id)
+        let anchor = GroupRules.landingAnchor(before: beforeID, in: groupEntries(inSpace: spaceID, context: context))
+        var ordered = list
+        if let anchor, let index = ordered.firstIndex(of: anchor) {
+            ordered.insert(contentsOf: memberIDs, at: index)
+        } else {
+            ordered.append(contentsOf: memberIDs)
+        }
+        let numbering = RailOrder.numbering(ordered)
+        for member in members {
+            member.space = target
+            member.sortOrder = numbering[member.id] ?? member.sortOrder
+        }
+        row.spaceID = spaceID
+        applyOrder(ordered, in: .space(spaceID), context: context)
+        let known = [groupID: spaceID]
+        tidyGroups(inSpace: sourceID, context: context, knownGroups: known, removedLinks: Set(memberIDs))
+        tidyGroups(inSpace: spaceID, context: context, knownGroups: known)
+        return context.saveOrRollBack("move group to space")
     }
 
     /// Writes a list's order and each of its links' groups. Does not save.
