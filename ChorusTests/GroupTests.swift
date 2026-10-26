@@ -1,6 +1,5 @@
 import XCTest
 import SwiftData
-import SwiftUI
 import UniformTypeIdentifiers
 @testable import Chorus
 
@@ -974,6 +973,6 @@ final class GroupTests: XCTestCase {
     /// at each end, which a pointer seldom hits; the ends now take at least
     /// the rail's padding, the band that works in the sidebar.
     func testTheTopBarBoxHasEndsWideEnoughToGrab() {
-        XCTAssertGreaterThanOrEqual(GroupBox<EmptyView>.barEndPadding, ChorusCard.railPadding)
+        XCTAssertGreaterThanOrEqual(GroupBoxLayout.barEndPadding, ChorusCard.railPadding)
     }
 }

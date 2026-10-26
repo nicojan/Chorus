@@ -1,5 +1,16 @@
 import SwiftUI
 
+/// Sizes of `GroupBox` that do not depend on its content. Kept off the
+/// generic type: Xcode 16.2 cannot infer `Content` for a static member
+/// reached through it.
+enum GroupBoxLayout {
+    /// Padding at each end of the box in the top bar. The box is grabbed by
+    /// its padding, and the bar leaves none above or below the tabs, so the
+    /// ends are the band to press: the rail's padding at least, and a little
+    /// more since the band is the only one.
+    static let barEndPadding: CGFloat = 8
+}
+
 /// The box round a service group's rows: the card the global services sit in
 /// within the space strip (`.railCard()`, padded `ChorusCard.railPadding` on
 /// every side so a row's 8 point fill sits inside the card's 14 point corners).
@@ -30,12 +41,6 @@ struct GroupBox<Content: View>: View {
 
     /// Height of the name over a vertical box, as the all-services heading.
     static var nameHeight: CGFloat { 22 }
-
-    /// Padding at each end of the box in the top bar. The box is grabbed by
-    /// its padding, and the bar leaves none above or below the tabs, so the
-    /// ends are the band to press: the rail's padding at least, and a little
-    /// more since the band is the only one.
-    static var barEndPadding: CGFloat { 8 }
 
     var body: some View {
         Group {
@@ -70,7 +75,7 @@ struct GroupBox<Content: View>: View {
 
     private func card(_ rows: some View, vertical: CGFloat) -> some View {
         rows
-            .padding(.horizontal, axis == .vertical ? sideInset : Self.barEndPadding)
+            .padding(.horizontal, axis == .vertical ? sideInset : GroupBoxLayout.barEndPadding)
             .padding(.vertical, vertical)
             .railCard(cornerRadius: cornerRadius)
             .overlay {
