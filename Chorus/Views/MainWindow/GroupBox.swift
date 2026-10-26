@@ -31,6 +31,12 @@ struct GroupBox<Content: View>: View {
     /// Height of the name over a vertical box, as the all-services heading.
     static var nameHeight: CGFloat { 22 }
 
+    /// Padding at each end of the box in the top bar. The box is grabbed by
+    /// its padding, and the bar leaves none above or below the tabs, so the
+    /// ends are the band to press: the rail's padding at least, and a little
+    /// more since the band is the only one.
+    static var barEndPadding: CGFloat { 8 }
+
     var body: some View {
         Group {
             if axis == .vertical {
@@ -64,7 +70,7 @@ struct GroupBox<Content: View>: View {
 
     private func card(_ rows: some View, vertical: CGFloat) -> some View {
         rows
-            .padding(.horizontal, axis == .vertical ? sideInset : 2)
+            .padding(.horizontal, axis == .vertical ? sideInset : Self.barEndPadding)
             .padding(.vertical, vertical)
             .railCard(cornerRadius: cornerRadius)
             .overlay {
@@ -84,7 +90,8 @@ struct GroupBox<Content: View>: View {
     }
 
     /// Set like the all-services heading: the row size, bold, grey. Lined up
-    /// with the row icons in the sidebar; inset from the card's edge in the bar.
+    /// with the row icons in the sidebar; in the bar the box's end padding
+    /// insets it.
     private var nameLabel: some View {
         Text(name ?? "")
             .font(ChorusType.label)
@@ -92,7 +99,7 @@ struct GroupBox<Content: View>: View {
             .foregroundStyle(ChorusColor.secondaryText)
             .lineLimit(1)
             .truncationMode(.tail)
-            .padding(.leading, axis == .vertical ? sideInset + 8 : 8)
+            .padding(.leading, axis == .vertical ? sideInset + 8 : 0)
             .padding(.trailing, axis == .vertical ? sideInset : 2)
             .accessibilityHidden(true)
     }
