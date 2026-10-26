@@ -3,6 +3,29 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.30</title>
+            <pubDate>Sun, 25 Oct 2026 22:42:26 -0700</pubDate>
+            <sparkle:version>43</sparkle:version>
+            <sparkle:shortVersionString>1.5.30</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Added</h3>
+<ul>
+<li>Service groups. Drag a service onto another and pause, or right-click it and choose Group with, and the two sit together in a box. The box shows in every layout. You can name a group, rename it and move it to another space as one, and dividers still work around it.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>In the narrow space strip, the spaces sit as far apart as the service tabs in the bar, and the services shown in every space sit in a box of their own above them.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Press Escape while you drag a service, or let go of it away from the rail, and it goes back where it was.</li>
+<li>Chorus now quits while a sheet such as Edit Service or What's New is open. Before, ⌘Q, Quit in the Dock and the relaunch after an update did nothing until you closed the sheet.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.30/Chorus-1.5.30.dmg" length="10659359" type="application/octet-stream" sparkle:edSignature="oacoxb0SbexV39GYEHDrsDCJDeG3dCnITP8lq0rE/Eh2XSJUIkg45GyAcYm3nbgeDDnxB3PrQ4P1vzO+lyBjCA=="/>
+        </item>
+        <item>
             <title>1.5.29</title>
             <pubDate>Sun, 25 Oct 2026 14:06:09 -0700</pubDate>
             <sparkle:version>42</sparkle:version>
