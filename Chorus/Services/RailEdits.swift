@@ -627,6 +627,49 @@ enum RailEdits {
         return context.saveOrRollBack("move group to space")
     }
 
+    // MARK: - Putting a drag back
+
+    /// Each list as it stands, with each row's group, for `restore`. Lists
+    /// other than a space's carry no groups.
+    static func snapshot(_ scopes: [RailScope], context: ModelContext) -> [RailScope: [GroupEntry]] {
+        var lists: [RailScope: [GroupEntry]] = [:]
+        for scope in scopes {
+            if case .space(let spaceID) = scope {
+                lists[scope] = groupEntries(inSpace: spaceID, context: context)
+            } else {
+                lists[scope] = entries(in: scope, context: context).map {
+                    GroupEntry(id: $0.id, groupID: nil, isDivider: $0.isDivider)
+                }
+            }
+        }
+        return lists
+    }
+
+    /// Puts every list in `snapshot` back the way it was: its order and, in a
+    /// space, each link's group. A group row that went in the meantime comes
+    /// back with the same id and no name, and one that moved to another space
+    /// comes back to this one. Anything that has left a list since is left
+    /// where it is. False when the save failed and was rolled back.
+    @discardableResult
+    static func restore(_ snapshot: [RailScope: [GroupEntry]], context: ModelContext) -> Bool {
+        for (scope, list) in snapshot {
+            applyOrder(list.map(\.id), in: scope, context: context)
+            guard case .space(let spaceID) = scope else { continue }
+            var known: [UUID: UUID] = [:]
+            for groupID in Set(list.compactMap(\.groupID)) {
+                if let row = group(groupID, context: context) {
+                    if row.spaceID != spaceID { row.spaceID = spaceID }
+                } else {
+                    context.insert(ServiceGroup(id: groupID, spaceID: spaceID))
+                }
+                known[groupID] = spaceID
+            }
+            setMembership(list, inSpace: spaceID, context: context, skipping: [])
+            tidyGroups(inSpace: spaceID, context: context, knownGroups: known)
+        }
+        return context.saveOrRollBack("put back a cancelled drag")
+    }
+
     /// Writes a list's order and each of its links' groups. Does not save.
     private static func writeGroups(_ list: [GroupEntry], inSpace spaceID: UUID, context: ModelContext) {
         applyOrder(list.map(\.id), in: .space(spaceID), context: context)

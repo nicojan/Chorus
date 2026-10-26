@@ -282,8 +282,36 @@ final class RailDragState {
     /// Escape ends the drag, since the moves along the way are saved live.
     var dividerStartOrder: [UUID] = []
     var spaceID: UUID?
+    /// Every list a service drag can change, as it stood when the drag began:
+    /// the dragged row's own list and the global group. Escape puts them back
+    /// (`RailEdits.restore`), since the moves along the way are saved live.
+    var startSnapshot: [RailScope: [GroupEntry]] = [:]
+    /// The row the pointer has rested on long enough to group with.
+    var pausedTargetID: UUID?
+    /// The group whose box is lit, so a drop there joins it.
+    var litGroupID: UUID?
+    /// Which part of each row the pointer was last over, by row id.
+    var zones: [UUID: GroupDrag.Zone] = [:]
+    /// The wait before a row under the pointer becomes `pausedTargetID`.
+    var pauseTask: Task<Void, Never>?
 
     private init() {}
+
+    /// Clears every drag field. The drag source's end handler calls it once
+    /// per drag, however the drag ended (see `RailDragEnding`).
+    func reset() {
+        linkID = nil
+        globalID = nil
+        dividerID = nil
+        dividerStartOrder = []
+        spaceID = nil
+        startSnapshot = [:]
+        pausedTargetID = nil
+        litGroupID = nil
+        zones = [:]
+        pauseTask?.cancel()
+        pauseTask = nil
+    }
 }
 
 /// The drop side of `LiveReorder`, put on each row. A row lists the kinds of

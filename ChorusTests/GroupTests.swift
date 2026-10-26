@@ -732,4 +732,47 @@ final class GroupTests: XCTestCase {
         for run in runs { if case .group = run { XCTFail("drew a box") } }
         XCTAssertNil(RailRuns.litGroup(in: runs))
     }
+
+    // MARK: Review Focus 4: Escape puts a drag back
+
+    func testRestorePutsBackOrderAndMembership() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (space, _, l) = try makeSpace("Work", order: 0, services: ["a", "b", "c", "d"], in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(l[1].id, onto: l[0].id, context: ctx))
+        let group = try XCTUnwrap(l[0].groupID)
+        let globals = ["g1", "g2", "g3"].enumerated().map { index, label in
+            let service = ServiceInstance(label: label, url: "https://\(label).example")
+            service.isGlobal = true
+            service.globalSortOrder = index
+            ctx.insert(service)
+            return service
+        }
+        try ctx.save()
+
+        let snapshot = RailEdits.snapshot([.space(space.id), .global], context: ctx)
+        let spaceBefore = order(space, ctx)
+        let globalBefore = RailEdits.entries(in: .global, context: ctx).map(\.id)
+        XCTAssertEqual(globalBefore, globals.map(\.id))
+
+        // What a drag can do on its way: reorder both lists, and a membership
+        // change, which here takes the group down to one member and deletes it.
+        RailEdits.reorder([l[2].id, l[0].id, l[1].id, l[3].id], in: .space(space.id), context: ctx)
+        RailEdits.reorder([globals[2].id, globals[0].id, globals[1].id], in: .global, context: ctx)
+        XCTAssertTrue(RailEdits.removeFromGroup(l[0].id, context: ctx))
+        XCTAssertNil(l[0].groupID)
+        XCTAssertTrue(try groups(ctx).isEmpty)
+
+        XCTAssertTrue(RailEdits.restore(snapshot, context: ctx))
+
+        XCTAssertEqual(order(space, ctx), spaceBefore)
+        XCTAssertEqual(RailEdits.entries(in: .global, context: ctx).map(\.id), globalBefore)
+        XCTAssertEqual(l[0].groupID, group)
+        XCTAssertEqual(l[1].groupID, group)
+        XCTAssertNil(l[2].groupID)
+        XCTAssertNil(l[3].groupID)
+        XCTAssertEqual(try groups(ctx).map(\.id), [group])
+        XCTAssertEqual(try groups(ctx).first?.spaceID, space.id)
+        XCTAssertEqual(RailEdits.groupEntries(inSpace: space.id, context: ctx), snapshot[.space(space.id)])
+    }
 }

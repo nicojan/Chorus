@@ -535,12 +535,7 @@ struct UnifiedRailView: View {
             }
         )
         // Live reorder, within a space or into another one. See `LiveReorder`.
-        .onDrag {
-            drag.linkID = link.id
-            return LiveReorder.itemProvider(for: link.id, type: LiveReorder.serviceType)
-        } preview: {
-            ServiceDragPreview(service: service)
-        }
+        .overlay(linkDragSource(for: link, service: service))
         .liveReorderDrop([
             .init(
                 type: LiveReorder.serviceType,
@@ -1054,12 +1049,7 @@ struct UnifiedRailView: View {
             .featureTip(.editSelectedService, arrowEdge: axis == .vertical ? .trailing : .bottom,
                         isEnabled: isSel, appState: appState)
             // Live reorder along the rail or the bar. See `LiveReorder`.
-            .onDrag {
-                drag.linkID = link.id
-                return LiveReorder.itemProvider(for: link.id, type: LiveReorder.serviceType)
-            } preview: {
-                ServiceDragPreview(service: service)
-            }
+            .overlay(linkDragSource(for: link, service: service))
             .liveReorderDrop(memberLanes(for: link))
             .accessibilityAction(named: "Move up") { stepLink(link, forward: false) }
             .accessibilityAction(named: "Move down") { stepLink(link, forward: true) }
@@ -1078,6 +1068,55 @@ struct UnifiedRailView: View {
                 guard let spaceID = link.liveSpace?.id else { return .ignored }
                 return handleNavigationKey(press, focusID: service.id, reorderID: link.id, in: .space(spaceID))
             }
+    }
+
+    // MARK: - Starting a service drag
+
+    /// The rail's handler for the end of a service drag. See `RailDragEnding`.
+    private var serviceDragEnding: RailServiceDragEnding {
+        RailServiceDragEnding(appState: appState, animation: reorderAnimation)
+    }
+
+    /// A space's service row as a drag source. AppKit starts the drag, so its
+    /// end is known and Escape can put the lists back. See `RailDragSession`.
+    private func linkDragSource(for link: SpaceServiceLink, service: ServiceInstance) -> some View {
+        let linkID = link.id
+        let spaceID = link.liveSpace?.id
+        return RowDragSource(
+            id: linkID,
+            type: LiveReorder.serviceType,
+            ending: serviceDragEnding,
+            onDragStart: {
+                drag.reset()
+                drag.linkID = linkID
+                // Its own space reorders live; the global group is where a
+                // drop can take it.
+                let scopes: [RailScope] = (spaceID.map { [.space($0)] } ?? []) + [.global]
+                drag.startSnapshot = appState.railSnapshot(scopes)
+            },
+            preview: { ServiceDragPreview(service: service) }
+        )
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    /// A global service's row as a drag source. Only the global group
+    /// reorders live under it.
+    private func globalDragSource(for service: ServiceInstance) -> some View {
+        let serviceID = service.id
+        return RowDragSource(
+            id: serviceID,
+            type: LiveReorder.globalServiceType,
+            ending: serviceDragEnding,
+            onDragStart: {
+                drag.reset()
+                drag.globalID = serviceID
+                drag.startSnapshot = appState.railSnapshot([.global])
+            },
+            preview: { ServiceDragPreview(service: service) }
+        )
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     /// What a service's row in the single-space rail or the bar takes: a
@@ -1126,12 +1165,7 @@ struct UnifiedRailView: View {
                 }
             }
         )
-        .onDrag {
-            drag.globalID = service.id
-            return LiveReorder.itemProvider(for: service.id, type: LiveReorder.globalServiceType)
-        } preview: {
-            ServiceDragPreview(service: service)
-        }
+        .overlay(globalDragSource(for: service))
         .liveReorderDrop([
             .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, move: { liveMove($0, over: service.id, in: .global) }),
             .init(type: LiveReorder.serviceType, draggingID: { drag.linkID }, drop: { dropLinkIntoGlobal($0, before: service.id) }),
@@ -1163,7 +1197,7 @@ struct UnifiedRailView: View {
             onRemove: { removeDivider(dividerID) },
             onMove: { step(dividerID, forward: $0, in: scope) },
             isDragging: drag.dividerID == dividerID,
-            onDragEnd: { drag.dividerID = nil },
+            onDragEnd: { drag.reset() },
             onCancel: {
                 withAnimation(reorderAnimation) { _ = appState.reorderRail(drag.dividerStartOrder, in: scope) }
             }

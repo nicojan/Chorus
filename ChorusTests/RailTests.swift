@@ -89,17 +89,17 @@ final class RailTests: XCTestCase {
     /// Escape ends the drag at once, with the button still down. The live
     /// moves are undone and the divider stays, even off the rail.
     func testEscapeCancelsADividerDragWhereverItIs() {
-        XCTAssertEqual(DividerDragEnd.classify(dropTaken: false, endedByKey: true, insideRail: true), .cancelled)
-        XCTAssertEqual(DividerDragEnd.classify(dropTaken: false, endedByKey: true, insideRail: false), .cancelled)
+        XCTAssertEqual(RailDragEnd.classify(dropTaken: false, endedByKey: true, insideRail: true), .cancelled)
+        XCTAssertEqual(RailDragEnd.classify(dropTaken: false, endedByKey: true, insideRail: false), .cancelled)
     }
 
     func testReleasingADividerKeepsItOnTheRailAndRemovesItOff() {
-        XCTAssertEqual(DividerDragEnd.classify(dropTaken: true, endedByKey: false, insideRail: true), .moved)
+        XCTAssertEqual(RailDragEnd.classify(dropTaken: true, endedByKey: false, insideRail: true), .dropped)
         // Let go over a gap between rows: nothing took the drop, still a move.
-        XCTAssertEqual(DividerDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: true), .moved)
-        XCTAssertEqual(DividerDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: false), .removed)
+        XCTAssertEqual(RailDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: true), .dropped)
+        XCTAssertEqual(RailDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: false), .endedOffRail)
         // With no rail to ask, keep it.
-        XCTAssertEqual(DividerDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: nil), .moved)
+        XCTAssertEqual(RailDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: nil), .dropped)
     }
 
     // MARK: - Dividers in the store

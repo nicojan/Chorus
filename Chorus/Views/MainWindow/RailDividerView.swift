@@ -192,26 +192,6 @@ private struct RailDividerDragSource: NSViewRepresentable {
     }
 }
 
-/// How a divider drag ended, from what AppKit says at its end.
-enum DividerDragEnd: Equatable {
-    /// A row took it, or it was let go over the rail, a gap included: the
-    /// live moves stand.
-    case moved
-    /// Escape: the moves made during the drag are undone, and the divider
-    /// stays, on the rail or off it.
-    case cancelled
-    /// Let go off the rail.
-    case removed
-
-    /// `insideRail` is nil when there is no rail to ask, and then the divider
-    /// is kept.
-    nonisolated static func classify(dropTaken: Bool, endedByKey: Bool, insideRail: Bool?) -> DividerDragEnd {
-        if endedByKey { return .cancelled }
-        if dropTaken || insideRail ?? true { return .moved }
-        return .removed
-    }
-}
-
 final class DividerDragView: NSView, NSDraggingSource {
     var dividerID = UUID()
     var onDragStart: () -> Void = {}
@@ -300,15 +280,15 @@ final class DividerDragView: NSView, NSDraggingSource {
         NSCursor.arrow.set()
         // Escape ends the drag at once, while the button is still down, and
         // the key press is then the current event. A release never is.
-        let end = DividerDragEnd.classify(
+        let end = RailDragEnd.classify(
             dropTaken: operation != [],
             endedByKey: NSApp.currentEvent?.type == .keyDown,
             insideRail: zone?.contains(screenPoint: screenPoint)
         )
         switch end {
-        case .moved: break
+        case .dropped: break
         case .cancelled: onCancel()
-        case .removed: onRemove()
+        case .endedOffRail: onRemove()
         }
         onDragEnd()
     }

@@ -170,6 +170,17 @@ extension AppState {
         RailEdits.reorder(orderedIDs, in: scope, context: modelContainer.mainContext)
     }
 
+    /// Puts lists back as a drag found them. See `RailEdits.restore`.
+    @discardableResult
+    func restoreRail(_ snapshot: [RailScope: [GroupEntry]]) -> Bool {
+        RailEdits.restore(snapshot, context: modelContainer.mainContext)
+    }
+
+    /// The lists a drag can change, as they stand. See `RailEdits.snapshot`.
+    func railSnapshot(_ scopes: [RailScope]) -> [RailScope: [GroupEntry]] {
+        RailEdits.snapshot(scopes, context: modelContainer.mainContext)
+    }
+
     // MARK: - Deleting a space
 
     /// The services that are in this space and no other, which deleting it
