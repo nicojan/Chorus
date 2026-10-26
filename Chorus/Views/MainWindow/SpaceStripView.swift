@@ -349,6 +349,13 @@ struct SpaceStripView: View {
                 appState.pendingRailMove = .globalIntoSpace(serviceID: serviceID, spaceID: spaceID, before: nil)
                 return true
             }),
+            // A group's box goes to the end of the space, once confirmed.
+            .init(
+                type: LiveReorder.groupType,
+                draggingID: { drag.groupID },
+                drop: { appState.requestGroupMove($0, into: spaceID, before: nil) },
+                accepts: { appState.groupDrop($0, into: spaceID) == .ask }
+            ),
         ]
     }
 

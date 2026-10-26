@@ -59,13 +59,14 @@ struct RailServiceDragEnding: RailDragEnding {
 
     /// The one write. A row that took the drag into another space or the
     /// global group has asked first, and that question decides; turned down,
-    /// the lists go back as the drag found them. Otherwise a paused-on row
-    /// groups with the dragged one, and failing that the box lit at the drop
-    /// decides whether it is in a group (`RailEdits.finishDrag`).
+    /// the lists go back as the drag found them. A group's box has nothing
+    /// more to write, since its live moves keep its run whole. For a service,
+    /// a paused-on row groups with the dragged one, and failing that the box
+    /// lit at the drop decides whether it is in a group (`RailEdits.finishDrag`).
     private func finish(_ drag: RailDragState) {
         // A release nothing took has no `performDrop` to stop the wait.
         drag.stopWaiting()
-        if appState.pendingRailMove(isFromDragOf: drag.linkID, global: drag.globalID) {
+        if appState.pendingRailMove(isFromDragOf: drag.linkID, global: drag.globalID, group: drag.groupID) {
             appState.pendingRailMoveRestore = drag.startSnapshot
             return
         }
@@ -157,17 +158,21 @@ final class RailDragSession: NSObject, NSDraggingSource {
     }
 
     /// The registered view under a press, when nothing is drawn over it: it
-    /// has to sit inside whatever the window's own hit test finds there.
+    /// has to sit inside whatever the window's own hit test finds there. Where
+    /// views overlap, as a group's box does the rows inside it, the smallest
+    /// wins, so a press on a row drags the row and one on the box's edge or
+    /// name drags the box.
     private func sourceView(under event: NSEvent) -> RowDragSourceView? {
         guard let window = event.window, let content = window.contentView else { return nil }
         let point = content.superview?.convert(event.locationInWindow, from: nil) ?? event.locationInWindow
         guard let hit = content.hitTest(point) else { return nil }
-        return views.allObjects.first { view in
+        let under = views.allObjects.filter { view in
             view.window === window
                 && view.payload != nil
                 && view.bounds.contains(view.convert(event.locationInWindow, from: nil))
                 && view.isDescendant(of: hit)
         }
+        return under.min { $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height }
     }
 
     private func beginDrag(from view: RowDragSourceView, press: NSEvent) -> Bool {

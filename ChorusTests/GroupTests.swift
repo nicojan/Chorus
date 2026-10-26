@@ -834,4 +834,46 @@ final class GroupTests: XCTestCase {
         XCTAssertEqual(try groups(ctx).first?.spaceID, space.id)
         XCTAssertEqual(RailEdits.groupEntries(inSpace: space.id, context: ctx), snapshot[.space(space.id)])
     }
+
+    // MARK: Dragging a whole group
+
+    func testGroupDragMovesTheWholeRunPastAUnit() {
+        let a = UUID(), b = UUID(), x = UUID(), y = UUID(), c = UUID(), e = UUID(), dv = UUID()
+        let g = UUID(), h = UUID()
+        let entries = [
+            GroupEntry(id: x, groupID: nil, isDivider: false),
+            GroupEntry(id: a, groupID: g, isDivider: false),
+            GroupEntry(id: b, groupID: g, isDivider: false),
+            GroupEntry(id: y, groupID: nil, isDivider: false),
+            GroupEntry(id: c, groupID: h, isDivider: false),
+            GroupEntry(id: e, groupID: h, isDivider: false),
+            GroupEntry(id: dv, groupID: nil, isDivider: true),
+        ]
+        // Past the row below; the near edge of a neighbour it touches does nothing.
+        XCTAssertEqual(GroupDrag.reorderedGroup(g, over: y, zone: .after, in: entries), [x, y, a, b, c, e, dv])
+        XCTAssertNil(GroupDrag.reorderedGroup(g, over: y, zone: .before, in: entries))
+        XCTAssertEqual(GroupDrag.reorderedGroup(g, over: x, zone: .before, in: entries), [a, b, x, y, c, e, dv])
+        // Another group's run is one unit: either of its rows puts it past the whole run.
+        XCTAssertEqual(GroupDrag.reorderedGroup(g, over: c, zone: .after, in: entries), [x, y, c, e, a, b, dv])
+        XCTAssertEqual(GroupDrag.reorderedGroup(g, over: e, zone: .before, in: entries), [x, y, a, b, c, e, dv])
+        // A divider is a unit of its own; no zone takes its slot.
+        XCTAssertEqual(GroupDrag.reorderedGroup(g, over: dv, zone: nil, in: entries), [x, y, c, e, dv, a, b])
+        XCTAssertEqual(GroupDrag.reorderedGroup(h, over: x, zone: nil, in: entries), [c, e, x, a, b, y, dv])
+        // Its own rows, the middle and a missing id do nothing.
+        XCTAssertNil(GroupDrag.reorderedGroup(g, over: b, zone: .after, in: entries))
+        XCTAssertNil(GroupDrag.reorderedGroup(g, over: x, zone: .middle, in: entries))
+        XCTAssertNil(GroupDrag.reorderedGroup(g, over: UUID(), zone: .after, in: entries))
+        XCTAssertNil(GroupDrag.reorderedGroup(UUID(), over: x, zone: .after, in: entries))
+    }
+
+    func testGroupDropOnASpaceReordersAsksOrRefuses() {
+        let own = UUID(), other = UUID(), taken = UUID()
+        XCTAssertEqual(GroupDrag.spaceDrop(into: own, groupSpace: own, eligible: [other], waiting: false), .ownSpace)
+        XCTAssertEqual(GroupDrag.spaceDrop(into: other, groupSpace: own, eligible: [other], waiting: false), .ask)
+        XCTAssertEqual(GroupDrag.spaceDrop(into: taken, groupSpace: own, eligible: [other], waiting: false), .refuse)
+        // One question at a time.
+        XCTAssertEqual(GroupDrag.spaceDrop(into: other, groupSpace: own, eligible: [other], waiting: true), .refuse)
+        // A group with no members left has no space to come from.
+        XCTAssertEqual(GroupDrag.spaceDrop(into: other, groupSpace: nil, eligible: [], waiting: false), .refuse)
+    }
 }

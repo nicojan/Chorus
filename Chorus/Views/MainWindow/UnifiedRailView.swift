@@ -65,6 +65,9 @@ struct UnifiedRailView: View {
     @AppStorage(SpaceStripMetrics.defaultsKey) private var stripShowsNames = true
 
     @State private var showingPalette = false
+    /// The palette was opened by a group drag resting on the header, so it
+    /// closes again when that drag ends.
+    @State private var paletteSprung = false
     @State private var showingAddService = false
     @State private var showingAddSpace = false
     @State private var editingSpace: Space?
@@ -462,6 +465,13 @@ struct UnifiedRailView: View {
             .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, drop: { dragged in
                 dropGlobal(dragged, into: space.id, before: orderedIDs(.space(space.id)).first)
             }),
+            .init(
+                type: LiveReorder.groupType,
+                draggingID: { drag.groupID },
+                move: { dragged, _ in liveMoveGroupToTop(dragged, of: space.id) },
+                drop: { requestGroupMove($0, into: space.id, before: orderedIDs(.space(space.id)).first) },
+                accepts: { appState.groupDrop($0, into: space.id) != .refuse }
+            ),
         ])
         .contextMenu { spaceContextMenu(for: space) }
         .accessibilityAction(named: "Move up") { step(space.id, forward: false, in: .spaces) }
@@ -505,6 +515,12 @@ struct UnifiedRailView: View {
         .liveReorderDrop([
             .init(type: LiveReorder.serviceType, draggingID: { drag.linkID }, drop: { dropLinkAtTop($0, of: space) }),
             .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, drop: { dropGlobal($0, into: space.id, before: nil) }),
+            .init(
+                type: LiveReorder.groupType,
+                draggingID: { drag.groupID },
+                drop: { requestGroupMove($0, into: space.id, before: nil) },
+                accepts: { appState.groupDrop($0, into: space.id) == .ask }
+            ),
         ])
     }
 
@@ -556,6 +572,7 @@ struct UnifiedRailView: View {
             ),
             .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, drop: { dropGlobal($0, into: space.id, before: link.id) }),
             .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: link.id, in: .space(space.id), zone: $1) }),
+            groupLane(over: link.id, in: space.id),
         ], row: link.id, axis: .vertical, box: box)
         .accessibilityAction(named: "Move up") { step(link.id, forward: false, in: .space(space.id)) }
         .accessibilityAction(named: "Move down") { step(link.id, forward: true, in: .space(space.id)) }
@@ -831,6 +848,18 @@ struct UnifiedRailView: View {
         ) {
             showingPalette = true
         }
+        // A group's box resting here opens the palette, where the spaces it
+        // can be let go on are. It closes again as that drag ends.
+        .onDrop(of: [LiveReorder.groupType], delegate: SpringLoadDropDelegate(types: [LiveReorder.groupType]) {
+            guard !showingPalette, drag.groupID != nil else { return }
+            paletteSprung = true
+            showingPalette = true
+        })
+        .onChange(of: drag.groupID) { _, groupID in
+            guard groupID == nil, paletteSprung else { return }
+            paletteSprung = false
+            showingPalette = false
+        }
         .popover(isPresented: $showingPalette, arrowEdge: axis == .vertical ? .trailing : .bottom) {
             SpacePaletteView(
                 selectedSpaceID: $selectedSpaceID,
@@ -979,6 +1008,7 @@ struct UnifiedRailView: View {
                     }
                 }
                 .groupBoxDrop(box, draggingID: { drag.linkID })
+                .overlay(groupDragSource(groupID, in: spaceID, members: members))
                 .modifier(groupBoxMenu(groupID, name: name, in: spaceID))
             }
         }
@@ -1015,6 +1045,7 @@ struct UnifiedRailView: View {
                     }
                 }
                 .groupBoxDrop(box, draggingID: { drag.linkID })
+                .overlay(groupDragSource(groupID, in: space.id, members: members))
                 .environment(\.railWidth, railFootprint - 2 * ChorusCard.railPadding)
                 .modifier(groupBoxMenu(groupID, name: name, in: space.id))
             }
@@ -1152,6 +1183,7 @@ struct UnifiedRailView: View {
             ),
             .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, drop: { dropGlobal($0, into: spaceID, before: link.id) }),
             .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: link.id, in: .space(spaceID), zone: $1) }),
+            groupLane(over: link.id, in: spaceID),
         ]
     }
 
@@ -1269,6 +1301,7 @@ struct UnifiedRailView: View {
                     drop: { dropLinkOverDivider($0, dividerID: dividerID, spaceID: spaceID) }
                 ),
                 .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, drop: { dropGlobal($0, into: spaceID, before: dividerID) }),
+                groupLane(over: dividerID, in: spaceID),
             ]
         case .global:
             return [
@@ -2061,5 +2094,61 @@ extension UnifiedRailView {
             ungroup: { withAnimation(reorderAnimation) { _ = appState.ungroup(groupID) } },
             step: { stepGroup(groupID, forward: $0, in: spaceID) }
         )
+    }
+
+    // MARK: Dragging a whole group
+
+    /// A group's box as a drag source, by its name and its padding: the rows
+    /// inside have smaller sources of their own, which win a press on them
+    /// (see `RailDragSession`). Only its own space reorders live under it.
+    private func groupDragSource(_ groupID: UUID, in spaceID: UUID, members: [RailItem]) -> some View {
+        let services = members.compactMap(\.service)
+        return RowDragSource(
+            id: groupID,
+            type: LiveReorder.groupType,
+            ending: serviceDragEnding,
+            onDragStart: {
+                drag.reset()
+                drag.groupID = groupID
+                drag.startSnapshot = appState.railSnapshot([.space(spaceID)])
+            },
+            preview: { GroupDragPreview(services: services) }
+        )
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    /// What a row or divider of a space takes from a group's box: in its own
+    /// space the run moves past it live; in another space (the all-services
+    /// list) a release there asks to move the group before it. A space that
+    /// already holds one of its services refuses it.
+    private func groupLane(over targetID: UUID, in spaceID: UUID) -> LiveReorderDropDelegate.Lane {
+        .init(
+            type: LiveReorder.groupType,
+            draggingID: { drag.groupID },
+            move: { liveMoveGroup($0, over: targetID, in: spaceID, zone: $1) },
+            drop: { requestGroupMove($0, into: spaceID, before: targetID) },
+            accepts: { appState.groupDrop($0, into: spaceID) != .refuse }
+        )
+    }
+
+    /// Moves the run past the unit under the pointer and saves at once. See
+    /// `GroupDrag.reorderedGroup`.
+    private func liveMoveGroup(_ groupID: UUID, over target: UUID, in spaceID: UUID, zone: GroupDrag.Zone?) {
+        guard let moved = GroupDrag.reorderedGroup(groupID, over: target, zone: zone, in: groupEntries(in: spaceID)) else { return }
+        withAnimation(reorderAnimation) { _ = appState.reorderGroup(groupID, order: moved, inSpace: spaceID) }
+    }
+
+    /// Over its own space's heading: the run goes to the top, live.
+    private func liveMoveGroupToTop(_ groupID: UUID, of spaceID: UUID) {
+        guard let first = groupEntries(in: spaceID).first?.id else { return }
+        liveMoveGroup(groupID, over: first, in: spaceID, zone: .before)
+    }
+
+    /// See `AppState.requestGroupMove`. The keyboard focus lets go first, as
+    /// for a service moving between spaces.
+    private func requestGroupMove(_ groupID: UUID, into spaceID: UUID, before beforeID: UUID?) -> Bool {
+        if appState.groupDrop(groupID, into: spaceID) == .ask { focusedAllServicesLinkID = nil }
+        return appState.requestGroupMove(groupID, into: spaceID, before: beforeID)
     }
 }

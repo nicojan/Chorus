@@ -172,6 +172,27 @@ struct RailGroupLookup {
     }
 }
 
+/// What a group's box looks like while it is dragged: its services' icons in a
+/// small card, at most four.
+struct GroupDragPreview: View {
+    let services: [ServiceInstance]
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(services.prefix(4)) { service in
+                ServiceIconSquare(instance: service, size: 24, cornerRadius: 5)
+            }
+        }
+        .padding(6)
+        .background(
+            RoundedRectangle(cornerRadius: ChorusRadius.control, style: .continuous)
+                .fill(Color(nsColor: .windowBackgroundColor))
+        )
+        .padding(4)
+        .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+    }
+}
+
 /// The row a drag has rested on long enough to group with: it swells a little
 /// and takes an accent outline, so letting go now is clearly a different act
 /// from moving past it. Under Reduce Motion it takes the outline only.

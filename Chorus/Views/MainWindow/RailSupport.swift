@@ -241,6 +241,8 @@ enum LiveReorder {
     /// removing one depends on knowing where the drag ended. See
     /// `RailDividerDragSource`.
     static let dividerType = UTType(exportedAs: "com.nicojan.chorus.divider-id")
+    /// A service group, by its id, dragged by its box: the whole run moves.
+    static let groupType = UTType(exportedAs: "com.nicojan.chorus.service-group-id")
 
     /// The order after `dragged` takes the slot of `target`: it lands after
     /// the target when it came from above, and before it when it came from
@@ -282,6 +284,8 @@ final class RailDragState {
     /// Escape ends the drag, since the moves along the way are saved live.
     var dividerStartOrder: [UUID] = []
     var spaceID: UUID?
+    /// The group whose box is being dragged.
+    var groupID: UUID?
     /// Every list a service drag can change, as it stood when the drag began:
     /// the dragged row's own list and the global group. Escape puts them back
     /// (`RailEdits.restore`), since the moves along the way are saved live.
@@ -296,6 +300,8 @@ final class RailDragState {
     var pauseTask: Task<Void, Never>?
     /// The row `pauseTask` is waiting on.
     var pausingRowID: UUID?
+    /// The wait before a drag resting on the space header opens the palette.
+    var springTask: Task<Void, Never>?
 
     private init() {}
 
@@ -335,6 +341,23 @@ final class RailDragState {
         pausingRowID = nil
     }
 
+    /// Runs `open` once the drag has rested for `GroupDrag.pauseBeforeGrouping`,
+    /// unless `stopSpring` comes first.
+    func startSpring(_ open: @escaping @MainActor () -> Void) {
+        springTask?.cancel()
+        springTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: GroupDrag.pauseBeforeGrouping)
+            guard !Task.isCancelled else { return }
+            self?.springTask = nil
+            open()
+        }
+    }
+
+    func stopSpring() {
+        springTask?.cancel()
+        springTask = nil
+    }
+
     /// Lights a group's box, or puts out the lit one for nil.
     func light(_ groupID: UUID?) {
         if litGroupID != groupID { litGroupID = groupID }
@@ -353,6 +376,7 @@ final class RailDragState {
         dividerID = nil
         dividerStartOrder = []
         spaceID = nil
+        groupID = nil
         startSnapshot = [:]
         pausedTargetID = nil
         litGroupID = nil
@@ -360,6 +384,7 @@ final class RailDragState {
         pauseTask?.cancel()
         pauseTask = nil
         pausingRowID = nil
+        stopSpring()
     }
 }
 
@@ -392,6 +417,9 @@ struct LiveReorderDropDelegate: DropDelegate {
         /// space. Nil, or false, and the row's middle neither swells nor
         /// lights its box.
         var groups: ((_ dragged: UUID) -> Bool)? = nil
+        /// Whether the row takes `dragged` at all. False and the drag passes
+        /// over it as over nothing: no move, no drop.
+        var accepts: ((_ dragged: UUID) -> Bool)? = nil
     }
 
     let lanes: [Lane]
@@ -415,7 +443,11 @@ struct LiveReorderDropDelegate: DropDelegate {
     private var drag: RailDragState { .shared }
 
     private func lane(for info: DropInfo) -> Lane? {
-        lanes.first { info.hasItemsConforming(to: [$0.type]) }
+        guard let lane = lanes.first(where: { info.hasItemsConforming(to: [$0.type]) }) else { return nil }
+        if let accepts = lane.accepts {
+            guard let dragged = lane.draggingID(), accepts(dragged) else { return nil }
+        }
+        return lane
     }
 
     func validateDrop(info: DropInfo) -> Bool {
@@ -523,6 +555,24 @@ extension View {
     /// the box puts it out. The rows inside take their own drags.
     func groupBoxDrop(_ box: LiveReorderDropDelegate.Box, draggingID: @escaping () -> UUID?) -> some View {
         onDrop(of: [LiveReorder.serviceType], delegate: GroupBoxDropDelegate(box: box, draggingID: draggingID))
+    }
+}
+
+/// Opens something when a drag rests on it, the way Finder opens a folder:
+/// the space header opens the palette, so a group can be let go on a space
+/// that lives there. It takes no drop itself.
+struct SpringLoadDropDelegate: DropDelegate {
+    let types: [UTType]
+    let open: @MainActor () -> Void
+
+    func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: types) }
+    func dropEntered(info: DropInfo) { RailDragState.shared.startSpring(open) }
+    func dropExited(info: DropInfo) { RailDragState.shared.stopSpring() }
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        RailDragState.shared.stopSpring()
+        return false
     }
 }
 

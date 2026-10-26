@@ -153,7 +153,7 @@ enum GroupRules {
 
     /// The list as units that move whole: each run is one unit, every other
     /// entry its own.
-    private nonisolated static func units(of entries: [GroupEntry]) -> [[GroupEntry]] {
+    nonisolated static func units(of entries: [GroupEntry]) -> [[GroupEntry]] {
         var units: [[GroupEntry]] = []
         for entry in entries {
             if let group = entry.groupID, let last = units.last?.last, last.groupID == group {

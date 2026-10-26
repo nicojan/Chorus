@@ -190,16 +190,45 @@ extension AppState {
         return context.saveOrRollBack("tidy groups after a divider drag")
     }
 
-    /// Whether the move waiting on a yes came from this drag: the dragged link
-    /// or global service is the one it moves.
-    func pendingRailMove(isFromDragOf linkID: UUID?, global globalID: UUID?) -> Bool {
+    /// Whether the move waiting on a yes came from this drag: the dragged link,
+    /// global service or group is the one it moves.
+    func pendingRailMove(isFromDragOf linkID: UUID?, global globalID: UUID?, group groupID: UUID? = nil) -> Bool {
         switch pendingRailMove {
         case .intoSpace(let link, _, _), .intoGlobal(let link, _):
             return link == linkID
         case .globalIntoSpace(let service, _, _):
             return service == globalID
-        case .groupIntoSpace, nil:
+        case .groupIntoSpace(let group, _, _):
+            return group == groupID
+        case nil:
             return false
+        }
+    }
+
+    /// What a space does with a group's box let go on it. See
+    /// `GroupDrag.spaceDrop`.
+    func groupDrop(_ groupID: UUID, into spaceID: UUID) -> GroupDrag.SpaceDrop {
+        let context = modelContainer.mainContext
+        let groupSpace = RailEdits.groupMembers(groupID, context: context).first?.liveEnds?.space.id
+        let eligible = groupSpace == nil || groupSpace == spaceID
+            ? []
+            : RailEdits.eligibleSpaces(forGroup: groupID, context: context)
+        return GroupDrag.spaceDrop(into: spaceID, groupSpace: groupSpace, eligible: eligible, waiting: pendingRailMove != nil)
+    }
+
+    /// A group's box let go on a space: another space that can take it asks
+    /// first, landing before `beforeID` or at the end. Its own space takes the
+    /// drop and needs nothing more. False when the space refuses it.
+    @discardableResult
+    func requestGroupMove(_ groupID: UUID, into spaceID: UUID, before beforeID: UUID?) -> Bool {
+        switch groupDrop(groupID, into: spaceID) {
+        case .ownSpace:
+            return true
+        case .refuse:
+            return false
+        case .ask:
+            pendingRailMove = .groupIntoSpace(groupID: groupID, spaceID: spaceID, before: beforeID)
+            return true
         }
     }
 
