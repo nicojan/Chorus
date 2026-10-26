@@ -165,4 +165,357 @@ final class GroupTests: XCTestCase {
         XCTAssertEqual(GroupRules.groupWithCandidates(for: c, in: list), [b])
         XCTAssertEqual(GroupRules.groupWithCandidates(for: x, in: [e(w), e(x), e(y)]), [w, y])
     }
+
+    // MARK: - Store edits
+
+    private func makeContainer() throws -> ModelContainer {
+        let schema = Schema(versionedSchema: ChorusSchemaVCurrent.self)
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        return try ModelContainer(for: schema, configurations: [config])
+    }
+
+    /// A space with the given services as members, in order. The ends are saved
+    /// before the links are built, since a second insert is fatal on macOS 14.
+    @discardableResult
+    private func makeSpace(
+        _ name: String,
+        order: Int,
+        services labels: [String],
+        in ctx: ModelContext
+    ) throws -> (Space, [ServiceInstance], [SpaceServiceLink]) {
+        let space = Space(name: name, emoji: "📦", sortOrder: order)
+        let services = labels.map { ServiceInstance(label: $0, url: "https://\($0).example") }
+        ctx.insert(space)
+        services.forEach { ctx.insert($0) }
+        try ctx.save()
+        let links = services.enumerated().map { index, service in
+            let link = SpaceServiceLink(sortOrder: index, space: space, service: service)
+            if link.modelContext == nil { ctx.insert(link) }
+            return link
+        }
+        try ctx.save()
+        return (space, services, links)
+    }
+
+    /// Links an existing service into an existing space at the end.
+    @discardableResult
+    private func addLink(_ service: ServiceInstance, to space: Space, in ctx: ModelContext) throws -> SpaceServiceLink {
+        let link = SpaceServiceLink(
+            sortOrder: RailEdits.nextOrder(in: .space(space.id), context: ctx),
+            space: space,
+            service: service
+        )
+        if link.modelContext == nil { ctx.insert(link) }
+        try ctx.save()
+        return link
+    }
+
+    private func order(_ space: Space, _ ctx: ModelContext) -> [UUID] {
+        RailEdits.entries(in: .space(space.id), context: ctx).map(\.id)
+    }
+
+    private func groups(_ ctx: ModelContext) throws -> [ServiceGroup] {
+        try ctx.fetch(FetchDescriptor<ServiceGroup>())
+    }
+
+    private func link(_ id: UUID, _ ctx: ModelContext) throws -> SpaceServiceLink? {
+        try ctx.fetch(FetchDescriptor<SpaceServiceLink>()).first { $0.id == id && $0.modelContext != nil }
+    }
+
+    func testGroupLinkMakesAGroupRowAndSetsBothLinks() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (space, _, links) = try makeSpace("Work", order: 0, services: ["a", "b", "c"], in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(links[2].id, onto: links[0].id, context: ctx))
+
+        let group = try XCTUnwrap(try groups(ctx).first)
+        XCTAssertEqual(try groups(ctx).count, 1)
+        XCTAssertEqual(group.spaceID, space.id)
+        XCTAssertEqual(links[0].groupID, group.id)
+        XCTAssertEqual(links[2].groupID, group.id)
+        XCTAssertNil(links[1].groupID)
+        XCTAssertEqual(order(space, ctx), [links[0].id, links[2].id, links[1].id])
+    }
+
+    func testGroupLinkRefusesLinksInDifferentSpaces() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (_, _, first) = try makeSpace("Work", order: 0, services: ["a"], in: ctx)
+        let (_, _, second) = try makeSpace("Home", order: 1, services: ["b"], in: ctx)
+        XCTAssertFalse(RailEdits.groupLink(first[0].id, onto: second[0].id, context: ctx))
+        XCTAssertTrue(try groups(ctx).isEmpty)
+        XCTAssertNil(first[0].groupID)
+        XCTAssertNil(second[0].groupID)
+    }
+
+    func testFinishDragReadsTheOrderFromTheStore() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (space, _, l) = try makeSpace("Work", order: 0, services: ["a", "b", "c", "d"], in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(l[1].id, onto: l[0].id, context: ctx))
+        let group = try XCTUnwrap(l[0].groupID)
+
+        // The live moves of a drag: d passes c and sits under the box.
+        RailEdits.reorder([l[0].id, l[1].id, l[3].id, l[2].id], in: .space(space.id), context: ctx)
+        XCTAssertTrue(RailEdits.finishDrag(l[3].id, inSpace: space.id, litGroup: group, context: ctx))
+
+        XCTAssertEqual(order(space, ctx), [l[0].id, l[1].id, l[3].id, l[2].id])
+        XCTAssertEqual(l[3].groupID, group)
+        XCTAssertNil(l[2].groupID)
+    }
+
+    func testRemovingTheSecondLastMemberDeletesTheGroupRow() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (space, _, l) = try makeSpace("Work", order: 0, services: ["a", "b", "c"], in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(l[1].id, onto: l[0].id, context: ctx))
+        XCTAssertTrue(RailEdits.removeFromGroup(l[0].id, context: ctx))
+
+        XCTAssertTrue(try groups(ctx).isEmpty)
+        XCTAssertNil(l[0].groupID)
+        XCTAssertNil(l[1].groupID)
+        // It steps out just below the box.
+        XCTAssertEqual(order(space, ctx), [l[1].id, l[0].id, l[2].id])
+    }
+
+    func testRemoveFromGroupMovesAMidRunMemberBelowTheBox() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (space, _, l) = try makeSpace("Work", order: 0, services: ["a", "b", "c", "d"], in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(l[1].id, onto: l[0].id, context: ctx))
+        XCTAssertTrue(RailEdits.groupLink(l[2].id, onto: l[1].id, context: ctx))
+        let group = try XCTUnwrap(l[0].groupID)
+        XCTAssertTrue(RailEdits.removeFromGroup(l[1].id, context: ctx))
+
+        XCTAssertEqual(order(space, ctx), [l[0].id, l[2].id, l[1].id, l[3].id])
+        XCTAssertNil(l[1].groupID)
+        XCTAssertEqual(l[0].groupID, group)
+        XCTAssertEqual(l[2].groupID, group)
+        XCTAssertEqual(try groups(ctx).count, 1)
+    }
+
+    // MARK: Review Focus 1: leaving a space leaves the group
+
+    func testMoveMembershipLeavesTheGroup() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (work, _, l) = try makeSpace("Work", order: 0, services: ["a", "b"], in: ctx)
+        let (home, _, h) = try makeSpace("Home", order: 1, services: ["x"], in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(l[1].id, onto: l[0].id, context: ctx))
+
+        XCTAssertTrue(RailEdits.moveMembership(l[1].id, toSpace: home.id, context: ctx))
+
+        XCTAssertNil(l[1].groupID)
+        XCTAssertNil(l[0].groupID)
+        XCTAssertTrue(try groups(ctx).isEmpty)
+        XCTAssertEqual(order(work, ctx), [l[0].id])
+        XCTAssertEqual(order(home, ctx), [h[0].id, l[1].id])
+    }
+
+    func testMoveServiceFromTheMenuDoesNotCarryTheGroup() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (work, _, l) = try makeSpace("Work", order: 0, services: ["a", "b", "c", "d"], in: ctx)
+        let (home, _, _) = try makeSpace("Home", order: 1, services: [], in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(l[1].id, onto: l[0].id, context: ctx))
+        XCTAssertTrue(RailEdits.groupLink(l[2].id, onto: l[1].id, context: ctx))
+        XCTAssertTrue(RailEdits.groupLink(l[3].id, onto: l[2].id, context: ctx))
+        let group = try XCTUnwrap(l[0].groupID)
+        XCTAssertEqual(Set(l.map(\.groupID)), [group])
+
+        XCTAssertTrue(RailEdits.moveMembership(l[2].id, toSpace: home.id, context: ctx))
+        XCTAssertTrue(RailEdits.moveMembership(l[3].id, toSpace: home.id, context: ctx))
+
+        XCTAssertNil(l[2].groupID)
+        XCTAssertNil(l[3].groupID)
+        XCTAssertEqual(order(home, ctx), [l[2].id, l[3].id])
+        XCTAssertEqual(l[0].groupID, group)
+        XCTAssertEqual(l[1].groupID, group)
+        XCTAssertEqual(order(work, ctx), [l[0].id, l[1].id])
+        XCTAssertEqual(try groups(ctx).map(\.id), [group])
+    }
+
+    func testMakeGlobalTidiesEverySpaceItLeaves() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (work, s, w) = try makeSpace("Work", order: 0, services: ["shared", "a"], in: ctx)
+        let (home, _, h) = try makeSpace("Home", order: 1, services: ["b"], in: ctx)
+        let homeLink = try addLink(s[0], to: home, in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(w[1].id, onto: w[0].id, context: ctx))
+        XCTAssertTrue(RailEdits.groupLink(homeLink.id, onto: h[0].id, context: ctx))
+        XCTAssertEqual(try groups(ctx).count, 2)
+
+        XCTAssertTrue(RailEdits.makeGlobal(s[0].id, context: ctx))
+
+        XCTAssertNil(w[1].groupID)
+        XCTAssertNil(h[0].groupID)
+        XCTAssertTrue(try groups(ctx).isEmpty)
+        XCTAssertEqual(order(work, ctx), [w[1].id])
+        XCTAssertEqual(order(home, ctx), [h[0].id])
+    }
+
+    func testLeaveSpaceLeavesTheGroup() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (space, _, l) = try makeSpace("Work", order: 0, services: ["a", "b", "c"], in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(l[1].id, onto: l[0].id, context: ctx))
+        let survivor = l[1].id
+
+        RailEdits.leaveSpace(l[0].id, context: ctx)
+        try ctx.save()
+
+        XCTAssertNil(try link(survivor, ctx)?.groupID)
+        XCTAssertTrue(try groups(ctx).isEmpty)
+        XCTAssertEqual(order(space, ctx), [l[1].id, l[2].id])
+    }
+
+    func testForgetServiceLeavesItsGroups() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (work, s, w) = try makeSpace("Work", order: 0, services: ["gone", "a"], in: ctx)
+        let (home, _, h) = try makeSpace("Home", order: 1, services: ["b", "c"], in: ctx)
+        let homeLink = try addLink(s[0], to: home, in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(w[1].id, onto: w[0].id, context: ctx))
+        XCTAssertTrue(RailEdits.groupLink(homeLink.id, onto: h[0].id, context: ctx))
+        XCTAssertTrue(RailEdits.groupLink(h[1].id, onto: h[0].id, context: ctx))
+        let homeGroup = try XCTUnwrap(h[0].groupID)
+
+        // What `AppState.deleteServiceEntirely` does with the store.
+        RailEdits.forgetService(s[0].id, context: ctx)
+        for gone in [w[0], homeLink] { ctx.delete(gone) }
+        ctx.delete(s[0])
+        try ctx.save()
+
+        XCTAssertNil(w[1].groupID)
+        XCTAssertEqual(h[0].groupID, homeGroup)
+        XCTAssertEqual(h[1].groupID, homeGroup)
+        XCTAssertEqual(try groups(ctx).map(\.id), [homeGroup])
+        XCTAssertEqual(order(work, ctx), [w[1].id])
+        XCTAssertEqual(order(home, ctx), [h[0].id, h[1].id])
+    }
+
+    // MARK: Review Focus 2: a group id with no row of this space reads as none
+
+    func testGroupEntriesIgnoresAMissingOrForeignGroup() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (work, _, l) = try makeSpace("Work", order: 0, services: ["a", "b", "c"], in: ctx)
+        let (home, _, _) = try makeSpace("Home", order: 1, services: [], in: ctx)
+        let foreign = ServiceGroup(spaceID: home.id)
+        ctx.insert(foreign)
+        let known = UUID()
+        l[0].groupID = UUID()
+        l[1].groupID = foreign.id
+        l[2].groupID = known
+        try ctx.save()
+
+        let plain = RailEdits.groupEntries(inSpace: work.id, context: ctx)
+        XCTAssertEqual(plain.map(\.id), l.map(\.id))
+        XCTAssertEqual(plain.map(\.groupID), [nil, nil, nil])
+
+        let withKnown = RailEdits.groupEntries(inSpace: work.id, context: ctx, knownGroups: [known: work.id])
+        XCTAssertEqual(withKnown.map(\.groupID), [nil, nil, known])
+        let foreignKnown = RailEdits.groupEntries(inSpace: work.id, context: ctx, knownGroups: [known: home.id])
+        XCTAssertEqual(foreignKnown.map(\.groupID), [nil, nil, nil])
+
+        let without = RailEdits.groupEntries(inSpace: work.id, context: ctx, removedLinks: [l[1].id])
+        XCTAssertEqual(without.map(\.id), [l[0].id, l[2].id])
+    }
+
+    // MARK: Review Focus 3: arriving never lands inside a run
+
+    func testMoveMembershipBeforeAMidRunMemberLandsAfterTheRun() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (_, _, w) = try makeSpace("Work", order: 0, services: ["x"], in: ctx)
+        let (home, _, h) = try makeSpace("Home", order: 1, services: ["p", "q", "r"], in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(h[1].id, onto: h[0].id, context: ctx))
+
+        XCTAssertTrue(RailEdits.moveMembership(w[0].id, toSpace: home.id, before: h[1].id, context: ctx))
+
+        XCTAssertEqual(order(home, ctx), [h[0].id, h[1].id, w[0].id, h[2].id])
+        XCTAssertNil(w[0].groupID)
+    }
+
+    func testMoveIntoSpaceBeforeAMidRunMemberLandsAfterTheRun() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (home, _, h) = try makeSpace("Home", order: 0, services: ["p", "q", "r"], in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(h[1].id, onto: h[0].id, context: ctx))
+        let global = ServiceInstance(label: "g", url: "https://g.example")
+        ctx.insert(global)
+        RailEdits.appendGlobal(global, context: ctx)
+        try ctx.save()
+
+        XCTAssertTrue(RailEdits.moveIntoSpace(global.id, spaceID: home.id, before: h[1].id, context: ctx))
+
+        let arrived = try XCTUnwrap(RailEdits.links(inSpace: home.id, context: ctx).first { $0.liveService?.id == global.id })
+        XCTAssertEqual(order(home, ctx), [h[0].id, h[1].id, arrived.id, h[2].id])
+        XCTAssertNil(arrived.groupID)
+    }
+
+    func testAddDividerAfterAMidRunMemberLandsAfterTheRun() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (home, _, h) = try makeSpace("Home", order: 0, services: ["p", "q", "r"], in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(h[1].id, onto: h[0].id, context: ctx))
+
+        let divider = try XCTUnwrap(RailEdits.addDivider(in: .space(home.id), after: h[0].id, context: ctx))
+
+        XCTAssertEqual(order(home, ctx), [h[0].id, h[1].id, divider, h[2].id])
+    }
+
+    func testDeleteSpaceDeletesItsGroups() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (work, _, w) = try makeSpace("Work", order: 0, services: ["a", "b"], in: ctx)
+        let (_, _, h) = try makeSpace("Home", order: 1, services: ["c", "d"], in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(w[1].id, onto: w[0].id, context: ctx))
+        XCTAssertTrue(RailEdits.groupLink(h[1].id, onto: h[0].id, context: ctx))
+        let homeGroup = try XCTUnwrap(h[0].groupID)
+
+        // The store half of `AppState.deleteSpace`.
+        for gone in w { ctx.delete(gone) }
+        RailEdits.deleteDividers(ofSpace: work.id, context: ctx)
+        RailEdits.deleteGroups(ofSpace: work.id, context: ctx)
+        ctx.delete(work)
+        try ctx.save()
+
+        XCTAssertEqual(try groups(ctx).map(\.id), [homeGroup])
+    }
+
+    func testNameGroupTrimsClearsAndCaps() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (_, _, l) = try makeSpace("Work", order: 0, services: ["a", "b"], in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(l[1].id, onto: l[0].id, context: ctx))
+        let group = try XCTUnwrap(try groups(ctx).first)
+
+        XCTAssertTrue(RailEdits.nameGroup(group.id, "  Chat \n", context: ctx))
+        XCTAssertEqual(group.name, "Chat")
+        XCTAssertTrue(RailEdits.nameGroup(group.id, "   ", context: ctx))
+        XCTAssertNil(group.name)
+        XCTAssertTrue(RailEdits.nameGroup(group.id, "Chat", context: ctx))
+        XCTAssertTrue(RailEdits.nameGroup(group.id, nil, context: ctx))
+        XCTAssertNil(group.name)
+        let long = String(repeating: "x", count: SetupArchive.Limit.textLength + 10)
+        XCTAssertTrue(RailEdits.nameGroup(group.id, long, context: ctx))
+        XCTAssertEqual(group.name?.count, SetupArchive.Limit.textLength)
+        XCTAssertFalse(RailEdits.nameGroup(UUID(), "Nope", context: ctx))
+    }
+
+    func testUngroupClearsEveryMemberAndKeepsTheOrder() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (space, _, l) = try makeSpace("Work", order: 0, services: ["a", "b", "c"], in: ctx)
+        XCTAssertTrue(RailEdits.groupLink(l[2].id, onto: l[0].id, context: ctx))
+        let before = order(space, ctx)
+        let group = try XCTUnwrap(l[0].groupID)
+
+        XCTAssertTrue(RailEdits.ungroup(group, context: ctx))
+
+        XCTAssertTrue(l.allSatisfy { $0.groupID == nil })
+        XCTAssertTrue(try groups(ctx).isEmpty)
+        XCTAssertEqual(order(space, ctx), before)
+    }
 }

@@ -87,6 +87,8 @@ extension AppState {
         // Links first, read from a fetch rather than the inverse, which can be
         // stale; leaving them to the cascade can put dangling rows in front of
         // a @Query during the re-render.
+        // A group it was in may be down to one member once its links go.
+        RailEdits.forgetService(serviceID, context: context)
         let links = (try? context.fetch(FetchDescriptor<SpaceServiceLink>())) ?? []
         for link in links where link.modelContext != nil && link.liveService?.id == serviceID {
             context.delete(link)

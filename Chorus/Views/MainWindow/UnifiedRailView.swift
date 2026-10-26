@@ -1508,7 +1508,8 @@ struct UnifiedRailView: View {
     /// Relocates a service to another space by repointing its existing link
     /// (rather than delete-then-create), so the service never drops to zero links
     /// and no data store is orphaned. The link lands at the end of the target's
-    /// list. `followToSpace` switches the view to the target and re-selects the
+    /// list and leaves its group (see `RailEdits.moveMembership`).
+    /// `followToSpace` switches the view to the target and re-selects the
     /// service there — used for the new-space path, where the target is empty and
     /// landing on it makes sense; the existing-space path leaves the view put and
     /// just clears selection if the moved service was showing, matching
@@ -1520,12 +1521,9 @@ struct UnifiedRailView: View {
         else { return }
         let wasSelectedMembership = selectedSpaceID == currentSpace.id && selectedServiceID == serviceID
 
-        // Compute the tail order before repointing, so the link's old order in
-        // its current space doesn't count toward the target's max. Dividers
-        // share the numbering, so the tail is past them too.
-        link.sortOrder = RailEdits.nextOrder(in: .space(targetSpace.id), context: modelContext)
-        link.space = targetSpace
-        save("move service to space")
+        // A failed move rolled back and changed nothing, so the selection
+        // stays as it is.
+        guard RailEdits.moveMembership(link.id, toSpace: targetSpace.id, context: modelContext) else { return }
 
         if followToSpace {
             selectedSpaceID = targetSpace.id
@@ -1538,8 +1536,9 @@ struct UnifiedRailView: View {
     private func removeFromSpace(link: SpaceServiceLink) {
         // A link whose service is already gone has nothing to remove; drop the
         // link itself and stop, rather than reasoning about a missing model.
+        let linkID = link.id
         guard let service = link.liveService else {
-            modelContext.delete(link)
+            RailEdits.leaveSpace(linkID, context: modelContext)
             save("remove dangling link from space")
             return
         }
@@ -1550,12 +1549,13 @@ struct UnifiedRailView: View {
             selectedServiceID = nil
         }
 
-        modelContext.delete(link)
+        // Deletes the link and tidies the groups of the space it leaves.
+        RailEdits.leaveSpace(linkID, context: modelContext)
 
         // Check remaining links *after* the delete so the count is current.
         // A link deleted earlier can linger in this inverse on macOS 14, and
         // reading its id faults the freed row: check it is still live first.
-        let hasOtherLinks = service.spaceLinks.contains { $0.modelContext != nil && $0.id != link.id }
+        let hasOtherLinks = service.spaceLinks.contains { $0.modelContext != nil && $0.id != linkID }
         // Capture the identifier before the service is deleted — reading it off a
         // deleted model would fault the freed backing data.
         let orphanedIdentifier: UUID? = hasOtherLinks ? nil : service.dataStoreIdentifier
