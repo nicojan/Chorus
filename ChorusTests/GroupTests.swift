@@ -260,8 +260,15 @@ final class GroupTests: XCTestCase {
         XCTAssertTrue(RailEdits.finishDrag(l[3].id, inSpace: space.id, litGroup: group, context: ctx))
 
         XCTAssertEqual(order(space, ctx), [l[0].id, l[1].id, l[3].id, l[2].id])
+        XCTAssertEqual(l[0].groupID, group)
+        XCTAssertEqual(l[1].groupID, group)
         XCTAssertEqual(l[3].groupID, group)
         XCTAssertNil(l[2].groupID)
+        XCTAssertEqual(try groups(ctx).map(\.id), [group])
+        XCTAssertEqual(
+            RailEdits.groupEntries(inSpace: space.id, context: ctx).map(\.groupID),
+            [group, group, group, nil]
+        )
     }
 
     func testRemovingTheSecondLastMemberDeletesTheGroupRow() throws {
@@ -361,12 +368,28 @@ final class GroupTests: XCTestCase {
         XCTAssertTrue(RailEdits.groupLink(l[1].id, onto: l[0].id, context: ctx))
         let survivor = l[1].id
 
-        RailEdits.leaveSpace(l[0].id, context: ctx)
+        XCTAssertTrue(RailEdits.leaveSpace(l[0], context: ctx))
         try ctx.save()
 
         XCTAssertNil(try link(survivor, ctx)?.groupID)
         XCTAssertTrue(try groups(ctx).isEmpty)
         XCTAssertEqual(order(space, ctx), [l[1].id, l[2].id])
+    }
+
+    /// The caller's own link is the one deleted, with no fetch to miss it, and
+    /// a link already gone says so rather than doing nothing quietly.
+    func testLeaveSpaceDeletesTheLinkItIsGivenAndRefusesADeletedOne() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (space, _, l) = try makeSpace("Work", order: 0, services: ["a", "b"], in: ctx)
+
+        XCTAssertTrue(RailEdits.leaveSpace(l[0], context: ctx))
+        try ctx.save()
+        XCTAssertNil(try link(l[0].id, ctx))
+        XCTAssertEqual(order(space, ctx), [l[1].id])
+
+        XCTAssertFalse(RailEdits.leaveSpace(l[0], context: ctx))
+        XCTAssertEqual(order(space, ctx), [l[1].id])
     }
 
     func testForgetServiceLeavesItsGroups() throws {
@@ -596,13 +619,57 @@ final class GroupTests: XCTestCase {
     }
 
     func testGroupMovePromptNamesTheServices() {
-        let unnamed = AppState.groupMovePrompt(name: nil, labels: ["Gmail", "Slack", "Teams"], spaceName: "Home")
+        let web: [(label: String, isMacApp: Bool)] = [("Gmail", false), ("Slack", false), ("Teams", false)]
+        let unnamed = AppState.groupMovePrompt(name: nil, members: web, sharingSignIn: [], spaceName: "Home")
         XCTAssertEqual(unnamed.title, "Move these services to Home?")
-        XCTAssertTrue(unnamed.message.contains("Gmail, Slack and Teams"))
-        XCTAssertTrue(unnamed.message.contains("sign-in"))
+        XCTAssertEqual(unnamed.message, "Gmail, Slack and Teams move together. Each keeps its sign-in, so its cookies come with it.")
         XCTAssertEqual(unnamed.confirm, "Move")
-        let named = AppState.groupMovePrompt(name: "Mail", labels: ["Gmail", "Slack"], spaceName: "Home")
+        let named = AppState.groupMovePrompt(name: "Mail", members: [("Gmail", false), ("Slack", false)], sharingSignIn: [], spaceName: "Home")
         XCTAssertEqual(named.title, "Move Mail to Home?")
+    }
+
+    /// A Mac app has no cookies to carry: it opens the same app from there,
+    /// as the one-service question says.
+    func testGroupMovePromptSaysAMacAppOpensTheSameApp() {
+        let mixed = AppState.groupMovePrompt(
+            name: nil,
+            members: [("Gmail", false), ("Notes", true)],
+            sharingSignIn: [],
+            spaceName: "Home"
+        )
+        XCTAssertEqual(
+            mixed.message,
+            "Gmail and Notes move together. Gmail keeps its sign-in, so its cookies come with it. Notes opens the same app from there."
+        )
+        let mixedMany = AppState.groupMovePrompt(
+            name: nil,
+            members: [("Gmail", false), ("Drive", false), ("Notes", true), ("Music", true)],
+            sharingSignIn: [],
+            spaceName: "Home"
+        )
+        XCTAssertEqual(
+            mixedMany.message,
+            "Gmail, Drive, Notes and Music move together. Gmail and Drive keep their sign-ins, so their cookies come with them. Notes and Music open the same apps from there."
+        )
+        let apps = AppState.groupMovePrompt(name: nil, members: [("Notes", true), ("Music", true)], sharingSignIn: [], spaceName: "Home")
+        XCTAssertEqual(apps.message, "Notes and Music move together. Each opens the same app from there.")
+        XCTAssertFalse(apps.message.contains("cookies"))
+    }
+
+    /// Services left behind that share a sign-in with the group are named.
+    func testGroupMovePromptNamesSignInPartnersLeftBehind() {
+        let one = AppState.groupMovePrompt(name: nil, members: [("Gmail", false), ("Drive", false)], sharingSignIn: ["Calendar"], spaceName: "Home")
+        XCTAssertEqual(
+            one.message,
+            "Gmail and Drive move together. Each keeps its sign-in, so its cookies come with it. Calendar stays where it is and still uses the same cookies."
+        )
+        let two = AppState.groupMovePrompt(
+            name: nil,
+            members: [("Gmail", false), ("Drive", false)],
+            sharingSignIn: ["Calendar", "Docs"],
+            spaceName: "Home"
+        )
+        XCTAssertTrue(two.message.hasSuffix("Calendar and Docs stay where they are and still use the same cookies."))
     }
 
     // MARK: - Launch repair and runs

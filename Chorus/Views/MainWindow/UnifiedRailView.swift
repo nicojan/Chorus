@@ -1002,7 +1002,13 @@ struct UnifiedRailView: View {
                 row(item, nil, nil)
             case .group(let groupID, let name, let members, _):
                 let box = boxLane(groupID, in: spaceID)
-                GroupBox(name: name, axis: axis, showsName: showsName, isLit: drag.litGroupID == groupID) {
+                GroupBox(
+                    name: name,
+                    axis: axis,
+                    showsName: showsName,
+                    isLit: drag.litGroupID == groupID,
+                    memberNames: members.compactMap { $0.service?.label }
+                ) {
                     ForEach(members) { item in
                         row(item, RailGroupLookup.context(for: item, name: name, in: members), box)
                     }
@@ -1031,7 +1037,8 @@ struct UnifiedRailView: View {
                     axis: .vertical,
                     showsName: showServiceNames,
                     isLit: drag.litGroupID == groupID,
-                    sideInset: showServiceNames ? ChorusCard.railPadding : 0
+                    sideInset: showServiceNames ? ChorusCard.railPadding : 0,
+                    memberNames: members.compactMap { $0.service?.label }
                 ) {
                     ForEach(members) { item in
                         allServicesItem(
@@ -1748,8 +1755,9 @@ struct UnifiedRailView: View {
         // link itself and stop, rather than reasoning about a missing model.
         let linkID = link.id
         guard let service = link.liveService else {
-            RailEdits.leaveSpace(linkID, context: modelContext)
-            save("remove dangling link from space")
+            if RailEdits.leaveSpace(link, context: modelContext) {
+                save("remove dangling link from space")
+            }
             return
         }
         let serviceID = service.id
@@ -1759,8 +1767,10 @@ struct UnifiedRailView: View {
             selectedServiceID = nil
         }
 
-        // Deletes the link and tidies the groups of the space it leaves.
-        RailEdits.leaveSpace(linkID, context: modelContext)
+        // Deletes the link and tidies the groups of the space it leaves. A
+        // link already gone leaves nothing to do, and the service must not be
+        // judged orphaned on the strength of a delete that never happened.
+        guard RailEdits.leaveSpace(link, context: modelContext) else { return }
 
         // Check remaining links *after* the delete so the count is current.
         // A link deleted earlier can linger in this inverse on macOS 14, and

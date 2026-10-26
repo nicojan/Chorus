@@ -23,6 +23,9 @@ struct GroupBox<Content: View>: View {
     /// Space between the card's side edges and the rows. The rail's padding,
     /// except inside an all-services card too narrow for a second inset.
     var sideInset: CGFloat = ChorusCard.railPadding
+    /// The services in the box, in order, which name it to VoiceOver when the
+    /// group has no name.
+    var memberNames: [String] = []
     @ViewBuilder let content: Content
 
     /// Height of the name over a vertical box, as the all-services heading.
@@ -36,7 +39,7 @@ struct GroupBox<Content: View>: View {
                 horizontal
             }
         }
-        .modifier(GroupBoxNaming(name: name, inTooltip: !showsName))
+        .modifier(GroupBoxNaming(name: name, memberNames: memberNames, inTooltip: !showsName))
     }
 
     private var vertical: some View {
@@ -95,20 +98,23 @@ struct GroupBox<Content: View>: View {
     }
 }
 
-/// The box as one container to VoiceOver, named when the group has a name, and
-/// the name in the tooltip where the box has no room to draw it.
+/// The box as one container to VoiceOver, named by the group's name or, with
+/// none, by its services, so the actions on it (Move Group to, Name, Ungroup)
+/// hang on something VoiceOver can say. The name goes in the tooltip where the
+/// box has no room to draw it.
 private struct GroupBoxNaming: ViewModifier {
     let name: String?
+    let memberNames: [String]
     let inTooltip: Bool
 
     func body(content: Content) -> some View {
-        if let name {
-            content
-                .help(inTooltip ? name : "")
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel(name)
+        let labelled = content
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(ServiceAccessibility.groupLabel(name: name, members: memberNames))
+        if let name, inTooltip {
+            labelled.help(name)
         } else {
-            content.accessibilityElement(children: .contain)
+            labelled
         }
     }
 }

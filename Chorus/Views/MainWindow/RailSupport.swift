@@ -475,19 +475,22 @@ struct LiveReorderDropDelegate: DropDelegate {
         // a moment after the release, and a wait must not finish in between.
         drag.stopWaiting()
         guard let lane = lane(for: info), let dragged = lane.draggingID() else { return false }
+        // The row left last may have put the box out after this row lit it,
+        // so the box at the release is decided again here.
+        if rowID != nil { relight(lane, dragged) }
         return lane.drop?(dragged) ?? true
     }
 
     private func track(_ info: DropInfo, entering: Bool) {
         guard let lane = lane(for: info), let dragged = lane.draggingID() else { return }
-        guard let rowID, let length, length > 0 else {
+        guard let rowID else {
             if entering { lane.move?(dragged, nil) }
             return
         }
-        let groups = lane.groups?(dragged) ?? false
-        // The box lights for a service that could join it, and a row outside
-        // any box puts it out.
-        if groups { drag.light(box.flatMap { $0.takes(dragged) ? $0.id : nil }) }
+        // A row built again mid-drag has no length until it is measured. Wait
+        // for it rather than fall back to taking the slot.
+        guard let length, length > 0 else { return }
+        let groups = relight(lane, dragged)
         guard dragged != rowID else { return }
 
         let previous = drag.zones[rowID]
@@ -501,6 +504,15 @@ struct LiveReorderDropDelegate: DropDelegate {
         case .middle:
             if groups, previous != .middle { drag.startPause(on: rowID) }
         }
+    }
+
+    /// The box lights for a service that could join it, and a row outside any
+    /// box puts it out. Returns whether the dragged entry may group here.
+    @discardableResult
+    private func relight(_ lane: Lane, _ dragged: UUID) -> Bool {
+        let groups = lane.groups?(dragged) ?? false
+        if groups { drag.light(box.flatMap { $0.takes(dragged) ? $0.id : nil }) }
+        return groups
     }
 }
 
@@ -599,6 +611,8 @@ struct GroupBoxDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         RailDragState.shared.stopWaiting()
+        // A row's exit may have put the box out after this lit it.
+        track()
         return true
     }
 

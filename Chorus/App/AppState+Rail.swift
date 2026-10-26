@@ -301,11 +301,16 @@ extension AppState {
     func prompt(for move: RailMove) -> RailMovePrompt? {
         if case .groupIntoSpace(let groupID, let spaceID, _) = move {
             let context = modelContainer.mainContext
-            let labels = RailEdits.groupMembers(groupID, context: context).compactMap { $0.liveService?.label }
+            let services = RailEdits.groupMembers(groupID, context: context).compactMap(\.liveService)
             let spaces = (try? context.fetch(FetchDescriptor<Space>(predicate: #Predicate { $0.id == spaceID }))) ?? []
-            guard !labels.isEmpty, let space = spaces.first else { return nil }
+            guard !services.isEmpty, let space = spaces.first else { return nil }
             let groups = (try? context.fetch(FetchDescriptor<ServiceGroup>(predicate: #Predicate { $0.id == groupID }))) ?? []
-            return Self.groupMovePrompt(name: groups.first?.name, labels: labels, spaceName: space.name)
+            return Self.groupMovePrompt(
+                name: groups.first?.name,
+                members: services.map { (label: $0.label, isMacApp: $0.nativeAppBundleID != nil) },
+                sharingSignIn: signInPartnersLeftBehind(by: services).map(\.label),
+                spaceName: space.name
+            )
         }
         guard let service = moveSubject(move) else { return nil }
         let partners = signInPartners(of: service.id).map(\.label)
@@ -330,15 +335,58 @@ extension AppState {
         }
     }
 
-    /// The words for moving a group: its services by name, and that each keeps
-    /// its sign-in.
-    nonisolated static func groupMovePrompt(name: String?, labels: [String], spaceName: String) -> RailMovePrompt {
+    /// The services outside a group that share a sign-in with one of its web
+    /// members, each once, in the order first met. A Mac app carries no
+    /// cookies, so it has no partners to leave behind.
+    private func signInPartnersLeftBehind(by services: [ServiceInstance]) -> [ServiceInstance] {
+        let memberIDs = Set(services.map(\.id))
+        var seen: Set<UUID> = []
+        return services
+            .filter { $0.nativeAppBundleID == nil }
+            .flatMap { signInPartners(of: $0.id) }
+            .filter { !memberIDs.contains($0.id) && seen.insert($0.id).inserted }
+    }
+
+    /// The words for moving a group, by the rules of the one-service question
+    /// (`prompt(for:)`): its services by name; a web service keeps its sign-in
+    /// and its cookies come with it; a Mac app opens the same app from there;
+    /// and services staying behind that share a sign-in with it are named.
+    nonisolated static func groupMovePrompt(
+        name: String?,
+        members: [(label: String, isMacApp: Bool)],
+        sharingSignIn partners: [String],
+        spaceName: String
+    ) -> RailMovePrompt {
         let title = name.map { "Move \($0) to \(spaceName)?" } ?? "Move these services to \(spaceName)?"
-        return RailMovePrompt(
-            title: title,
-            message: "\(listed(labels)) move together. Each keeps its sign-in, so its cookies come with it.",
-            confirm: "Move"
-        )
+        let web = members.filter { !$0.isMacApp }.map(\.label)
+        let apps = members.filter(\.isMacApp).map(\.label)
+        var sentences = ["\(listed(members.map(\.label))) move together."]
+        if !web.isEmpty {
+            if apps.isEmpty && web.count > 1 {
+                sentences.append("Each keeps its sign-in, so its cookies come with it.")
+            } else if web.count == 1 {
+                sentences.append("\(web[0]) keeps its sign-in, so its cookies come with it.")
+            } else {
+                sentences.append("\(listed(web)) keep their sign-ins, so their cookies come with them.")
+            }
+        }
+        if !apps.isEmpty {
+            if web.isEmpty && apps.count > 1 {
+                sentences.append("Each opens the same app from there.")
+            } else if apps.count == 1 {
+                sentences.append("\(apps[0]) opens the same app from there.")
+            } else {
+                sentences.append("\(listed(apps)) open the same apps from there.")
+            }
+        }
+        if !partners.isEmpty, !web.isEmpty {
+            sentences.append(
+                partners.count == 1
+                    ? "\(partners[0]) stays where it is and still uses the same cookies."
+                    : "\(listed(partners)) stay where they are and still use the same cookies."
+            )
+        }
+        return RailMovePrompt(title: title, message: sentences.joined(separator: " "), confirm: "Move")
     }
 
     /// "A", "A and B", "A, B and C".

@@ -2674,6 +2674,14 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(ServiceAccessibility.label(name: "Gmail", badgeCount: 0, isHibernated: false, isMuted: false, group: nil), "Gmail")
     }
 
+    /// A group's box is one container to VoiceOver: named by the group's name,
+    /// or by its services when it has none.
+    func testGroupBoxSpokenName() {
+        XCTAssertEqual(ServiceAccessibility.groupLabel(name: "Google", members: ["Gmail", "Drive"]), "Google")
+        XCTAssertEqual(ServiceAccessibility.groupLabel(name: nil, members: ["Gmail", "Drive"]), "Group: Gmail and Drive")
+        XCTAssertEqual(ServiceAccessibility.groupLabel(name: nil, members: ["Gmail", "Drive", "Docs"]), "Group: Gmail, Drive and Docs")
+    }
+
     /// The rail draws a link in a group only while that group exists in the
     /// link's own space, and a blank name is no name.
     func testRailGroupLookupIgnoresMissingAndForeignGroups() {

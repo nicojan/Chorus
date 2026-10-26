@@ -12,8 +12,8 @@ enum RailDragEnd: Equatable {
     case dropped
     /// Escape: the moves made during the drag are undone.
     case cancelled
-    /// Let go off the rail. A divider is removed; a service treats it as
-    /// `.dropped`, since it never asks where the rail is.
+    /// Let go off the rail with nothing taking it. A divider is removed; a
+    /// service or group goes back where it was, as for Escape.
     case endedOffRail
 
     /// `insideRail` is nil when there is no rail to ask, and then the drag
@@ -23,6 +23,12 @@ enum RailDragEnd: Equatable {
         if dropTaken || insideRail ?? true { return .dropped }
         return .endedOffRail
     }
+
+    /// Whether a service or group drag keeps its live moves and makes its one
+    /// membership write. A release off the rail that nothing took, over the
+    /// web view, outside the window or on a space that refused it, is no move
+    /// the user meant, so it goes back like Escape.
+    nonisolated var keepsServiceMoves: Bool { self == .dropped }
 }
 
 /// What runs when a service drag ends. The rail hands one to each row's drag
@@ -35,24 +41,24 @@ protocol RailDragEnding {
     func dragEnded(_ end: RailDragEnd)
 }
 
-/// The rail's end of a service drag. Escape puts back every list the drag
-/// could have changed, from `RailDragState.startSnapshot`. Any other end makes
-/// the drag's one membership write: the moves on the way only reorder. Every
-/// end then clears the drag state.
+/// The rail's end of a service drag. Escape, or a release off the rail that
+/// nothing took, puts back every list the drag could have changed, from
+/// `RailDragState.startSnapshot`. A drop makes the drag's one membership
+/// write: the moves on the way only reorder. Every end then clears the drag
+/// state.
 struct RailServiceDragEnding: RailDragEnding {
     let appState: AppState
     let animation: Animation?
 
     func dragEnded(_ end: RailDragEnd) {
         let drag = RailDragState.shared
-        switch end {
-        case .cancelled:
+        if end.keepsServiceMoves {
+            finish(drag)
+        } else {
             let snapshot = drag.startSnapshot
             if !snapshot.isEmpty {
                 withAnimation(animation) { _ = appState.restoreRail(snapshot) }
             }
-        case .dropped, .endedOffRail:
-            finish(drag)
         }
         drag.reset()
     }
@@ -110,6 +116,9 @@ final class RailDragSession: NSObject, NSDraggingSource {
     private var pending: (view: RowDragSourceView, event: NSEvent)?
     /// The handler of the drag under way, called once at its end.
     private var ending: (any RailDragEnding)?
+    /// The rail the drag under way started in, asked at its end whether the
+    /// pointer is still over it.
+    private var zone: RailDropZone?
 
     private override init() {}
 
@@ -138,7 +147,16 @@ final class RailDragSession: NSObject, NSDraggingSource {
         switch event.type {
         case .leftMouseDown:
             pending = nil
-            guard ending == nil, !event.modifierFlags.contains(.control) else { return false }
+            // A press cannot reach this monitor while a drag session runs, so
+            // a drag still waiting on its end here is stale: AppKit never
+            // reported it. No drop the user made, so it goes back, and later
+            // drags start again.
+            if let stale = ending {
+                ending = nil
+                zone = nil
+                stale.dragEnded(.cancelled)
+            }
+            guard !event.modifierFlags.contains(.control) else { return false }
             if let view = sourceView(under: event) { pending = (view, event) }
             return false
         case .leftMouseDragged:
@@ -193,6 +211,7 @@ final class RailDragSession: NSObject, NSDraggingSource {
         )
 
         ending = payload.ending
+        zone = payload.zone
         payload.onDragStart()
         let session = view.beginDraggingSession(with: [dragging], event: press, source: self)
         // Escape and a release nothing took would otherwise slide the image
@@ -211,13 +230,16 @@ final class RailDragSession: NSObject, NSDraggingSource {
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         // Escape ends the drag while the button is still down, and the key
         // press is then the current event. A release never is.
+        // Over the rail, a release nothing took (a gap, a box's padding) is
+        // still a move; off it, the drag goes back.
         let end = RailDragEnd.classify(
             dropTaken: operation != [],
             endedByKey: NSApp.currentEvent?.type == .keyDown,
-            insideRail: nil
+            insideRail: zone?.contains(screenPoint: screenPoint)
         )
         let handler = ending
         ending = nil
+        zone = nil
         handler?.dragEnded(end)
     }
 }
@@ -227,6 +249,9 @@ struct RowDragPayload {
     let id: UUID
     let type: UTType
     let ending: any RailDragEnding
+    /// The rail the row sits in, from `.railDropZone()`. Nil when there is
+    /// none to ask, and then every release counts as over the rail.
+    let zone: RailDropZone?
     let onDragStart: @MainActor () -> Void
     let image: @MainActor (_ scale: CGFloat) -> NSImage?
 }
@@ -264,17 +289,17 @@ struct RowDragSource<Preview: View>: NSViewRepresentable {
 
     func makeNSView(context: Context) -> RowDragSourceView {
         let view = RowDragSourceView()
-        view.payload = payload
+        view.payload = payload(zone: context.environment.railDropZone)
         return view
     }
 
     func updateNSView(_ nsView: RowDragSourceView, context: Context) {
-        nsView.payload = payload
+        nsView.payload = payload(zone: context.environment.railDropZone)
     }
 
-    private var payload: RowDragPayload {
+    private func payload(zone: RailDropZone?) -> RowDragPayload {
         let preview = preview
-        return RowDragPayload(id: id, type: type, ending: ending, onDragStart: onDragStart) { scale in
+        return RowDragPayload(id: id, type: type, ending: ending, zone: zone, onDragStart: onDragStart) { scale in
             let renderer = ImageRenderer(content: preview())
             renderer.scale = scale
             return renderer.nsImage

@@ -138,6 +138,12 @@ enum ServiceAccessibility {
         }
     }
 
+    /// A group's box as VoiceOver names it: by the group's name, or, with
+    /// none, "Group: Gmail and Drive".
+    static func groupLabel(name: String?, members: [String]) -> String {
+        name ?? "Group: \(AppState.listed(members))"
+    }
+
     static func label(
         name: String,
         badgeCount: Int,

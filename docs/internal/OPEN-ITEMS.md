@@ -19,7 +19,8 @@ Built 2026-10-25 from `docs/superpowers/plans/2026-10-25-service-groups.md`. A g
 9. **Tab focus.** Turn on Full Keyboard Access in System Settings, Keyboard. Tab through the rail with a group in it. Pass: focus reaches each member, and the focus ring sits inside the box. Fail: a member is skipped, or the box takes focus.
 10. **Reduce Motion.** Turn on Reduce Motion in System Settings, Accessibility, Display. Pause over a service as in step 3. Pass: the outline shows and the row does not scale. Fail: it scales.
 11. **Divider in a group.** Drag a divider onto the middle of a group, and drop one beside it. Pass: no member ends up in the wrong group and no one-member box is left. Fail: either happens, or Chorus crashes.
-12. **macOS 14 and 15.** CI runs the tests on both, nobody has used the drags there. If you have either, repeat steps 3, 4 and 6 on it, mainly to see that a box around rows still takes a drop on its padding. Skip if you have neither, and say so here.
+12. **Release off the rail.** Release a grouped service over the web view, and outside the window. Pass: it goes back where it was and its group is unchanged.
+13. **macOS 14 and 15.** CI runs the tests on both, nobody has used the drags there. If you have either, repeat steps 3, 4 and 6 on it, mainly to see that a box around rows still takes a drop on its padding. Skip if you have neither, and say so here.
 
 When these pass, merge the PR. If step 1 failed, add a wider grab band; if step 8 failed, pick another key.
 

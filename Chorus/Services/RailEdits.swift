@@ -509,15 +509,20 @@ enum RailEdits {
         return context.saveOrRollBack("ungroup")
     }
 
-    /// Deletes a link from its space and tidies the space's groups, since the
-    /// link's group may be down to one member. Does not save.
-    static func leaveSpace(_ linkID: UUID, context: ModelContext) {
-        guard let link = liveLink(linkID, context: context) else { return }
+    /// Deletes the link the caller holds from its space and tidies the space's
+    /// groups, since the link's group may be down to one member. Takes the
+    /// link itself rather than an id, so no fetch can miss it. False when the
+    /// link is already gone and there was nothing to delete. Does not save.
+    @discardableResult
+    static func leaveSpace(_ link: SpaceServiceLink, context: ModelContext) -> Bool {
+        guard link.modelContext != nil, !link.isDeleted else { return false }
+        let linkID = link.id
         let spaceID = link.liveSpace?.id
         context.delete(link)
         if let spaceID {
             tidyGroups(inSpace: spaceID, context: context, removedLinks: [linkID])
         }
+        return true
     }
 
     /// Tidies every space a service being deleted is in, as if its links were

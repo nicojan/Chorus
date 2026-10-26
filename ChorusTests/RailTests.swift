@@ -102,6 +102,26 @@ final class RailTests: XCTestCase {
         XCTAssertEqual(RailDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: nil), .dropped)
     }
 
+    // MARK: - The end of a service drag
+
+    /// A service or group drag keeps its moves only when it was dropped: on a
+    /// row, or over the rail with nothing taking it (a gap, a box's padding).
+    /// Let go off the rail, or refused by a target off the rail, it goes back
+    /// where it was, and Escape always does.
+    func testAServiceDragOffTheRailGoesBack() {
+        // Refused (or taken by nothing) with the pointer off the rail: the web
+        // view, outside the window, a strip or palette space that said no.
+        let offRail = RailDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: false)
+        XCTAssertEqual(offRail, .endedOffRail)
+        XCTAssertFalse(offRail.keepsServiceMoves)
+        // A gap or a box's padding inside the rail still makes the one write.
+        XCTAssertTrue(RailDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: true).keepsServiceMoves)
+        // Taken off the rail, by a palette space that asks first: the drop stands.
+        XCTAssertTrue(RailDragEnd.classify(dropTaken: true, endedByKey: false, insideRail: false).keepsServiceMoves)
+        XCTAssertFalse(RailDragEnd.classify(dropTaken: false, endedByKey: true, insideRail: true).keepsServiceMoves)
+        XCTAssertFalse(RailDragEnd.cancelled.keepsServiceMoves)
+    }
+
     // MARK: - Dividers in the store
 
     func testAddDividerAfterARowRenumbersTheMergedList() throws {
