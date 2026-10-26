@@ -1,5 +1,6 @@
 import XCTest
 import SwiftData
+import UniformTypeIdentifiers
 @testable import Chorus
 
 /// Service groups: the stored shape and the migration that adds it.
@@ -942,5 +943,29 @@ final class GroupTests: XCTestCase {
         XCTAssertEqual(GroupDrag.spaceDrop(into: other, groupSpace: own, eligible: [other], waiting: true), .refuse)
         // A group with no members left has no space to come from.
         XCTAssertEqual(GroupDrag.spaceDrop(into: other, groupSpace: nil, eligible: [], waiting: false), .refuse)
+    }
+
+    /// A space that refuses a group's box must still take part in the drop,
+    /// so its `performDrop` runs and flags the refusal. Left out of the drop,
+    /// the release counts as one over a gap and the live moves on the way
+    /// stand, where a refused drop should put everything back.
+    @MainActor
+    func testARefusingLaneStillValidatesSoItsRefusalCancels() {
+        let groupID = UUID()
+        let refusing = LiveReorderDropDelegate.Lane(
+            type: LiveReorder.groupType,
+            draggingID: { groupID },
+            drop: { _ in true },
+            accepts: { _ in false }
+        )
+        let lanes = [refusing]
+        let isGroup: (UTType) -> Bool = { $0 == LiveReorder.groupType }
+        XCTAssertTrue(LiveReorderDropDelegate.validates(lanes, conformsTo: isGroup))
+        XCTAssertNil(LiveReorderDropDelegate.lane(in: lanes, conformsTo: isGroup))
+        // A drag of another kind is still no business of the row.
+        XCTAssertFalse(LiveReorderDropDelegate.validates(lanes, conformsTo: { $0 == LiveReorder.serviceType }))
+        // A lane that accepts resolves.
+        let accepting = LiveReorderDropDelegate.Lane(type: LiveReorder.groupType, draggingID: { groupID }, accepts: { _ in true })
+        XCTAssertNotNil(LiveReorderDropDelegate.lane(in: [accepting], conformsTo: isGroup))
     }
 }

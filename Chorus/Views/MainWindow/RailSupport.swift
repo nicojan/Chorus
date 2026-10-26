@@ -422,8 +422,9 @@ struct LiveReorderDropDelegate: DropDelegate {
         /// space. Nil, or false, and the row's middle neither swells nor
         /// lights its box.
         var groups: ((_ dragged: UUID) -> Bool)? = nil
-        /// Whether the row takes `dragged` at all. False and the drag passes
-        /// over it as over nothing: no move, no drop.
+        /// Whether the row takes `dragged` at all. False and the drag makes
+        /// no move over it, and a release there is refused, so the drag goes
+        /// back as for Escape.
         var accepts: ((_ dragged: UUID) -> Bool)? = nil
     }
 
@@ -448,15 +449,29 @@ struct LiveReorderDropDelegate: DropDelegate {
     private var drag: RailDragState { .shared }
 
     private func lane(for info: DropInfo) -> Lane? {
-        guard let lane = lanes.first(where: { info.hasItemsConforming(to: [$0.type]) }) else { return nil }
+        Self.lane(in: lanes) { info.hasItemsConforming(to: [$0]) }
+    }
+
+    /// The lane that takes the drag, or nil when no lane is of its kind or
+    /// the one that is refuses it.
+    static func lane(in lanes: [Lane], conformsTo conforms: (UTType) -> Bool) -> Lane? {
+        guard let lane = lanes.first(where: { conforms($0.type) }) else { return nil }
         if let accepts = lane.accepts {
             guard let dragged = lane.draggingID(), accepts(dragged) else { return nil }
         }
         return lane
     }
 
+    /// Whether the row takes part in a drag of this kind at all. A lane that
+    /// refuses still does, so the release reaches `performDrop`, which flags
+    /// the refusal and the drag goes back. Left out, the release would count
+    /// as one over a gap and keep the live moves.
+    static func validates(_ lanes: [Lane], conformsTo conforms: (UTType) -> Bool) -> Bool {
+        lanes.contains { conforms($0.type) }
+    }
+
     func validateDrop(info: DropInfo) -> Bool {
-        lane(for: info) != nil
+        Self.validates(lanes) { info.hasItemsConforming(to: [$0]) }
     }
 
     func dropEntered(info: DropInfo) {

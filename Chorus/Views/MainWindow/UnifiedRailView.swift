@@ -1248,6 +1248,9 @@ struct UnifiedRailView: View {
             .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, move: { liveMove($0, over: service.id, in: .global, zone: $1) }),
             .init(type: LiveReorder.serviceType, draggingID: { drag.linkID }, drop: { dropLinkIntoGlobal($0, before: service.id) }),
             .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: service.id, in: .global, zone: $1) }),
+            // A group never goes global. Refused here rather than ignored, so
+            // its release puts back what the drag moved on the way.
+            .init(type: LiveReorder.groupType, draggingID: { drag.groupID }, accepts: { _ in false }),
         ], row: service.id, axis: listAxis, box: nil)
         .accessibilityAction(named: "Move up") { step(service.id, forward: false, in: .global) }
         .accessibilityAction(named: "Move down") { step(service.id, forward: true, in: .global) }

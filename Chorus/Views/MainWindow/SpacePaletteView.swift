@@ -332,8 +332,8 @@ struct SpacePaletteView: View {
     }
 
     /// A group's box, dragged from the rail and let go on a space here, goes
-    /// to the end of that space once confirmed. The palette closes so the
-    /// question can show.
+    /// to the end of that space once confirmed; its own space takes it with
+    /// nothing more. The palette closes so the question can show.
     private func groupLane(into spaceID: UUID) -> LiveReorderDropDelegate.Lane {
         .init(
             type: LiveReorder.groupType,
@@ -343,7 +343,7 @@ struct SpacePaletteView: View {
                 dismiss()
                 return true
             },
-            accepts: { appState.groupDrop($0, into: spaceID) == .ask }
+            accepts: { appState.groupDrop($0, into: spaceID) != .refuse }
         )
     }
 
