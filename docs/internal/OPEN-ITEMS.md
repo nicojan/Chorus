@@ -6,7 +6,7 @@ Built 2026-10-25 from `docs/superpowers/plans/2026-10-25-service-groups.md`. A g
 
 **Real store.** A copy of the live store (3 spaces, 18 services, 16 links, 1 divider) went through the new schema with `testMigratesARealStoreCopy`. It came out with the same 3 spaces, 18 services, 16 links and 1 divider, every link still joined to its space and service, and no link in a group. The live store was not opened. The copy and the marker file are deleted.
 
-**Status on 2026-10-25:** PR #40 is ready for review at `7addf88`, CI green on macOS 14 and 15. A new session runs the list below in the Debug build, driving each drag with simulated mouse events and checking by screenshot and log. Steps 1 and 8 still need Nico: Claude can measure the grab area and try the keys, but whether they feel right is his call. Step 14 needs a Mac on macOS 14 or 15.
+**Status on 2026-10-25:** PR #40 at `d439986`. Steps 1 to 13 run by Claude, results below; one fix came out of it. Left for Nico: the top bar grab band (step 1), the key pair (step 8), and whether to merge.
 
 **Still to run.** Run the Debug build from the branch (it uses `Chorus-debug`, so your real spaces are safe), with at least two spaces, a divider, and four or more services in one space. The builders drove every drag with synthetic events on macOS 26, so each step below needs a real mouse. Pass or fail is stated per step.
 
@@ -24,6 +24,24 @@ Built 2026-10-25 from `docs/superpowers/plans/2026-10-25-service-groups.md`. A g
 12. **Release off the rail.** Release a grouped service over the web view, and outside the window. Pass: it goes back where it was and its group is unchanged.
 13. **Refused drop.** In the all-services layout, drag a grouped service onto another space's card that already holds that service. Pass: it goes back where it was and its group is unchanged.
 14. **macOS 14 and 15.** CI runs the tests on both, nobody has used the drags there. If you have either, repeat steps 3, 4 and 6 on it, mainly to see that a box around rows still takes a drop on its padding. Skip if you have neither, and say so here.
+
+**Run by Claude on 2026-10-25**, Debug build on macOS 27, each drag posted as mouse events and checked against the store and by screenshot. Nico was off the Mac. Steps 1 to 13 are done; 14 is skipped, since there is no Mac on macOS 14 or 15 here.
+
+1. Measured, Nico to judge. Rail on the left with names off: the box takes a press on about 6 points of padding at the top, bottom and each side, and on the 2 point gap between rows. Top bar: about 1 point above the tabs, none below, 2 points at the left end, 3 between tabs and 1 at the right end. A press just above the box there lands in the title bar and moves the window. The top bar needs a wider band.
+2. Pass. A press within about 150 ms of Escape still does nothing, while the menu fades.
+3. Pass. A slow drag past three services with 250 ms stops made no group. Half a second on a neighbour, in the rail and in the top bar, made one.
+4. Pass, all five cases. The group of two lost its name when it broke up.
+5. Pass. Escape after crossing three rows, and Cancel after a drop on another space, for a group and for one service whose drag had crossed two tabs first.
+6. Pass after a fix (`d439986`). A drop on another space asks and names the services, in the palette, the strip and the all-services list, and Move takes the group across with its space. A drop on the global services or on a space that holds a member did nothing, but the box stayed where its path had taken it, since those spaces dropped out of the drop and the release counted as one over a gap. Now they refuse it and the box goes back. A drop on its own space in the strip or the palette keeps the moves. Checked again in all three layouts.
+7. Pass. Name Group saves with Return.
+8. Pass on behaviour. Option-Shift-Up and Down step the box past its neighbour; Option-Down moves a member and stops at the edge of the box. Nico to judge the keys.
+9. Pass. Each row takes two Tab presses, one for its button and one for the row, but that is older than this branch.
+10. Pass. With Reduce Motion on the outline is 31 points across; off, the row grows to 33.
+11. Pass. A divider let go between two members lands after the box; one let go beside it stays there.
+12. Pass, over the web view and outside the window.
+13. Pass. The grouped service went back with its group, also when its path had moved it on the way.
+
+To set up 6 and 13, WhatsApp was linked into Work as well, straight in the Debug store, since nothing in the app makes a service sit in two spaces.
 
 When these pass, merge the PR. If step 1 failed, add a wider grab band; if step 8 failed, pick another key.
 
