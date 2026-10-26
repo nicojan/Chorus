@@ -4377,7 +4377,7 @@ final class ChorusTests: XCTestCase {
     /// using only its `mainContext` after the container deallocates crashes.
     private func makeGroupingContainer() throws -> ModelContainer {
         try ModelContainer(
-            for: Space.self, ServiceInstance.self, SpaceServiceLink.self, RailDivider.self,
+            for: Space.self, ServiceInstance.self, SpaceServiceLink.self, RailDivider.self, ServiceGroup.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
     }
