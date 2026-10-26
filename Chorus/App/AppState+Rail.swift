@@ -94,6 +94,30 @@ extension AppState {
         RailEdits.reorderGroup(groupID, order: order, inSpace: spaceID, context: modelContainer.mainContext)
     }
 
+    /// Groups one service with the one next to it. See `RailEdits.groupLink`.
+    @discardableResult
+    func groupLink(_ draggedLinkID: UUID, onto targetLinkID: UUID) -> Bool {
+        RailEdits.groupLink(draggedLinkID, onto: targetLinkID, context: modelContainer.mainContext)
+    }
+
+    /// Takes a service out of its group, to just below the box.
+    @discardableResult
+    func removeFromGroup(_ linkID: UUID) -> Bool {
+        RailEdits.removeFromGroup(linkID, context: modelContainer.mainContext)
+    }
+
+    /// Names a group; nil or blank takes the name away.
+    @discardableResult
+    func nameGroup(_ groupID: UUID, _ name: String?) -> Bool {
+        RailEdits.nameGroup(groupID, name, context: modelContainer.mainContext)
+    }
+
+    /// Removes a group's box and leaves its services where they are.
+    @discardableResult
+    func ungroup(_ groupID: UUID) -> Bool {
+        RailEdits.ungroup(groupID, context: modelContainer.mainContext)
+    }
+
     /// Deletes a service from every space and the global group, then tears
     /// down its web view and schedules its data store for removal. The
     /// teardown waits for a committed save: a failed save rolls back, and

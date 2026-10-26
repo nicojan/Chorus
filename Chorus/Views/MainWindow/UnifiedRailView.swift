@@ -77,6 +77,8 @@ struct UnifiedRailView: View {
     @State private var movingToNewSpace: SpaceServiceLink?
     /// The same for a global service, which has no link to move.
     @State private var movingGlobalToNewSpace: ServiceInstance?
+    /// The group the Name Group sheet is naming. See `GroupNaming`.
+    @State private var namingGroup: GroupNameRequest?
     /// The service cell that currently holds keyboard focus. Two-way bound to
     /// each cell's `.focused`, so a click or Tab that focuses a cell records it
     /// here and the arrow keys move relative to it.
@@ -183,6 +185,9 @@ struct UnifiedRailView: View {
 
     var body: some View {
         content
+        .modifier(GroupNaming(request: $namingGroup) { groupID, name in
+            withAnimation(reorderAnimation) { _ = appState.nameGroup(groupID, name) }
+        })
         .sheet(isPresented: $showingAddService) {
             if let spaceID = selectedSpaceID {
                 AddServiceSheet(spaceID: spaceID)
@@ -548,6 +553,7 @@ struct UnifiedRailView: View {
         ])
         .accessibilityAction(named: "Move up") { step(link.id, forward: false, in: .space(space.id)) }
         .accessibilityAction(named: "Move down") { step(link.id, forward: true, in: .space(space.id)) }
+        .modifier(groupRowActions(for: link))
         .contextMenu { serviceContextMenu(for: link) }
         .focusable()
         .focused($focusedAllServicesLinkID, equals: link.id)
@@ -959,12 +965,13 @@ struct UnifiedRailView: View {
             switch run {
             case .row(let item):
                 row(item, nil)
-            case .group(_, let name, let members, let lit):
+            case .group(let groupID, let name, let members, let lit):
                 GroupBox(name: name, axis: axis, showsName: showsName, isLit: lit) {
                     ForEach(members) { item in
                         row(item, RailGroupLookup.context(for: item, name: name, in: members))
                     }
                 }
+                .modifier(groupBoxMenu(groupID, name: name, in: spaceID))
             }
         }
     }
@@ -979,7 +986,7 @@ struct UnifiedRailView: View {
             case .row(let item):
                 allServicesItem(item, in: .space(space.id), space: space)
                     .id("\(space.id.uuidString)-\(item.id.uuidString)")
-            case .group(_, let name, let members, let lit):
+            case .group(let groupID, let name, let members, let lit):
                 GroupBox(
                     name: name,
                     axis: .vertical,
@@ -998,6 +1005,7 @@ struct UnifiedRailView: View {
                     }
                 }
                 .environment(\.railWidth, railFootprint - 2 * ChorusCard.railPadding)
+                .modifier(groupBoxMenu(groupID, name: name, in: space.id))
             }
         }
     }
@@ -1055,6 +1063,7 @@ struct UnifiedRailView: View {
             .liveReorderDrop(memberLanes(for: link))
             .accessibilityAction(named: "Move up") { stepLink(link, forward: false) }
             .accessibilityAction(named: "Move down") { stepLink(link, forward: true) }
+            .modifier(groupRowActions(for: link))
             .contextMenu { serviceContextMenu(for: link) }
             .focusable()
             .focused($focusedServiceID, equals: service.id)
@@ -1295,6 +1304,16 @@ struct UnifiedRailView: View {
             return .ignored
         }
 
+        // Option-Shift moves a member's whole box, as Move up / Move down on
+        // the box do; a row in no box steps as with Option alone.
+        if press.modifiers.contains(.option), press.modifiers.contains(.shift),
+           case .space(let spaceID) = scope,
+           let groupID = groupEntries(in: spaceID).first(where: { $0.id == reorderID })?.groupID {
+            stepGroup(groupID, forward: forward, in: spaceID)
+            setFocus(focusID)
+            return .handled
+        }
+
         if press.modifiers.contains(.option) {
             step(reorderID, forward: forward, in: scope)
             // The service kept its id but changed slot — hold focus on it.
@@ -1416,6 +1435,7 @@ struct UnifiedRailView: View {
                 removeFromSpace(link: link)
             }
         }
+        groupMenuItems(for: link)
         Divider()
         addDividerButton(after: link.id, in: link.liveSpace.map { .space($0.id) })
         Divider()
@@ -1746,15 +1766,32 @@ struct UnifiedRailView: View {
     }
 
     /// Moves an entry one place along its list, past a divider as readily as
-    /// past a row. Backs the VoiceOver actions and Option-arrow.
+    /// past a row. Backs the VoiceOver actions and Option-arrow. In a space,
+    /// `GroupRules.stepping` decides: a member moves only within its box, and
+    /// a row or divider outside one steps over a whole box, so neither ever
+    /// lands inside a run.
     private func step(_ id: UUID, forward: Bool, in scope: RailScope) {
         let ids = orderedIDs(scope)
-        guard let index = ids.firstIndex(of: id) else { return }
-        let destination = forward ? index + 1 : index - 1
-        guard ids.indices.contains(destination) else { return }
-        withAnimation(reorderAnimation) {
-            _ = appState.reorderRail(LiveReorder.moving(id, over: ids[destination], in: ids) ?? ids, in: scope)
+        let moved: [UUID]
+        if case .space(let spaceID) = scope {
+            moved = GroupRules.stepping(id, forward: forward, in: groupEntries(in: spaceID))
+        } else {
+            guard let index = ids.firstIndex(of: id) else { return }
+            let destination = forward ? index + 1 : index - 1
+            guard ids.indices.contains(destination) else { return }
+            moved = LiveReorder.moving(id, over: ids[destination], in: ids) ?? ids
         }
+        guard moved != ids else { return }
+        withAnimation(reorderAnimation) { _ = appState.reorderRail(moved, in: scope) }
+    }
+
+    /// Moves a whole box one place along its space, past a row, a divider or
+    /// another box.
+    private func stepGroup(_ groupID: UUID, forward: Bool, in spaceID: UUID) {
+        let entries = groupEntries(in: spaceID)
+        let moved = GroupRules.steppingGroup(groupID, forward: forward, in: entries)
+        guard moved != entries.map(\.id) else { return }
+        withAnimation(reorderAnimation) { _ = appState.reorderGroup(groupID, order: moved, inSpace: spaceID) }
     }
 
     private func stepLink(_ link: SpaceServiceLink, forward: Bool) {
@@ -1836,5 +1873,107 @@ struct UnifiedRailView: View {
         focusedAllServicesLinkID = nil
         appState.pendingRailMove = .intoSpace(linkID: dragged, spaceID: spaceID, before: beforeID)
         return true
+    }
+}
+
+// MARK: - Groups
+
+extension UnifiedRailView {
+    /// A space's list for `GroupRules`, as drawn: each row with the group it
+    /// is drawn in, and the dividers.
+    private func groupEntries(in spaceID: UUID) -> [GroupEntry] {
+        let lookup = RailGroupLookup(groups: allGroups, spaceID: spaceID)
+        return items(in: spaceID).compactMap { item in
+            switch item {
+            case .member(let link, _):
+                return GroupEntry(id: link.id, groupID: lookup.group(of: link.groupID), isDivider: false)
+            case .divider(let divider):
+                return GroupEntry(id: divider.id, groupID: nil, isDivider: true)
+            case .global, .space:
+                return nil
+            }
+        }
+    }
+
+    /// The group a row is drawn in, with its name.
+    private func drawnGroup(of link: SpaceServiceLink, in spaceID: UUID) -> GroupNameRequest? {
+        let lookup = RailGroupLookup(groups: allGroups, spaceID: spaceID)
+        guard let groupID = lookup.group(of: link.groupID) else { return nil }
+        return GroupNameRequest(id: groupID, name: lookup.name(of: groupID))
+    }
+
+    /// The rows next to this one that "Group with" can offer: above and below,
+    /// not dividers, not already in its group.
+    private func groupCandidates(for link: SpaceServiceLink, in spaceID: UUID) -> [GroupCandidate] {
+        let spaceLinks = links(in: spaceID)
+        return GroupRules.groupWithCandidates(for: link.id, in: groupEntries(in: spaceID)).compactMap { id in
+            spaceLinks.first { $0.id == id }?.liveService.map { GroupCandidate(id: id, label: $0.label) }
+        }
+    }
+
+    /// Joins the target's group, or makes a new one with it. The row stays on
+    /// its side of the target.
+    private func groupWith(_ linkID: UUID, onto targetID: UUID) {
+        withAnimation(reorderAnimation) { _ = appState.groupLink(linkID, onto: targetID) }
+    }
+
+    private func removeFromGroup(_ linkID: UUID) {
+        withAnimation(reorderAnimation) { _ = appState.removeFromGroup(linkID) }
+    }
+
+    /// Group with, Remove from Group and Name Group in a space service's menu.
+    @ViewBuilder
+    private func groupMenuItems(for link: SpaceServiceLink) -> some View {
+        if let spaceID = link.liveSpace?.id {
+            let candidates = groupCandidates(for: link, in: spaceID)
+            let group = drawnGroup(of: link, in: spaceID)
+            if !candidates.isEmpty || group != nil {
+                Divider()
+            }
+            if !candidates.isEmpty {
+                Menu("Group with") {
+                    ForEach(candidates) { candidate in
+                        Button(candidate.label) { groupWith(link.id, onto: candidate.id) }
+                    }
+                }
+            }
+            if let group {
+                Button("Remove from Group") { removeFromGroup(link.id) }
+                Button("Name Group…") { namingGroup = group }
+            }
+        }
+    }
+
+    /// The same three as VoiceOver actions on the row.
+    private func groupRowActions(for link: SpaceServiceLink) -> GroupRowActions {
+        let spaceID = link.liveSpace?.id
+        let group = spaceID.flatMap { drawnGroup(of: link, in: $0) }
+        return GroupRowActions(
+            candidates: spaceID.map { groupCandidates(for: link, in: $0) } ?? [],
+            inGroup: group != nil,
+            groupWith: { groupWith(link.id, onto: $0) },
+            remove: { removeFromGroup(link.id) },
+            rename: { namingGroup = group }
+        )
+    }
+
+    /// The box's menu and VoiceOver actions. Move Group goes through the same
+    /// question as dragging the box to a space.
+    private func groupBoxMenu(_ groupID: UUID, name: String?, in spaceID: UUID) -> GroupBoxMenu {
+        GroupBoxMenu(
+            targets: {
+                RailEdits.eligibleSpaces(forGroup: groupID, context: modelContext).compactMap { id in
+                    spaces.first { $0.id == id && $0.modelContext != nil }
+                }
+            },
+            moveTo: { target in
+                guard appState.pendingRailMove == nil else { return }
+                focusedAllServicesLinkID = nil
+                appState.pendingRailMove = .groupIntoSpace(groupID: groupID, spaceID: target, before: nil)
+            },
+            rename: { namingGroup = GroupNameRequest(id: groupID, name: name) },
+            ungroup: { withAnimation(reorderAnimation) { _ = appState.ungroup(groupID) } },
+            step: { stepGroup(groupID, forward: $0, in: spaceID) }
+        )
     }
 }

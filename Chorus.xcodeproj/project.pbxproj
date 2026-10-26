@@ -72,6 +72,7 @@
 		9F0C82A9D1AFDF927EC1A59C /* DarkReaderSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6935142E75345640B2C4D7F0 /* DarkReaderSupport.swift */; };
 		A22B72681582D92F92938917 /* WebToolbarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 538A1641C210F10E3CD43E14 /* WebToolbarView.swift */; };
 		A33A7902903C731E069B6CD5 /* ChorusApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E143D686890F381C5B42761F /* ChorusApp.swift */; };
+		A55F1921ACC911A47648046A /* GroupMenus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78D790EF25ED3F63D2C8859E /* GroupMenus.swift */; };
 		A5ADB5E4A9FDAB157617DA92 /* ServiceGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DA08B3832BE838917ABE7FD /* ServiceGroup.swift */; };
 		A96CBF7ECCEC4F44B5A6351E /* OutsideLinkDefault.swift in Sources */ = {isa = PBXBuildFile; fileRef = A81455BBBD65D1115E9A8DA3 /* OutsideLinkDefault.swift */; };
 		A98FA6B9454EC0BCEDEED093 /* InAppBrowserWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 690DB6DBF74EAD8B040C1460 /* InAppBrowserWindow.swift */; };
@@ -178,6 +179,7 @@
 		728A9599471A2AB033991157 /* ContentBlockerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentBlockerManager.swift; sourceTree = "<group>"; };
 		7458024AA17BF508D4807018 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		76865DDEE671C34CC88CF4D8 /* FindInPageBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindInPageBar.swift; sourceTree = "<group>"; };
+		78D790EF25ED3F63D2C8859E /* GroupMenus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupMenus.swift; sourceTree = "<group>"; };
 		7C3DF954AFE066BC42761ABC /* licenses */ = {isa = PBXFileReference; lastKnownFileType = folder; path = licenses; sourceTree = SOURCE_ROOT; };
 		7E0D298EDEBDC1F1EB614912 /* AppCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCapabilities.swift; sourceTree = "<group>"; };
 		8223D66D602364046AF98EDC /* Chorus.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Chorus.entitlements; sourceTree = "<group>"; };
@@ -396,6 +398,7 @@
 				63600DD5EE558B052FFC8073 /* DownloadsButton.swift */,
 				76865DDEE671C34CC88CF4D8 /* FindInPageBar.swift */,
 				D0C165770A657F8FF9DB4274 /* GroupBox.swift */,
+				78D790EF25ED3F63D2C8859E /* GroupMenus.swift */,
 				24ECDB7D8F7F0F324289AD37 /* RailDividerView.swift */,
 				F8D1ECB45C649A2DC43CECD5 /* RailItems.swift */,
 				2200EDE680C15FBE00601E12 /* RailRuns.swift */,
@@ -639,6 +642,7 @@
 				0413EB0C08636424F9362A1C /* FeatureTips.swift in Sources */,
 				3DEA98A98656EE981A29A71D /* FindInPageBar.swift in Sources */,
 				6A6CCC6941830645FE15EDCD /* GroupBox.swift in Sources */,
+				A55F1921ACC911A47648046A /* GroupMenus.swift in Sources */,
 				FA1D896C41D6CA79990ECDD9 /* GroupRules.swift in Sources */,
 				06696BB66C7BAA761E8291C9 /* HibernatedBadgePoller.swift in Sources */,
 				0680495DE14A246C97993DC1 /* IconThumbnail.swift in Sources */,
