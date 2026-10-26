@@ -45,6 +45,7 @@
 		68FE172BCA70FBB55022F7B1 /* StoreRelocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B71CC3F7D7BD76E4100BC126 /* StoreRelocation.swift */; };
 		69AC657C2E3D81BFB330050A /* AppRelauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA77C4C73BEB532F6AC1C339 /* AppRelauncher.swift */; };
 		69FF2932CDD4A1208CA5DA71 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D9D707C0F9A04B5E0744F59 /* SettingsView.swift */; };
+		6A6CCC6941830645FE15EDCD /* GroupBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0C165770A657F8FF9DB4274 /* GroupBox.swift */; };
 		6C15E37D4717938D4C31384A /* ModelContext+Save.swift in Sources */ = {isa = PBXBuildFile; fileRef = 313680424148829FCBEAA9BC /* ModelContext+Save.swift */; };
 		6F665755ACCC652F1CC59CAC /* AddServicePlacementPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B71EE82DCC8428040B3FCA57 /* AddServicePlacementPage.swift */; };
 		701984CFE765170D8EAE50EE /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D811CC9D75730152E17859C /* MenuBarView.swift */; };
@@ -203,6 +204,7 @@
 		CA77C4C73BEB532F6AC1C339 /* AppRelauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRelauncher.swift; sourceTree = "<group>"; };
 		CBBF69E002BB39BB6EFF9BDB /* UserScriptManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserScriptManager.swift; sourceTree = "<group>"; };
 		D01CC2330887CF5293843BF3 /* IconThumbnail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconThumbnail.swift; sourceTree = "<group>"; };
+		D0C165770A657F8FF9DB4274 /* GroupBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupBox.swift; sourceTree = "<group>"; };
 		D2AC7E996360A4BC660FD194 /* KeyboardShortcutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardShortcutManager.swift; sourceTree = "<group>"; };
 		D533B667501DF0913FF62B9A /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		D9E64C2450C98941A48AC7BD /* hagezi-light.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "hagezi-light.json"; sourceTree = "<group>"; };
@@ -393,6 +395,7 @@
 				7458024AA17BF508D4807018 /* ContentView.swift */,
 				63600DD5EE558B052FFC8073 /* DownloadsButton.swift */,
 				76865DDEE671C34CC88CF4D8 /* FindInPageBar.swift */,
+				D0C165770A657F8FF9DB4274 /* GroupBox.swift */,
 				24ECDB7D8F7F0F324289AD37 /* RailDividerView.swift */,
 				F8D1ECB45C649A2DC43CECD5 /* RailItems.swift */,
 				2200EDE680C15FBE00601E12 /* RailRuns.swift */,
@@ -635,6 +638,7 @@
 				AD626D3375822E9E5BC358BE /* FaviconFetcher.swift in Sources */,
 				0413EB0C08636424F9362A1C /* FeatureTips.swift in Sources */,
 				3DEA98A98656EE981A29A71D /* FindInPageBar.swift in Sources */,
+				6A6CCC6941830645FE15EDCD /* GroupBox.swift in Sources */,
 				FA1D896C41D6CA79990ECDD9 /* GroupRules.swift in Sources */,
 				06696BB66C7BAA761E8291C9 /* HibernatedBadgePoller.swift in Sources */,
 				0680495DE14A246C97993DC1 /* IconThumbnail.swift in Sources */,

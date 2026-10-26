@@ -45,6 +45,7 @@ struct UnifiedRailView: View {
     @Query(filter: #Predicate<ServiceInstance> { $0.isGlobal == true })
     private var globalQuery: [ServiceInstance]
     @Query private var allDividers: [RailDivider]
+    @Query private var allGroups: [ServiceGroup]
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
     /// What any rail is dragging. See `RailDragState`.
@@ -142,6 +143,12 @@ struct UnifiedRailView: View {
     /// A space's services and dividers as drawn.
     private func items(in spaceID: UUID) -> [RailItem] {
         RailItems.members(links(in: spaceID), dividers: RailItems.dividers(allDividers, in: .space(spaceID)))
+    }
+
+    /// A space's list as the rail draws it: rows, and a box round each group.
+    /// No live drag yet, so no box is lit.
+    private func runs(_ items: [RailItem], in spaceID: UUID) -> [RailRun] {
+        RailGroupLookup(groups: allGroups, spaceID: spaceID).runs(items)
     }
 
     /// The selected space's services and dividers.
@@ -320,10 +327,7 @@ struct UnifiedRailView: View {
                                 if spaceItems.isEmpty {
                                     emptySpaceCell(for: space)
                                 } else {
-                                    ForEach(spaceItems) { item in
-                                        allServicesItem(item, in: .space(space.id), space: space)
-                                            .id("\(space.id.uuidString)-\(item.id.uuidString)")
-                                    }
+                                    allServicesRuns(spaceItems, in: space)
                                 }
                             }
                             .padding(ChorusCard.railPadding)
@@ -353,11 +357,16 @@ struct UnifiedRailView: View {
 
     /// One entry of a group's card in the all-services rail.
     @ViewBuilder
-    private func allServicesItem(_ item: RailItem, in scope: RailScope, space: Space?) -> some View {
+    private func allServicesItem(
+        _ item: RailItem,
+        in scope: RailScope,
+        space: Space?,
+        group: ServiceAccessibility.GroupContext? = nil
+    ) -> some View {
         switch item {
         case .member(let link, let service):
             if let space {
-                allServicesRow(for: link, service: service, in: space)
+                allServicesRow(for: link, service: service, in: space, group: group)
             }
         case .global(let service):
             globalRow(service)
@@ -490,7 +499,8 @@ struct UnifiedRailView: View {
     private func allServicesRow(
         for link: SpaceServiceLink,
         service: ServiceInstance,
-        in space: Space
+        in space: Space,
+        group: ServiceAccessibility.GroupContext? = nil
     ) -> some View {
         let isSelected = selectedSpaceID == space.id && selectedServiceID == service.id
         let badge = appState.badgeManager.badgeCount(for: service.id)
@@ -511,6 +521,7 @@ struct UnifiedRailView: View {
             focused: focusedAllServicesLinkID == link.id && focusVisibility.isVisible,
             showsName: showServiceNames,
             spaceName: space.name,
+            group: group,
             selectionAction: {
                 NativeAppDocker.reselect(service, wasSelected: isSelected)
                 selectedSpaceID = space.id
@@ -721,9 +732,9 @@ struct UnifiedRailView: View {
             FadingVerticalScrollView {
                 // 2 points between 28 point rows is the drawn 30 point pitch.
                 LazyVStack(spacing: 2) {
-                    ForEach(spaceItems) { item in
-                        if let spaceID = selectedSpaceID {
-                            railItemRow(item, in: .space(spaceID))
+                    if let spaceID = selectedSpaceID {
+                        spaceRuns(spaceItems, in: spaceID, showsName: showServiceNames) { item, group in
+                            railItemRow(item, in: .space(spaceID), group: group)
                         }
                     }
                 }
@@ -900,11 +911,11 @@ struct UnifiedRailView: View {
                     .frame(width: 2, height: 20)
                     .padding(.horizontal, 2)
             }
-            ForEach(spaceItems) { item in
-                if let spaceID = selectedSpaceID {
+            if let spaceID = selectedSpaceID {
+                spaceRuns(spaceItems, in: spaceID, showsName: true) { item, group in
                     // Keyed by the service where there is one, so the scroll
                     // view can bring the selected tab into view by its id.
-                    railItemRow(item, in: .space(spaceID))
+                    railItemRow(item, in: .space(spaceID), group: group)
                         .id(item.service?.id ?? item.id)
                 }
             }
@@ -935,12 +946,72 @@ struct UnifiedRailView: View {
 
     // MARK: - Service cells
 
+    /// A space's rows in the single-space rail or the bar, with a box round
+    /// each group. `row` draws one entry and is told the group it sits in.
+    @ViewBuilder
+    private func spaceRuns<Row: View>(
+        _ items: [RailItem],
+        in spaceID: UUID,
+        showsName: Bool,
+        @ViewBuilder row: @escaping (RailItem, ServiceAccessibility.GroupContext?) -> Row
+    ) -> some View {
+        ForEach(runs(items, in: spaceID)) { run in
+            switch run {
+            case .row(let item):
+                row(item, nil)
+            case .group(_, let name, let members, let lit):
+                GroupBox(name: name, axis: axis, showsName: showsName, isLit: lit) {
+                    ForEach(members) { item in
+                        row(item, RailGroupLookup.context(for: item, name: name, in: members))
+                    }
+                }
+            }
+        }
+    }
+
+    /// A space's entries in its all-services card, with a box round each group
+    /// inside the card. The rows in a box narrow by the box's padding, so the
+    /// box fits the card; a nameless row cannot narrow, so its box takes no
+    /// side padding.
+    private func allServicesRuns(_ items: [RailItem], in space: Space) -> some View {
+        ForEach(runs(items, in: space.id)) { run in
+            switch run {
+            case .row(let item):
+                allServicesItem(item, in: .space(space.id), space: space)
+                    .id("\(space.id.uuidString)-\(item.id.uuidString)")
+            case .group(_, let name, let members, let lit):
+                GroupBox(
+                    name: name,
+                    axis: .vertical,
+                    showsName: showServiceNames,
+                    isLit: lit,
+                    sideInset: showServiceNames ? ChorusCard.railPadding : 0
+                ) {
+                    ForEach(members) { item in
+                        allServicesItem(
+                            item,
+                            in: .space(space.id),
+                            space: space,
+                            group: RailGroupLookup.context(for: item, name: name, in: members)
+                        )
+                        .id("\(space.id.uuidString)-\(item.id.uuidString)")
+                    }
+                }
+                .environment(\.railWidth, railFootprint - 2 * ChorusCard.railPadding)
+            }
+        }
+    }
+
     /// One entry of the single-space rail or the bar.
     @ViewBuilder
-    private func railItemRow(_ item: RailItem, in scope: RailScope) -> some View {
+    private func railItemRow(
+        _ item: RailItem,
+        in scope: RailScope,
+        group: ServiceAccessibility.GroupContext? = nil
+    ) -> some View {
         switch item {
         case .member(let link, let service):
-            serviceRow(for: link, service: service)
+            serviceRow(for: link, service: service, group: group)
         case .global(let service):
             globalRow(service)
         case .divider(let divider):
@@ -956,7 +1027,11 @@ struct UnifiedRailView: View {
     }
 
     @ViewBuilder
-    private func serviceRow(for link: SpaceServiceLink, service: ServiceInstance) -> some View {
+    private func serviceRow(
+        for link: SpaceServiceLink,
+        service: ServiceInstance,
+        group: ServiceAccessibility.GroupContext? = nil
+    ) -> some View {
         let isSel = selectedServiceID == service.id
         let badge = appState.badgeManager.badgeCount(for: service.id)
         let hibernated = !isSel && appState.webViewPool.isHibernated(service.id)
@@ -966,7 +1041,7 @@ struct UnifiedRailView: View {
         // already says why it is not loaded — so it reports live and draws no dot.
         let health = hibernated ? ServiceHealth.live : appState.webViewPool.health(for: service.id)
 
-        cell(for: link, service: service, isSelected: isSel, badge: badge, hibernated: hibernated, muted: muted, media: media, health: health, focused: focusedServiceID == service.id && focusVisibility.isVisible)
+        cell(for: link, service: service, isSelected: isSel, badge: badge, hibernated: hibernated, muted: muted, media: media, health: health, focused: focusedServiceID == service.id && focusVisibility.isVisible, group: group)
             // Only the selected service points at its settings.
             .featureTip(.editSelectedService, arrowEdge: axis == .vertical ? .trailing : .bottom,
                         isEnabled: isSel, appState: appState)
@@ -1133,6 +1208,7 @@ struct UnifiedRailView: View {
         focused: Bool,
         showsName: Bool? = nil,
         spaceName: String? = nil,
+        group: ServiceAccessibility.GroupContext? = nil,
         selectionAction: (() -> Void)? = nil
     ) -> some View {
         ServiceRowView(
@@ -1150,6 +1226,7 @@ struct UnifiedRailView: View {
             health: health,
             showsName: showsName ?? showServiceNames,
             spaceName: spaceName,
+            group: group,
             isFocused: focused
         ) {
             if let selectionAction {

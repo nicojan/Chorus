@@ -123,6 +123,21 @@ struct ServiceIconSquare: View {
 /// Builds the spoken label for a service cell so the rail and the tabs read the
 /// same to VoiceOver.
 enum ServiceAccessibility {
+    /// The group a service's row sits in, as VoiceOver says it: by its name,
+    /// or, with none, by the other services in its box.
+    enum GroupContext: Equatable {
+        case named(String)
+        case unnamed(others: [String])
+
+        /// "in Google", or "in a group with Calendar and Drive".
+        var spoken: String {
+            switch self {
+            case .named(let name): return "in \(name)"
+            case .unnamed(let others): return "in a group with \(AppState.listed(others))"
+            }
+        }
+    }
+
     static func label(
         name: String,
         badgeCount: Int,
@@ -133,7 +148,8 @@ enum ServiceAccessibility {
         micMuted: Bool = false,
         isPlayingAudio: Bool = false,
         health: ServiceHealth = .live,
-        needsAttention: Bool = false
+        needsAttention: Bool = false,
+        group: GroupContext? = nil
     ) -> String {
         var parts = [name]
         if badgeCount > 0 {
@@ -154,6 +170,8 @@ enum ServiceAccessibility {
             parts.append("microphone muted")
         }
         if isPlayingAudio { parts.append("playing audio") }
+        // Last, so the state of the service comes first and the box after it.
+        if let group { parts.append(group.spoken) }
         return parts.joined(separator: ", ")
     }
 }
