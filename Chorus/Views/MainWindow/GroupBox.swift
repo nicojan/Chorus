@@ -63,15 +63,22 @@ struct GroupBox<Content: View>: View {
         rows
             .padding(.horizontal, axis == .vertical ? sideInset : 2)
             .padding(.vertical, vertical)
-            .railCard()
+            .railCard(cornerRadius: cornerRadius)
             .overlay {
-                RoundedRectangle(cornerRadius: ChorusCard.cornerRadius, style: .continuous)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(isLit ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.clear), lineWidth: 2)
                     .allowsHitTesting(false)
             }
     }
 
     private var drawsName: Bool { showsName && name != nil }
+
+    /// The card's 14 point corners, except round rows with no side inset: a
+    /// row's 8 point fill then runs to the card's side edges, and only corners
+    /// as tight as the fill's keep it inside them.
+    private var cornerRadius: CGFloat {
+        axis == .vertical && sideInset < ChorusCard.railPadding ? ChorusRadius.control : ChorusCard.cornerRadius
+    }
 
     /// Set like the all-services heading: the row size, bold, grey. Lined up
     /// with the row icons in the sidebar; inset from the card's edge in the bar.
