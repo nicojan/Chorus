@@ -31,6 +31,10 @@ enum RailRuns {
             guard case .member(let link, _) = item else { return nil }
             return groupOf(link.id)
         }
+        func isMember(_ item: RailItem) -> Bool {
+            if case .member = item { return true }
+            return false
+        }
         // First pass: the span of each group, with the dragged row allowed inside.
         var spans: [(group: UUID, range: Range<Int>)] = []
         var index = 0
@@ -43,8 +47,10 @@ enum RailRuns {
                 if group(items[cursor]) == g {
                     lastMember = cursor
                     end = cursor + 1
-                } else if let dragged, items[cursor].id == dragged, group(items[cursor]) == nil {
-                    // may sit inside; kept only if a member follows
+                } else if let dragged, items[cursor].id == dragged, isMember(items[cursor]) {
+                    // A dragged service row, in no group or another one, may sit
+                    // inside; the span still ends at its last member. A dragged
+                    // divider or other non-member splits the run as usual.
                 } else {
                     break
                 }

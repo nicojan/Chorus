@@ -699,4 +699,37 @@ final class GroupTests: XCTestCase {
         XCTAssertTrue(holds)
         XCTAssertEqual(RailRuns.litGroup(in: runs), g)
     }
+
+    func testRunsKeepTheBoxRoundADraggedMemberOfAnotherGroup() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (_, _, l) = try makeSpace("Work", order: 0, services: ["a", "x", "b", "c", "d"], in: ctx)
+        let g1 = UUID(), g2 = UUID()
+        let groups: [UUID: UUID] = [l[0].id: g1, l[1].id: g2, l[2].id: g1, l[3].id: g2, l[4].id: g2]
+        let runs = RailRuns.runs(items(l), groupOf: { groups[$0] }, nameOf: { _ in nil }, dragged: l[1].id)
+        XCTAssertEqual(runs.count, 2)
+        guard case .group(let id1, _, let first, let holds) = runs[0] else { return XCTFail("no g1 box") }
+        XCTAssertEqual(id1, g1)
+        XCTAssertEqual(first.map(\.id), [l[0].id, l[1].id, l[2].id])
+        XCTAssertTrue(holds)
+        guard case .group(let id2, _, let second, let holds2) = runs[1] else { return XCTFail("no g2 box") }
+        XCTAssertEqual(id2, g2)
+        XCTAssertEqual(second.map(\.id), [l[3].id, l[4].id])
+        XCTAssertFalse(holds2)
+        XCTAssertEqual(RailRuns.litGroup(in: runs), g1)
+    }
+
+    func testRunsDoNotHoldADraggedDivider() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (space, _, l) = try makeSpace("Work", order: 0, services: ["a", "b"], in: ctx)
+        let divider = RailDivider(kind: .services, spaceID: space.id, sortOrder: 5)
+        ctx.insert(divider)
+        let g = UUID()
+        let list: [RailItem] = [.member(l[0], l[0].service!), .divider(divider), .member(l[1], l[1].service!)]
+        let runs = RailRuns.runs(list, groupOf: { _ in g }, nameOf: { _ in nil }, dragged: divider.id)
+        XCTAssertEqual(runs.count, 3)
+        for run in runs { if case .group = run { XCTFail("drew a box") } }
+        XCTAssertNil(RailRuns.litGroup(in: runs))
+    }
 }
