@@ -6,7 +6,7 @@ Built 2026-10-25 from `docs/superpowers/plans/2026-10-25-service-groups.md`. A g
 
 **Real store.** A copy of the live store (3 spaces, 18 services, 16 links, 1 divider) went through the new schema with `testMigratesARealStoreCopy`. It came out with the same 3 spaces, 18 services, 16 links and 1 divider, every link still joined to its space and service, and no link in a group. The live store was not opened. The copy and the marker file are deleted.
 
-**Status on 2026-10-25:** PR #40 at `d439986`. Steps 1 to 13 run by Claude, results below; one fix came out of it. Left for Nico: the top bar grab band (step 1), the key pair (step 8), and whether to merge.
+**Status on 2026-10-25:** PR #40 at `fa70d21`. Steps 1 to 13 run by Claude, results below. Two fixes came out of it, the refused group drop (`d439986`) and the top bar grab band (`fa70d21`). Left for Nico: whether the band and the key pair (step 8) feel right.
 
 **Still to run.** Run the Debug build from the branch (it uses `Chorus-debug`, so your real spaces are safe), with at least two spaces, a divider, and four or more services in one space. The builders drove every drag with synthetic events on macOS 26, so each step below needs a real mouse. Pass or fail is stated per step.
 
@@ -27,7 +27,7 @@ Built 2026-10-25 from `docs/superpowers/plans/2026-10-25-service-groups.md`. A g
 
 **Run by Claude on 2026-10-25**, Debug build on macOS 27, each drag posted as mouse events and checked against the store and by screenshot. Nico was off the Mac. Steps 1 to 13 are done; 14 is skipped, since there is no Mac on macOS 14 or 15 here.
 
-1. Measured, Nico to judge. Rail on the left with names off: the box takes a press on about 6 points of padding at the top, bottom and each side, and on the 2 point gap between rows. Top bar: about 1 point above the tabs, none below, 2 points at the left end, 3 between tabs and 1 at the right end. A press just above the box there lands in the title bar and moves the window. The top bar needs a wider band.
+1. Measured, Nico to judge. Rail on the left with names off: the box takes a press on about 6 points of padding at the top, bottom and each side, and on the 2 point gap between rows. Top bar: about 1 point above the tabs, none below, 2 points at the left end, 3 between tabs and 1 at the right end. A press just above the box there lands in the title bar and moves the window. Fixed in `fa70d21`: the box has 8 points at each end in the top bar, which measured as a 6 point band on each side, the same as the sidebar.
 2. Pass. A press within about 150 ms of Escape still does nothing, while the menu fades.
 3. Pass. A slow drag past three services with 250 ms stops made no group. Half a second on a neighbour, in the rail and in the top bar, made one.
 4. Pass, all five cases. The group of two lost its name when it broke up.

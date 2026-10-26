@@ -15,6 +15,7 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ### Fixed
 
+- Press Escape while you drag a service, or let go of it away from the rail, and it goes back where it was. Before, it stayed wherever the drag had taken it.
 - Chorus now quits while a sheet such as Edit Service or What's New is open. Before, ⌘Q, Quit in the Dock and the relaunch after an update did nothing until you closed the sheet.
 
 ## [1.5.29] - 2026-10-25
