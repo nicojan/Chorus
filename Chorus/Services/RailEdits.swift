@@ -397,6 +397,37 @@ enum RailEdits {
         return changed
     }
 
+    /// The launch repair: `tidyGroups` on every space, and the deletion of
+    /// group rows whose space is gone. Saves only when something changed.
+    /// Returns whether it did. It touches no sign-in, so it runs on damaged,
+    /// restored and in-memory stores too.
+    @discardableResult
+    static func repairGroups(context: ModelContext) -> Bool {
+        let spaces = (try? context.fetch(FetchDescriptor<Space>())) ?? []
+        var changed = false
+        var fixed = 0
+        for space in spaces where tidyGroups(inSpace: space.id, context: context) {
+            changed = true
+            fixed += 1
+        }
+        let spaceIDs = Set(spaces.map(\.id))
+        for group in (try? context.fetch(FetchDescriptor<ServiceGroup>())) ?? [] where !group.isDeleted && !spaceIDs.contains(group.spaceID) {
+            context.delete(group)
+            changed = true
+            fixed += 1
+        }
+        guard changed else { return false }
+        do {
+            try context.save()
+            AppLogger.dataStore.info("Repaired service groups at launch (\(fixed) change(s))")
+            return true
+        } catch {
+            context.rollback()
+            AppLogger.dataStore.error("Failed to repair service groups; rolled back: \(error.localizedDescription)")
+            return false
+        }
+    }
+
     /// `draggedLinkID` dropped onto `targetLinkID`: it joins the target's
     /// group, or a new one the target joins too. Refused, with nothing
     /// changed, when either link is gone or they are in different spaces.

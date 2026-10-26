@@ -604,4 +604,99 @@ final class GroupTests: XCTestCase {
         let named = AppState.groupMovePrompt(name: "Mail", labels: ["Gmail", "Slack"], spaceName: "Home")
         XCTAssertEqual(named.title, "Move Mail to Home?")
     }
+
+    // MARK: - Launch repair and runs
+
+    func testRepairGroupsFixesASplitRunAndAOneMemberGroup() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (space, _, l) = try makeSpace("Work", order: 0, services: ["a", "b", "c", "d"], in: ctx)
+        let split = ServiceGroup(spaceID: space.id)
+        let lone = ServiceGroup(spaceID: space.id)
+        ctx.insert(split)
+        ctx.insert(lone)
+        l[0].groupID = split.id
+        l[2].groupID = split.id
+        l[3].groupID = lone.id
+        try ctx.save()
+
+        XCTAssertTrue(RailEdits.repairGroups(context: ctx))
+
+        XCTAssertNil(l[3].groupID)
+        XCTAssertEqual(try groups(ctx).map(\.id), [split.id])
+        XCTAssertEqual(l[0].groupID, split.id)
+        XCTAssertEqual(l[2].groupID, split.id)
+        XCTAssertNil(l[1].groupID)
+        XCTAssertEqual(order(space, ctx), [l[0].id, l[2].id, l[1].id, l[3].id])
+        XCTAssertFalse(RailEdits.repairGroups(context: ctx))
+    }
+
+    func testRepairGroupsDeletesAGroupWhoseSpaceIsGone() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        ctx.insert(ServiceGroup(spaceID: UUID()))
+        try ctx.save()
+
+        XCTAssertTrue(RailEdits.repairGroups(context: ctx))
+
+        XCTAssertTrue(try groups(ctx).isEmpty)
+        XCTAssertFalse(RailEdits.repairGroups(context: ctx))
+    }
+
+    private func items(_ l: [SpaceServiceLink]) -> [RailItem] {
+        l.map { .member($0, $0.service!) }
+    }
+
+    func testRunsDrawAOneMemberGroupAsARow() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (_, _, l) = try makeSpace("Work", order: 0, services: ["a", "b"], in: ctx)
+        let g = UUID()
+        let runs = RailRuns.runs(items(l), groupOf: { $0 == l[0].id ? g : nil }, nameOf: { _ in nil })
+        XCTAssertEqual(runs.count, 2)
+        for run in runs { if case .group = run { XCTFail("drew a box") } }
+        XCTAssertNil(RailRuns.litGroup(in: runs))
+    }
+
+    func testRunsDrawASplitGroupAsRows() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (_, _, l) = try makeSpace("Work", order: 0, services: ["a", "x", "b"], in: ctx)
+        let g = UUID()
+        let runs = RailRuns.runs(items(l), groupOf: { $0 == l[1].id ? nil : g }, nameOf: { _ in nil })
+        XCTAssertEqual(runs.count, 3)
+        for run in runs { if case .group = run { XCTFail("drew a box") } }
+    }
+
+    func testRunsBoxAWholeRun() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (_, _, l) = try makeSpace("Work", order: 0, services: ["a", "b", "c"], in: ctx)
+        let g = UUID()
+        let runs = RailRuns.runs(items(l), groupOf: { $0 == l[2].id ? nil : g }, nameOf: { _ in "Mail" })
+        XCTAssertEqual(runs.count, 2)
+        guard case .group(let id, let name, let boxed, let holds) = runs[0] else { return XCTFail("no box") }
+        XCTAssertEqual(id, g)
+        XCTAssertEqual(name, "Mail")
+        XCTAssertEqual(boxed.map(\.id), [l[0].id, l[1].id])
+        XCTAssertFalse(holds)
+        guard case .row(let r) = runs[1] else { return XCTFail("no row") }
+        XCTAssertEqual(r.id, l[2].id)
+    }
+
+    func testRunsKeepTheBoxRoundADraggedRowInsideIt() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (_, _, l) = try makeSpace("Work", order: 0, services: ["a", "x", "b"], in: ctx)
+        let g = UUID()
+        let runs = RailRuns.runs(
+            items(l), groupOf: { $0 == l[1].id ? nil : g }, nameOf: { _ in nil }, dragged: l[1].id
+        )
+        XCTAssertEqual(runs.count, 1)
+        guard case .group(let id, _, let boxed, let holds) = runs[0] else { return XCTFail("no box") }
+        XCTAssertEqual(id, g)
+        XCTAssertEqual(boxed.count, 3)
+        XCTAssertTrue(holds)
+        XCTAssertEqual(RailRuns.litGroup(in: runs), g)
+    }
 }

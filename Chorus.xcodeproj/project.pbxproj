@@ -55,6 +55,7 @@
 		783EF6C467034D74DE8D5F52 /* WebViewState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 192C907C2215D62E02FF8408 /* WebViewState.swift */; };
 		78C80EEE6E3E6F9D2DB819D5 /* RailSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 542BCDA03CE248BE3E75D814 /* RailSupport.swift */; };
 		79F69990EE72D6196FBB80B8 /* RailDividerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24ECDB7D8F7F0F324289AD37 /* RailDividerView.swift */; };
+		7AC2ADDF366CF435BDB65C3E /* RailRuns.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2200EDE680C15FBE00601E12 /* RailRuns.swift */; };
 		817A70A10923352BBAC3F63E /* CatalogIconCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0693A705E1552F5809BA3399 /* CatalogIconCache.swift */; };
 		8325C3DEC3242E7E2C19EB07 /* SpacePaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03E9D5B98CFDDD0B2E7FD42C /* SpacePaletteView.swift */; };
 		863BAA64BC341E5286D8915E /* UnifiedRailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D2B28970B7AEF9B0EB53AFD /* UnifiedRailView.swift */; };
@@ -138,6 +139,7 @@
 		1B679EE1300566DA259FFF77 /* THIRD_PARTY_NOTICES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = THIRD_PARTY_NOTICES.md; sourceTree = "<group>"; };
 		1D9D707C0F9A04B5E0744F59 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		200FB7DAF9279B0E2764474D /* ServicePopup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServicePopup.swift; sourceTree = "<group>"; };
+		2200EDE680C15FBE00601E12 /* RailRuns.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailRuns.swift; sourceTree = "<group>"; };
 		24ECDB7D8F7F0F324289AD37 /* RailDividerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailDividerView.swift; sourceTree = "<group>"; };
 		24EE83C0600AFD4A12914883 /* HibernatedBadgePoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HibernatedBadgePoller.swift; sourceTree = "<group>"; };
 		29C26C37D627ADE04B904988 /* SheetQuit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SheetQuit.swift; sourceTree = "<group>"; };
@@ -393,6 +395,7 @@
 				76865DDEE671C34CC88CF4D8 /* FindInPageBar.swift */,
 				24ECDB7D8F7F0F324289AD37 /* RailDividerView.swift */,
 				F8D1ECB45C649A2DC43CECD5 /* RailItems.swift */,
+				2200EDE680C15FBE00601E12 /* RailRuns.swift */,
 				542BCDA03CE248BE3E75D814 /* RailSupport.swift */,
 				BFD9BB4DBF6536D1AD0CA298 /* ServiceHealth.swift */,
 				E84C935C8A82FD6B6B969E6B /* ServiceIconView.swift */,
@@ -649,6 +652,7 @@
 				3B3092B01F046644EECAC315 /* RailEdits.swift in Sources */,
 				96AB65EE0864CCD84279C86D /* RailItems.swift in Sources */,
 				E8288CD202E937B4B6087D67 /* RailOrder.swift in Sources */,
+				7AC2ADDF366CF435BDB65C3E /* RailRuns.swift in Sources */,
 				78C80EEE6E3E6F9D2DB819D5 /* RailSupport.swift in Sources */,
 				C0852A818DF6C7A869CD2B42 /* ServiceAdding.swift in Sources */,
 				C65C95AB514FF50CEE9A75D6 /* ServiceCatalog.swift in Sources */,

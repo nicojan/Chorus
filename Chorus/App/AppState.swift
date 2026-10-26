@@ -562,6 +562,9 @@ final class AppState {
         let didSeedDefaults = seedDefaultDataIfNeeded()
         backfillPasskeyNoticeIfNeeded(freshInstall: didSeedDefaults)
         reapOrphanedServices()
+        // After the reap, so a group it left with one member dissolves. Runs on
+        // every store: it touches no sign-in.
+        RailEdits.repairGroups(context: modelContainer.mainContext)
         // Only on a store that is really the user's. On a damaged, restored or
         // in-memory launch the flag is cleared instead, so the store that comes
         // back gets its pins cleared at the next clean launch.
