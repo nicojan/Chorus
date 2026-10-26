@@ -4994,10 +4994,17 @@ final class ChorusTests: XCTestCase {
         // Space's stored shape and bring the cascade differences between macOS
         // 14, 15 and 26 with it.
         XCTAssertTrue(divider.relationships.isEmpty, "RailDivider must not hold relationships")
+        let group = try entity("ServiceGroup")
+        XCTAssertEqual(
+            Set(group.attributes.map(\.name)),
+            ["id", "spaceID", "name", "createdAt"],
+            "ServiceGroup stored attributes changed without a new schema version"
+        )
+        XCTAssertTrue(group.relationships.isEmpty, "ServiceGroup must not hold relationships")
         let link = try entity("SpaceServiceLink")
         XCTAssertEqual(
             Set(link.attributes.map(\.name)),
-            ["id", "sortOrder"],
+            ["id", "sortOrder", "groupID"],
             "SpaceServiceLink stored attributes changed without a new schema version"
         )
         // Both ends must stay optional. Non-optional is what made a cascade
