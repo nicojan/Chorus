@@ -148,9 +148,16 @@ struct UnifiedRailView: View {
     }
 
     /// A space's list as the rail draws it: rows, and a box round each group.
-    /// No live drag yet, so no box is lit.
+    /// The row being dragged stays inside a box it sits in, without splitting
+    /// it. Which box is lit is the drag's call (`RailDragState.litGroupID`).
     private func runs(_ items: [RailItem], in spaceID: UUID) -> [RailRun] {
-        RailGroupLookup(groups: allGroups, spaceID: spaceID).runs(items)
+        RailGroupLookup(groups: allGroups, spaceID: spaceID).runs(items, dragged: drag.linkID)
+    }
+
+    /// The direction a list runs: the bar's, except the columns that are
+    /// always vertical.
+    private var listAxis: Axis {
+        globalsOnly || showsAllSpaces ? .vertical : axis
     }
 
     /// The selected space's services and dividers.
@@ -366,12 +373,13 @@ struct UnifiedRailView: View {
         _ item: RailItem,
         in scope: RailScope,
         space: Space?,
-        group: ServiceAccessibility.GroupContext? = nil
+        group: ServiceAccessibility.GroupContext? = nil,
+        box: LiveReorderDropDelegate.Box? = nil
     ) -> some View {
         switch item {
         case .member(let link, let service):
             if let space {
-                allServicesRow(for: link, service: service, in: space, group: group)
+                allServicesRow(for: link, service: service, in: space, group: group, box: box)
             }
         case .global(let service):
             globalRow(service)
@@ -443,12 +451,12 @@ struct UnifiedRailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: ChorusRadius.control))
         }
         .liveReorderDrop([
-            .init(type: LiveReorder.spaceType, draggingID: { drag.spaceID }, move: { liveMove($0, over: space.id, in: .spaces) }),
-            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: space.id, in: .spaces) }),
+            .init(type: LiveReorder.spaceType, draggingID: { drag.spaceID }, move: { dragged, _ in liveMove(dragged, over: space.id, in: .spaces) }),
+            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { dragged, _ in liveMove(dragged, over: space.id, in: .spaces) }),
             .init(
                 type: LiveReorder.serviceType,
                 draggingID: { drag.linkID },
-                move: { liveMoveLinkToTop($0, of: space) },
+                move: { dragged, _ in liveMoveLinkToTop(dragged, of: space) },
                 drop: { dropLinkAtTop($0, of: space) }
             ),
             .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, drop: { dragged in
@@ -505,7 +513,8 @@ struct UnifiedRailView: View {
         for link: SpaceServiceLink,
         service: ServiceInstance,
         in space: Space,
-        group: ServiceAccessibility.GroupContext? = nil
+        group: ServiceAccessibility.GroupContext? = nil,
+        box: LiveReorderDropDelegate.Box? = nil
     ) -> some View {
         let isSelected = selectedSpaceID == space.id && selectedServiceID == service.id
         let badge = appState.badgeManager.badgeCount(for: service.id)
@@ -534,18 +543,20 @@ struct UnifiedRailView: View {
                 focusedAllServicesLinkID = link.id
             }
         )
+        .modifier(GroupSwell(isOn: drag.pausedTargetID == link.id))
         // Live reorder, within a space or into another one. See `LiveReorder`.
         .overlay(linkDragSource(for: link, service: service))
         .liveReorderDrop([
             .init(
                 type: LiveReorder.serviceType,
                 draggingID: { drag.linkID },
-                move: { liveMove($0, over: link.id, in: .space(space.id)) },
-                drop: { dropLink($0, over: link, in: space) }
+                move: { liveMove($0, over: link.id, in: .space(space.id), zone: $1) },
+                drop: { dropLink($0, over: link, in: space) },
+                groups: { sameSpace($0, as: space.id) }
             ),
             .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, drop: { dropGlobal($0, into: space.id, before: link.id) }),
-            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: link.id, in: .space(space.id)) }),
-        ])
+            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: link.id, in: .space(space.id), zone: $1) }),
+        ], row: link.id, axis: .vertical, box: box)
         .accessibilityAction(named: "Move up") { step(link.id, forward: false, in: .space(space.id)) }
         .accessibilityAction(named: "Move down") { step(link.id, forward: true, in: .space(space.id)) }
         .modifier(groupRowActions(for: link))
@@ -734,8 +745,8 @@ struct UnifiedRailView: View {
                 // 2 points between 28 point rows is the drawn 30 point pitch.
                 LazyVStack(spacing: 2) {
                     if let spaceID = selectedSpaceID {
-                        spaceRuns(spaceItems, in: spaceID, showsName: showServiceNames) { item, group in
-                            railItemRow(item, in: .space(spaceID), group: group)
+                        spaceRuns(spaceItems, in: spaceID, showsName: showServiceNames) { item, group, box in
+                            railItemRow(item, in: .space(spaceID), group: group, box: box)
                         }
                     }
                 }
@@ -913,10 +924,10 @@ struct UnifiedRailView: View {
                     .padding(.horizontal, 2)
             }
             if let spaceID = selectedSpaceID {
-                spaceRuns(spaceItems, in: spaceID, showsName: true) { item, group in
+                spaceRuns(spaceItems, in: spaceID, showsName: true) { item, group, box in
                     // Keyed by the service where there is one, so the scroll
                     // view can bring the selected tab into view by its id.
-                    railItemRow(item, in: .space(spaceID), group: group)
+                    railItemRow(item, in: .space(spaceID), group: group, box: box)
                         .id(item.service?.id ?? item.id)
                 }
             }
@@ -954,18 +965,20 @@ struct UnifiedRailView: View {
         _ items: [RailItem],
         in spaceID: UUID,
         showsName: Bool,
-        @ViewBuilder row: @escaping (RailItem, ServiceAccessibility.GroupContext?) -> Row
+        @ViewBuilder row: @escaping (RailItem, ServiceAccessibility.GroupContext?, LiveReorderDropDelegate.Box?) -> Row
     ) -> some View {
         ForEach(runs(items, in: spaceID)) { run in
             switch run {
             case .row(let item):
-                row(item, nil)
-            case .group(let groupID, let name, let members, let lit):
-                GroupBox(name: name, axis: axis, showsName: showsName, isLit: lit) {
+                row(item, nil, nil)
+            case .group(let groupID, let name, let members, _):
+                let box = boxLane(groupID, in: spaceID)
+                GroupBox(name: name, axis: axis, showsName: showsName, isLit: drag.litGroupID == groupID) {
                     ForEach(members) { item in
-                        row(item, RailGroupLookup.context(for: item, name: name, in: members))
+                        row(item, RailGroupLookup.context(for: item, name: name, in: members), box)
                     }
                 }
+                .groupBoxDrop(box, draggingID: { drag.linkID })
                 .modifier(groupBoxMenu(groupID, name: name, in: spaceID))
             }
         }
@@ -981,12 +994,13 @@ struct UnifiedRailView: View {
             case .row(let item):
                 allServicesItem(item, in: .space(space.id), space: space)
                     .id("\(space.id.uuidString)-\(item.id.uuidString)")
-            case .group(let groupID, let name, let members, let lit):
+            case .group(let groupID, let name, let members, _):
+                let box = boxLane(groupID, in: space.id)
                 GroupBox(
                     name: name,
                     axis: .vertical,
                     showsName: showServiceNames,
-                    isLit: lit,
+                    isLit: drag.litGroupID == groupID,
                     sideInset: showServiceNames ? ChorusCard.railPadding : 0
                 ) {
                     ForEach(members) { item in
@@ -994,11 +1008,13 @@ struct UnifiedRailView: View {
                             item,
                             in: .space(space.id),
                             space: space,
-                            group: RailGroupLookup.context(for: item, name: name, in: members)
+                            group: RailGroupLookup.context(for: item, name: name, in: members),
+                            box: box
                         )
                         .id("\(space.id.uuidString)-\(item.id.uuidString)")
                     }
                 }
+                .groupBoxDrop(box, draggingID: { drag.linkID })
                 .environment(\.railWidth, railFootprint - 2 * ChorusCard.railPadding)
                 .modifier(groupBoxMenu(groupID, name: name, in: space.id))
             }
@@ -1010,11 +1026,12 @@ struct UnifiedRailView: View {
     private func railItemRow(
         _ item: RailItem,
         in scope: RailScope,
-        group: ServiceAccessibility.GroupContext? = nil
+        group: ServiceAccessibility.GroupContext? = nil,
+        box: LiveReorderDropDelegate.Box? = nil
     ) -> some View {
         switch item {
         case .member(let link, let service):
-            serviceRow(for: link, service: service, group: group)
+            serviceRow(for: link, service: service, group: group, box: box)
         case .global(let service):
             globalRow(service)
         case .divider(let divider):
@@ -1033,7 +1050,8 @@ struct UnifiedRailView: View {
     private func serviceRow(
         for link: SpaceServiceLink,
         service: ServiceInstance,
-        group: ServiceAccessibility.GroupContext? = nil
+        group: ServiceAccessibility.GroupContext? = nil,
+        box: LiveReorderDropDelegate.Box? = nil
     ) -> some View {
         let isSel = selectedServiceID == service.id
         let badge = appState.badgeManager.badgeCount(for: service.id)
@@ -1048,9 +1066,10 @@ struct UnifiedRailView: View {
             // Only the selected service points at its settings.
             .featureTip(.editSelectedService, arrowEdge: axis == .vertical ? .trailing : .bottom,
                         isEnabled: isSel, appState: appState)
+            .modifier(GroupSwell(isOn: drag.pausedTargetID == link.id))
             // Live reorder along the rail or the bar. See `LiveReorder`.
             .overlay(linkDragSource(for: link, service: service))
-            .liveReorderDrop(memberLanes(for: link))
+            .liveReorderDrop(memberLanes(for: link), row: link.id, axis: listAxis, box: box)
             .accessibilityAction(named: "Move up") { stepLink(link, forward: false) }
             .accessibilityAction(named: "Move down") { stepLink(link, forward: true) }
             .modifier(groupRowActions(for: link))
@@ -1125,10 +1144,30 @@ struct UnifiedRailView: View {
     private func memberLanes(for link: SpaceServiceLink) -> [LiveReorderDropDelegate.Lane] {
         guard let spaceID = link.liveSpace?.id else { return [] }
         return [
-            .init(type: LiveReorder.serviceType, draggingID: { drag.linkID }, move: { liveMove($0, over: link.id, in: .space(spaceID)) }),
+            .init(
+                type: LiveReorder.serviceType,
+                draggingID: { drag.linkID },
+                move: { liveMove($0, over: link.id, in: .space(spaceID), zone: $1) },
+                groups: { sameSpace($0, as: spaceID) }
+            ),
             .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, drop: { dropGlobal($0, into: spaceID, before: link.id) }),
-            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: link.id, in: .space(spaceID)) }),
+            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: link.id, in: .space(spaceID), zone: $1) }),
         ]
+    }
+
+    /// Whether a dragged link belongs to this space: only then can it group
+    /// here. A service of another space, or a global one, never swells a row.
+    private func sameSpace(_ linkID: UUID, as spaceID: UUID) -> Bool {
+        links(in: spaceID).contains { $0.id == linkID }
+    }
+
+    /// A group's box as a drop target: a service of its space joins when it
+    /// sits in the run or right next to either end. See `GroupRules.touchesRun`.
+    private func boxLane(_ groupID: UUID, in spaceID: UUID) -> LiveReorderDropDelegate.Box {
+        LiveReorderDropDelegate.Box(id: groupID) { dragged in
+            sameSpace(dragged, as: spaceID)
+                && GroupRules.touchesRun(dragged, of: groupID, in: groupEntries(in: spaceID))
+        }
     }
 
     /// A global service's row, in every layout. Selecting it leaves the space
@@ -1167,10 +1206,10 @@ struct UnifiedRailView: View {
         )
         .overlay(globalDragSource(for: service))
         .liveReorderDrop([
-            .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, move: { liveMove($0, over: service.id, in: .global) }),
+            .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, move: { liveMove($0, over: service.id, in: .global, zone: $1) }),
             .init(type: LiveReorder.serviceType, draggingID: { drag.linkID }, drop: { dropLinkIntoGlobal($0, before: service.id) }),
-            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: service.id, in: .global) }),
-        ])
+            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: service.id, in: .global, zone: $1) }),
+        ], row: service.id, axis: listAxis, box: nil)
         .accessibilityAction(named: "Move up") { step(service.id, forward: false, in: .global) }
         .accessibilityAction(named: "Move down") { step(service.id, forward: true, in: .global) }
         .contextMenu { globalContextMenu(for: service) }
@@ -1197,7 +1236,14 @@ struct UnifiedRailView: View {
             onRemove: { removeDivider(dividerID) },
             onMove: { step(dividerID, forward: $0, in: scope) },
             isDragging: drag.dividerID == dividerID,
-            onDragEnd: { drag.reset() },
+            onDragEnd: {
+                drag.reset()
+                // The live moves can carry a divider into a group's run; it
+                // steps out past the run as the drag ends.
+                if case .space(let spaceID) = scope {
+                    withAnimation(reorderAnimation) { _ = appState.tidyGroups(inSpace: spaceID) }
+                }
+            },
             onCancel: {
                 withAnimation(reorderAnimation) { _ = appState.reorderRail(drag.dividerStartOrder, in: scope) }
             }
@@ -1210,7 +1256,7 @@ struct UnifiedRailView: View {
     /// lands where it is let go.
     private func dividerLanes(over dividerID: UUID, in scope: RailScope) -> [LiveReorderDropDelegate.Lane] {
         let divider = LiveReorderDropDelegate.Lane(
-            type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: dividerID, in: scope) }
+            type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { dragged, _ in liveMove(dragged, over: dividerID, in: scope) }
         )
         switch scope {
         case .space(let spaceID):
@@ -1219,7 +1265,7 @@ struct UnifiedRailView: View {
                 .init(
                     type: LiveReorder.serviceType,
                     draggingID: { drag.linkID },
-                    move: { liveMove($0, over: dividerID, in: scope) },
+                    move: { dragged, _ in liveMove(dragged, over: dividerID, in: scope) },
                     drop: { dropLinkOverDivider($0, dividerID: dividerID, spaceID: spaceID) }
                 ),
                 .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, drop: { dropGlobal($0, into: spaceID, before: dividerID) }),
@@ -1227,13 +1273,13 @@ struct UnifiedRailView: View {
         case .global:
             return [
                 divider,
-                .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, move: { liveMove($0, over: dividerID, in: scope) }),
+                .init(type: LiveReorder.globalServiceType, draggingID: { drag.globalID }, move: { dragged, _ in liveMove(dragged, over: dividerID, in: scope) }),
                 .init(type: LiveReorder.serviceType, draggingID: { drag.linkID }, drop: { dropLinkIntoGlobal($0, before: dividerID) }),
             ]
         case .spaces:
             return [
                 divider,
-                .init(type: LiveReorder.spaceType, draggingID: { drag.spaceID }, move: { liveMove($0, over: dividerID, in: scope) }),
+                .init(type: LiveReorder.spaceType, draggingID: { drag.spaceID }, move: { dragged, _ in liveMove(dragged, over: dividerID, in: scope) }),
             ]
         }
     }
@@ -1789,11 +1835,17 @@ struct UnifiedRailView: View {
     /// `RailOrder`). Only an entry already in the list moves, so a service
     /// from another space, or a divider of another list, passing over does
     /// nothing until it is let go. See `LiveReorder`.
-    private func liveMove(_ dragged: UUID, over target: UUID, in scope: RailScope) {
+    ///
+    /// With a `zone`, the end of the row the pointer is over decides:
+    /// `GroupDrag.reordered` puts the entry right before or after it, so the
+    /// row stays under the pointer. Without one (a row that is not measured),
+    /// the entry takes the row's slot.
+    private func liveMove(_ dragged: UUID, over target: UUID, in scope: RailScope, zone: GroupDrag.Zone? = nil) {
         let ids = orderedIDs(scope)
-        guard ids.contains(dragged),
-              let moved = LiveReorder.moving(dragged, over: target, in: ids)
-        else { return }
+        guard ids.contains(dragged) else { return }
+        let reordered = zone.map { GroupDrag.reordered(dragged, over: target, zone: $0, in: ids) }
+            ?? LiveReorder.moving(dragged, over: target, in: ids)
+        guard let moved = reordered else { return }
         // Explicit, so the rows slide whatever the list's own reorder key
         // makes of the change.
         withAnimation(reorderAnimation) { _ = appState.reorderRail(moved, in: scope) }

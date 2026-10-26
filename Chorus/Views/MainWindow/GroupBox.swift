@@ -171,3 +171,25 @@ struct RailGroupLookup {
         return .unnamed(others: others)
     }
 }
+
+/// The row a drag has rested on long enough to group with: it swells a little
+/// and takes an accent outline, so letting go now is clearly a different act
+/// from moving past it. Under Reduce Motion it takes the outline only.
+struct GroupSwell: ViewModifier {
+    let isOn: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// How much the row grows. Small: it says "this one", not "look here".
+    static var scale: CGFloat { 1.06 }
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                RoundedRectangle(cornerRadius: ChorusRadius.control, style: .continuous)
+                    .strokeBorder(isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.clear), lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+            .scaleEffect(isOn && !reduceMotion ? Self.scale : 1)
+            .animation(ChorusMotion.animation(ChorusMotion.reorder, reduceMotion: reduceMotion), value: isOn)
+    }
+}

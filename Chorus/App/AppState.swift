@@ -58,6 +58,9 @@ final class AppState {
     /// A service dragged into another space or the global group, waiting for
     /// the confirmation ContentView shows. See `RailMove`.
     var pendingRailMove: RailMove?
+    /// The lists as the drag behind `pendingRailMove` found them, put back if
+    /// the move is turned down. Empty for a move asked from a menu.
+    var pendingRailMoveRestore: [RailScope: [GroupEntry]] = [:]
     /// The version whose What's New sheet is up, or nil.
     var whatsNewVersion: String?
     /// The Mac app whose name the Accessibility explanation is about, or nil

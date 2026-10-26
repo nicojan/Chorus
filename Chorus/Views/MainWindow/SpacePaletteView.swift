@@ -326,8 +326,8 @@ struct SpacePaletteView: View {
     /// pointer, live. See `LiveReorder`.
     private func lanes(over target: UUID) -> [LiveReorderDropDelegate.Lane] {
         [
-            .init(type: LiveReorder.spaceType, draggingID: { drag.spaceID }, move: { liveMove($0, over: target) }),
-            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: target) }),
+            .init(type: LiveReorder.spaceType, draggingID: { drag.spaceID }, move: { dragged, _ in liveMove(dragged, over: target) }),
+            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { dragged, _ in liveMove(dragged, over: target) }),
         ]
     }
 

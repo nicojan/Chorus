@@ -75,16 +75,20 @@ enum GroupRules {
     /// down to one dissolves.
     nonisolated static func placing(_ dragged: UUID, in entries: [GroupEntry], litGroup: UUID?) -> [GroupEntry] {
         guard let index = entries.firstIndex(where: { $0.id == dragged }) else { return entries }
-        var group: UUID?
-        if let lit = litGroup {
-            let others = entries.indices.filter { entries[$0].groupID == lit && entries[$0].id != dragged }
-            if let first = others.min(), let last = others.max(), index >= first - 1, index <= last + 1 {
-                group = lit
-            }
-        }
+        let group = litGroup.flatMap { touchesRun(dragged, of: $0, in: entries) ? $0 : nil }
         var result = entries
         result[index] = GroupEntry(id: dragged, groupID: group, isDivider: entries[index].isDivider)
         return repaired(result)
+    }
+
+    /// Whether `dragged` sits inside `group`'s run, or right next to either
+    /// end of it, counting the group's other members only. That is where a drop
+    /// can join the group.
+    nonisolated static func touchesRun(_ dragged: UUID, of group: UUID, in entries: [GroupEntry]) -> Bool {
+        guard let index = entries.firstIndex(where: { $0.id == dragged }) else { return false }
+        let others = entries.indices.filter { entries[$0].groupID == group && entries[$0].id != dragged }
+        guard let first = others.min(), let last = others.max() else { return false }
+        return index >= first - 1 && index <= last + 1
     }
 
     /// Where something arriving from outside the list (a divider being added, a

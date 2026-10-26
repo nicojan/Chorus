@@ -294,8 +294,56 @@ final class RailDragState {
     var zones: [UUID: GroupDrag.Zone] = [:]
     /// The wait before a row under the pointer becomes `pausedTargetID`.
     var pauseTask: Task<Void, Never>?
+    /// The row `pauseTask` is waiting on.
+    var pausingRowID: UUID?
 
     private init() {}
+
+    /// Starts the wait on a row's middle, unless that row is already the
+    /// target or already being waited on. Only one row waits at a time.
+    func startPause(on rowID: UUID) {
+        guard pausedTargetID != rowID, pausingRowID != rowID else { return }
+        pauseTask?.cancel()
+        pausedTargetID = nil
+        pausingRowID = rowID
+        pauseTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: GroupDrag.pauseBeforeGrouping)
+            guard !Task.isCancelled, let self, self.pausingRowID == rowID else { return }
+            self.pausingRowID = nil
+            self.pauseTask = nil
+            self.pausedTargetID = rowID
+        }
+    }
+
+    /// The pointer left a row's middle: its wait stops and it is no longer
+    /// the target. Another row's wait is left alone, since the row being left
+    /// can report it after the next one has begun.
+    func endPause(on rowID: UUID) {
+        if pausingRowID == rowID {
+            pauseTask?.cancel()
+            pauseTask = nil
+            pausingRowID = nil
+        }
+        if pausedTargetID == rowID { pausedTargetID = nil }
+    }
+
+    /// Stops a wait that has not finished, leaving a row the pause already
+    /// made the target as it is. A release calls it.
+    func stopWaiting() {
+        pauseTask?.cancel()
+        pauseTask = nil
+        pausingRowID = nil
+    }
+
+    /// Lights a group's box, or puts out the lit one for nil.
+    func light(_ groupID: UUID?) {
+        if litGroupID != groupID { litGroupID = groupID }
+    }
+
+    /// Puts out a group's box if it is the lit one.
+    func unlight(_ groupID: UUID) {
+        if litGroupID == groupID { litGroupID = nil }
+    }
 
     /// Clears every drag field. The drag source's end handler calls it once
     /// per drag, however the drag ended (see `RailDragEnding`).
@@ -311,29 +359,60 @@ final class RailDragState {
         zones = [:]
         pauseTask?.cancel()
         pauseTask = nil
+        pausingRowID = nil
     }
 }
 
 /// The drop side of `LiveReorder`, put on each row. A row lists the kinds of
 /// drag it takes, one `Lane` each: a space's heading in the all-services rail
 /// takes a space (to reorder spaces) and a service (to move it into that
-/// space). `move` runs as a drag of its kind enters the row, for the moves
+/// space). `move` runs as a drag of its kind moves over the row, for the moves
 /// that are shown live; `drop` runs on release, for a move that must not
 /// happen until then, such as a service going into another space, which a
 /// cancelled drag must not leave behind.
+///
+/// A row that knows its `length` along the list is split into parts
+/// (`GroupDrag.zone`): its two ends move the dragged entry before or after it,
+/// and resting on its middle for `GroupDrag.pauseBeforeGrouping` makes it the
+/// row a drop groups with (`RailDragState.pausedTargetID`). A row with no
+/// length, such as a space's heading, takes the dragged entry's slot as the
+/// drag enters it, and `move` gets no zone.
 struct LiveReorderDropDelegate: DropDelegate {
     struct Lane {
         let type: UTType
         /// What is being dragged, read when it is needed rather than copied
         /// when the row was drawn, so a finished drag's id is never used.
         let draggingID: () -> UUID?
-        var move: ((_ dragged: UUID) -> Void)? = nil
+        /// Nil zone: the row has no length, so the entry takes its slot.
+        var move: ((_ dragged: UUID, _ zone: GroupDrag.Zone?) -> Void)? = nil
         /// Whether the row took the drop. Nil means the live moves were all
         /// there was to do.
         var drop: ((_ dragged: UUID) -> Bool)? = nil
+        /// Whether `dragged` may group with this row: a service of the same
+        /// space. Nil, or false, and the row's middle neither swells nor
+        /// lights its box.
+        var groups: ((_ dragged: UUID) -> Bool)? = nil
     }
 
     let lanes: [Lane]
+    /// The row's id, which a pause makes the target. Nil for a row that is
+    /// not a service.
+    var rowID: UUID? = nil
+    var axis: Axis = .vertical
+    /// The row's length along the list, or nil when it is not measured.
+    var length: CGFloat? = nil
+    /// The group box the row is drawn in, lit while a service that may join
+    /// it is over the row.
+    var box: Box? = nil
+
+    /// A group's box, and whether a dragged service may join it: one of its
+    /// space that sits in its run or right next to either end.
+    struct Box {
+        let id: UUID
+        let takes: (_ dragged: UUID) -> Bool
+    }
+
+    private var drag: RailDragState { .shared }
 
     private func lane(for info: DropInfo) -> Lane? {
         lanes.first { info.hasItemsConforming(to: [$0.type]) }
@@ -344,24 +423,142 @@ struct LiveReorderDropDelegate: DropDelegate {
     }
 
     func dropEntered(info: DropInfo) {
-        guard let lane = lane(for: info), let dragged = lane.draggingID() else { return }
-        lane.move?(dragged)
+        track(info, entering: true)
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
+        track(info, entering: false)
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        guard let rowID else { return }
+        drag.zones[rowID] = nil
+        drag.endPause(on: rowID)
+        if let box { drag.unlight(box.id) }
     }
 
     func performDrop(info: DropInfo) -> Bool {
+        // Only a swell already showing groups: AppKit reports the drag's end
+        // a moment after the release, and a wait must not finish in between.
+        drag.stopWaiting()
         guard let lane = lane(for: info), let dragged = lane.draggingID() else { return false }
         return lane.drop?(dragged) ?? true
+    }
+
+    private func track(_ info: DropInfo, entering: Bool) {
+        guard let lane = lane(for: info), let dragged = lane.draggingID() else { return }
+        guard let rowID, let length, length > 0 else {
+            if entering { lane.move?(dragged, nil) }
+            return
+        }
+        let groups = lane.groups?(dragged) ?? false
+        // The box lights for a service that could join it, and a row outside
+        // any box puts it out.
+        if groups { drag.light(box.flatMap { $0.takes(dragged) ? $0.id : nil }) }
+        guard dragged != rowID else { return }
+
+        let previous = drag.zones[rowID]
+        let offset = axis == .vertical ? info.location.y : info.location.x
+        let zone = GroupDrag.zone(at: offset, length: length, current: previous)
+        if zone != previous { drag.zones[rowID] = zone }
+        switch zone {
+        case .before, .after:
+            drag.endPause(on: rowID)
+            lane.move?(dragged, zone)
+        case .middle:
+            if groups, previous != .middle { drag.startPause(on: rowID) }
+        }
+    }
+}
+
+/// Puts the drop delegate on a row, with the row's length along `axis`
+/// measured as it is laid out.
+private struct ZonedReorderDrop: ViewModifier {
+    let lanes: [LiveReorderDropDelegate.Lane]
+    let rowID: UUID
+    let axis: Axis
+    let box: LiveReorderDropDelegate.Box?
+    @State private var length: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            // A GeometryReader rather than `onGeometryChange`, as the rest of
+            // the rail measures, which every supported Xcode builds.
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.onChange(of: axis == .vertical ? proxy.size.height : proxy.size.width, initial: true) { _, new in
+                        length = new
+                    }
+                }
+            )
+            .onDrop(
+                of: lanes.map(\.type),
+                delegate: LiveReorderDropDelegate(lanes: lanes, rowID: rowID, axis: axis, length: length, box: box)
+            )
     }
 }
 
 extension View {
-    /// Makes this row a live-reorder drop target for the given lanes.
+    /// Makes this row a live-reorder drop target for the given lanes. It
+    /// takes the dragged entry's slot as the drag enters it.
     func liveReorderDrop(_ lanes: [LiveReorderDropDelegate.Lane]) -> some View {
         onDrop(of: lanes.map(\.type), delegate: LiveReorderDropDelegate(lanes: lanes))
+    }
+
+    /// Makes this service row a live-reorder drop target split into parts:
+    /// its ends move the dragged entry past it, and a pause on its middle
+    /// groups. `box` is the group box the row is drawn in.
+    func liveReorderDrop(
+        _ lanes: [LiveReorderDropDelegate.Lane],
+        row rowID: UUID,
+        axis: Axis,
+        box: LiveReorderDropDelegate.Box?
+    ) -> some View {
+        modifier(ZonedReorderDrop(lanes: lanes, rowID: rowID, axis: axis, box: box))
+    }
+
+    /// The box's own drop target, for its padding, its name and the gaps
+    /// between its rows: a service that may join lights it there, and leaving
+    /// the box puts it out. The rows inside take their own drags.
+    func groupBoxDrop(_ box: LiveReorderDropDelegate.Box, draggingID: @escaping () -> UUID?) -> some View {
+        onDrop(of: [LiveReorder.serviceType], delegate: GroupBoxDropDelegate(box: box, draggingID: draggingID))
+    }
+}
+
+/// See `groupBoxDrop`. A release here is taken, and the drag's end decides
+/// what it means from the lit box.
+struct GroupBoxDropDelegate: DropDelegate {
+    let box: LiveReorderDropDelegate.Box
+    let draggingID: () -> UUID?
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [LiveReorder.serviceType])
+    }
+
+    func dropEntered(info: DropInfo) { track() }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        track()
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        RailDragState.shared.unlight(box.id)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        RailDragState.shared.stopWaiting()
+        return true
+    }
+
+    private func track() {
+        guard let dragged = draggingID() else { return }
+        if box.takes(dragged) {
+            RailDragState.shared.light(box.id)
+        } else {
+            RailDragState.shared.unlight(box.id)
+        }
     }
 }
 

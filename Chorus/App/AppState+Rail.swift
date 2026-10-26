@@ -170,6 +170,54 @@ extension AppState {
         RailEdits.reorder(orderedIDs, in: scope, context: modelContainer.mainContext)
     }
 
+    /// The one write that ends a service drag in its own space: the drag's
+    /// membership, from the box that was lit at the drop. See
+    /// `RailEdits.finishDrag`.
+    @discardableResult
+    func finishRailDrag(_ linkID: UUID, litGroup: UUID?) -> Bool {
+        let context = modelContainer.mainContext
+        let links = (try? context.fetch(FetchDescriptor<SpaceServiceLink>())) ?? []
+        guard let spaceID = links.first(where: { $0.modelContext != nil && $0.id == linkID })?.liveEnds?.space.id else { return false }
+        return RailEdits.finishDrag(linkID, inSpace: spaceID, litGroup: litGroup, context: context)
+    }
+
+    /// Makes a space's groups legal again, as a divider drag ends. Saves only
+    /// when something changed. See `RailEdits.tidyGroups`.
+    @discardableResult
+    func tidyGroups(inSpace spaceID: UUID) -> Bool {
+        let context = modelContainer.mainContext
+        guard RailEdits.tidyGroups(inSpace: spaceID, context: context) else { return false }
+        return context.saveOrRollBack("tidy groups after a divider drag")
+    }
+
+    /// Whether the move waiting on a yes came from this drag: the dragged link
+    /// or global service is the one it moves.
+    func pendingRailMove(isFromDragOf linkID: UUID?, global globalID: UUID?) -> Bool {
+        switch pendingRailMove {
+        case .intoSpace(let link, _, _), .intoGlobal(let link, _):
+            return link == linkID
+        case .globalIntoSpace(let service, _, _):
+            return service == globalID
+        case .groupIntoSpace, nil:
+            return false
+        }
+    }
+
+    /// Answers the move waiting on a yes. Turned down, the lists go back as
+    /// the drag that asked found them, so the live moves on its way leave
+    /// nothing behind, a split group included.
+    func answerPendingRailMove(confirmed: Bool) {
+        guard let move = pendingRailMove else { return }
+        let restore = pendingRailMoveRestore
+        pendingRailMoveRestore = [:]
+        pendingRailMove = nil
+        if confirmed {
+            _ = performRailMove(move)
+        } else if !restore.isEmpty {
+            _ = restoreRail(restore)
+        }
+    }
+
     /// Puts lists back as a drag found them. See `RailEdits.restore`.
     @discardableResult
     func restoreRail(_ snapshot: [RailScope: [GroupEntry]]) -> Bool {

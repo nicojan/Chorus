@@ -36,8 +36,9 @@ protocol RailDragEnding {
 }
 
 /// The rail's end of a service drag. Escape puts back every list the drag
-/// could have changed, from `RailDragState.startSnapshot`; every end then
-/// clears the drag state.
+/// could have changed, from `RailDragState.startSnapshot`. Any other end makes
+/// the drag's one membership write: the moves on the way only reorder. Every
+/// end then clears the drag state.
 struct RailServiceDragEnding: RailDragEnding {
     let appState: AppState
     let animation: Animation?
@@ -51,12 +52,33 @@ struct RailServiceDragEnding: RailDragEnding {
                 withAnimation(animation) { _ = appState.restoreRail(snapshot) }
             }
         case .dropped, .endedOffRail:
-            // The write that ends a drop goes here: grouping with a paused
-            // target, or the drag's membership through `RailEdits.finishDrag`.
-            // It reads `drag` before the reset below.
-            break
+            finish(drag)
         }
         drag.reset()
+    }
+
+    /// The one write. A row that took the drag into another space or the
+    /// global group has asked first, and that question decides; turned down,
+    /// the lists go back as the drag found them. Otherwise a paused-on row
+    /// groups with the dragged one, and failing that the box lit at the drop
+    /// decides whether it is in a group (`RailEdits.finishDrag`).
+    private func finish(_ drag: RailDragState) {
+        // A release nothing took has no `performDrop` to stop the wait.
+        drag.stopWaiting()
+        if appState.pendingRailMove(isFromDragOf: drag.linkID, global: drag.globalID) {
+            appState.pendingRailMoveRestore = drag.startSnapshot
+            return
+        }
+        guard let linkID = drag.linkID else { return }
+        let target = drag.pausedTargetID
+        let lit = drag.litGroupID
+        withAnimation(animation) {
+            if let target {
+                _ = appState.groupLink(linkID, onto: target)
+            } else {
+                _ = appState.finishRailDrag(linkID, litGroup: lit)
+            }
+        }
     }
 }
 

@@ -571,18 +571,21 @@ private struct RailMoveConfirmation: ViewModifier {
                 prompt?.title ?? "",
                 isPresented: Binding(
                     get: { appState.pendingRailMove != nil && prompt != nil },
-                    set: { if !$0 { appState.pendingRailMove = nil } }
+                    set: { if !$0 { appState.answerPendingRailMove(confirmed: false) } }
                 ),
                 titleVisibility: .visible,
                 presenting: appState.pendingRailMove
             ) { move in
                 Button(prompt?.confirm ?? "Move") {
                     withAnimation(ChorusMotion.animation(ChorusMotion.reorder, reduceMotion: reduceMotion)) {
-                        _ = appState.performRailMove(move)
+                        appState.answerPendingRailMove(confirmed: true)
                     }
-                    appState.pendingRailMove = nil
                 }
-                Button("Cancel", role: .cancel) { appState.pendingRailMove = nil }
+                Button("Cancel", role: .cancel) {
+                    withAnimation(ChorusMotion.animation(ChorusMotion.reorder, reduceMotion: reduceMotion)) {
+                        appState.answerPendingRailMove(confirmed: false)
+                    }
+                }
             } message: { _ in
                 Text(prompt?.message ?? "")
             }
@@ -590,7 +593,7 @@ private struct RailMoveConfirmation: ViewModifier {
             // nothing to ask about; let it go rather than block the next one.
             .onChange(of: appState.pendingRailMove) { _, move in
                 if move != nil, prompt == nil {
-                    appState.pendingRailMove = nil
+                    appState.answerPendingRailMove(confirmed: false)
                 }
             }
     }

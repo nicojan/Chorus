@@ -27,8 +27,24 @@ enum RailRuns {
         nameOf: (UUID) -> String?,
         dragged: UUID? = nil
     ) -> [RailRun] {
+        // A dragged member counts in its group only while it touches the
+        // group's run: within it or at either end. Dragged further away it
+        // has left for now, so the box stays round the rest rather than
+        // breaking into rows.
+        var draggedLeftItsRun = false
+        if let dragged, let at = items.firstIndex(where: { $0.id == dragged }),
+           case .member(let link, _) = items[at], let own = groupOf(link.id) {
+            let others = items.indices.filter { index in
+                guard index != at, case .member(let other, _) = items[index] else { return false }
+                return groupOf(other.id) == own
+            }
+            if let first = others.min(), let last = others.max() {
+                draggedLeftItsRun = at < first - 1 || at > last + 1
+            }
+        }
         func group(_ item: RailItem) -> UUID? {
             guard case .member(let link, _) = item else { return nil }
+            if draggedLeftItsRun, link.id == dragged { return nil }
             return groupOf(link.id)
         }
         func isMember(_ item: RailItem) -> Bool {
@@ -72,7 +88,9 @@ enum RailRuns {
         while index < items.count {
             if let (g, end) = boxes[index] {
                 let slice = Array(items[index..<end])
-                let holds = slice.contains { $0.id == dragged && group($0) != g }
+                // Lit whenever the dragged row is drawn in the box, its own
+                // member included: letting go there keeps it in the group.
+                let holds = slice.contains { $0.id == dragged }
                 result.append(.group(id: g, name: nameOf(g), items: slice, holdsDragged: holds))
                 index = end
             } else {
@@ -84,7 +102,7 @@ enum RailRuns {
     }
 
     /// The group whose box holds the dragged row, if one does: the box a drop
-    /// would join.
+    /// would join or stay in.
     static func litGroup(in runs: [RailRun]) -> UUID? {
         for run in runs {
             if case .group(let id, _, _, true) = run { return id }

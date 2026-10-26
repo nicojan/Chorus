@@ -733,6 +733,65 @@ final class GroupTests: XCTestCase {
         XCTAssertNil(RailRuns.litGroup(in: runs))
     }
 
+    func testRunsKeepADraggedMemberInItsBoxOnlyWhileItTouchesTheRun() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (_, _, l) = try makeSpace("Work", order: 0, services: ["a", "b", "c", "x", "y"], in: ctx)
+        let g = UUID()
+        let groupOf: (UUID) -> UUID? = { [l[0].id, l[1].id, l[2].id].contains($0) ? g : nil }
+        // a, dragged, sits at the end of its run: still in the box, and lit.
+        let touching: [RailItem] = [l[1], l[2], l[0], l[3]].map { .member($0, $0.service!) }
+        let kept = RailRuns.runs(touching, groupOf: groupOf, nameOf: { _ in nil }, dragged: l[0].id)
+        guard case .group(_, _, let boxed, _) = kept[0] else { return XCTFail("no box") }
+        XCTAssertEqual(boxed.map(\.id), [l[1].id, l[2].id, l[0].id])
+        XCTAssertEqual(RailRuns.litGroup(in: kept), g)
+        // Past x it has left: the box stays round b and c, and is not lit.
+        let away: [RailItem] = [l[1], l[2], l[3], l[0], l[4]].map { .member($0, $0.service!) }
+        let left = RailRuns.runs(away, groupOf: groupOf, nameOf: { _ in nil }, dragged: l[0].id)
+        XCTAssertEqual(left.count, 4)
+        guard case .group(let id, _, let rest, _) = left[0] else { return XCTFail("box went") }
+        XCTAssertEqual(id, g)
+        XCTAssertEqual(rest.map(\.id), [l[1].id, l[2].id])
+        XCTAssertNil(RailRuns.litGroup(in: left))
+    }
+
+    // MARK: Review Focus 5: pausing to group
+
+    func testZoneHasHysteresisAtTheMiddleEdge() {
+        XCTAssertEqual(GroupDrag.zone(at: 28, length: 100, current: .middle), .middle)
+        XCTAssertEqual(GroupDrag.zone(at: 28, length: 100, current: .before), .before)
+        XCTAssertEqual(GroupDrag.zone(at: 28, length: 100, current: nil), .before)
+        XCTAssertEqual(GroupDrag.zone(at: 50, length: 100, current: nil), .middle)
+        XCTAssertEqual(GroupDrag.zone(at: 90, length: 100, current: nil), .after)
+        XCTAssertEqual(GroupDrag.zone(at: 72, length: 100, current: .middle), .middle)
+        XCTAssertEqual(GroupDrag.zone(at: 72, length: 100, current: .after), .after)
+        XCTAssertEqual(GroupDrag.zone(at: 20, length: 100, current: .middle), .before)
+        XCTAssertEqual(GroupDrag.zone(at: 80, length: 100, current: .middle), .after)
+    }
+
+    func testReorderedLeavesANeighbourInPlaceAtItsNearEdge() {
+        let d = UUID(), t = UUID(), o = UUID()
+        XCTAssertNil(GroupDrag.reordered(d, over: t, zone: .before, in: [d, t]))
+        XCTAssertEqual(GroupDrag.reordered(d, over: t, zone: .after, in: [d, t]), [t, d])
+        XCTAssertNil(GroupDrag.reordered(d, over: t, zone: .after, in: [t, d]))
+        XCTAssertEqual(GroupDrag.reordered(d, over: t, zone: .before, in: [t, d]), [d, t])
+        XCTAssertNil(GroupDrag.reordered(d, over: t, zone: .middle, in: [t, o, d]))
+        XCTAssertNil(GroupDrag.reordered(d, over: d, zone: .before, in: [t, d]))
+        XCTAssertEqual(GroupDrag.reordered(d, over: t, zone: .before, in: [o, t, d]), [o, d, t])
+        XCTAssertEqual(GroupDrag.reordered(d, over: o, zone: .after, in: [d, o, t]), [o, d, t])
+    }
+
+    func testTouchingRunIsInsideOrAtEitherEnd() {
+        let a = UUID(), b = UUID(), d = UUID(), x = UUID(), g = UUID()
+        func entries(_ ids: [UUID]) -> [GroupEntry] {
+            ids.map { GroupEntry(id: $0, groupID: [a, b].contains($0) ? g : nil, isDivider: false) }
+        }
+        XCTAssertTrue(GroupRules.touchesRun(d, of: g, in: entries([d, a, b, x])))
+        XCTAssertTrue(GroupRules.touchesRun(d, of: g, in: entries([a, d, b, x])))
+        XCTAssertTrue(GroupRules.touchesRun(d, of: g, in: entries([a, b, d, x])))
+        XCTAssertFalse(GroupRules.touchesRun(d, of: g, in: entries([a, b, x, d])))
+    }
+
     // MARK: Review Focus 4: Escape puts a drag back
 
     func testRestorePutsBackOrderAndMembership() throws {
