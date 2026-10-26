@@ -5,6 +5,8 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.5.30] - 2026-10-25
+
 ### Added
 
 - Service groups. Drag a service onto another and pause, or right-click it and choose Group with, and the two sit together in a box. The box shows in every layout. You can name a group, rename it and move it to another space as one, and dividers still work around it.

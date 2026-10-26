@@ -14,6 +14,16 @@ enum WhatsNew {
     }
 
     static let releases: [String: [Item]] = [
+        "1.5.30": [
+            Item(
+                id: "service-groups",
+                systemImage: "square.dashed",
+                title: "Service groups",
+                detail: "Drag a service onto another and hold it still for a moment, or right-click it and choose Group with. The two sit together in a box. Drag the box by its edge to move them as one, and right-click the edge to name it.",
+                action: nil,
+                actionTitle: ""
+            ),
+        ],
         "1.5.29": [
             Item(
                 id: "global-services",
