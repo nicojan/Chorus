@@ -1,12 +1,12 @@
 # Open items
 
-## Open: service groups on `feat/service-groups` (PR #40), not merged
+## Open: service groups, merged (PR #40), 1.5.30 built and held
 
 Built 2026-10-25 from `docs/superpowers/plans/2026-10-25-service-groups.md`. A group is two or more services of one space that draw as one box in every layout. You make one by dragging a service onto another and pausing, or with right-click and Group with. A group can have a name, and it moves as one: within its space by dragging the box or with Option-Shift-arrow on a member, and to another space by dragging it onto the space or with Move Group to. Dividers keep working beside and around groups. Escape during any service drag now puts the list back. The branch adds a stored `groupID` on the link, so it is a new schema version with a migration stage and tests; CI runs the suite on macOS 14 and 15. There is no What's New entry; decide that at release.
 
 **Real store.** A copy of the live store (3 spaces, 18 services, 16 links, 1 divider) went through the new schema with `testMigratesARealStoreCopy`. It came out with the same 3 spaces, 18 services, 16 links and 1 divider, every link still joined to its space and service, and no link in a group. The live store was not opened. The copy and the marker file are deleted.
 
-**Status on 2026-10-25:** PR #40 at `fa70d21`. Steps 1 to 13 run by Claude, results below. Two fixes came out of it, the refused group drop (`d439986`) and the top bar grab band (`fa70d21`). Left for Nico: whether the band and the key pair (step 8) feel right.
+**Status on 2026-10-25:** PR #40 merged as `8eadbe7` after steps 1 to 13 (results below) and two fixes, the refused group drop (`d439986`) and the top bar grab band (`fa70d21`, with `8da941b` for Xcode 16.2). CI green on macOS 14 and 15. `main` is at 1.5.30 (43) with a What's New entry for groups (`3ff6822`). The release build is in `build/r1.5.30`: `Chorus-1.5.30.dmg`, 10,659,359 bytes, sha256 `7d211d1a0834970f76fffb61f5a2ba46a63ad6cd1282f1a61713dfc5467c5902`, signed, notarized, stapled and accepted by Gatekeeper. Nothing published. Before step 6: install it over `/Applications` and run it on the real store, as for 1.5.29. Left for Nico: whether the grab band and the key pair (step 8) feel right, and the go to publish.
 
 **Still to run.** Run the Debug build from the branch (it uses `Chorus-debug`, so your real spaces are safe), with at least two spaces, a divider, and four or more services in one space. The builders drove every drag with synthetic events on macOS 26, so each step below needs a real mouse. Pass or fail is stated per step.
 
