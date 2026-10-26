@@ -1,5 +1,50 @@
 # Open items
 
+## Open: service groups on `feat/service-groups` (PR #40), not merged
+
+Built 2026-10-25 from `docs/superpowers/plans/2026-10-25-service-groups.md`. A group is two or more services of one space that draw as one box in every layout. You make one by dragging a service onto another and pausing, or with right-click and Group with. A group can have a name, and it moves as one: within its space by dragging the box or with Option-Shift-arrow on a member, and to another space by dragging it onto the space or with Move Group to. Dividers keep working beside and around groups. Escape during any service drag now puts the list back. The branch adds a stored `groupID` on the link, so it is a new schema version with a migration stage and tests; CI runs the suite on macOS 14 and 15. There is no What's New entry; decide that at release.
+
+**Real store.** A copy of the live store (3 spaces, 18 services, 16 links, 1 divider) went through the new schema with `testMigratesARealStoreCopy`. It came out with the same 3 spaces, 18 services, 16 links and 1 divider, every link still joined to its space and service, and no link in a group. The live store was not opened. The copy and the marker file are deleted.
+
+**Status on 2026-10-25:** PR #40 at `fa70d21`. Steps 1 to 13 run by Claude, results below. Two fixes came out of it, the refused group drop (`d439986`) and the top bar grab band (`fa70d21`). Left for Nico: whether the band and the key pair (step 8) feel right.
+
+**Still to run.** Run the Debug build from the branch (it uses `Chorus-debug`, so your real spaces are safe), with at least two spaces, a divider, and four or more services in one space. The builders drove every drag with synthetic events on macOS 26, so each step below needs a real mouse. Pass or fail is stated per step.
+
+1. **Thin grab area.** Make a group of two. In the top bar, press the box where it shows between tabs and drag it. In the sidebar with names off, do the same on the top or bottom padding. Pass: the whole box moves on the first try. Fail: you miss it often or drag a single service instead. A wider grab band would be the fix.
+2. **First drag after a menu.** Right-click a service, press Escape to close the menu, then drag that service at once. Pass: it drags. Fail: nothing happens on the first try (seen once with synthetic events, also before this branch).
+3. **Pause to group.** Drag a service slowly past three others: it must never group. Drag it over one and hold still for half a second. Pass: the target swells with an outline, and letting go makes a group. Also try the service next to the one you drag. Fail: it groups while you move, or it never swells.
+4. **Join and leave.** Drop a service between two members, then at either end of a lit box. Pass: it joins. Drag a member 4 points and let go inside the box: it stays. Drag it out: it leaves, and a group of two dissolves and loses its name. Fail: any of these differ.
+5. **Cancel.** Start a drag, move over other services, press Escape. Pass: everything is back as it was, including group membership. Repeat with a drop on another space and press Cancel in the question. Fail: anything stays moved.
+6. **Move a box.** Drag a whole group within its space in each layout, then onto another space in the strip, in the space palette (sidebar layout) and in the all-services list. Pass: it reorders live, and a drop on a space asks first and lists the services. Over the global box, or a space that already has a member, nothing happens. Fail: a drop where nothing should happen.
+7. **Box menu.** Right-click the box padding. Pass: the menu shows Move Group to, Name Group and Ungroup. Fail: the service menu shows instead.
+8. **Keyboard.** Select a member and press Option-Shift-Down and Option-Shift-Up. Pass: the whole box steps past its neighbour. Plain Option-arrow moves one service and stops at the edge of the box. Decide whether this key pair suits you.
+9. **Tab focus.** Turn on Full Keyboard Access in System Settings, Keyboard. Tab through the rail with a group in it. Pass: focus reaches each member, and the focus ring sits inside the box. Fail: a member is skipped, or the box takes focus.
+10. **Reduce Motion.** Turn on Reduce Motion in System Settings, Accessibility, Display. Pause over a service as in step 3. Pass: the outline shows and the row does not scale. Fail: it scales.
+11. **Divider in a group.** Drag a divider onto the middle of a group, and drop one beside it. Pass: no member ends up in the wrong group and no one-member box is left. Fail: either happens, or Chorus crashes.
+12. **Release off the rail.** Release a grouped service over the web view, and outside the window. Pass: it goes back where it was and its group is unchanged.
+13. **Refused drop.** In the all-services layout, drag a grouped service onto another space's card that already holds that service. Pass: it goes back where it was and its group is unchanged.
+14. **macOS 14 and 15.** CI runs the tests on both, nobody has used the drags there. If you have either, repeat steps 3, 4 and 6 on it, mainly to see that a box around rows still takes a drop on its padding. Skip if you have neither, and say so here.
+
+**Run by Claude on 2026-10-25**, Debug build on macOS 27, each drag posted as mouse events and checked against the store and by screenshot. Nico was off the Mac. Steps 1 to 13 are done; 14 is skipped, since there is no Mac on macOS 14 or 15 here.
+
+1. Measured, Nico to judge. Rail on the left with names off: the box takes a press on about 6 points of padding at the top, bottom and each side, and on the 2 point gap between rows. Top bar: about 1 point above the tabs, none below, 2 points at the left end, 3 between tabs and 1 at the right end. A press just above the box there lands in the title bar and moves the window. Fixed in `fa70d21`: the box has 8 points at each end in the top bar, which measured as a 6 point band on each side, the same as the sidebar.
+2. Pass. A press within about 150 ms of Escape still does nothing, while the menu fades.
+3. Pass. A slow drag past three services with 250 ms stops made no group. Half a second on a neighbour, in the rail and in the top bar, made one.
+4. Pass, all five cases. The group of two lost its name when it broke up.
+5. Pass. Escape after crossing three rows, and Cancel after a drop on another space, for a group and for one service whose drag had crossed two tabs first.
+6. Pass after a fix (`d439986`). A drop on another space asks and names the services, in the palette, the strip and the all-services list, and Move takes the group across with its space. A drop on the global services or on a space that holds a member did nothing, but the box stayed where its path had taken it, since those spaces dropped out of the drop and the release counted as one over a gap. Now they refuse it and the box goes back. A drop on its own space in the strip or the palette keeps the moves. Checked again in all three layouts.
+7. Pass. Name Group saves with Return.
+8. Pass on behaviour. Option-Shift-Up and Down step the box past its neighbour; Option-Down moves a member and stops at the edge of the box. Nico to judge the keys.
+9. Pass. Each row takes two Tab presses, one for its button and one for the row, but that is older than this branch.
+10. Pass. With Reduce Motion on the outline is 31 points across; off, the row grows to 33.
+11. Pass. A divider let go between two members lands after the box; one let go beside it stays there.
+12. Pass, over the web view and outside the window.
+13. Pass. The grouped service went back with its group, also when its path had moved it on the way.
+
+To set up 6 and 13, WhatsApp was linked into Work as well, straight in the Debug store, since nothing in the app makes a service sit in two spaces.
+
+When these pass, merge the PR. If step 1 failed, add a wider grab band; if step 8 failed, pick another key.
+
 ## Released: 1.5.29 on 2026-10-25
 
 Build 42, tag `v1.5.29` on `67cec72`. DMG 10,209,644 bytes, sha256 `84544ea8…235b8a`, signed, notarized and stapled. Appcast `c507180`, served by both feeds; cask `eeb5e61` here and `9dc1627` in the tap, and `brew style`, `livecheck` and `audit` all pass. Last changes before the cut: the What's New sheet for the three new features (`c974772`), and a 4 point gap between spaces in the emoji strip to match the service tabs (`9658bcc`).

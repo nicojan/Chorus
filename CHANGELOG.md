@@ -5,12 +5,17 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Service groups. Drag a service onto another and pause, or right-click it and choose Group with, and the two sit together in a box. The box shows in every layout. You can name a group, rename it and move it to another space as one, and dividers still work around it.
+
 ### Changed
 
 - In the narrow space strip, the spaces sit as far apart as the service tabs in the bar, and the services shown in every space sit in a box of their own above them.
 
 ### Fixed
 
+- Press Escape while you drag a service, or let go of it away from the rail, and it goes back where it was. Before, it stayed wherever the drag had taken it.
 - Chorus now quits while a sheet such as Edit Service or What's New is open. Before, ⌘Q, Quit in the Dock and the relaunch after an update did nothing until you closed the sheet.
 
 ## [1.5.29] - 2026-10-25

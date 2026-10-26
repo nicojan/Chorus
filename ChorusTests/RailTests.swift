@@ -89,17 +89,61 @@ final class RailTests: XCTestCase {
     /// Escape ends the drag at once, with the button still down. The live
     /// moves are undone and the divider stays, even off the rail.
     func testEscapeCancelsADividerDragWhereverItIs() {
-        XCTAssertEqual(DividerDragEnd.classify(dropTaken: false, endedByKey: true, insideRail: true), .cancelled)
-        XCTAssertEqual(DividerDragEnd.classify(dropTaken: false, endedByKey: true, insideRail: false), .cancelled)
+        XCTAssertEqual(RailDragEnd.classify(dropTaken: false, endedByKey: true, insideRail: true), .cancelled)
+        XCTAssertEqual(RailDragEnd.classify(dropTaken: false, endedByKey: true, insideRail: false), .cancelled)
     }
 
     func testReleasingADividerKeepsItOnTheRailAndRemovesItOff() {
-        XCTAssertEqual(DividerDragEnd.classify(dropTaken: true, endedByKey: false, insideRail: true), .moved)
+        XCTAssertEqual(RailDragEnd.classify(dropTaken: true, endedByKey: false, insideRail: true), .dropped)
         // Let go over a gap between rows: nothing took the drop, still a move.
-        XCTAssertEqual(DividerDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: true), .moved)
-        XCTAssertEqual(DividerDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: false), .removed)
+        XCTAssertEqual(RailDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: true), .dropped)
+        XCTAssertEqual(RailDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: false), .endedOffRail)
         // With no rail to ask, keep it.
-        XCTAssertEqual(DividerDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: nil), .moved)
+        XCTAssertEqual(RailDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: nil), .dropped)
+    }
+
+    // MARK: - The end of a service drag
+
+    /// A service or group drag keeps its moves only when it was dropped: on a
+    /// row, or over the rail with nothing taking it (a gap, a box's padding).
+    /// Let go off the rail, or refused by a target off the rail, it goes back
+    /// where it was, and Escape always does.
+    func testAServiceDragOffTheRailGoesBack() {
+        // Refused (or taken by nothing) with the pointer off the rail: the web
+        // view, outside the window, a strip or palette space that said no.
+        let offRail = RailDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: false)
+        XCTAssertEqual(offRail, .endedOffRail)
+        XCTAssertFalse(offRail.keepsServiceMoves)
+        // A gap or a box's padding inside the rail still makes the one write.
+        XCTAssertTrue(RailDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: true).keepsServiceMoves)
+        // Taken off the rail, by a palette space that asks first: the drop stands.
+        XCTAssertTrue(RailDragEnd.classify(dropTaken: true, endedByKey: false, insideRail: false).keepsServiceMoves)
+        XCTAssertFalse(RailDragEnd.classify(dropTaken: false, endedByKey: true, insideRail: true).keepsServiceMoves)
+        XCTAssertFalse(RailDragEnd.cancelled.keepsServiceMoves)
+    }
+
+    /// A target that refused the drop leaves `operation` empty, the same as a
+    /// release nothing took, so the refusal is told apart by what the target
+    /// said. Inside the rail it still cancels: the service goes back and its
+    /// group is untouched.
+    func testARefusedDropPutsAServiceBack() {
+        let refused = RailDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: true, dropRefused: true)
+        XCTAssertEqual(refused, .cancelled)
+        XCTAssertFalse(refused.keepsServiceMoves)
+        // Off the rail a refusal goes back too.
+        XCTAssertFalse(RailDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: false, dropRefused: true).keepsServiceMoves)
+        // Nothing taking it inside the rail (a gap) still makes the one write.
+        XCTAssertEqual(RailDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: true, dropRefused: false), .dropped)
+        // Taken stands, and Escape cancels.
+        XCTAssertEqual(RailDragEnd.classify(dropTaken: true, endedByKey: false, insideRail: true, dropRefused: false), .dropped)
+        XCTAssertEqual(RailDragEnd.classify(dropTaken: false, endedByKey: true, insideRail: true, dropRefused: false), .cancelled)
+    }
+
+    @MainActor
+    func testResetClearsARefusedDrop() {
+        RailDragState.shared.dropRefused = true
+        RailDragState.shared.reset()
+        XCTAssertFalse(RailDragState.shared.dropRefused)
     }
 
     // MARK: - Dividers in the store
@@ -452,5 +496,104 @@ final class RailTests: XCTestCase {
             XCTAssertEqual(entries.last?.isDivider, false, "the import lands after the divider")
             XCTAssertTrue(entries.contains { $0.id == divider })
         }
+    }
+
+    // MARK: - Setup groups
+
+    /// A source store whose "Work" space holds a, b, c, d with b and c in a
+    /// group named "Chat", plus the encoded archive.
+    private func groupedArchive(name: String? = "Chat") throws -> SetupArchive {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (space, _, links) = try makeSpace("Work", order: 0, services: ["a", "b", "c", "d"], in: ctx)
+        let group = ServiceGroup(spaceID: space.id, name: name)
+        ctx.insert(group)
+        links[1].groupID = group.id
+        links[2].groupID = group.id
+        try ctx.save()
+        return try SetupArchive.capture(from: ctx, appVersion: nil)
+    }
+
+    func testSetupRoundTripKeepsGroupsAndNames() throws {
+        let archive = try groupedArchive()
+        XCTAssertEqual(archive.spaces[0].groups, [.init(name: "Chat", members: [1, 2])])
+        let decoded = try SetupArchive.decode(try archive.encoded())
+
+        let target = try makeContainer()
+        let ctx = target.mainContext
+        _ = try decoded.apply(to: ctx)
+        let space = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Space>()).first)
+        let groups = try ctx.fetch(FetchDescriptor<ServiceGroup>())
+        XCTAssertEqual(groups.map(\.name), ["Chat"])
+        let list = RailEdits.groupEntries(inSpace: space.id, context: ctx)
+        XCTAssertEqual(list.map { $0.groupID != nil }, [false, false, true, true], "the group sits at the end of the space")
+        XCTAssertEqual(Set(list.compactMap(\.groupID)).count, 1)
+    }
+
+    func testSetupFromBefore1_5_30DecodesWithNoGroups() throws {
+        let json = """
+        {"format":"chorus-setup","version":1,"exportedAt":"2026-01-01T00:00:00Z",
+         "spaces":[{"name":"Home","emoji":"x","sortOrder":0,"members":[{"service":0,"sortOrder":0}]}],
+         "services":[{"label":"a","url":"https://a.example","isMuted":false,"showBadge":true,"neverHibernate":false}]}
+        """
+        let archive = try SetupArchive.decode(Data(json.utf8))
+        XCTAssertNil(archive.spaces[0].groups)
+    }
+
+    func testSetupRejectsBadGroups() throws {
+        func rejects(_ edit: (inout SetupArchive) -> Void, _ message: String) throws {
+            var archive = try groupedArchive()
+            edit(&archive)
+            XCTAssertThrowsError(try SetupArchive.decode(try archive.encoded()), message)
+        }
+        try rejects({ $0.spaces[0].groups = [.init(name: nil, members: [1, 99])] }, "index out of range")
+        try rejects({
+            $0.spaces.append(.init(name: "Other", emoji: "x", sortOrder: 1, members: [.init(service: 0, sortOrder: 0)], groups: nil))
+            $0.spaces[1].groups = [.init(name: nil, members: [0, 1])]
+        }, "index not a member of that space")
+        try rejects({ $0.spaces[0].groups = [.init(name: nil, members: [0, 1]), .init(name: nil, members: [1, 2])] }, "index in two groups")
+        try rejects({ $0.globalServices = [1] }, "index also global")
+        try rejects({ $0.spaces[0].groups = [.init(name: nil, members: [1])] }, "fewer than two")
+        try rejects({ $0.spaces[0].groups = [.init(name: String(repeating: "x", count: SetupArchive.Limit.textLength + 1), members: [1, 2])] }, "name too long")
+    }
+
+    func testCaptureLeavesOutAGroupLeftWithFewerThanTwoExportedMembers() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let (space, services, links) = try makeSpace("Work", order: 0, services: ["a", "b", "c"], in: ctx)
+        services[2].url = "file:///nope"
+        let group = ServiceGroup(spaceID: space.id)
+        ctx.insert(group)
+        links[1].groupID = group.id
+        links[2].groupID = group.id
+        try ctx.save()
+        let archive = try SetupArchive.capture(from: ctx, appVersion: nil)
+        XCTAssertNil(archive.spaces[0].groups)
+    }
+
+    func testImportIntoAnExistingSpaceKeepsTheImportedGroupTogether() throws {
+        let archive = try groupedArchive()
+
+        let target = try makeContainer()
+        let ctx = target.mainContext
+        let (space, _, existing) = try makeSpace("Work", order: 0, services: ["x", "y"], in: ctx)
+        let old = ServiceGroup(spaceID: space.id, name: "Old")
+        ctx.insert(old)
+        existing[0].groupID = old.id
+        existing[1].groupID = old.id
+        try ctx.save()
+
+        _ = try archive.apply(to: ctx)
+
+        XCTAssertEqual(try ctx.fetch(FetchDescriptor<Space>()).count, 1)
+        let list = RailEdits.groupEntries(inSpace: space.id, context: ctx)
+        let imported = Set(list.compactMap(\.groupID)).subtracting([old.id])
+        XCTAssertEqual(imported.count, 1)
+        let importedID = try XCTUnwrap(imported.first)
+        let positions = list.indices.filter { list[$0].groupID == importedID }
+        XCTAssertEqual(positions.count, 2)
+        XCTAssertEqual(positions[1] - positions[0], 1, "one run")
+        XCTAssertEqual(list.filter { $0.groupID == old.id }.map(\.id), existing.map(\.id), "no existing service joined")
+        XCTAssertEqual(list.prefix(2).map(\.groupID), [old.id, old.id])
     }
 }

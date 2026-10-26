@@ -58,6 +58,9 @@ final class AppState {
     /// A service dragged into another space or the global group, waiting for
     /// the confirmation ContentView shows. See `RailMove`.
     var pendingRailMove: RailMove?
+    /// The lists as the drag behind `pendingRailMove` found them, put back if
+    /// the move is turned down. Empty for a move asked from a menu.
+    var pendingRailMoveRestore: [RailScope: [GroupEntry]] = [:]
     /// The version whose What's New sheet is up, or nil.
     var whatsNewVersion: String?
     /// The Mac app whose name the Accessibility explanation is about, or nil
@@ -562,6 +565,9 @@ final class AppState {
         let didSeedDefaults = seedDefaultDataIfNeeded()
         backfillPasskeyNoticeIfNeeded(freshInstall: didSeedDefaults)
         reapOrphanedServices()
+        // After the reap, so a group it left with one member dissolves. Runs on
+        // every store: it touches no sign-in.
+        RailEdits.repairGroups(context: modelContainer.mainContext)
         // Only on a store that is really the user's. On a damaged, restored or
         // in-memory launch the flag is cleared instead, so the store that comes
         // back gets its pins cleared at the next clean launch.
@@ -1812,9 +1818,10 @@ final class AppState {
             context.delete(link)
         }
         for service in reclaimed { context.delete(service) }
-        // Dividers point at their space by id, not by a relationship, so no
-        // cascade takes them. Delete them in this same save.
+        // Dividers and groups point at their space by id, not by a
+        // relationship, so no cascade takes them. Delete them in this same save.
         RailEdits.deleteDividers(ofSpace: spaceID, context: context)
+        RailEdits.deleteGroups(ofSpace: spaceID, context: context)
         context.delete(space)
 
         do {

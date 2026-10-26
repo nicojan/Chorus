@@ -296,9 +296,10 @@ extension View {
 
     /// Draws this view as the rail card: the translucent surface behind it,
     /// continuous 14 point corners and a hairline edge. Neither layer takes
-    /// clicks, so a window-drag handle behind the card still gets them.
-    func railCard() -> some View {
-        let shape = RoundedRectangle(cornerRadius: ChorusCard.cornerRadius, style: .continuous)
+    /// clicks, so a window-drag handle behind the card still gets them. A card
+    /// whose rows touch its side edges passes the rows' own radius instead.
+    func railCard(cornerRadius: CGFloat = ChorusCard.cornerRadius) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         return background(shape.fill(ChorusColor.surface).allowsHitTesting(false))
             .overlay(
                 shape

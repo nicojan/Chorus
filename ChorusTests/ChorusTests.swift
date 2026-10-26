@@ -2645,6 +2645,66 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(ServiceAccessibility.label(name: "Slack", badgeCount: 0, isHibernated: false, isMuted: false, needsAttention: true), "Slack")
     }
 
+    /// A member of a named group says the group's name last.
+    func testSpokenLabelEndsWithANamedGroup() {
+        XCTAssertEqual(
+            ServiceAccessibility.label(name: "Gmail", badgeCount: 0, isHibernated: false, isMuted: false, group: .named("Google")),
+            "Gmail, in Google"
+        )
+        XCTAssertEqual(
+            ServiceAccessibility.label(name: "Gmail", badgeCount: 3, isHibernated: false, isMuted: true, group: .named("Google")),
+            "Gmail, 3 unread, muted, in Google"
+        )
+    }
+
+    /// A member of a group with no name says which services share its box.
+    func testSpokenLabelEndsWithTheOtherMembersOfAnUnnamedGroup() {
+        XCTAssertEqual(
+            ServiceAccessibility.label(name: "Gmail", badgeCount: 0, isHibernated: false, isMuted: false, group: .unnamed(others: ["Calendar", "Drive"])),
+            "Gmail, in a group with Calendar and Drive"
+        )
+        XCTAssertEqual(
+            ServiceAccessibility.label(name: "Gmail", badgeCount: 0, isHibernated: false, isMuted: false, group: .unnamed(others: ["Calendar"])),
+            "Gmail, in a group with Calendar"
+        )
+        XCTAssertEqual(
+            ServiceAccessibility.label(name: "Gmail", badgeCount: 0, isHibernated: false, isMuted: false, group: .unnamed(others: ["Calendar", "Drive", "Docs"])),
+            "Gmail, in a group with Calendar, Drive and Docs"
+        )
+        XCTAssertEqual(ServiceAccessibility.label(name: "Gmail", badgeCount: 0, isHibernated: false, isMuted: false, group: nil), "Gmail")
+    }
+
+    /// A group's box is one container to VoiceOver: named by the group's name,
+    /// or by its services when it has none.
+    func testGroupBoxSpokenName() {
+        XCTAssertEqual(ServiceAccessibility.groupLabel(name: "Google", members: ["Gmail", "Drive"]), "Google")
+        XCTAssertEqual(ServiceAccessibility.groupLabel(name: nil, members: ["Gmail", "Drive"]), "Group: Gmail and Drive")
+        XCTAssertEqual(ServiceAccessibility.groupLabel(name: nil, members: ["Gmail", "Drive", "Docs"]), "Group: Gmail, Drive and Docs")
+    }
+
+    /// The rail draws a link in a group only while that group exists in the
+    /// link's own space, and a blank name is no name.
+    func testRailGroupLookupIgnoresMissingAndForeignGroups() {
+        let space = UUID(), other = UUID()
+        let named = UUID(), blank = UUID(), foreign = UUID(), missing = UUID()
+        let lookup = RailGroupLookup(
+            entries: [
+                (id: named, spaceID: space, name: " Google "),
+                (id: blank, spaceID: space, name: "  "),
+                (id: foreign, spaceID: other, name: "Elsewhere"),
+            ],
+            spaceID: space
+        )
+        XCTAssertEqual(lookup.group(of: named), named)
+        XCTAssertEqual(lookup.group(of: blank), blank)
+        XCTAssertNil(lookup.group(of: foreign))
+        XCTAssertNil(lookup.group(of: missing))
+        XCTAssertNil(lookup.group(of: nil))
+        XCTAssertEqual(lookup.name(of: named), "Google")
+        XCTAssertNil(lookup.name(of: blank))
+        XCTAssertNil(lookup.name(of: foreign))
+    }
+
     /// Dragging the rail's edge switches names once the drag has gone far
     /// enough, either way, and back again if it returns within the drag.
     func testRailEdgeDragSwitchesNamesPastTheThreshold() {
@@ -4377,7 +4437,7 @@ final class ChorusTests: XCTestCase {
     /// using only its `mainContext` after the container deallocates crashes.
     private func makeGroupingContainer() throws -> ModelContainer {
         try ModelContainer(
-            for: Space.self, ServiceInstance.self, SpaceServiceLink.self, RailDivider.self,
+            for: Space.self, ServiceInstance.self, SpaceServiceLink.self, RailDivider.self, ServiceGroup.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
     }
@@ -4994,10 +5054,17 @@ final class ChorusTests: XCTestCase {
         // Space's stored shape and bring the cascade differences between macOS
         // 14, 15 and 26 with it.
         XCTAssertTrue(divider.relationships.isEmpty, "RailDivider must not hold relationships")
+        let group = try entity("ServiceGroup")
+        XCTAssertEqual(
+            Set(group.attributes.map(\.name)),
+            ["id", "spaceID", "name", "createdAt"],
+            "ServiceGroup stored attributes changed without a new schema version"
+        )
+        XCTAssertTrue(group.relationships.isEmpty, "ServiceGroup must not hold relationships")
         let link = try entity("SpaceServiceLink")
         XCTAssertEqual(
             Set(link.attributes.map(\.name)),
-            ["id", "sortOrder"],
+            ["id", "sortOrder", "groupID"],
             "SpaceServiceLink stored attributes changed without a new schema version"
         )
         // Both ends must stay optional. Non-optional is what made a cascade

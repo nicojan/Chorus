@@ -176,7 +176,7 @@ struct SpacePaletteView: View {
                 .background(.ultraThickMaterial)
                 .clipShape(RoundedRectangle(cornerRadius: ChorusRadius.control))
         }
-        .liveReorderDrop(lanes(over: space.id))
+        .liveReorderDrop(lanes(over: space.id) + [groupLane(into: space.id)])
         .accessibilityAction(named: "Move up") { step(space.id, forward: false) }
         .accessibilityAction(named: "Move down") { step(space.id, forward: true) }
         .contextMenu {
@@ -326,9 +326,25 @@ struct SpacePaletteView: View {
     /// pointer, live. See `LiveReorder`.
     private func lanes(over target: UUID) -> [LiveReorderDropDelegate.Lane] {
         [
-            .init(type: LiveReorder.spaceType, draggingID: { drag.spaceID }, move: { liveMove($0, over: target) }),
-            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: target) }),
+            .init(type: LiveReorder.spaceType, draggingID: { drag.spaceID }, move: { dragged, _ in liveMove(dragged, over: target) }),
+            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { dragged, _ in liveMove(dragged, over: target) }),
         ]
+    }
+
+    /// A group's box, dragged from the rail and let go on a space here, goes
+    /// to the end of that space once confirmed; its own space takes it with
+    /// nothing more. The palette closes so the question can show.
+    private func groupLane(into spaceID: UUID) -> LiveReorderDropDelegate.Lane {
+        .init(
+            type: LiveReorder.groupType,
+            draggingID: { drag.groupID },
+            drop: { groupID in
+                guard appState.requestGroupMove(groupID, into: spaceID, before: nil) else { return false }
+                dismiss()
+                return true
+            },
+            accepts: { appState.groupDrop($0, into: spaceID) != .refuse }
+        )
     }
 
     /// Moves the dragged entry into the slot of the one under the pointer and

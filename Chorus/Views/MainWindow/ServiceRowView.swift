@@ -40,6 +40,9 @@ struct ServiceRowView: View {
     /// Optional group context for layouts that show the same service in more
     /// than one space. Compact tooltips and VoiceOver include it.
     var spaceName: String? = nil
+    /// The service group this row's box stands for, if it is in one. VoiceOver
+    /// and the compact tooltip end with it.
+    var group: ServiceAccessibility.GroupContext? = nil
     /// Whether the keyboard is on this row. Drawn as a ring, never as the fill
     /// selection uses — see `RowMark`.
     var isFocused: Bool = false
@@ -130,8 +133,8 @@ struct ServiceRowView: View {
             health: health,
             needsAttention: needsAttention
         )
-        guard let spaceName else { return label }
-        return "\(label), \(spaceName)"
+        let parts = [label, spaceName, group?.spoken].compactMap { $0 }
+        return parts.joined(separator: ", ")
     }
 
     /// The two forms cross-fade when the rail changes between them.

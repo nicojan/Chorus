@@ -42,6 +42,16 @@ struct SetupArchive: Codable, Equatable {
         var sortOrder: Int
         var isMuted: Bool?
         var members: [Member]
+        /// The space's service groups, each two or more of its members.
+        /// Optional, so a file from before groups reads as none.
+        var groups: [GroupRecord]?
+    }
+
+    /// A group of services in one space: its name (nil for none) and the
+    /// indexes into `services` of its members, in rail order.
+    struct GroupRecord: Codable, Equatable {
+        var name: String?
+        var members: [Int]
     }
 
     /// A service's place in a space: its index in `services`, and its order.
@@ -233,6 +243,19 @@ struct SetupArchive: Codable, Equatable {
             for member in space.members where !services.indices.contains(member.service) {
                 throw ReadError.invalid("a space lists a service that isn't in the file")
             }
+            let spaceMembers = Set(space.members.map(\.service))
+            let globals = Set(globalServices ?? [])
+            var grouped = Set<Int>()
+            for group in space.groups ?? [] {
+                guard group.members.count >= 2 else { throw ReadError.invalid("a group has fewer than two services") }
+                guard (group.name?.count ?? 0) <= Limit.textLength else { throw ReadError.invalid("a group has a name longer than Chorus allows") }
+                for index in group.members {
+                    guard services.indices.contains(index) else { throw ReadError.invalid("a group lists a service that isn't in the file") }
+                    guard spaceMembers.contains(index) else { throw ReadError.invalid("a group lists a service that isn't in its space") }
+                    guard !globals.contains(index) else { throw ReadError.invalid("a group lists a global service") }
+                    guard grouped.insert(index).inserted else { throw ReadError.invalid("a service is in more than one group") }
+                }
+            }
         }
         for index in globalServices ?? [] where !services.indices.contains(index) {
             throw ReadError.invalid("the global list names a service that isn't in the file")
@@ -269,6 +292,12 @@ struct SetupArchive: Codable, Equatable {
     static func capture(from context: ModelContext, appVersion: String?, now: Date = Date()) throws -> SetupArchive {
         let spaces = try context.fetch(FetchDescriptor<Space>(sortBy: [SortDescriptor(\.sortOrder)]))
         let linksBySpace = try liveLinksBySpace(in: context)
+        // A link's group counts only when its row exists and sits in the
+        // same space.
+        var groupInfo: [UUID: (spaceID: UUID, name: String?)] = [:]
+        for group in try context.fetch(FetchDescriptor<ServiceGroup>()) where !group.isDeleted {
+            groupInfo[group.id] = (group.spaceID, group.name)
+        }
         var records: [ServiceRecord] = []
         var indexByID: [UUID: Int] = [:]
         var spaceRecords: [SpaceRecord] = []
@@ -276,7 +305,9 @@ struct SetupArchive: Codable, Equatable {
 
         for space in spaces {
             var members: [Member] = []
-            for (sortOrder, service) in linksBySpace[space.id] ?? [] {
+            var groupMembers: [UUID: [Int]] = [:]
+            var groupOrder: [UUID] = []
+            for (sortOrder, service, group) in linksBySpace[space.id] ?? [] {
                 let index: Int
                 if let known = indexByID[service.id] {
                     index = known
@@ -290,10 +321,21 @@ struct SetupArchive: Codable, Equatable {
                     records.append(record)
                 }
                 members.append(Member(service: index, sortOrder: sortOrder))
+                if let group, groupInfo[group]?.spaceID == space.id {
+                    if groupMembers[group] == nil { groupOrder.append(group) }
+                    groupMembers[group, default: []].append(index)
+                }
+            }
+            // Whole groups only: one left with fewer than two exported
+            // members is not a group.
+            let groupRecords = groupOrder.compactMap { id -> GroupRecord? in
+                guard let list = groupMembers[id], list.count >= 2 else { return nil }
+                return GroupRecord(name: groupInfo[id]?.name, members: list)
             }
             spaceRecords.append(SpaceRecord(
                 name: space.name, emoji: space.emoji, sortOrder: space.sortOrder,
-                isMuted: space.isMuted, members: members
+                isMuted: space.isMuted, members: members,
+                groups: groupRecords.isEmpty ? nil : groupRecords
             ))
         }
         var globalIndices: [Int] = []
@@ -328,11 +370,11 @@ struct SetupArchive: Codable, Equatable {
     /// through `liveEnds`, since a link left by a crash mid-delete can still
     /// hold a freed model.
     @MainActor
-    private static func liveLinksBySpace(in context: ModelContext) throws -> [UUID: [(Int, ServiceInstance)]] {
-        var grouped: [UUID: [(Int, ServiceInstance)]] = [:]
+    private static func liveLinksBySpace(in context: ModelContext) throws -> [UUID: [(Int, ServiceInstance, UUID?)]] {
+        var grouped: [UUID: [(Int, ServiceInstance, UUID?)]] = [:]
         for link in try context.fetch(FetchDescriptor<SpaceServiceLink>()) {
             guard let ends = link.liveEnds else { continue }
-            grouped[ends.space.id, default: []].append((link.sortOrder, ends.service))
+            grouped[ends.space.id, default: []].append((link.sortOrder, ends.service, link.groupID))
         }
         return grouped.mapValues { $0.sorted { $0.0 < $1.0 } }
     }
@@ -419,9 +461,11 @@ struct SetupArchive: Codable, Equatable {
             throw error
         }
 
+        var knownGroups: [UUID: UUID] = [:]
         do {
             var nextOrder: [UUID: Int] = [:]
             var linked: [UUID: Set<Int>] = [:]
+            var linkFor: [UUID: [Int: SpaceServiceLink]] = [:]
             // A global service has no links; a file that also lists it in a
             // space does not get to give it one.
             let globalSet = Set(globalIndices)
@@ -436,9 +480,30 @@ struct SetupArchive: Codable, Equatable {
                           let service = created[member.service] else { continue }
                     let link = SpaceServiceLink(sortOrder: order, space: space, service: service)
                     if link.modelContext == nil { context.insert(link) }
+                    linkFor[space.id, default: [:]][member.service] = link
                     order += 1
                 }
+                // Each group's links take a new group row and move, in rail
+                // order, to the end of the space. Only links this import made
+                // are named, so no service already here joins one.
+                for group in record.groups ?? [] {
+                    let ours = group.members
+                        .compactMap { linkFor[space.id]?[$0] }
+                        .sorted { $0.sortOrder < $1.sortOrder }
+                    guard ours.count >= 2 else { continue }
+                    let row = ServiceGroup(spaceID: space.id, name: group.name)
+                    context.insert(row)
+                    knownGroups[row.id] = space.id
+                    for link in ours {
+                        link.groupID = row.id
+                        link.sortOrder = order
+                        order += 1
+                    }
+                }
                 nextOrder[space.id] = order
+            }
+            for space in targets where !knownGroups.isEmpty {
+                RailEdits.tidyGroups(inSpace: space.id, context: context, knownGroups: knownGroups)
             }
             try context.save()
         } catch {

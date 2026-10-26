@@ -6,6 +6,10 @@ final class SpaceServiceLink {
     @Attribute(.unique) var id: UUID
     var sortOrder: Int
 
+    /// The `ServiceGroup` this link sits in, or nil for no group. A plain id,
+    /// not a relationship, as `RailDivider.spaceID` is: see `ServiceGroup`.
+    var groupID: UUID?
+
     /// Both ends are optional in storage, and that is the whole point rather
     /// than an oversight.
     ///

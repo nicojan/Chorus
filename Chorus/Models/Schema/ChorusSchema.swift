@@ -394,7 +394,7 @@ enum ChorusSchemaV1_5_13: VersionedSchema {
 //
 // Frozen on 2026-10-22. This is what shipped from 1.5.19 through 1.5.28: the
 // 1.5.13 triangle with `SpaceServiceLink.space` and `.service` made optional.
-// The current version adds `ServiceInstance.isGlobal` and `.globalSortOrder`
+// The next version adds `ServiceInstance.isGlobal` and `.globalSortOrder`
 // and a new `RailDivider` entity, all additive.
 
 enum ChorusSchemaV1_5_19: VersionedSchema {
@@ -493,7 +493,138 @@ enum ChorusSchemaV1_5_19: VersionedSchema {
     }
 }
 
-// MARK: - Current (1.5.29: global services and rail dividers)
+// MARK: - V1.5.29 (the shape before service groups)
+//
+// Frozen on 2026-10-25. This is what 1.5.29 shipped: the
+// 1.5.19 triangle plus `ServiceInstance.isGlobal` and `.globalSortOrder` and
+// the `RailDivider` entity. The current version adds `SpaceServiceLink.groupID`
+// and a new `ServiceGroup` entity, both additive.
+
+enum ChorusSchemaV1_5_29: VersionedSchema {
+    nonisolated(unsafe) static let versionIdentifier = Schema.Version(1, 5, 29)
+
+    // Reuses V1.5.11's frozen AppPreferences (unchanged since); the triangle is
+    // this namespace's own so the relationships point at THIS ServiceInstance.
+    static var models: [any PersistentModel.Type] {
+        [
+            ServiceInstance.self, Space.self, SpaceServiceLink.self,
+            ChorusSchemaV1_5_11.AppPreferences.self, RailDivider.self,
+        ]
+    }
+
+    @Model
+    final class ServiceInstance {
+        @Attribute(.unique) var id: UUID
+        var label: String
+        var url: String
+        var customIconData: Data?
+        var fetchedIconData: Data?
+        var faviconFetchedAt: Date?
+        var catalogEntryID: String?
+        var isMuted: Bool
+        var showBadge: Bool
+        var neverHibernate: Bool
+        var userAgent: String?
+        var dataStoreIdentifier: UUID
+        var pageZoom: Double?
+        var osNotificationsEnabled: Bool?
+        var customCSS: String?
+        var forceDarkMode: Bool?
+        var darkModeRaw: String?
+        var cameraPolicyRaw: String?
+        var microphonePolicyRaw: String?
+        var openExternalLinksInApp: Bool?
+        var stayActiveInBackground: Bool?
+        var hasSeenPasskeyNotice: Bool?
+        var hibernationPolicyRaw: String?
+        var hibernateAfterMinutes: Int?
+        var isGlobal: Bool?
+        var globalSortOrder: Int?
+
+        @Relationship(deleteRule: .cascade, inverse: \SpaceServiceLink.service)
+        var spaceLinks: [SpaceServiceLink]
+
+        var createdAt: Date
+        var lastAccessedAt: Date
+
+        init(id: UUID = UUID(), label: String = "", url: String = "") {
+            self.id = id
+            self.label = label
+            self.url = url
+            self.isMuted = false
+            self.showBadge = true
+            self.neverHibernate = false
+            self.dataStoreIdentifier = UUID()
+            self.spaceLinks = []
+            self.createdAt = Date()
+            self.lastAccessedAt = Date()
+        }
+    }
+
+    @Model
+    final class Space {
+        @Attribute(.unique) var id: UUID
+        var name: String
+        var emoji: String
+        var sortOrder: Int
+        var isMuted: Bool?
+
+        @Relationship(deleteRule: .cascade, inverse: \SpaceServiceLink.space)
+        var serviceLinks: [SpaceServiceLink]
+
+        var createdAt: Date
+
+        init(id: UUID = UUID(), name: String = "", emoji: String = "", sortOrder: Int = 0) {
+            self.id = id
+            self.name = name
+            self.emoji = emoji
+            self.sortOrder = sortOrder
+            self.serviceLinks = []
+            self.createdAt = Date()
+        }
+    }
+
+    @Model
+    final class SpaceServiceLink {
+        @Attribute(.unique) var id: UUID
+        var sortOrder: Int
+
+        @Relationship var space: Space?
+        @Relationship var service: ServiceInstance?
+
+        init(id: UUID = UUID(), sortOrder: Int = 0, space: Space, service: ServiceInstance) {
+            self.id = id
+            self.sortOrder = sortOrder
+            self.space = space
+            self.service = service
+        }
+    }
+
+    @Model
+    final class RailDivider {
+        @Attribute(.unique) var id: UUID
+        var kindRaw: String
+        var spaceID: UUID?
+        var sortOrder: Int
+        var createdAt: Date
+
+        init(
+            id: UUID = UUID(),
+            kindRaw: String,
+            spaceID: UUID? = nil,
+            sortOrder: Int = 0,
+            createdAt: Date = Date()
+        ) {
+            self.id = id
+            self.kindRaw = kindRaw
+            self.spaceID = spaceID
+            self.sortOrder = sortOrder
+            self.createdAt = createdAt
+        }
+    }
+}
+
+// MARK: - Current (1.5.30: service groups)
 //
 // Reuses the live top-level model types — today's model files are the single
 // source of truth for the shipping shape. When a stored property changes, freeze
@@ -504,14 +635,17 @@ enum ChorusSchemaVCurrent: VersionedSchema {
     // NOTE: `versionIdentifier` is a schema-SHAPE label, not the app's marketing
     // version. Bump it only when the stored shape changes — and to a value not
     // already used by a different shape (do not blindly mint the next marketing
-    // number). (1,5,19) now belongs to the frozen `ChorusSchemaV1_5_19`, the
-    // shape 1.5.19 through 1.5.28 shipped; this one is (1,5,29) because
-    // `ServiceInstance.isGlobal`, `.globalSortOrder` and the `RailDivider`
-    // entity first ship there.
-    nonisolated(unsafe) static let versionIdentifier = Schema.Version(1, 5, 29)
+    // number). (1,5,29) now belongs to the frozen `ChorusSchemaV1_5_29`, the
+    // shape with global services and rail dividers; this one is (1,5,30)
+    // because `SpaceServiceLink.groupID` and the `ServiceGroup` entity first
+    // ship there.
+    nonisolated(unsafe) static let versionIdentifier = Schema.Version(1, 5, 30)
 
     static var models: [any PersistentModel.Type] {
-        [ServiceInstance.self, Space.self, SpaceServiceLink.self, AppPreferences.self, RailDivider.self]
+        [
+            ServiceInstance.self, Space.self, SpaceServiceLink.self, AppPreferences.self, RailDivider.self,
+            ServiceGroup.self,
+        ]
     }
 }
 
@@ -521,7 +655,7 @@ enum ChorusMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
         [
             ChorusSchemaV1_5_11.self, ChorusSchemaV1_5_12.self, ChorusSchemaV1_5_13.self,
-            ChorusSchemaV1_5_19.self, ChorusSchemaVCurrent.self,
+            ChorusSchemaV1_5_19.self, ChorusSchemaV1_5_29.self, ChorusSchemaVCurrent.self,
         ]
     }
 
@@ -536,11 +670,15 @@ enum ChorusMigrationPlan: SchemaMigrationPlan {
             // existing row already has both ends set, so nothing has to be
             // rewritten and no row can fail to satisfy the looser shape.
             .lightweight(fromVersion: ChorusSchemaV1_5_13.self, toVersion: ChorusSchemaV1_5_19.self),
-            // 1.5.19 → current: adds ServiceInstance.isGlobal and
+            // 1.5.19 → 1.5.29: adds ServiceInstance.isGlobal and
             // .globalSortOrder (both optional, nil on every existing row) and a
             // new RailDivider entity that starts empty. Nothing existing is
             // reshaped.
-            .lightweight(fromVersion: ChorusSchemaV1_5_19.self, toVersion: ChorusSchemaVCurrent.self),
+            .lightweight(fromVersion: ChorusSchemaV1_5_19.self, toVersion: ChorusSchemaV1_5_29.self),
+            // 1.5.29 → current: adds SpaceServiceLink.groupID (optional, nil on
+            // every existing row) and a new ServiceGroup entity that starts
+            // empty. Nothing existing is reshaped.
+            .lightweight(fromVersion: ChorusSchemaV1_5_29.self, toVersion: ChorusSchemaVCurrent.self),
         ]
     }
 }

@@ -321,8 +321,8 @@ struct SpaceStripView: View {
     /// pointer, live. See `LiveReorder`.
     private func lanes(over target: UUID) -> [LiveReorderDropDelegate.Lane] {
         [
-            .init(type: LiveReorder.spaceType, draggingID: { drag.spaceID }, move: { liveMove($0, over: target) }),
-            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { liveMove($0, over: target) }),
+            .init(type: LiveReorder.spaceType, draggingID: { drag.spaceID }, move: { dragged, _ in liveMove(dragged, over: target) }),
+            .init(type: LiveReorder.dividerType, draggingID: { drag.dividerID }, move: { dragged, _ in liveMove(dragged, over: target) }),
         ]
     }
 
@@ -349,6 +349,14 @@ struct SpaceStripView: View {
                 appState.pendingRailMove = .globalIntoSpace(serviceID: serviceID, spaceID: spaceID, before: nil)
                 return true
             }),
+            // A group's box goes to the end of the space, once confirmed. Its
+            // own space takes it with nothing more; a refusal puts it back.
+            .init(
+                type: LiveReorder.groupType,
+                draggingID: { drag.groupID },
+                drop: { appState.requestGroupMove($0, into: spaceID, before: nil) },
+                accepts: { appState.groupDrop($0, into: spaceID) != .refuse }
+            ),
         ]
     }
 
