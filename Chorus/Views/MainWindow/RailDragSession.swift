@@ -18,8 +18,16 @@ enum RailDragEnd: Equatable {
 
     /// `insideRail` is nil when there is no rail to ask, and then the drag
     /// counts as dropped.
-    nonisolated static func classify(dropTaken: Bool, endedByKey: Bool, insideRail: Bool?) -> RailDragEnd {
-        if endedByKey { return .cancelled }
+    /// `dropRefused` is true when a target said no to the release. AppKit
+    /// reports that as no operation, the same as a release nothing took, so
+    /// it comes from the target. A refused drop cancels, even over the rail.
+    nonisolated static func classify(
+        dropTaken: Bool,
+        endedByKey: Bool,
+        insideRail: Bool?,
+        dropRefused: Bool = false
+    ) -> RailDragEnd {
+        if endedByKey || dropRefused { return .cancelled }
         if dropTaken || insideRail ?? true { return .dropped }
         return .endedOffRail
     }
@@ -235,7 +243,8 @@ final class RailDragSession: NSObject, NSDraggingSource {
         let end = RailDragEnd.classify(
             dropTaken: operation != [],
             endedByKey: NSApp.currentEvent?.type == .keyDown,
-            insideRail: zone?.contains(screenPoint: screenPoint)
+            insideRail: zone?.contains(screenPoint: screenPoint),
+            dropRefused: RailDragState.shared.dropRefused
         )
         let handler = ending
         ending = nil

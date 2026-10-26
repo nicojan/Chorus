@@ -122,6 +122,30 @@ final class RailTests: XCTestCase {
         XCTAssertFalse(RailDragEnd.cancelled.keepsServiceMoves)
     }
 
+    /// A target that refused the drop leaves `operation` empty, the same as a
+    /// release nothing took, so the refusal is told apart by what the target
+    /// said. Inside the rail it still cancels: the service goes back and its
+    /// group is untouched.
+    func testARefusedDropPutsAServiceBack() {
+        let refused = RailDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: true, dropRefused: true)
+        XCTAssertEqual(refused, .cancelled)
+        XCTAssertFalse(refused.keepsServiceMoves)
+        // Off the rail a refusal goes back too.
+        XCTAssertFalse(RailDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: false, dropRefused: true).keepsServiceMoves)
+        // Nothing taking it inside the rail (a gap) still makes the one write.
+        XCTAssertEqual(RailDragEnd.classify(dropTaken: false, endedByKey: false, insideRail: true, dropRefused: false), .dropped)
+        // Taken stands, and Escape cancels.
+        XCTAssertEqual(RailDragEnd.classify(dropTaken: true, endedByKey: false, insideRail: true, dropRefused: false), .dropped)
+        XCTAssertEqual(RailDragEnd.classify(dropTaken: false, endedByKey: true, insideRail: true, dropRefused: false), .cancelled)
+    }
+
+    @MainActor
+    func testResetClearsARefusedDrop() {
+        RailDragState.shared.dropRefused = true
+        RailDragState.shared.reset()
+        XCTAssertFalse(RailDragState.shared.dropRefused)
+    }
+
     // MARK: - Dividers in the store
 
     func testAddDividerAfterARowRenumbersTheMergedList() throws {

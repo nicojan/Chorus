@@ -290,6 +290,10 @@ final class RailDragState {
     /// the dragged row's own list and the global group. Escape puts them back
     /// (`RailEdits.restore`), since the moves along the way are saved live.
     var startSnapshot: [RailScope: [GroupEntry]] = [:]
+    /// Set when a target refused the release (`performDrop` returned false),
+    /// so the drag's end cancels instead of counting a release over the rail
+    /// as a move. Cleared by `reset()`.
+    var dropRefused = false
     /// The row the pointer has rested on long enough to group with.
     var pausedTargetID: UUID?
     /// The group whose box is lit, so a drop there joins it.
@@ -378,6 +382,7 @@ final class RailDragState {
         spaceID = nil
         groupID = nil
         startSnapshot = [:]
+        dropRefused = false
         pausedTargetID = nil
         litGroupID = nil
         zones = [:]
@@ -474,11 +479,16 @@ struct LiveReorderDropDelegate: DropDelegate {
         // Only a swell already showing groups: AppKit reports the drag's end
         // a moment after the release, and a wait must not finish in between.
         drag.stopWaiting()
-        guard let lane = lane(for: info), let dragged = lane.draggingID() else { return false }
+        guard let lane = lane(for: info), let dragged = lane.draggingID() else {
+            drag.dropRefused = true
+            return false
+        }
         // The row left last may have put the box out after this row lit it,
         // so the box at the release is decided again here.
         if rowID != nil { relight(lane, dragged) }
-        return lane.drop?(dragged) ?? true
+        let taken = lane.drop?(dragged) ?? true
+        if !taken { drag.dropRefused = true }
+        return taken
     }
 
     private func track(_ info: DropInfo, entering: Bool) {
@@ -584,6 +594,7 @@ struct SpringLoadDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         RailDragState.shared.stopSpring()
+        RailDragState.shared.dropRefused = true
         return false
     }
 }
