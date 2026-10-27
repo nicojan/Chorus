@@ -321,6 +321,13 @@ struct UnifiedRailView: View {
         let reorderIDs = entries.flatMap { [$0.id] + (groups[$0.id] ?? []).map(\.id) }
         let globalsLead = !globals.isEmpty && !globalsAtEnd
         return VStack(spacing: 0) {
+            // Pinned above the scrolling spaces, not first inside them: with the
+            // box at the end and the list scrolled down, a target inside would
+            // be out of sight, and nothing scrolls during a drag.
+            if offersDrop(at: .railTop) {
+                GlobalSpotDropTarget(spot: .railTop, axis: .vertical)
+            }
+
             // No scroller: with "Always show scroll bars" on, it took width from
             // the fixed-width cells and pushed them off the rail's centre line.
             FadingVerticalScrollView {
@@ -334,9 +341,6 @@ struct UnifiedRailView: View {
                     // first, in a card of its own, and its rows say what they are.
                     if globalsLead {
                         globalBox(axis: .vertical)
-                    }
-                    if offersDrop(at: .railTop) {
-                        GlobalSpotDropTarget(spot: .railTop, axis: .vertical)
                     }
 
                     ForEach(entries) { entry in
