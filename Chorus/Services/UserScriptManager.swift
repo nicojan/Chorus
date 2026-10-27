@@ -95,6 +95,14 @@ final class UserScriptManager {
         )
         controller.addUserScript(visibilityScript)
 
+        // IndexedDB write count, which quit waits on. Main frame only, since
+        // quit reads it with `evaluateJavaScript`, which only reaches that frame.
+        controller.addUserScript(WKUserScript(
+            source: Self.makeWriteTrackerScript(),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        ))
+
         // Focus override (opt-in per service) — reports the page as focused even
         // while Chorus is in the background, so a service that flips presence to
         // "away" on window blur (Microsoft Teams) keeps showing the user active.
@@ -264,6 +272,57 @@ final class UserScriptManager {
     /// Evaluated in each live page just before quit. See
     /// `makeVisibilityOverrideScript`.
     nonisolated static let quitReleaseJS = "window.__chorusReleaseForQuit && window.__chorusReleaseForQuit(); true"
+
+    /// Counts the page's IndexedDB writes that have not finished: write and
+    /// upgrade transactions until they complete or abort, and database opens
+    /// and deletes until they succeed, fail or block. Quit waits for the count
+    /// to reach zero, since quitting kills any write still under way. See
+    /// `WriteSettle`.
+    static func makeWriteTrackerScript() -> String {
+        return """
+        (function() {
+            try {
+                if (!window.IDBDatabase || !window.IDBFactory || window.__chorusPendingWrites) { return; }
+                var pending = 0;
+                function track(target, events) {
+                    pending++;
+                    var done = false;
+                    function finish() {
+                        if (done) { return; }
+                        done = true;
+                        pending--;
+                    }
+                    for (var i = 0; i < events.length; i++) {
+                        target.addEventListener(events[i], finish);
+                    }
+                }
+                var transaction = IDBDatabase.prototype.transaction;
+                IDBDatabase.prototype.transaction = function(names, mode) {
+                    var tx = transaction.apply(this, arguments);
+                    if (mode === 'readwrite') { track(tx, ['complete', 'abort']); }
+                    return tx;
+                };
+                ['open', 'deleteDatabase'].forEach(function(name) {
+                    var original = IDBFactory.prototype[name];
+                    IDBFactory.prototype[name] = function() {
+                        var request = original.apply(this, arguments);
+                        track(request, ['success', 'error', 'blocked']);
+                        return request;
+                    };
+                });
+                Object.defineProperty(window, '__chorusPendingWrites', {
+                    configurable: false,
+                    enumerable: false,
+                    value: function() { return pending; }
+                });
+            } catch (e) {}
+        })();
+        """
+    }
+
+    /// Evaluated in each live page while quit waits. See
+    /// `makeWriteTrackerScript`.
+    nonisolated static let pendingWritesJS = "window.__chorusPendingWrites ? window.__chorusPendingWrites() : 0"
 
     /// Reports the page as focused even when its web view is in the background,
     /// so a service that flips your status to "away"/"idle" on window blur

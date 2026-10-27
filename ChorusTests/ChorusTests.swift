@@ -3890,6 +3890,93 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(again, 2, "a second release sends nothing more")
     }
 
+    /// The tracker counts a write transaction until it completes or aborts,
+    /// leaves read-only ones out, and counts an open until it succeeds.
+    func testWriteTrackerCountsOpenIndexedDBWrites() async throws {
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = .nonPersistent()
+        config.userContentController.addUserScript(WKUserScript(
+            source: UserScriptManager.makeWriteTrackerScript(),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        ))
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.loadHTMLString("<html><body><div role=\"main\"></div></body></html>", baseURL: URL(string: "https://web.whatsapp.com/"))
+        try await waitForFixture(webView)
+
+        let result = try await webView.callAsyncJavaScript("""
+            const request = indexedDB.open('chorus-test', 1);
+            const opening = __chorusPendingWrites();
+            request.onupgradeneeded = () => request.result.createObjectStore('s');
+            const db = await new Promise((resolve, reject) => {
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+            const opened = __chorusPendingWrites();
+            const write = db.transaction('s', 'readwrite');
+            write.objectStore('s').put(1, 'k');
+            const writing = __chorusPendingWrites();
+            db.transaction('s', 'readonly');
+            const reading = __chorusPendingWrites();
+            await new Promise(resolve => { write.oncomplete = resolve; });
+            const written = __chorusPendingWrites();
+            const aborted = db.transaction('s', 'readwrite');
+            aborted.objectStore('s').put(2, 'k');
+            await new Promise(resolve => { aborted.onabort = resolve; aborted.abort(); });
+            return [opening, opened, writing, reading, written, __chorusPendingWrites()].join(',');
+            """, contentWorld: .page) as? String
+        XCTAssertEqual(result, "1,0,1,1,0,0")
+
+        let query = try await webView.evaluateJavaScript(UserScriptManager.pendingWritesJS) as? Int
+        XCTAssertEqual(query, 0)
+    }
+
+    /// Settled needs no open write and an unchanged stamp for the whole quiet
+    /// window; either kind of activity starts the window again.
+    func testWriteSettleWaitsOutTheQuietWindow() {
+        var settle = WriteSettle<Int>(quietWindow: .milliseconds(300))
+        let start = ContinuousClock.now
+        XCTAssertFalse(settle.observe(pending: 0, stamp: 1, at: start), "a first reading has nothing to compare")
+        XCTAssertFalse(settle.observe(pending: 0, stamp: 1, at: start + .milliseconds(200)))
+        XCTAssertFalse(settle.observe(pending: 0, stamp: 2, at: start + .milliseconds(400)), "a file changed")
+        XCTAssertFalse(settle.observe(pending: 0, stamp: 2, at: start + .milliseconds(600)))
+        XCTAssertTrue(settle.observe(pending: 0, stamp: 2, at: start + .milliseconds(700)))
+
+        var busy = WriteSettle<Int>(quietWindow: .milliseconds(300))
+        XCTAssertFalse(busy.observe(pending: 1, stamp: 1, at: start))
+        XCTAssertFalse(busy.observe(pending: 1, stamp: 1, at: start + .seconds(1)), "a page still writing")
+        XCTAssertFalse(busy.observe(pending: 0, stamp: 1, at: start + .milliseconds(1100)))
+        XCTAssertFalse(busy.observe(pending: 0, stamp: 1, at: start + .milliseconds(1300)))
+        XCTAssertTrue(busy.observe(pending: 0, stamp: 1, at: start + .milliseconds(1400)))
+    }
+
+    /// The stamp sees a write to a database or its WAL, ignores the `-shm`
+    /// index and the folders outside IndexedDB, and reads a missing store as
+    /// empty.
+    func testIndexedDBStampSeesWritesUnderOriginsOnly() throws {
+        let store = FileManager.default.temporaryDirectory.appendingPathComponent("chorus-stamp-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: store) }
+        let origin = store.appendingPathComponent("Origins/top/frame")
+        let database = origin.appendingPathComponent("IndexedDB/abc")
+        let workers = origin.appendingPathComponent("ServiceWorkers")
+        try FileManager.default.createDirectory(at: database, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: workers, withIntermediateDirectories: true)
+        try Data(count: 10).write(to: database.appendingPathComponent("IndexedDB.sqlite3"))
+
+        let first = IndexedDBFiles.stamp(under: [store])
+        XCTAssertEqual(first.files, 1)
+        XCTAssertEqual(first.bytes, 10)
+
+        try Data(count: 5).write(to: database.appendingPathComponent("IndexedDB.sqlite3-shm"))
+        try Data(count: 50).write(to: workers.appendingPathComponent("script"))
+        XCTAssertEqual(IndexedDBFiles.stamp(under: [store]), first)
+
+        try Data(count: 7).write(to: database.appendingPathComponent("IndexedDB.sqlite3-wal"))
+        XCTAssertNotEqual(IndexedDBFiles.stamp(under: [store]), first)
+
+        XCTAssertEqual(IndexedDBFiles.stamp(under: [store.appendingPathComponent("missing")]), IndexedDBFiles.Stamp())
+    }
+
     func testGmailBadgeInRealWebViewIgnoresCachedRowsFromOtherLabels() async throws {
         // The JSC tests above check the expression's logic; this one runs it
         // through the real path — WebKit's engine, the catalog string, and

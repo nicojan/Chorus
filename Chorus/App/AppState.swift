@@ -1086,9 +1086,10 @@ final class AppState {
     /// Pages save when they go hidden, and a quit kills them with no
     /// `visibilitychange` or `pagehide` at all. Chorus pins every page to
     /// visible besides, so WhatsApp Web never reached the point where it writes
-    /// its session, and could come back signed out. Three steps, each capped so
-    /// a wedged page can't hold the quit hostage, about a second in all:
-    /// release every page to hidden, give the pages a moment to write, then read
+    /// its session, and could come back signed out. Four steps, each capped so
+    /// a wedged page can't hold the quit hostage, about four seconds at most:
+    /// release every page to hidden, give the pages a moment to start writing,
+    /// wait until the writes have finished (`waitForWritesToSettle`), then read
     /// each data store's records — a round trip through the storage process that
     /// lands behind the writes just queued. That last step is best effort.
     func releasePagesForQuit() async {
@@ -1112,6 +1113,12 @@ final class AppState {
         let stores = webViews
             .map { $0.configuration.websiteDataStore }
             .filter { seen.insert(ObjectIdentifier($0)).inserted }
+        let bundleID = Bundle.main.bundleIdentifier ?? ""
+        let storeDirectories = stores
+            .compactMap(\.identifier)
+            .compactMap { IndexedDBFiles.storeDirectory(for: $0, bundleID: bundleID) }
+        await waitForWritesToSettle(in: webViews, storeDirectories: storeDirectories)
+
         await withDeadline(seconds: 0.5, fallback: ()) {
             let flushes = stores.map { store in
                 Task { @MainActor in
@@ -1126,8 +1133,51 @@ final class AppState {
         AppLogger.webView.info("Released \(webViews.count) pages for quit")
     }
 
-    /// How long pages get to write after going hidden before quit goes on.
+    /// How long pages get to start writing after going hidden before quit
+    /// looks at whether they are still writing.
     static let quitWriteWindow: Duration = .milliseconds(250)
+
+    /// How long the writes must stay finished before quit goes on.
+    static let quitQuietWindow: Duration = .milliseconds(300)
+
+    /// The longest quit waits for writes, so a page that never stops writing
+    /// can't hold it up.
+    static let quitSettleLimit: Duration = .seconds(3)
+
+    /// Waits until no page has a write open and no IndexedDB file has changed
+    /// for `quitQuietWindow`, or `quitSettleLimit` runs out. Quitting kills
+    /// the process that holds every page's IndexedDB, and a write cut off
+    /// there is what made WhatsApp ask to relink. See `WriteSettle`.
+    private func waitForWritesToSettle(in webViews: [WKWebView], storeDirectories: [URL]) async {
+        let start = ContinuousClock.now
+        var settle = WriteSettle<IndexedDBFiles.Stamp>(quietWindow: Self.quitQuietWindow)
+        while ContinuousClock.now - start < Self.quitSettleLimit {
+            // A page that does not answer counts as writing; the limit ends it.
+            let pending = await withDeadline(seconds: 0.2, fallback: 1) {
+                await Self.pendingWrites(in: webViews)
+            }
+            let stamp = await Task.detached { IndexedDBFiles.stamp(under: storeDirectories) }.value
+            if settle.observe(pending: pending, stamp: stamp, at: .now) {
+                let waited = ContinuousClock.now - start
+                AppLogger.webView.notice("Quit: writes settled after \(waited.formatted(.units(allowed: [.milliseconds])), privacy: .public)")
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        AppLogger.webView.notice("Quit: writes still going after the \(Self.quitSettleLimit.formatted(), privacy: .public) limit; quitting anyway")
+    }
+
+    /// The open IndexedDB writes across `webViews`, asked of every page at once.
+    private static func pendingWrites(in webViews: [WKWebView]) async -> Int {
+        let counts = webViews.map { webView in
+            Task { @MainActor in
+                (try? await webView.evaluateJavaScript(UserScriptManager.pendingWritesJS) as? Int) ?? 0
+            }
+        }
+        var total = 0
+        for count in counts { total += await count.value }
+        return total
+    }
 
     /// Pauses or resumes polling when network connectivity toggles. While
     /// offline every poll (active, background, and hibernated) would only fire
