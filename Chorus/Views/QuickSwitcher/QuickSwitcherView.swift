@@ -100,7 +100,7 @@ struct QuickSwitcherView: View {
     private func recomputeResults() {
         // In rail order, space by space, so an empty search opens the first
         // service of the first space on Return, not whatever the store returned.
-        // Globals lead, as they do in the rail.
+        // Globals lead here wherever the rail places them.
         let globalResults = RailItems.liveGlobals(globalServices)
             .map { service in
                 QuickSwitcherResult(

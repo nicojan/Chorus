@@ -32,8 +32,8 @@ struct UnifiedRailView: View {
     var showsSpaceHeader: Bool = true
     /// Draw every space and its services in one compact vertical rail.
     var showsAllSpaces: Bool = false
-    /// Whether the bar draws the global group. Off in the hybrid layout,
-    /// where the global services sit in the space strip instead.
+    /// Whether the bar draws the global group. Off in the hybrid layout
+    /// while the placement puts the global services in the space strip.
     var showsGlobals: Bool = true
     /// Draw only the global group, as a column, for the space strip to hold
     /// above its spaces. Rows follow the strip's width and its names setting.
@@ -63,6 +63,17 @@ struct UnifiedRailView: View {
     /// The space strip's names setting, which global rows follow when this
     /// view draws them inside the strip. See `globalsOnly`.
     @AppStorage(SpaceStripMetrics.defaultsKey) private var stripShowsNames = true
+    /// Where the global group sits. See `GlobalPlacement`. Read here rather
+    /// than through `GlobalPlacement.current()` so a change redraws the rail.
+    @AppStorage(GlobalPlacement.edgeKey) private var globalEdgeRaw = GlobalEdge.start.rawValue
+    @AppStorage(GlobalPlacement.barKey) private var globalBarRaw = GlobalBar.spaces.rawValue
+
+    private var globalPlacement: GlobalPlacement {
+        GlobalPlacement(edgeRaw: globalEdgeRaw, barRaw: globalBarRaw)
+    }
+
+    /// Whether the global group goes after the rest of its rail or bar.
+    private var globalsAtEnd: Bool { globalPlacement.edge == .end }
 
     @State private var showingPalette = false
     /// The palette was opened by a group drag resting on the header, so it
@@ -306,7 +317,9 @@ struct UnifiedRailView: View {
             guard case .space(let space) = entry else { return nil }
             return (space.id, items(in: space.id))
         })
-        let reorderIDs = globals.map(\.id) + entries.flatMap { [$0.id] + (groups[$0.id] ?? []).map(\.id) }
+        // The global box keys its own reorders; see `GlobalBoxView`.
+        let reorderIDs = entries.flatMap { [$0.id] + (groups[$0.id] ?? []).map(\.id) }
+        let globalsLead = !globals.isEmpty && !globalsAtEnd
         return VStack(spacing: 0) {
             // No scroller: with "Always show scroll bars" on, it took width from
             // the fixed-width cells and pushed them off the rail's centre line.
@@ -317,20 +330,14 @@ struct UnifiedRailView: View {
                 // then keeps the old selection/focus marks, so the moved icon
                 // stays highlighted after another service is actually in use.
                 VStack(spacing: 0) {
-                    // The global group has no heading: it sits first, in a
-                    // card of its own, and its rows say what they are.
-                    if !globals.isEmpty {
-                        VStack(spacing: 2) {
-                            ForEach(globals) { item in
-                                allServicesItem(item, in: .global, space: nil)
-                            }
-                        }
-                        .padding(ChorusCard.railPadding)
-                        .railCard()
+                    // The global group has no heading: at the start it sits
+                    // first, in a card of its own, and its rows say what they are.
+                    if globalsLead {
+                        globalBox(axis: .vertical)
                     }
 
                     ForEach(entries) { entry in
-                        let isFirst = globals.isEmpty && entry.id == entries.first?.id
+                        let isFirst = !globalsLead && entry.id == entries.first?.id
                         switch entry {
                         case .space(let space):
                             allServicesHeading(for: space)
@@ -357,6 +364,12 @@ struct UnifiedRailView: View {
                 }
                 .animation(reorderAnimation, value: ReorderKey(ids: reorderIDs))
                 .padding(.bottom, ChorusCard.railPadding)
+            }
+
+            // At the end the box is pinned below the scrolling spaces, over the
+            // add buttons, and does not scroll with them.
+            if globalsAtEnd {
+                globalBox(axis: .vertical)
             }
 
             allServicesAddButtons
@@ -476,15 +489,6 @@ struct UnifiedRailView: View {
         .contextMenu { spaceContextMenu(for: space) }
         .accessibilityAction(named: "Move up") { step(space.id, forward: false, in: .spaces) }
         .accessibilityAction(named: "Move down") { step(space.id, forward: true, in: .spaces) }
-    }
-
-    /// The rule under the global services: heavier than a divider, since it
-    /// marks where the services in every space stop.
-    private var globalsRule: some View {
-        Capsule()
-            .fill(ChorusColor.groupRule)
-            .frame(height: 2)
-            .padding(.horizontal, 8)
     }
 
     /// The rule over the add buttons, inset to the rows' width.
@@ -709,24 +713,21 @@ struct UnifiedRailView: View {
     /// below is still on the rail.
     @ViewBuilder
     private var globalsOnlyBody: some View {
-        let globals = globalItems
-        if !globals.isEmpty {
-            VStack(spacing: 0) {
-                VStack(spacing: 2) {
-                    ForEach(globals) { item in
-                        railItemRow(item, in: .global)
-                    }
-                }
-                .animation(reorderAnimation, value: ReorderKey(ids: globals.map(\.id)))
-                // In a card of their own, as in the all-services rail, which
-                // sets them apart from the spaces better than a rule did. Padded
-                // on every side so a row's 8 point fill sits inside the card's
-                // 14 point corners, the same distance from each edge.
-                .padding(ChorusCard.railPadding)
-                .railCard()
+        if !globalItems.isEmpty {
+            // The strip puts this above or below its spaces; either way the
+            // gap below sets it off from the spaces or from the hairline.
+            globalBox(axis: .vertical)
                 .padding(.bottom, ChorusCard.railPadding)
-            }
-            .environment(\.railWidth, railFootprint)
+                .environment(\.railWidth, railFootprint)
+        }
+    }
+
+    /// The global group in its box, a column or a row. Every layout draws it
+    /// through here, so this is the one view the box's drag and menu belong
+    /// on. Draws nothing while there are no global services.
+    private func globalBox(axis boxAxis: Axis) -> some View {
+        GlobalBoxView(items: globalItems, axis: boxAxis, reorderAnimation: reorderAnimation) { item in
+            railItemRow(item, in: .global)
         }
     }
 
@@ -737,19 +738,10 @@ struct UnifiedRailView: View {
         let globals = globalItems
         let spaceItems = filteredItems
         return VStack(spacing: 0) {
-            // The global group sits above the space it is not part of, under
-            // a rule of its own, and is not drawn at all while it is empty.
-            if !globals.isEmpty {
-                VStack(spacing: 2) {
-                    ForEach(globals) { item in
-                        railItemRow(item, in: .global)
-                    }
-                }
-                .animation(reorderAnimation, value: ReorderKey(ids: globals.map(\.id)))
-                .padding(.top, ChorusCard.railPadding)
-                .padding(.bottom, 4)
-
-                globalsRule
+            // The global group sits in a box of its own, above the space it is
+            // not part of or pinned below it, and is not drawn while empty.
+            if !globals.isEmpty && !globalsAtEnd {
+                globalBox(axis: .vertical)
             }
 
             spaceHeader
@@ -771,6 +763,13 @@ struct UnifiedRailView: View {
                 .padding(.vertical, ChorusCard.railPadding)
             }
 
+            // Tested here, not left to the box: an empty box would still
+            // carry its padding.
+            if !globals.isEmpty && globalsAtEnd {
+                globalBox(axis: .vertical)
+                    .padding(.bottom, ChorusCard.railPadding)
+            }
+
             railRule
 
             addServiceButton
@@ -784,27 +783,41 @@ struct UnifiedRailView: View {
         .animation(ChorusMotion.animation(ChorusMotion.sidebar, reduceMotion: reduceMotion), value: showServiceNames)
     }
 
+    /// The bar: the header, the global box at the start, the space's tabs,
+    /// then empty stretch, the global box at the end, and the nav buttons.
+    /// Only the tabs scroll; the boxes and the buttons stay whole.
     private var horizontalBody: some View {
-        HStack(spacing: 8) {
+        // Off in the hybrid layout while the space strip holds the box.
+        let hasGlobals = showsGlobals && !globalItems.isEmpty
+        let globalsLead = hasGlobals && !globalsAtEnd
+        // 82 points of traffic light, then 8, puts the header at x 90. With
+        // no header, whatever comes first spends the inset and clears what the
+        // traffic lights overhang onto this bar.
+        let leadingInset = 8 + contentInset
+        return HStack(spacing: 8) {
             if showsSpaceHeader {
                 spaceHeader
-                    // 82 points of traffic light, then 8, puts the header at x 90.
-                    .padding(.leading, 8 + contentInset)
+                    .padding(.leading, leadingInset)
 
                 Divider().frame(width: 1, height: 20)
-
-                tabStrip
-            } else {
-                // No header to spend the inset, so the tabs clear whatever the
-                // traffic lights overhang onto this bar themselves.
-                tabStrip
-                    .padding(.leading, 8 + contentInset)
             }
+
+            if globalsLead {
+                barGlobalBox
+                    .padding(.leading, showsSpaceHeader ? 0 : leadingInset)
+            }
+
+            tabStrip
+                .padding(.leading, showsSpaceHeader || globalsLead ? 0 : leadingInset)
 
             // Empty stretch between the tabs and the nav buttons. It draws
             // nothing and takes no hit of its own, so a click here falls through
             // to the window-drag handle behind the row.
             Spacer(minLength: 40)
+
+            if hasGlobals && globalsAtEnd {
+                barGlobalBox
+            }
 
             // Nav buttons live at the far right of the bar (top-right corner of
             // the window), acting on the active service.
@@ -826,6 +839,13 @@ struct UnifiedRailView: View {
         // No fill of its own: the bar sits on the window canvas, and the web
         // card below it carries the edge the divider used to draw.
         .background(WindowDragHandle())
+    }
+
+    /// The global box as a row of tabs. Held at its full width, so an
+    /// overflowing bar scrolls its tabs rather than squeezing the box.
+    private var barGlobalBox: some View {
+        globalBox(axis: .horizontal)
+            .fixedSize(horizontal: true, vertical: false)
     }
 
     // MARK: - The space header, and the palette it opens
@@ -938,20 +958,10 @@ struct UnifiedRailView: View {
     /// can measure its width to decide whether the tabs fit. The traffic-light
     /// inset is spent by the header now, so this starts flush.
     private var tabRow: some View {
-        let globals = showsGlobals ? globalItems : []
+        // The global tabs are not here: they sit in their own box, beside the
+        // strip rather than in it. See `horizontalBody`.
         let spaceItems = filteredItems
         return HStack(spacing: 4) {
-            // Global tabs lead, set off from the space's by a rule.
-            ForEach(globals) { item in
-                railItemRow(item, in: .global)
-                    .id(item.service?.id ?? item.id)
-            }
-            if !globals.isEmpty {
-                Capsule()
-                    .fill(ChorusColor.groupRule)
-                    .frame(width: 2, height: 20)
-                    .padding(.horizontal, 2)
-            }
             if let spaceID = selectedSpaceID {
                 spaceRuns(spaceItems, in: spaceID, showsName: true) { item, group, box in
                     // Keyed by the service where there is one, so the scroll
@@ -961,7 +971,7 @@ struct UnifiedRailView: View {
                 }
             }
         }
-        .animation(reorderAnimation, value: ReorderKey(ids: globals.map(\.id) + spaceItems.map(\.id)))
+        .animation(reorderAnimation, value: ReorderKey(ids: spaceItems.map(\.id)))
     }
 
     /// Rows and tabs settle into a new order with the chrome's spring, and
@@ -982,7 +992,7 @@ struct UnifiedRailView: View {
     /// The services the rail shows now, in its order: the global group at the
     /// end the placement names, and the selected space's own.
     private var visibleServices: [ServiceInstance] {
-        GlobalPlacement.current().ordered(globals: globalServices, rest: filteredLinks.compactMap(\.liveService))
+        globalPlacement.ordered(globals: globalServices, rest: filteredLinks.compactMap(\.liveService))
     }
 
     // MARK: - Service cells
@@ -1394,7 +1404,7 @@ struct UnifiedRailView: View {
     /// every space in the all-services rail. Dividers are not stops.
     private var navigationStops: [NavigationStop] {
         let globals = globalServices.map { NavigationStop(focusID: $0.id, spaceID: nil, serviceID: $0.id) }
-        let placement = GlobalPlacement.current()
+        let placement = globalPlacement
         if showsAllSpaces {
             return placement.ordered(globals: globals, rest: spaces.flatMap { space in
                 links(in: space.id).compactMap { link in

@@ -11,6 +11,9 @@ struct ContentView: View {
     /// Whether the rail carries service names, which dragging its edge sets.
     @AppStorage(ServiceNameVisibility.defaultsKey) private var showServiceNames = true
     @AppStorage(RailWidth.defaultsKey) private var railNamedWidth = Double(RailWidth.defaultNamed)
+    /// Which bar of the hybrid layout holds the global services. See
+    /// `GlobalPlacement`; the strip and the bar read the edge themselves.
+    @AppStorage(GlobalPlacement.barKey) private var globalBarRaw = GlobalBar.spaces.rawValue
 
     /// How much desktop the window lets through. See `WindowGlassStyle`.
     @AppStorage(WindowGlassStyle.defaultsKey) private var glassStyleRaw = WindowGlassStyle.defaultStyle.rawValue
@@ -241,7 +244,9 @@ struct ContentView: View {
                             lightsWidth: lightsWidth
                         ),
                         showsSpaceHeader: false,
-                        showsGlobals: false
+                        // The bar draws the global box only when the
+                        // placement takes it out of the space strip.
+                        showsGlobals: GlobalPlacement(edgeRaw: "", barRaw: globalBarRaw).bar == .services
                     )
                     // The strip's edge sets its names, as the rail's does.
                     webContent
