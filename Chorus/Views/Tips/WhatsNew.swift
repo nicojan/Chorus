@@ -18,7 +18,7 @@ enum WhatsNew {
             Item(
                 id: "global-placement",
                 systemImage: "arrow.up.and.down.square",
-                title: "Move the services in every space",
+                title: "Move the services shown in every space",
                 detail: "Drag their box by its edge to the bottom of the rail or to either end of the bar, or right-click the edge and choose Move Global Services. Settings has the same choice under Appearance.",
                 action: nil,
                 actionTitle: ""
