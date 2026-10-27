@@ -61,6 +61,7 @@
 		817A70A10923352BBAC3F63E /* CatalogIconCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0693A705E1552F5809BA3399 /* CatalogIconCache.swift */; };
 		8325C3DEC3242E7E2C19EB07 /* SpacePaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03E9D5B98CFDDD0B2E7FD42C /* SpacePaletteView.swift */; };
 		863BAA64BC341E5286D8915E /* UnifiedRailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D2B28970B7AEF9B0EB53AFD /* UnifiedRailView.swift */; };
+		88AF7CB55F34248EFDF5EBCA /* WriteSettle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B5724EA997283BBD7DFC9EE /* WriteSettle.swift */; };
 		8AEFF9F928EBEA5194112A21 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DD7FF3D960F0FCA3A2F310B1 /* Assets.xcassets */; };
 		8DEAA301843C94622A4061F4 /* ServiceTabStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD2B240CAC6C5AD94A056FA8 /* ServiceTabStrip.swift */; };
 		8E4B7701A7A18F51C6109E10 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A3640458AF427BC8D3C8F2A /* NetworkMonitor.swift */; };
@@ -190,6 +191,7 @@
 		8F17BFF4DCC563429E130A13 /* CatalogGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogGridView.swift; sourceTree = "<group>"; };
 		94326A5DEE01135F945E9DF3 /* Chorus.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Chorus.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9685F17CCE71FDC093EBA783 /* RailTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailTests.swift; sourceTree = "<group>"; };
+		9B5724EA997283BBD7DFC9EE /* WriteSettle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriteSettle.swift; sourceTree = "<group>"; };
 		9D811CC9D75730152E17859C /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		9DD5F8F7C2450C88FA1A3886 /* EditServiceSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditServiceSheet.swift; sourceTree = "<group>"; };
 		9EDCAF66B6DD05BA3A244E9E /* EmojiData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiData.swift; sourceTree = "<group>"; };
@@ -359,6 +361,7 @@
 				313680424148829FCBEAA9BC /* ModelContext+Save.swift */,
 				29C26C37D627ADE04B904988 /* SheetQuit.swift */,
 				E1E431CF7CE145D536081A23 /* UserAgentProvider.swift */,
+				9B5724EA997283BBD7DFC9EE /* WriteSettle.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -707,6 +710,7 @@
 				783EF6C467034D74DE8D5F52 /* WebViewState.swift in Sources */,
 				27E1865FA1BB65766DBDB808 /* WhatsNew.swift in Sources */,
 				6335C06C8BEA4BAFCC16F334 /* WindowBackdrop.swift in Sources */,
+				88AF7CB55F34248EFDF5EBCA /* WriteSettle.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
