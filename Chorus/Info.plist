@@ -83,6 +83,16 @@
 				<string>public.data</string>
 			</array>
 		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.nicojan.chorus.global-box</string>
+			<key>UTTypeDescription</key>
+			<string>Chorus global services box</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>

@@ -5,6 +5,18 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Choose where the services shown in every space sit: above or below the spaces, or at either end of the services bar. Pick a spot in Settings under Appearance, right-click the edge of their box, or drag the box by its edge to one of the spots that light up. In a layout with one rail or bar, the box goes at either end of it. The ⌘1–9 shortcuts and the arrow keys follow the order on screen.
+
+### Changed
+
+- In the Rail on the left and Bar along the top layouts, the services shown in every space now sit in a box of their own instead of above a line.
+
+### Fixed
+
+- WhatsApp no longer asks you to relink it with "A database error occurred" after Chorus quits or updates. Chorus now waits up to three seconds for pages to finish saving before it quits.
+
 ## [1.5.30] - 2026-10-25
 
 ### Added

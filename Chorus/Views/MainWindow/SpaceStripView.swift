@@ -19,7 +19,7 @@ struct SpaceStripView: View {
     @Query private var allDividers: [RailDivider]
     @Binding var selectedSpaceID: UUID?
     /// The selected service, for the global services the strip holds above
-    /// its spaces.
+    /// or below its spaces.
     @Binding var selectedServiceID: UUID?
     /// Room above the card for the window traffic lights. The hybrid layout
     /// passes the bar's height, so the card's top edge is level with the web
@@ -33,6 +33,22 @@ struct SpaceStripView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @AppStorage(SpaceStripMetrics.defaultsKey) private var showsNames = true
+    /// Where the global services sit. See `GlobalPlacement`.
+    @AppStorage(GlobalPlacement.edgeKey) private var globalEdgeRaw = GlobalEdge.start.rawValue
+    @AppStorage(GlobalPlacement.barKey) private var globalBarRaw = GlobalBar.spaces.rawValue
+
+    private var globalPlacement: GlobalPlacement {
+        GlobalPlacement(edgeRaw: globalEdgeRaw, barRaw: globalBarRaw)
+    }
+
+    /// Whether the strip holds the global services, rather than the bar.
+    private var holdsGlobals: Bool { globalPlacement.bar == .spaces }
+
+    /// Whether the global box is being dragged and can be let go at `spot`:
+    /// either end of the strip it is not at. See `GlobalSpotDropTarget`.
+    private func offersDrop(at spot: GlobalSpot) -> Bool {
+        drag.globalBoxDragging && globalPlacement.dropSpots(in: .hybrid).contains(spot)
+    }
 
     @State private var showingAddSpace = false
     @State private var editingSpace: Space?
@@ -40,6 +56,9 @@ struct SpaceStripView: View {
     /// The space cell that currently holds keyboard focus. Two-way bound to each
     /// cell's `.focused` so the arrow keys move relative to it.
     @FocusState private var focusedSpaceID: UUID?
+    /// The strip's laid-out height, which caps the global box pinned above or
+    /// below the scrolling spaces. See `GlobalBoxCap`.
+    @State private var stripHeight: CGFloat = 0
 
 
     /// The spaces and the dividers between them, as drawn.
@@ -81,17 +100,12 @@ struct SpaceStripView: View {
 
     private var content: some View {
         VStack(spacing: 2) {
-            // Global services sit above the spaces, under a rule, since they
-            // belong to none of them. The bar beside the strip then holds only
-            // the selected space's own services. Draws nothing while there are
-            // no global services.
-            UnifiedRailView(
-                selectedSpaceID: $selectedSpaceID,
-                selectedServiceID: $selectedServiceID,
-                axis: .vertical,
-                showsSpaceHeader: false,
-                globalsOnly: true
-            )
+            if holdsGlobals && globalPlacement.edge == .start {
+                globalServicesBox
+            }
+            if offersDrop(at: .spaceStripTop) {
+                GlobalSpotDropTarget(spot: .spaceStripTop, axis: .vertical)
+            }
 
             // Scroll the cells so more spaces than fit the window height stay
             // reachable; the divider and add button below stay pinned.
@@ -115,6 +129,15 @@ struct SpaceStripView: View {
                 .padding(.vertical, ChorusCard.railPadding)
             }
 
+            // At the end the box is pinned under the scrolling spaces, over
+            // the hairline and the add button.
+            if holdsGlobals && globalPlacement.edge == .end {
+                globalServicesBox
+            }
+            if offersDrop(at: .spaceStripBottom) {
+                GlobalSpotDropTarget(spot: .spaceStripBottom, axis: .vertical)
+            }
+
             Rectangle()
                 .fill(ChorusColor.hairline)
                 .frame(height: 1)
@@ -123,6 +146,7 @@ struct SpaceStripView: View {
             addSpaceButton
                 .padding(.bottom, ChorusCard.railPadding)
         }
+        .measuringHeight(into: $stripHeight)
         // One list, so no card: it sits on the window beside the web card.
         .railCardFrame(width: cardWidth, topInset: contentInset, carded: false)
         .railDropZone()
@@ -133,6 +157,21 @@ struct SpaceStripView: View {
         // The handle gets the clicks in the gutter and the card's padding; the
         // scroll view takes them over the cells.
         .background(WindowDragHandle())
+    }
+
+    /// The global services, in a box of their own above or below the spaces,
+    /// since they belong to none of them. The bar beside the strip then holds
+    /// only the selected space's own services. Draws nothing while there are
+    /// no global services.
+    private var globalServicesBox: some View {
+        UnifiedRailView(
+            selectedSpaceID: $selectedSpaceID,
+            selectedServiceID: $selectedServiceID,
+            axis: .vertical,
+            showsSpaceHeader: false,
+            globalsOnly: true,
+            stripHeight: stripHeight
+        )
     }
 
     @ViewBuilder

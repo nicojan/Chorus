@@ -95,6 +95,8 @@ struct GeneralSettingsView: View {
     /// The same, for the hybrid layout's strip of spaces — see `SpaceStripMetrics`.
     @AppStorage(SpaceStripMetrics.defaultsKey) private var showSpaceNames = true
     @AppStorage(OutsideLinkDefault.defaultsKey) private var linksOpenInChorus = false
+    @AppStorage(GlobalPlacement.edgeKey) private var globalEdgeRaw = GlobalEdge.start.rawValue
+    @AppStorage(GlobalPlacement.barKey) private var globalBarRaw = GlobalBar.spaces.rawValue
     @AppStorage(WindowGlassStyle.defaultsKey) private var glassStyleRaw = WindowGlassStyle.defaultStyle.rawValue
 
     private let presenceManager = AppPresenceManager()
@@ -172,6 +174,18 @@ struct GeneralSettingsView: View {
                 )) {
                     ForEach(RailLayout.allCases, id: \.self) { layout in
                         Text(layout.displayName).tag(layout)
+                    }
+                }
+
+                Picker("Global services", selection: Binding(
+                    get: {
+                        GlobalPlacement(edgeRaw: globalEdgeRaw, barRaw: globalBarRaw)
+                            .spot(in: prefs.railLayout)
+                    },
+                    set: { GlobalPlacement.choose($0) }
+                )) {
+                    ForEach(GlobalPlacement.pickerChoices(for: prefs.railLayout), id: \.spot) { choice in
+                        Text(choice.title).tag(choice.spot)
                     }
                 }
 

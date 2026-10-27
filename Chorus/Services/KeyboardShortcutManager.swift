@@ -8,6 +8,21 @@ struct ServiceShortcutDestination: Equatable {
 }
 
 enum ServiceShortcutNavigation {
+    /// Every service ⌘1–9 and ⌘[ / ⌘] walk through, in the rail's order. The
+    /// global services sit at the end the placement names; they carry no
+    /// space, so choosing one does not switch spaces.
+    static func shortcutDestinations(
+        globals: [UUID],
+        spaces: [(spaceID: UUID, services: [UUID])],
+        placement: GlobalPlacement
+    ) -> [ServiceShortcutDestination] {
+        let global = globals.map { ServiceShortcutDestination(spaceID: nil, serviceID: $0) }
+        let inSpaces = spaces.flatMap { space in
+            space.services.map { ServiceShortcutDestination(spaceID: space.spaceID, serviceID: $0) }
+        }
+        return placement.ordered(globals: global, rest: inSpaces)
+    }
+
     static func destination(
         at index: Int,
         in destinations: [ServiceShortcutDestination]

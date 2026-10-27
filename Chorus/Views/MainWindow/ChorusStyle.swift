@@ -37,10 +37,6 @@ enum ChorusColor {
     static let card = dynamic(light: .white, dark: grey(40))
     /// The one-pixel edge round a card.
     static let hairline = ink(light: 0.08, dark: 0.10, contrastLight: 0.30, contrastDark: 0.35)
-    /// The rule that ends the global services, set off from the hairline of a
-    /// divider someone added: it marks where the services shown in every space
-    /// stop and one space's begin.
-    static let groupRule = ink(light: 0.20, dark: 0.26, contrastLight: 0.45, contrastDark: 0.50)
 
     /// A selected row. Strong enough to hold without the accent.
     static let selectedFill = ink(light: 0.10, dark: 0.16, contrastLight: 0.20, contrastDark: 0.28)
