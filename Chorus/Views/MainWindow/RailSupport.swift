@@ -243,6 +243,10 @@ enum LiveReorder {
     static let dividerType = UTType(exportedAs: "com.nicojan.chorus.divider-id")
     /// A service group, by its id, dragged by its box: the whole run moves.
     static let groupType = UTType(exportedAs: "com.nicojan.chorus.service-group-id")
+    /// The box of global services, dragged by its border to another spot
+    /// (`GlobalSpotDropTarget`). Only those targets list it, so every other
+    /// lane refuses it.
+    static let globalBoxType = UTType(exportedAs: "com.nicojan.chorus.global-box")
 
     /// The order after `dragged` takes the slot of `target`: it lands after
     /// the target when it came from above, and before it when it came from
@@ -286,6 +290,9 @@ final class RailDragState {
     var spaceID: UUID?
     /// The group whose box is being dragged.
     var groupID: UUID?
+    /// The global services' box is being dragged, so every other spot it
+    /// can sit at shows a drop target.
+    var globalBoxDragging = false
     /// Every list a service drag can change, as it stood when the drag began:
     /// the dragged row's own list and the global group. Escape puts them back
     /// (`RailEdits.restore`), since the moves along the way are saved live.
@@ -381,6 +388,7 @@ final class RailDragState {
         dividerStartOrder = []
         spaceID = nil
         groupID = nil
+        globalBoxDragging = false
         startSnapshot = [:]
         dropRefused = false
         pausedTargetID = nil

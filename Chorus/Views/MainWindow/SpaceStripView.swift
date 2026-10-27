@@ -44,6 +44,12 @@ struct SpaceStripView: View {
     /// Whether the strip holds the global services, rather than the bar.
     private var holdsGlobals: Bool { globalPlacement.bar == .spaces }
 
+    /// Whether the global box is being dragged and can be let go at `spot`:
+    /// either end of the strip it is not at. See `GlobalSpotDropTarget`.
+    private func offersDrop(at spot: GlobalSpot) -> Bool {
+        drag.globalBoxDragging && globalPlacement.dropSpots(in: .hybrid).contains(spot)
+    }
+
     @State private var showingAddSpace = false
     @State private var editingSpace: Space?
     @State private var confirmingDeleteSpace: Space?
@@ -94,6 +100,9 @@ struct SpaceStripView: View {
             if holdsGlobals && globalPlacement.edge == .start {
                 globalServicesBox
             }
+            if offersDrop(at: .spaceStripTop) {
+                GlobalSpotDropTarget(spot: .spaceStripTop, axis: .vertical)
+            }
 
             // Scroll the cells so more spaces than fit the window height stay
             // reachable; the divider and add button below stay pinned.
@@ -121,6 +130,9 @@ struct SpaceStripView: View {
             // the hairline and the add button.
             if holdsGlobals && globalPlacement.edge == .end {
                 globalServicesBox
+            }
+            if offersDrop(at: .spaceStripBottom) {
+                GlobalSpotDropTarget(spot: .spaceStripBottom, axis: .vertical)
             }
 
             Rectangle()

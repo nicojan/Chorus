@@ -62,6 +62,32 @@ final class GlobalPlacementTests: XCTestCase {
         XCTAssertEqual(GlobalPlacement.current(defaults), placement)
     }
 
+    /// While the box is dragged, every spot of the layout but its own takes
+    /// a drop.
+    func testDropSpotsAreEveryOtherSpot() {
+        let barRight = GlobalPlacement(edge: .end, bar: .services)
+        XCTAssertEqual(barRight.dropSpots(in: .hybrid), [.spaceStripTop, .spaceStripBottom, .servicesBarLeft])
+        XCTAssertEqual(barRight.dropSpots(in: .sidebar), [.railTop])
+        XCTAssertEqual(barRight.dropSpots(in: .allServices), [.railTop])
+        XCTAssertEqual(barRight.dropSpots(in: .topBars), [.barLeft])
+        XCTAssertEqual(GlobalPlacement.standard.dropSpots(in: .hybrid), [.spaceStripBottom, .servicesBarLeft, .servicesBarRight])
+        XCTAssertEqual(GlobalPlacement.standard.dropSpots(in: .topBars), [.barRight])
+        for layout in RailLayout.allCases {
+            for placement in [GlobalPlacement.standard, barRight] {
+                XCTAssertFalse(placement.dropSpots(in: layout).contains(placement.spot(in: layout)))
+                XCTAssertEqual(placement.dropSpots(in: layout).count, GlobalPlacement.spots(for: layout).count - 1)
+            }
+        }
+    }
+
+    /// The bar and the column each name their two ends by layout.
+    func testEndsPerLayout() {
+        XCTAssertEqual(GlobalSpot.barEnds(in: .hybrid), [.servicesBarLeft, .servicesBarRight])
+        XCTAssertEqual(GlobalSpot.barEnds(in: .topBars), [.barLeft, .barRight])
+        XCTAssertEqual(GlobalSpot.railEnds, [.railTop, .railBottom])
+        XCTAssertEqual(GlobalSpot.stripEnds, [.spaceStripTop, .spaceStripBottom])
+    }
+
     func testChoosingASpotSavesIt() {
         let name = "GlobalPlacementTests-\(UUID())"
         let defaults = UserDefaults(suiteName: name)!

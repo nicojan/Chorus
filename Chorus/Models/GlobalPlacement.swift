@@ -40,6 +40,17 @@ enum GlobalSpot: Hashable, CaseIterable, Sendable {
         }
     }
 
+    /// The two ends of the left rail, in both layouts that have one.
+    nonisolated static let railEnds: [GlobalSpot] = [.railTop, .railBottom]
+    /// The two ends of the hybrid layout's space strip.
+    nonisolated static let stripEnds: [GlobalSpot] = [.spaceStripTop, .spaceStripBottom]
+
+    /// The two ends of the bar along the top: the services bar in the hybrid
+    /// layout, the one bar otherwise.
+    nonisolated static func barEnds(in layout: RailLayout) -> [GlobalSpot] {
+        layout == .hybrid ? [.servicesBarLeft, .servicesBarRight] : [.barLeft, .barRight]
+    }
+
     /// The end of its row or column this spot is at.
     nonisolated var edge: GlobalEdge {
         switch self {
@@ -102,6 +113,13 @@ struct GlobalPlacement: Equatable, Sendable {
         case .topBars:
             edge == .start ? .barLeft : .barRight
         }
+    }
+
+    /// The spots that take the box while it is dragged: every spot the layout
+    /// offers but the one it sits at, in picker order.
+    nonisolated func dropSpots(in layout: RailLayout) -> [GlobalSpot] {
+        let here = spot(in: layout)
+        return Self.spots(for: layout).filter { $0 != here }
     }
 
     /// The placement after choosing a spot. A spot in a layout with one bar

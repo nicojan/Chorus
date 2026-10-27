@@ -36,7 +36,7 @@ struct UnifiedRailView: View {
     /// while the placement puts the global services in the space strip.
     var showsGlobals: Bool = true
     /// Draw only the global group, as a column, for the space strip to hold
-    /// above its spaces. Rows follow the strip's width and its names setting.
+    /// above or below its spaces. Rows follow the strip's width and its names setting.
     var globalsOnly: Bool = false
 
     @Query private var allLinks: [SpaceServiceLink]
@@ -335,6 +335,9 @@ struct UnifiedRailView: View {
                     if globalsLead {
                         globalBox(axis: .vertical)
                     }
+                    if offersDrop(at: .railTop) {
+                        GlobalSpotDropTarget(spot: .railTop, axis: .vertical)
+                    }
 
                     ForEach(entries) { entry in
                         let isFirst = !globalsLead && entry.id == entries.first?.id
@@ -371,6 +374,9 @@ struct UnifiedRailView: View {
             if globalsAtEnd {
                 globalBox(axis: .vertical)
             }
+            if offersDrop(at: .railBottom) {
+                GlobalSpotDropTarget(spot: .railBottom, axis: .vertical)
+            }
 
             allServicesAddButtons
                 .padding(.vertical, ChorusCard.railPadding)
@@ -397,11 +403,10 @@ struct UnifiedRailView: View {
             if let space {
                 allServicesRow(for: link, service: service, in: space, group: group, box: box)
             }
-        case .global(let service):
-            globalRow(service)
         case .divider(let divider):
             dividerRow(divider, in: scope, length: namedOrCompactRowWidth)
-        case .space:
+        case .global, .space:
+            // The global group is drawn through `globalBox`, never here.
             EmptyView()
         }
     }
@@ -743,6 +748,9 @@ struct UnifiedRailView: View {
             if !globals.isEmpty && !globalsAtEnd {
                 globalBox(axis: .vertical)
             }
+            if offersDrop(at: .railTop) {
+                GlobalSpotDropTarget(spot: .railTop, axis: .vertical)
+            }
 
             spaceHeader
                 .padding(.top, ChorusCard.railPadding)
@@ -769,6 +777,9 @@ struct UnifiedRailView: View {
                 globalBox(axis: .vertical)
                     .padding(.bottom, ChorusCard.railPadding)
             }
+            if offersDrop(at: .railBottom) {
+                GlobalSpotDropTarget(spot: .railBottom, axis: .vertical)
+            }
 
             railRule
 
@@ -785,6 +796,7 @@ struct UnifiedRailView: View {
 
     /// The bar: the header, the global box at the start, the space's tabs,
     /// then empty stretch, the global box at the end, and the nav buttons.
+    /// While the box is dragged, the end it is not at holds a drop target.
     /// Only the tabs scroll; the boxes and the buttons stay whole.
     private var horizontalBody: some View {
         // Off in the hybrid layout while the space strip holds the box.
@@ -794,6 +806,8 @@ struct UnifiedRailView: View {
         // no header, whatever comes first spends the inset and clears what the
         // traffic lights overhang onto this bar.
         let leadingInset = 8 + contentInset
+        let ends = GlobalSpot.barEnds(in: appState.railLayout)
+        let startTarget = offersDrop(at: ends[0])
         return HStack(spacing: 8) {
             if showsSpaceHeader {
                 spaceHeader
@@ -807,8 +821,13 @@ struct UnifiedRailView: View {
                     .padding(.leading, showsSpaceHeader ? 0 : leadingInset)
             }
 
+            if startTarget {
+                GlobalSpotDropTarget(spot: ends[0], axis: .horizontal)
+                    .padding(.leading, showsSpaceHeader ? 0 : leadingInset)
+            }
+
             tabStrip
-                .padding(.leading, showsSpaceHeader || globalsLead ? 0 : leadingInset)
+                .padding(.leading, showsSpaceHeader || globalsLead || startTarget ? 0 : leadingInset)
 
             // Empty stretch between the tabs and the nav buttons. It draws
             // nothing and takes no hit of its own, so a click here falls through
@@ -817,6 +836,9 @@ struct UnifiedRailView: View {
 
             if hasGlobals && globalsAtEnd {
                 barGlobalBox
+            }
+            if offersDrop(at: ends[1]) {
+                GlobalSpotDropTarget(spot: ends[1], axis: .horizontal)
             }
 
             // Nav buttons live at the far right of the bar (top-right corner of
@@ -839,6 +861,12 @@ struct UnifiedRailView: View {
         // No fill of its own: the bar sits on the window canvas, and the web
         // card below it carries the edge the divider used to draw.
         .background(WindowDragHandle())
+    }
+
+    /// Whether the box is being dragged and this layout offers `spot` to let
+    /// it go on: every spot but the one it sits at. See `GlobalSpotDropTarget`.
+    private func offersDrop(at spot: GlobalSpot) -> Bool {
+        drag.globalBoxDragging && globalPlacement.dropSpots(in: appState.railLayout).contains(spot)
     }
 
     /// The global box as a row of tabs. Held at its full width, so an
