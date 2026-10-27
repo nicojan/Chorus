@@ -1,4 +1,5 @@
 import XCTest
+import SwiftData
 @testable import Chorus
 
 /// Where the global services sit: the model that maps one saved choice onto
@@ -80,12 +81,16 @@ final class GlobalPlacementTests: XCTestCase {
         }
     }
 
-    /// The bar and the column each name their two ends by layout.
-    func testEndsPerLayout() {
+    /// The bar names its two ends by layout.
+    func testBarEndsPerLayout() {
         XCTAssertEqual(GlobalSpot.barEnds(in: .hybrid), [.servicesBarLeft, .servicesBarRight])
         XCTAssertEqual(GlobalSpot.barEnds(in: .topBars), [.barLeft, .barRight])
-        XCTAssertEqual(GlobalSpot.railEnds, [.railTop, .railBottom])
-        XCTAssertEqual(GlobalSpot.stripEnds, [.spaceStripTop, .spaceStripBottom])
+    }
+
+    /// A pinned box gets no cap until its rail is measured, then 40% of it.
+    func testPinnedBoxCap() {
+        XCTAssertNil(GlobalBoxCap.height(forRail: 0))
+        XCTAssertEqual(GlobalBoxCap.height(forRail: 500), 200)
     }
 
     func testChoosingASpotSavesIt() {
@@ -132,5 +137,38 @@ final class GlobalPlacementTests: XCTestCase {
             XCTAssertEqual(choices.count, 2, "\(layout)")
             XCTAssertEqual(choices.map(\.title), choices.map(\.spot.title))
         }
+    }
+}
+
+/// The order ⌘1–9, ⌘[ / ⌘], preload and launch restore walk in a space:
+/// `AppState.railServices`, run on an in-memory store.
+@MainActor
+final class RailServicesOrderTests: XCTestCase {
+    func testGlobalsFollowThePlacementEdge() throws {
+        let schema = Schema(versionedSchema: ChorusSchemaVCurrent.self)
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let ctx = container.mainContext
+
+        let space = Space(name: "Work", emoji: "📦", sortOrder: 0)
+        let global = ServiceInstance(label: "Mail", url: "https://mail.example", isGlobal: true, globalSortOrder: 0)
+        let own = ServiceInstance(label: "Slack", url: "https://slack.example")
+        ctx.insert(space)
+        ctx.insert(global)
+        ctx.insert(own)
+        try ctx.save()
+        // Building the link wires both ends, which are already in the
+        // context; a second insert is fatal on macOS 14.
+        let link = SpaceServiceLink(sortOrder: 0, space: space, service: own)
+        if link.modelContext == nil { ctx.insert(link) }
+        try ctx.save()
+
+        let start = AppState.railServices(
+            forSpace: space.id, in: ctx, placement: GlobalPlacement(edge: .start, bar: .spaces))
+        XCTAssertEqual(start.map(\.id), [global.id, own.id])
+
+        let end = AppState.railServices(
+            forSpace: space.id, in: ctx, placement: GlobalPlacement(edge: .end, bar: .services))
+        XCTAssertEqual(end.map(\.id), [own.id, global.id])
     }
 }

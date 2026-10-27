@@ -56,6 +56,9 @@ struct SpaceStripView: View {
     /// The space cell that currently holds keyboard focus. Two-way bound to each
     /// cell's `.focused` so the arrow keys move relative to it.
     @FocusState private var focusedSpaceID: UUID?
+    /// The strip's laid-out height, which caps the global box pinned above or
+    /// below the scrolling spaces. See `GlobalBoxCap`.
+    @State private var stripHeight: CGFloat = 0
 
 
     /// The spaces and the dividers between them, as drawn.
@@ -143,6 +146,7 @@ struct SpaceStripView: View {
             addSpaceButton
                 .padding(.bottom, ChorusCard.railPadding)
         }
+        .measuringHeight(into: $stripHeight)
         // One list, so no card: it sits on the window beside the web card.
         .railCardFrame(width: cardWidth, topInset: contentInset, carded: false)
         .railDropZone()
@@ -165,7 +169,8 @@ struct SpaceStripView: View {
             selectedServiceID: $selectedServiceID,
             axis: .vertical,
             showsSpaceHeader: false,
-            globalsOnly: true
+            globalsOnly: true,
+            stripHeight: stripHeight
         )
     }
 

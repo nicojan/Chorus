@@ -17,6 +17,10 @@ struct GlobalBoxView<Row: View>: View {
     let axis: Axis
     /// The rail's reorder spring, or nil under Reduce Motion.
     let reorderAnimation: Animation?
+    /// The most height a column pinned outside its rail's scrolling list may
+    /// take, card and all. Past it the rows scroll inside the card, so the
+    /// list keeps its room. Nil for no limit. See `GlobalBoxCap`.
+    var maxHeight: CGFloat? = nil
     @ViewBuilder let row: (RailItem) -> Row
 
     /// Rows sit 2 points apart in a column, the rail's 30 point pitch; tabs
@@ -25,7 +29,7 @@ struct GlobalBoxView<Row: View>: View {
 
     var body: some View {
         if !items.isEmpty {
-            stack
+            fitted
                 // Only a reorder animates. See `ReorderKey`.
                 .animation(reorderAnimation, value: ReorderKey(ids: items.map(\.id)))
                 // Padded on every side so a row's 8 point fill sits inside the
@@ -34,6 +38,25 @@ struct GlobalBoxView<Row: View>: View {
                 .railCard()
                 .modifier(GlobalBoxDragging(services: items.compactMap(\.service)))
                 .modifier(GlobalBoxMenu())
+                // One container to VoiceOver, as a group's box is.
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Global services")
+        }
+    }
+
+    /// The rows, scrolling inside the card once a capped column outgrows its
+    /// limit. While they fit, this is the plain stack.
+    @ViewBuilder
+    private var fitted: some View {
+        if axis == .vertical, let maxHeight {
+            HeightCap(height: max(0, maxHeight - 2 * ChorusCard.railPadding)) {
+                ViewThatFits(in: .vertical) {
+                    stack
+                    FadingVerticalScrollView { stack }
+                }
+            }
+        } else {
+            stack
         }
     }
 
@@ -51,6 +74,18 @@ struct GlobalBoxView<Row: View>: View {
     }
 }
 
+/// How tall a global box pinned outside its rail's scrolling list may grow.
+enum GlobalBoxCap {
+    /// The share of its rail's height a pinned column may take.
+    static let pinnedShare: CGFloat = 0.4
+
+    /// The limit for a column pinned in a rail `railHeight` tall, or nil
+    /// before the rail has been measured.
+    static func height(forRail railHeight: CGFloat) -> CGFloat? {
+        railHeight > 0 ? railHeight * pinnedShare : nil
+    }
+}
+
 /// Makes the box draggable by its padding. The rows inside carry smaller drag
 /// sources of their own, which win a press on them (see `RailDragSession`),
 /// so only a press between or round them drags the box.
@@ -63,9 +98,9 @@ private struct GlobalBoxDragging: ViewModifier {
             // press there would fall through to the window-drag handle behind
             // a top bar and move the window. The shape keeps it on the box.
             .contentShape(RoundedRectangle(cornerRadius: ChorusCard.cornerRadius, style: .continuous))
-            // The box's own spot takes nothing, but listing its type here
-            // keeps the window registered for it from before a drag starts,
-            // when the targets elsewhere are not drawn yet.
+            // The box's own spot takes nothing. Kept as a precaution, so the
+            // window knows the type before the drag starts, while the targets
+            // elsewhere are not drawn yet; harmless if not needed.
             .onDrop(of: [LiveReorder.globalBoxType], delegate: GlobalBoxRefusal())
             .overlay(dragSource)
     }
@@ -91,22 +126,71 @@ private struct GlobalBoxDragging: ViewModifier {
 /// a right-click on a row inside still shows that row's menu.
 private struct GlobalBoxMenu: ViewModifier {
     @Environment(AppState.self) private var appState
-    @AppStorage(GlobalPlacement.edgeKey) private var edgeRaw = ""
-    @AppStorage(GlobalPlacement.barKey) private var barRaw = ""
 
     func body(content: Content) -> some View {
         content.contextMenu {
-            let layout = appState.railLayout
-            let here = GlobalPlacement(edgeRaw: edgeRaw, barRaw: barRaw).spot(in: layout)
-            Menu("Move Global Services") {
-                ForEach(GlobalPlacement.pickerChoices(for: layout), id: \.spot) { choice in
-                    Toggle(choice.title, isOn: Binding(
-                        get: { choice.spot == here },
-                        set: { _ in GlobalPlacement.choose(choice.spot) }
-                    ))
-                }
+            GlobalPlacementMenu(layout: appState.railLayout)
+        }
+    }
+}
+
+/// "Move Global Services": the spots a layout offers, the current one
+/// ticked. The box's menu shows it, and so does each global service's own,
+/// since VoiceOver and the keyboard reach a row's menu but not the card's.
+struct GlobalPlacementMenu: View {
+    let layout: RailLayout
+    @AppStorage(GlobalPlacement.edgeKey) private var edgeRaw = GlobalEdge.start.rawValue
+    @AppStorage(GlobalPlacement.barKey) private var barRaw = GlobalBar.spaces.rawValue
+
+    init(layout: RailLayout) {
+        self.layout = layout
+    }
+
+    var body: some View {
+        let here = GlobalPlacement(edgeRaw: edgeRaw, barRaw: barRaw).spot(in: layout)
+        Menu("Move Global Services") {
+            ForEach(GlobalPlacement.pickerChoices(for: layout), id: \.spot) { choice in
+                Toggle(choice.title, isOn: Binding(
+                    get: { choice.spot == here },
+                    set: { _ in GlobalPlacement.choose(choice.spot) }
+                ))
             }
         }
+    }
+}
+
+/// Proposes its one subview no more than `height`, and takes the size the
+/// subview chooses. Unlike a `frame(maxHeight:)`, it never grows past the
+/// subview, so a column that fits looks as it did without the cap.
+private struct HeightCap: Layout {
+    let height: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let child = subviews.first else { return .zero }
+        return child.sizeThatFits(capped(proposal))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+    }
+
+    private func capped(_ proposal: ProposedViewSize) -> ProposedViewSize {
+        ProposedViewSize(width: proposal.width, height: min(proposal.height ?? .infinity, height))
+    }
+}
+
+extension View {
+    /// Writes this view's laid-out height into `height` as it changes. A
+    /// GeometryReader rather than `onGeometryChange`, as the rest of the rail
+    /// measures.
+    func measuringHeight(into height: Binding<CGFloat>) -> some View {
+        background(
+            GeometryReader { proxy in
+                Color.clear.onChange(of: proxy.size.height, initial: true) { _, new in
+                    height.wrappedValue = new
+                }
+            }
+        )
     }
 }
 

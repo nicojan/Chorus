@@ -2886,7 +2886,12 @@ final class AppState {
     /// Returns services for a space, safely skipping any links with dangling relationships
     /// (can happen if the previous session crashed mid-delete).
     func servicesForSpace(_ spaceID: UUID) -> [ServiceInstance] {
-        let context = modelContainer.mainContext
+        Self.servicesForSpace(spaceID, in: modelContainer.mainContext)
+    }
+
+    /// `servicesForSpace(_:)` against any context, so a test can run it on an
+    /// in-memory store.
+    static func servicesForSpace(_ spaceID: UUID, in context: ModelContext) -> [ServiceInstance] {
         let descriptor = FetchDescriptor<SpaceServiceLink>()
         do {
             return try context.fetch(descriptor)
@@ -2904,14 +2909,28 @@ final class AppState {
     }
 
     /// What the rail shows in a space, in its order: the global services at
-    /// the end the placement setting names, and the space's own. Use this wherever "the services you can see" is
-    /// meant — preloading, ⌘1–9, launch restore — and `servicesForSpace`
-    /// where membership is meant, such as a space's badge total or the
-    /// selection check when switching spaces.
-    func railServices(forSpace spaceID: UUID) -> [ServiceInstance] {
-        GlobalPlacement.current().ordered(
-            globals: RailEdits.globalServices(in: modelContainer.mainContext),
-            rest: servicesForSpace(spaceID)
+    /// the end the placement setting names, and the space's own. Use this
+    /// wherever "the services you can see" is meant — preloading, ⌘1–9,
+    /// launch restore — and `servicesForSpace` where membership is meant,
+    /// such as a space's badge total or the selection check when switching
+    /// spaces.
+    func railServices(
+        forSpace spaceID: UUID,
+        placement: GlobalPlacement = .current()
+    ) -> [ServiceInstance] {
+        Self.railServices(forSpace: spaceID, in: modelContainer.mainContext, placement: placement)
+    }
+
+    /// `railServices(forSpace:placement:)` against any context, so a test can
+    /// pin its order on an in-memory store.
+    static func railServices(
+        forSpace spaceID: UUID,
+        in context: ModelContext,
+        placement: GlobalPlacement
+    ) -> [ServiceInstance] {
+        placement.ordered(
+            globals: RailEdits.globalServices(in: context),
+            rest: servicesForSpace(spaceID, in: context)
         )
     }
 

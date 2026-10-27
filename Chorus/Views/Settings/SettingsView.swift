@@ -95,8 +95,8 @@ struct GeneralSettingsView: View {
     /// The same, for the hybrid layout's strip of spaces — see `SpaceStripMetrics`.
     @AppStorage(SpaceStripMetrics.defaultsKey) private var showSpaceNames = true
     @AppStorage(OutsideLinkDefault.defaultsKey) private var linksOpenInChorus = false
-    @AppStorage(GlobalPlacement.edgeKey) private var globalEdgeRaw = ""
-    @AppStorage(GlobalPlacement.barKey) private var globalBarRaw = ""
+    @AppStorage(GlobalPlacement.edgeKey) private var globalEdgeRaw = GlobalEdge.start.rawValue
+    @AppStorage(GlobalPlacement.barKey) private var globalBarRaw = GlobalBar.spaces.rawValue
     @AppStorage(WindowGlassStyle.defaultsKey) private var glassStyleRaw = WindowGlassStyle.defaultStyle.rawValue
 
     private let presenceManager = AppPresenceManager()

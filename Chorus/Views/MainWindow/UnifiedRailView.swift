@@ -38,6 +38,10 @@ struct UnifiedRailView: View {
     /// Draw only the global group, as a column, for the space strip to hold
     /// above or below its spaces. Rows follow the strip's width and its names setting.
     var globalsOnly: Bool = false
+    /// The space strip's height while this view draws the global group in it
+    /// (`globalsOnly`), so the column can be capped as a pinned one. Zero for
+    /// none.
+    var stripHeight: CGFloat = 0
 
     @Query private var allLinks: [SpaceServiceLink]
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
@@ -75,6 +79,9 @@ struct UnifiedRailView: View {
     /// Whether the global group goes after the rest of its rail or bar.
     private var globalsAtEnd: Bool { globalPlacement.edge == .end }
 
+    /// The vertical rail's laid-out height, which caps a global box pinned
+    /// outside its scrolling list. See `GlobalBoxView.maxHeight`.
+    @State private var railHeight: CGFloat = 0
     @State private var showingPalette = false
     /// The palette was opened by a group drag resting on the header, so it
     /// closes again when that drag ends.
@@ -376,7 +383,7 @@ struct UnifiedRailView: View {
             // At the end the box is pinned below the scrolling spaces, over the
             // add buttons, and does not scroll with them.
             if globalsAtEnd {
-                globalBox(axis: .vertical)
+                globalBox(axis: .vertical, pinned: true)
             }
             if offersDrop(at: .railBottom) {
                 GlobalSpotDropTarget(spot: .railBottom, axis: .vertical)
@@ -385,6 +392,7 @@ struct UnifiedRailView: View {
             allServicesAddButtons
                 .padding(.vertical, ChorusCard.railPadding)
         }
+        .measuringHeight(into: $railHeight)
         .railCardFrame(width: railColumnWidth, topInset: contentInset, carded: false)
         .railDropZone()
         .environment(\.railWidth, railFootprint)
@@ -725,17 +733,33 @@ struct UnifiedRailView: View {
         if !globalItems.isEmpty {
             // The strip puts this above or below its spaces; either way the
             // gap below sets it off from the spaces or from the hairline.
-            globalBox(axis: .vertical)
-                .padding(.bottom, ChorusCard.railPadding)
-                .environment(\.railWidth, railFootprint)
+            GlobalBoxView(
+                items: globalItems,
+                axis: .vertical,
+                reorderAnimation: reorderAnimation,
+                maxHeight: GlobalBoxCap.height(forRail: stripHeight)
+            ) { item in
+                railItemRow(item, in: .global)
+            }
+            .padding(.bottom, ChorusCard.railPadding)
+            .environment(\.railWidth, railFootprint)
         }
     }
 
     /// The global group in its box, a column or a row. Every layout draws it
     /// through here, so this is the one view the box's drag and menu belong
     /// on. Draws nothing while there are no global services.
-    private func globalBox(axis boxAxis: Axis) -> some View {
-        GlobalBoxView(items: globalItems, axis: boxAxis, reorderAnimation: reorderAnimation) { item in
+    ///
+    /// A box `pinned` outside a vertical rail's scrolling list is capped at a
+    /// share of the rail's height, so many global services in a short window
+    /// cannot squeeze the list to nothing.
+    private func globalBox(axis boxAxis: Axis, pinned: Bool = false) -> some View {
+        GlobalBoxView(
+            items: globalItems,
+            axis: boxAxis,
+            reorderAnimation: reorderAnimation,
+            maxHeight: pinned ? GlobalBoxCap.height(forRail: railHeight) : nil
+        ) { item in
             railItemRow(item, in: .global)
         }
     }
@@ -750,7 +774,7 @@ struct UnifiedRailView: View {
             // The global group sits in a box of its own, above the space it is
             // not part of or pinned below it, and is not drawn while empty.
             if !globals.isEmpty && !globalsAtEnd {
-                globalBox(axis: .vertical)
+                globalBox(axis: .vertical, pinned: true)
             }
             if offersDrop(at: .railTop) {
                 GlobalSpotDropTarget(spot: .railTop, axis: .vertical)
@@ -778,7 +802,7 @@ struct UnifiedRailView: View {
             // Tested here, not left to the box: an empty box would still
             // carry its padding.
             if !globals.isEmpty && globalsAtEnd {
-                globalBox(axis: .vertical)
+                globalBox(axis: .vertical, pinned: true)
                     .padding(.bottom, ChorusCard.railPadding)
             }
             if offersDrop(at: .railBottom) {
@@ -792,6 +816,7 @@ struct UnifiedRailView: View {
         }
         // One list needs no card of its own: it sits on the window, and the
         // web card beside it is the one card in the layout.
+        .measuringHeight(into: $railHeight)
         .railCardFrame(width: railColumnWidth, topInset: contentInset, carded: false)
         .railDropZone()
         .environment(\.railWidth, railFootprint)
@@ -987,8 +1012,10 @@ struct UnifiedRailView: View {
     }
 
     /// The row of service tabs. A plain `HStack` (not lazy) so `ViewThatFits`
-    /// can measure its width to decide whether the tabs fit. The traffic-light
-    /// inset is spent by the header now, so this starts flush.
+    /// can measure its width to decide whether the tabs fit. It starts flush:
+    /// whatever comes before it in the bar (the header, the global box or the
+    /// box's drop target) spends the traffic-light inset, and with none of
+    /// them `horizontalBody` pads the strip itself.
     private var tabRow: some View {
         // The global tabs are not here: they sit in their own box, beside the
         // strip rather than in it. See `horizontalBody`.
@@ -1632,6 +1659,9 @@ struct UnifiedRailView: View {
                     movingGlobalToNewSpace = service
                 }
             }
+            // The box's own menu, here too: VoiceOver and the keyboard reach
+            // a row's menu but not the card's.
+            GlobalPlacementMenu(layout: appState.railLayout)
             Divider()
             addDividerButton(after: service.id, in: .global)
             Divider()
