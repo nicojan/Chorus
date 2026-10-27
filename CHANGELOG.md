@@ -5,6 +5,8 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.5.31] - 2026-10-26
+
 ### Added
 
 - Choose where the services shown in every space sit: above or below the spaces, or at either end of the services bar. Pick a spot in Settings under Appearance, right-click the edge of their box, or drag the box by its edge to one of the spots that light up. In a layout with one rail or bar, the box goes at either end of it. The ⌘1–9 shortcuts and the arrow keys follow the order on screen.
