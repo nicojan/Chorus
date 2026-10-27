@@ -36,6 +36,7 @@
 		3DEA98A98656EE981A29A71D /* FindInPageBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76865DDEE671C34CC88CF4D8 /* FindInPageBar.swift */; };
 		4129642FB0AD19AC83F01A30 /* UserAgentProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E431CF7CE145D536081A23 /* UserAgentProvider.swift */; };
 		4B199EBC47BA21CE22ECC893 /* EmojiData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EDCAF66B6DD05BA3A244E9E /* EmojiData.swift */; };
+		4C95B602B3097401742080B7 /* GlobalPlacement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61D8B069E893E608C90E82EF /* GlobalPlacement.swift */; };
 		53615BD3734128E5CEE21D0A /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = E88CC47CBB66B4749ACDC068 /* AppLogger.swift */; };
 		53C0B5A438EDC6C98FE081AB /* QuickSwitcherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA55A0E026084DC20071FBCE /* QuickSwitcherView.swift */; };
 		542D3E32DA8EA90EC36BB6A0 /* DataStoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD49B64B44CC548574DA2348 /* DataStoreManager.swift */; };
@@ -102,6 +103,7 @@
 		D4721545C5C3DD809AE549A7 /* ChorusStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50260A359445D2B4C556E1E6 /* ChorusStyle.swift */; };
 		D69EC4D73050E0B81AB43378 /* RailDragSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E069CF77DB1CF73319797269 /* RailDragSession.swift */; };
 		D861B394A60C4CD2F47CF8EA /* ServiceHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFD9BB4DBF6536D1AD0CA298 /* ServiceHealth.swift */; };
+		DA30DDBA2100841126D77F95 /* GlobalPlacementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4878D7EAAB3DCB48557A9984 /* GlobalPlacementTests.swift */; };
 		DB9B6FD9265D63DCA11B6CFC /* AppCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E0D298EDEBDC1F1EB614912 /* AppCapabilities.swift */; };
 		DF712EA56B5AE10C7BF77176 /* WebViewCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438D78C9503E732B7792FA10 /* WebViewCoordinator.swift */; };
 		DFA25C2036755E1DAD624BA5 /* licenses in Resources */ = {isa = PBXBuildFile; fileRef = 7C3DF954AFE066BC42761ABC /* licenses */; };
@@ -161,6 +163,7 @@
 		438D78C9503E732B7792FA10 /* WebViewCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewCoordinator.swift; sourceTree = "<group>"; };
 		464C332182D96B75A17F363C /* WhatsNew.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsNew.swift; sourceTree = "<group>"; };
 		4666C49AA129F26D936B0715 /* ServiceInstance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceInstance.swift; sourceTree = "<group>"; };
+		4878D7EAAB3DCB48557A9984 /* GlobalPlacementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalPlacementTests.swift; sourceTree = "<group>"; };
 		4D2B28970B7AEF9B0EB53AFD /* UnifiedRailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedRailView.swift; sourceTree = "<group>"; };
 		4DA08B3832BE838917ABE7FD /* ServiceGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceGroup.swift; sourceTree = "<group>"; };
 		50260A359445D2B4C556E1E6 /* ChorusStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChorusStyle.swift; sourceTree = "<group>"; };
@@ -172,6 +175,7 @@
 		5A1D24379DD182D4A7B6DD11 /* AppPresenceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPresenceManager.swift; sourceTree = "<group>"; };
 		608B27F538D778C6FC4B1697 /* WebViewPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewPool.swift; sourceTree = "<group>"; };
 		6161E11C236922FC7AEFB3DF /* TrafficLights.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficLights.swift; sourceTree = "<group>"; };
+		61D8B069E893E608C90E82EF /* GlobalPlacement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalPlacement.swift; sourceTree = "<group>"; };
 		63600DD5EE558B052FFC8073 /* DownloadsButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsButton.swift; sourceTree = "<group>"; };
 		67FC16493C168FFB5B6C7385 /* StoreInventory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreInventory.swift; sourceTree = "<group>"; };
 		690DB6DBF74EAD8B040C1460 /* InAppBrowserWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InAppBrowserWindow.swift; sourceTree = "<group>"; };
@@ -454,6 +458,7 @@
 			isa = PBXGroup;
 			children = (
 				88C307C75776869CE8A82618 /* AppPreferences.swift */,
+				61D8B069E893E608C90E82EF /* GlobalPlacement.swift */,
 				1837F8880FC36D4FAC3DA51D /* GroupRules.swift */,
 				A83F5BC25BB6A8A26F8439DA /* RailDivider.swift */,
 				7264BBC99612EDA5183912E7 /* RailOrder.swift */,
@@ -512,6 +517,7 @@
 			isa = PBXGroup;
 			children = (
 				FBA2B8A19B41207F66E51CC3 /* ChorusTests.swift */,
+				4878D7EAAB3DCB48557A9984 /* GlobalPlacementTests.swift */,
 				FF1B76F1DCF6AD0DC9CD9FEB /* GroupTests.swift */,
 				9685F17CCE71FDC093EBA783 /* RailTests.swift */,
 				FE5EE9E12645C01E926701B1 /* SignInSharingTests.swift */,
@@ -650,6 +656,7 @@
 				AD626D3375822E9E5BC358BE /* FaviconFetcher.swift in Sources */,
 				0413EB0C08636424F9362A1C /* FeatureTips.swift in Sources */,
 				3DEA98A98656EE981A29A71D /* FindInPageBar.swift in Sources */,
+				4C95B602B3097401742080B7 /* GlobalPlacement.swift in Sources */,
 				6A6CCC6941830645FE15EDCD /* GroupBox.swift in Sources */,
 				37F8CBAEAFC8E95B02CE5601 /* GroupDrag.swift in Sources */,
 				A55F1921ACC911A47648046A /* GroupMenus.swift in Sources */,
@@ -719,6 +726,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C4ADA7C24E806E00FF4709D1 /* ChorusTests.swift in Sources */,
+				DA30DDBA2100841126D77F95 /* GlobalPlacementTests.swift in Sources */,
 				30F2487A1BC701C49D19A237 /* GroupTests.swift in Sources */,
 				BA1476755637D56C12D39BC0 /* RailTests.swift in Sources */,
 				3887C76A1F694AF9B197C9C6 /* SignInSharingTests.swift in Sources */,
