@@ -70,4 +70,26 @@ final class GlobalPlacementTests: XCTestCase {
         GlobalPlacement.choose(.railTop, in: defaults)
         XCTAssertEqual(GlobalPlacement.current(defaults), GlobalPlacement(edge: .start, bar: .services))
     }
+
+    func testShortcutDestinationsFollowPlacement() {
+        let g = UUID(), s = UUID(), a = UUID(), b = UUID()
+        let spaces = [(spaceID: s, services: [a, b])]
+        XCTAssertEqual(
+            ServiceShortcutNavigation.shortcutDestinations(globals: [g], spaces: spaces, placement: .standard),
+            [
+                ServiceShortcutDestination(spaceID: nil, serviceID: g),
+                ServiceShortcutDestination(spaceID: s, serviceID: a),
+                ServiceShortcutDestination(spaceID: s, serviceID: b)
+            ]
+        )
+        XCTAssertEqual(
+            ServiceShortcutNavigation.shortcutDestinations(
+                globals: [g], spaces: spaces, placement: GlobalPlacement.standard.placing(.railBottom)),
+            [
+                ServiceShortcutDestination(spaceID: s, serviceID: a),
+                ServiceShortcutDestination(spaceID: s, serviceID: b),
+                ServiceShortcutDestination(spaceID: nil, serviceID: g)
+            ]
+        )
+    }
 }

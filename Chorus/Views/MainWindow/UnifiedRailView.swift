@@ -979,10 +979,10 @@ struct UnifiedRailView: View {
         return URL(string: service.url)
     }
 
-    /// The services the rail shows now, in its order: the global group, then
-    /// the selected space's own.
+    /// The services the rail shows now, in its order: the global group at the
+    /// end the placement names, and the selected space's own.
     private var visibleServices: [ServiceInstance] {
-        globalServices + filteredLinks.compactMap(\.liveService)
+        GlobalPlacement.current().ordered(globals: globalServices, rest: filteredLinks.compactMap(\.liveService))
     }
 
     // MARK: - Service cells
@@ -1390,20 +1390,21 @@ struct UnifiedRailView: View {
     }
 
     /// Every service the arrow keys walk through, in the rail's order: the
-    /// global group first, then the selected space, or every space in the
-    /// all-services rail. Dividers are not stops.
+    /// global group at the end the placement names, and the selected space, or
+    /// every space in the all-services rail. Dividers are not stops.
     private var navigationStops: [NavigationStop] {
         let globals = globalServices.map { NavigationStop(focusID: $0.id, spaceID: nil, serviceID: $0.id) }
+        let placement = GlobalPlacement.current()
         if showsAllSpaces {
-            return globals + spaces.flatMap { space in
+            return placement.ordered(globals: globals, rest: spaces.flatMap { space in
                 links(in: space.id).compactMap { link in
                     link.liveService.map { NavigationStop(focusID: link.id, spaceID: space.id, serviceID: $0.id) }
                 }
-            }
+            })
         }
-        return globals + filteredLinks.compactMap { link in
+        return placement.ordered(globals: globals, rest: filteredLinks.compactMap { link in
             link.liveService.map { NavigationStop(focusID: $0.id, spaceID: nil, serviceID: $0.id) }
-        }
+        })
     }
 
     /// Arrow keys move the selection along the rail's axis (↑/↓ vertical,

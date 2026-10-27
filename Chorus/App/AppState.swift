@@ -2903,13 +2903,16 @@ final class AppState {
         }
     }
 
-    /// What the rail shows in a space, in its order: the global services,
-    /// then the space's own. Use this wherever "the services you can see" is
+    /// What the rail shows in a space, in its order: the global services at
+    /// the end the placement setting names, and the space's own. Use this wherever "the services you can see" is
     /// meant — preloading, ⌘1–9, launch restore — and `servicesForSpace`
     /// where membership is meant, such as a space's badge total or the
     /// selection check when switching spaces.
     func railServices(forSpace spaceID: UUID) -> [ServiceInstance] {
-        RailEdits.globalServices(in: modelContainer.mainContext) + servicesForSpace(spaceID)
+        GlobalPlacement.current().ordered(
+            globals: RailEdits.globalServices(in: modelContainer.mainContext),
+            rest: servicesForSpace(spaceID)
+        )
     }
 
     /// Preloads web views for all services in the currently selected space.
