@@ -1,10 +1,14 @@
 # Open items
 
-## In progress: where the global services sit (`feat/global-placement`)
+## Released: 1.5.31 on 2026-10-26
+
+Build 44, tag `v1.5.31` on `333d080`; DMG 10,759,403 bytes, sha256 `a2b74081…6283`; appcast `4bbc69c` on both feeds; cask `9a7d49d` here, `d796a2c` in the tap.
+
+## Shipped in 1.5.31: where the global services sit (PR #42)
 
 Design `docs/superpowers/specs/2026-10-26-global-services-placement-design.md`, plan `docs/superpowers/plans/2026-10-26-global-services-placement.md`. The box can sit at either end of the rail or bar, four spots in the two-bar layout, chosen in Settings, from the box's right-click menu, or by dragging the box. Every spot was checked in a Debug build on 2026-10-26. Still to check by hand: dragging the box in every layout (the window must not move in the top bars), service drags in and out of the box at each spot, the no-global-services case, and all of it on macOS 14 and 15.
 
-## Shipped on main, not yet released: WhatsApp "database error" after a quit (PR #41)
+## Shipped in 1.5.31: WhatsApp "database error" after a quit (PR #41)
 
 Quit now waits until pages have no IndexedDB write open and no IndexedDB file has changed for 300 ms, for 3 s at most. Five quits on a signed-in WhatsApp in a Debug build waited 382 to 849 ms and came back clean. Watch the "Quit: writes settled" log line on release builds.
 
