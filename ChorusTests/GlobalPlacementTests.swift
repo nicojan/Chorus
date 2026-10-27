@@ -118,4 +118,19 @@ final class GlobalPlacementTests: XCTestCase {
             ]
         )
     }
+
+    func testPickerChoicesMatchLayout() {
+        let hybrid = GlobalPlacement.pickerChoices(for: .hybrid)
+        XCTAssertEqual(hybrid.map(\.spot), GlobalPlacement.spots(for: .hybrid))
+        XCTAssertEqual(hybrid.count, 4)
+        XCTAssertEqual(hybrid.map(\.title), [
+            "Above the spaces", "Below the spaces",
+            "Left end of the services bar", "Right end of the services bar"
+        ])
+        for layout in RailLayout.allCases where layout != .hybrid {
+            let choices = GlobalPlacement.pickerChoices(for: layout)
+            XCTAssertEqual(choices.count, 2, "\(layout)")
+            XCTAssertEqual(choices.map(\.title), choices.map(\.spot.title))
+        }
+    }
 }

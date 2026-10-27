@@ -98,6 +98,12 @@ struct GlobalPlacement: Equatable, Sendable {
         }
     }
 
+    /// What the Settings picker and the box's menu list for a layout: each spot
+    /// with its title, in picker order.
+    nonisolated static func pickerChoices(for layout: RailLayout) -> [(spot: GlobalSpot, title: String)] {
+        spots(for: layout).map { (spot: $0, title: $0.title) }
+    }
+
     /// The spot this placement resolves to in a layout.
     nonisolated func spot(in layout: RailLayout) -> GlobalSpot {
         switch layout {

@@ -33,6 +33,7 @@ struct GlobalBoxView<Row: View>: View {
                 .padding(ChorusCard.railPadding)
                 .railCard()
                 .modifier(GlobalBoxDragging(services: items.compactMap(\.service)))
+                .modifier(GlobalBoxMenu())
         }
     }
 
@@ -83,6 +84,29 @@ private struct GlobalBoxDragging: ViewModifier {
         )
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+/// The box's own menu: where the global services sit. It goes on the card, so
+/// a right-click on a row inside still shows that row's menu.
+private struct GlobalBoxMenu: ViewModifier {
+    @Environment(AppState.self) private var appState
+    @AppStorage(GlobalPlacement.edgeKey) private var edgeRaw = ""
+    @AppStorage(GlobalPlacement.barKey) private var barRaw = ""
+
+    func body(content: Content) -> some View {
+        content.contextMenu {
+            let layout = appState.railLayout
+            let here = GlobalPlacement(edgeRaw: edgeRaw, barRaw: barRaw).spot(in: layout)
+            Menu("Move Global Services") {
+                ForEach(GlobalPlacement.pickerChoices(for: layout), id: \.spot) { choice in
+                    Toggle(choice.title, isOn: Binding(
+                        get: { choice.spot == here },
+                        set: { _ in GlobalPlacement.choose(choice.spot) }
+                    ))
+                }
+            }
+        }
     }
 }
 
