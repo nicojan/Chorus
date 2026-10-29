@@ -91,3 +91,29 @@ jobs:
       # package's resource bundle, which a path change can break unseen.
       - name: Engine package tests
         run: swift test
+
+      # Nothing above builds Release, and the engine's resources load through
+      # Bundle.module, which stops the app at launch if the engine's resource
+      # bundle is missing. So build Release and look for the bundle. A build
+      # only: nothing is run, so the rule against running tests under Release
+      # (CLAUDE.md) is not touched. Signing is off because the runner has no
+      # Developer ID, and the check is about what gets copied in.
+      - name: Release build carries the engine bundle
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Chorus.xcodeproj \
+            -scheme Chorus \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath build/release-check \
+            CODE_SIGNING_ALLOWED=NO
+          res=build/release-check/Build/Products/Release/Chorus.app/Contents/Resources/ChorusEngine_ChorusEngine.bundle/Contents/Resources
+          missing=0
+          for f in hagezi-light.json fanboy-annoyance.json darkreader.js THIRD_PARTY_NOTICES.md; do
+            if [ ! -s "$res/$f" ]; then
+              echo "::error::$f is missing from the Release app's engine bundle"
+              missing=1
+            fi
+          done
+          exit $missing

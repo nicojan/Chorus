@@ -3252,8 +3252,10 @@ final class ChorusTests: XCTestCase {
         XCTAssertNotNil(ContentBlockerManager.bundledListURL("fanboy-annoyance"))
     }
 
-    /// Dark Reader moved into the package too. A miss here is silent in the app:
-    /// `libraryJS` falls back to an empty string and dark theming stops working.
+    /// Dark Reader moved into the package too. A missing file here is silent in
+    /// the app: `libraryJS` falls back to an empty string and dark theming stops
+    /// working. A missing resource bundle is not silent: `Bundle.module` stops
+    /// the app, which is why CI also checks a Release build for the bundle.
     func testDarkReaderLibraryLoadsFromThePackageBundleInsideTheApp() {
         XCTAssertFalse(DarkReaderSupport.libraryJS.isEmpty)
     }

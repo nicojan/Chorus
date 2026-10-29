@@ -19,6 +19,7 @@ public struct WebViewContainer: NSViewRepresentable {
     }
 
     public func updateNSView(_ nsView: WebViewHostView, context: Context) {
+        nsView.cornerRadius = cornerRadius
         nsView.setWebView(webView)
     }
 }

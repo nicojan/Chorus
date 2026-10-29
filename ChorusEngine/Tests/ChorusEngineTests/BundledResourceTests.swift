@@ -14,9 +14,14 @@ final class BundledResourceTests: XCTestCase {
         }
     }
 
-    func testNoticesAndLicensesTravelWithTheBundle() {
-        XCTAssertNotNil(Bundle.module.url(forResource: "THIRD_PARTY_NOTICES", withExtension: "md"))
-        for name in ["GPL-3.0", "CC-BY-3.0", "DarkReader-MIT"] {
+    func testNoticesAndLicensesTravelWithTheBundle() throws {
+        let notices = try XCTUnwrap(Bundle.module.url(forResource: "THIRD_PARTY_NOTICES", withExtension: "md"))
+        let text = try String(contentsOf: notices, encoding: .utf8)
+        // Each part the engine ships, or whose code it carries, keeps its notice.
+        for section in ["HaGeZi", "Fanboy", "Dark Reader", "Paguro", "Tommaso Laterza"] {
+            XCTAssertTrue(text.contains(section), "the engine's notices lost \(section)")
+        }
+        for name in ["GPL-3.0", "CC-BY-3.0", "DarkReader-MIT", "Chorus-MIT"] {
             XCTAssertNotNil(
                 Bundle.module.url(forResource: name, withExtension: "txt", subdirectory: "licenses"),
                 "licenses/\(name).txt is missing from the engine bundle"

@@ -54,7 +54,7 @@ The WebKit layer is a Swift package, `ChorusEngine` (root `Package.swift`, sourc
 
 - Chorus may import the engine. The engine never imports or names anything from Chorus: `ServiceInstance`, `Space`, `SpaceServiceLink`, `AppState`, `AppPreferences`, SwiftData, `ServiceCatalog` or its entries, or any type under `Chorus/`. It knows a page only as a `WebSurface`.
 - Build a `WebSurface` only through `ServiceInstance.webSurface` in `WebViewPool+Services.swift`. Its store is `dataStoreIdentifier`, never the service's id. Checks that need the live model (a deleted service, a Mac app) stay on that side too.
-- Engine resources load through `Bundle.module`, never `Bundle.main`. A miss turns blocking or dark mode off without an error.
+- Engine resources load through `Bundle.module`, never `Bundle.main`. A missing file turns blocking or dark mode off without an error; a missing resource bundle stops the app at launch, which CI's Release build step checks for.
 - Make a declaration `public` only when Chorus calls it. Add every public API change to "Engine API changes by release" in `docs/internal/ENGINE.md`; another app pins a Chorus tag with `exact:` and reads that list.
 - Keep `Package.swift` at tools version 6.0 for CI's Xcode 16.2.
 - The engine still carries Chorus names that pages and the logs see (`__chorus*` globals, the `com.nicojan.Chorus` logger subsystem, and others listed in `ENGINE.md`). Changing one changes Chorus's behavior; treat it as a feature, not a rename.

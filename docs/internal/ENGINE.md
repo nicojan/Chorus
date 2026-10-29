@@ -13,7 +13,7 @@ Folders:
 - `Web/`: the pool, the navigation and UI delegate, tabs, pop-ups, the in-app browser window, the SwiftUI host view, page state, service health and `WebSurface`.
 - `Services/`: sign-in stores, user scripts and the notification bridge, cookie banners, Dark Reader, downloads, the network monitor, and the content blocker.
 - `Utilities/`: the logger, the user agent, a deadline helper and the IndexedDB write tracker used at quit.
-- `Resources/`: `hagezi-light.json`, `fanboy-annoyance.json`, `darkreader.js`, `THIRD_PARTY_NOTICES.md` and `licenses/` (GPL-3.0, CC BY 3.0, Dark Reader's MIT).
+- `Resources/`: `hagezi-light.json`, `fanboy-annoyance.json`, `darkreader.js`, `THIRD_PARTY_NOTICES.md` and `licenses/` (GPL-3.0, CC BY 3.0, Dark Reader's MIT, and Chorus's own MIT, which covers the engine and the Paguro helpers in it).
 
 ## The boundary
 
@@ -54,10 +54,11 @@ Notifications and badges (`NotificationManager`, `BadgeManager`, `HibernatedBadg
 
 ## Resources
 
-Files in the package load through `Bundle.module`, which resolves to `ChorusEngine_ChorusEngine.bundle` inside the host app's `Contents/Resources`. A missed lookup does not crash: blocking turns off, or dark theming stops. Tests guard both sides:
+Files in the package load through `Bundle.module`, which resolves to `ChorusEngine_ChorusEngine.bundle` inside the host app's `Contents/Resources`. A file missing from the bundle fails quietly: blocking turns off, or dark theming stops. A bundle missing from the app fails loudly, because the accessor Xcode generates for `Bundle.module` stops the app at launch. Tests and CI guard each case:
 
 - `BundledResourceTests` (package) loads every bundled file from the module bundle.
 - `testBundledListsLoadFromThePackageBundleInsideTheApp` and `testDarkReaderLibraryLoadsFromThePackageBundleInsideTheApp` (app-hosted) load them from inside `Chorus.app`.
+- CI's "Release build carries the engine bundle" step builds Release with signing off and checks the bundle is in the app. Tests build Debug only, so nothing else covers Release.
 
 `scripts/convert_blocklist.sh` and `scripts/fetch_darkreader.sh` write straight into `ChorusEngine/Sources/ChorusEngine/Resources/`.
 
