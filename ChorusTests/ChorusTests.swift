@@ -3252,6 +3252,12 @@ final class ChorusTests: XCTestCase {
         XCTAssertNotNil(ContentBlockerManager.bundledListURL("fanboy-annoyance"))
     }
 
+    /// Dark Reader moved into the package too. A miss here is silent in the app:
+    /// `libraryJS` falls back to an empty string and dark theming stops working.
+    func testDarkReaderLibraryLoadsFromThePackageBundleInsideTheApp() {
+        XCTAssertFalse(DarkReaderSupport.libraryJS.isEmpty)
+    }
+
     /// `vendor/blocklists` is the source of the GPL list the app ships, so it has
     /// to describe the JSON actually bundled. Regenerating a list by any route
     /// other than `convert_blocklist.sh` would leave the two apart.

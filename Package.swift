@@ -19,6 +19,7 @@ let package = Package(
             resources: [
                 .copy("Resources/hagezi-light.json"),
                 .copy("Resources/fanboy-annoyance.json"),
+                .copy("Resources/darkreader.js"),
                 .copy("Resources/THIRD_PARTY_NOTICES.md"),
                 .copy("Resources/licenses"),
             ]

@@ -16,11 +16,17 @@ final class BundledResourceTests: XCTestCase {
 
     func testNoticesAndLicensesTravelWithTheBundle() {
         XCTAssertNotNil(Bundle.module.url(forResource: "THIRD_PARTY_NOTICES", withExtension: "md"))
-        for name in ["GPL-3.0", "CC-BY-3.0"] {
+        for name in ["GPL-3.0", "CC-BY-3.0", "DarkReader-MIT"] {
             XCTAssertNotNil(
                 Bundle.module.url(forResource: name, withExtension: "txt", subdirectory: "licenses"),
                 "licenses/\(name).txt is missing from the engine bundle"
             )
         }
+    }
+
+    func testDarkReaderLibraryLoadsFromTheModuleBundle() throws {
+        let url = try XCTUnwrap(Bundle.module.url(forResource: "darkreader", withExtension: "js"), "darkreader.js is missing")
+        XCTAssertFalse(try Data(contentsOf: url).isEmpty, "darkreader.js is empty")
+        XCTAssertEqual(DarkReaderSupport.libraryURL?.lastPathComponent, "darkreader.js")
     }
 }

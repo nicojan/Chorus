@@ -1,4 +1,3 @@
-import ChorusEngine
 import WebKit
 
 /// Dark Reader integration: the isolated JS world it runs in, the bundled
@@ -11,13 +10,13 @@ import WebKit
 /// `window.chrome` — so it is injected into an ISOLATED content world, never the
 /// page's own world. The DOM is shared across worlds, so the theme `<style>` it
 /// creates still applies; only its JS globals stay hidden from the site.
-enum DarkReaderSupport {
+public enum DarkReaderSupport {
 
     /// The single isolated world Dark Reader lives in. `world(name:)` returns the
     /// same instance for a given name, so the world used to add user scripts is
     /// the one `evaluateJavaScript(_:in:contentWorld:)` reaches. Main-actor
     /// isolated because the WebKit lookup is.
-    @MainActor static var world: WKContentWorld {
+    @MainActor public static var world: WKContentWorld {
         WKContentWorld.world(name: "ChorusDarkReader")
     }
 
@@ -26,21 +25,26 @@ enum DarkReaderSupport {
     private static let antiFlashID = "chorus-dr-antiflash"
 
     /// What to inject for a service: nothing, or the theme (library + enable).
-    enum DarkInjection {
+    public enum DarkInjection {
         case none, themed
     }
 
     /// The single source of truth for what a service needs: a service themes
     /// only when the user set it to On AND the app is currently dark. Pure;
     /// unit-tested.
-    static func injection(themed: Bool, appDark: Bool) -> DarkInjection {
+    public static func injection(themed: Bool, appDark: Bool) -> DarkInjection {
         appDark && themed ? .themed : .none
     }
 
 
-    /// The Dark Reader library source, loaded once from the app bundle.
-    static let libraryJS: String = {
-        guard let url = Bundle.main.url(forResource: "darkreader", withExtension: "js"),
+    /// Where the library lives: in this package's resource bundle, not the app's.
+    nonisolated static var libraryURL: URL? {
+        Bundle.module.url(forResource: "darkreader", withExtension: "js")
+    }
+
+    /// The Dark Reader library source, loaded once from the engine's resource bundle.
+    public static let libraryJS: String = {
+        guard let url = libraryURL,
               let js = try? String(contentsOf: url, encoding: .utf8) else {
             AppLogger.general.error("darkreader.js not found in bundle; dark theming disabled")
             return ""
@@ -175,7 +179,7 @@ enum DarkReaderSupport {
     }
 
     /// Snippet to enable theming on an already-loaded document (live change).
-    static let enableJS = """
+    public static let enableJS = """
     if (window.DarkReader) {
         try { DarkReader.setFetchMethod(window.fetch); } catch (e) {}
         DarkReader.enable({});
@@ -185,7 +189,7 @@ enum DarkReaderSupport {
     /// Snippet to disable theming on an already-loaded document and drop the load
     /// cover. Calls the cover's own teardown so its observer and timers stop (not
     /// just the element removed), then falls back to removing the element by id.
-    static let disableJS = """
+    public static let disableJS = """
     if (window.DarkReader) { DarkReader.disable(); }
     if (window.__chorusCoverDismiss) { window.__chorusCoverDismiss(); }
     var af = document.getElementById('\(antiFlashID)');

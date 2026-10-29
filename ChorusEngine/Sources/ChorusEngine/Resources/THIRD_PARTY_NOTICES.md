@@ -1,6 +1,6 @@
 # Third-party notices
 
-ChorusEngine ships two filter lists, converted into WebKit content rules. Their authors own them and they keep their own licenses, whose full texts are in the `licenses` folder next to this file. The sections below come word for word from the Chorus repository's `THIRD_PARTY_NOTICES.md`.
+ChorusEngine ships two filter lists, converted into WebKit content rules, and the Dark Reader library. Their authors own them and they keep their own licenses, whose full texts are in the `licenses` folder next to this file. The sections below come word for word from the Chorus repository's `THIRD_PARTY_NOTICES.md`.
 
 ## Blocklists
 
@@ -29,3 +29,9 @@ Chorus converts two filter lists into WebKit content rules and ships the result 
 - Project: [SafariConverterLib](https://github.com/AdguardTeam/SafariConverterLib), by AdGuard
 - License: GPL-3.0
 - Use: build tool only. `convert_blocklist.sh` runs it to make the JSON. Chorus does not link it and does not ship it.
+
+## Dark Reader
+
+- Project: [Dark Reader](https://github.com/darkreader/darkreader)
+- License: [MIT](licenses/DarkReader-MIT.txt)
+- In the app: `darkreader.js`, which gives a service a dark theme when you turn that on for it

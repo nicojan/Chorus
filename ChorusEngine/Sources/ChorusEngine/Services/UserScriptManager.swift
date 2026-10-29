@@ -1,4 +1,3 @@
-import ChorusEngine
 import WebKit
 import UserNotifications
 
@@ -11,19 +10,21 @@ struct NotificationPayload: Codable {
 }
 
 @MainActor
-final class UserScriptManager {
-    var isServiceMuted: (@Sendable (UUID) -> Bool)?
+public final class UserScriptManager {
+    public init() {}
+
+    public var isServiceMuted: (@Sendable (UUID) -> Bool)?
     /// Per-service "forward notifications to macOS" flag. Defaults to true when
     /// unset, preserving behavior for services that predate the toggle.
-    var isServiceNotifyingOS: (@Sendable (UUID) -> Bool)?
-    var isDoNotDisturbActive: (@Sendable () -> Bool)?
+    public var isServiceNotifyingOS: (@Sendable (UUID) -> Bool)?
+    public var isDoNotDisturbActive: (@Sendable () -> Bool)?
     /// The service's label, shown on each notification it posts.
-    var serviceLabel: (@Sendable (UUID) -> String?)?
-    var autoDismissCookieBanners: Bool = true
+    public var serviceLabel: (@Sendable (UUID) -> String?)?
+    public var autoDismissCookieBanners: Bool = true
 
     /// Full setup for a freshly built web view: the message handlers (added once)
     /// plus all user scripts.
-    func configureScripts(
+    public func configureScripts(
         for serviceID: UUID,
         customCSS: String?,
         darkInjection: DarkReaderSupport.DarkInjection,
@@ -43,7 +44,7 @@ final class UserScriptManager {
     /// Registers the message handlers. Called once when the web view is built —
     /// NOT on reinstall, since `removeAllUserScripts()` leaves message handlers in
     /// place and re-adding would throw.
-    func installHandlers(for serviceID: UUID, on controller: WKUserContentController) {
+    public func installHandlers(for serviceID: UUID, on controller: WKUserContentController) {
         let mutedCheck = isServiceMuted
         let notifyOSCheck = isServiceNotifyingOS
         let dndCheck = isDoNotDisturbActive
@@ -70,7 +71,7 @@ final class UserScriptManager {
     /// to re-bake state (e.g. the Dark Reader theme scripts) so the next full
     /// navigation is correct. `darkInjection` selects what dark-theming scripts
     /// to bake.
-    func installUserScripts(
+    public func installUserScripts(
         for serviceID: UUID,
         customCSS: String?,
         darkInjection: DarkReaderSupport.DarkInjection,
@@ -220,7 +221,7 @@ final class UserScriptManager {
 
     /// JavaScript that can be evaluated to check if a WebRTC call is active.
     /// Returns `true` if any RTCPeerConnection is in a connected/active state.
-    nonisolated static let callDetectionQueryJS = "window.__chorusActiveCall === true"
+    public nonisolated static let callDetectionQueryJS = "window.__chorusActiveCall === true"
 
     /// Reports the page as visible even when its web view is preloaded/off-screen,
     /// so services that gate their unread-count title updates on Page Visibility
@@ -236,7 +237,7 @@ final class UserScriptManager {
     /// the page pinned to visible it never got a save point at all, and WhatsApp
     /// could come back signed out. `quitReleaseJS` calls the function below,
     /// which lets the page go hidden and sends it both events.
-    static func makeVisibilityOverrideScript() -> String {
+    public static func makeVisibilityOverrideScript() -> String {
         return """
         (function() {
             try {
@@ -272,7 +273,7 @@ final class UserScriptManager {
 
     /// Evaluated in each live page just before quit. See
     /// `makeVisibilityOverrideScript`.
-    nonisolated static let quitReleaseJS = "window.__chorusReleaseForQuit && window.__chorusReleaseForQuit(); true"
+    public nonisolated static let quitReleaseJS = "window.__chorusReleaseForQuit && window.__chorusReleaseForQuit(); true"
 
     /// Counts the page's IndexedDB writes that have not finished: write and
     /// upgrade transactions until they complete or abort, and database opens
@@ -323,7 +324,7 @@ final class UserScriptManager {
 
     /// Evaluated in each live page while quit waits. See
     /// `makeWriteTrackerScript`.
-    nonisolated static let pendingWritesJS = "window.__chorusPendingWrites ? window.__chorusPendingWrites() : 0"
+    public nonisolated static let pendingWritesJS = "window.__chorusPendingWrites ? window.__chorusPendingWrites() : 0"
 
     /// Reports the page as focused even when its web view is in the background,
     /// so a service that flips your status to "away"/"idle" on window blur
@@ -527,11 +528,11 @@ final class UserScriptManager {
     }
 }
 
-final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unchecked Sendable {
+public final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unchecked Sendable {
     /// Whether an intercepted web notification goes on to macOS. It fires only
     /// when the service is not muted, has OS notifications on, and Do Not
     /// Disturb is off. Pure, so the policy is unit-testable.
-    nonisolated static func shouldPostOSNotification(
+    public nonisolated static func shouldPostOSNotification(
         isMuted: Bool,
         notifyOS: Bool,
         doNotDisturb: Bool
@@ -595,7 +596,7 @@ final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unche
         super.init()
     }
 
-    func userContentController(
+    public func userContentController(
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {

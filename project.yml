@@ -32,7 +32,6 @@ targets:
         buildPhase: resources
     resources:
       - path: Chorus/Resources/ServiceCatalog.json
-      - path: Chorus/Resources/darkreader.js
       - path: Chorus/Resources/NotificationScripts
         optional: true
     dependencies:
