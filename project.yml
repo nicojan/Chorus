@@ -7,6 +7,9 @@ options:
   createIntermediateGroups: true
 
 packages:
+  # The web engine, built from this repo's root Package.swift.
+  ChorusEngine:
+    path: .
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     majorVersion: 2.9.3
@@ -36,6 +39,7 @@ targets:
         optional: true
     dependencies:
       - package: Sparkle
+      - package: ChorusEngine
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.nicojan.Chorus

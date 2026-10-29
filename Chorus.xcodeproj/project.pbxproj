@@ -20,6 +20,7 @@
 		17F2651E5C2195F32A130148 /* WebSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55ABC76BDFF206C2A3147974 /* WebSurface.swift */; };
 		1C5CD1937EFECD06DA479F86 /* Space.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC9767949C165F7DCD9A281 /* Space.swift */; };
 		1CC3A629AEC1BBF9ACDC5FB0 /* SpaceHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52D93229EEC510DC0850005E /* SpaceHeaderView.swift */; };
+		1E297395FC835B4863BD77B5 /* ChorusEngine in Frameworks */ = {isa = PBXBuildFile; productRef = FE624AB3D9955080B15829B1 /* ChorusEngine */; };
 		230144499E6BE9FD41C03338 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7458024AA17BF508D4807018 /* ContentView.swift */; };
 		27E1865FA1BB65766DBDB808 /* WhatsNew.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464C332182D96B75A17F363C /* WhatsNew.swift */; };
 		2D9A102388157D9B3C660F70 /* ServiceCatalogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3506A7D95472D8F3E822A39 /* ServiceCatalogEntry.swift */; };
@@ -159,6 +160,7 @@
 		313680424148829FCBEAA9BC /* ModelContext+Save.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ModelContext+Save.swift"; sourceTree = "<group>"; };
 		31B99E22D6D2E2F8EBDE7A31 /* darkreader.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = darkreader.js; sourceTree = "<group>"; };
 		33B60E7DE1B2CCE732C55AF9 /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
+		356D83F32D2ED8A8074B25DA /* Chorus */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Chorus; path = .; sourceTree = SOURCE_ROOT; };
 		38CB29411D3B889CE0623121 /* Deadline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Deadline.swift; sourceTree = "<group>"; };
 		3A3640458AF427BC8D3C8F2A /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
 		3BEC6FCF1B60E1B9CD89A3A2 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
@@ -257,6 +259,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F1E3E4A757954012789BD79D /* Sparkle in Frameworks */,
+				1E297395FC835B4863BD77B5 /* ChorusEngine in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -403,6 +406,14 @@
 			path = MenuBar;
 			sourceTree = "<group>";
 		};
+		A2E96BF84AD966F06C535B56 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				356D83F32D2ED8A8074B25DA /* Chorus */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
 		A7270CB283A200B169C5CB97 /* Schema */ = {
 			isa = PBXGroup;
 			children = (
@@ -461,6 +472,7 @@
 				1B679EE1300566DA259FFF77 /* THIRD_PARTY_NOTICES.md */,
 				EA0163DCE747F53BC2416E3C /* Chorus */,
 				FD762D2848988AECEFD4AEF0 /* ChorusTests */,
+				A2E96BF84AD966F06C535B56 /* Packages */,
 				3E034E22799F25CC522A1262 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -573,6 +585,7 @@
 			name = Chorus;
 			packageProductDependencies = (
 				F63EF11A2754495AEB09C97E /* Sparkle */,
+				FE624AB3D9955080B15829B1 /* ChorusEngine */,
 			);
 			productName = Chorus;
 			productReference = 94326A5DEE01135F945E9DF3 /* Chorus.app */;
@@ -600,6 +613,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				76692F1A5ADEE9BDB4D2EDF7 /* XCRemoteSwiftPackageReference "Sparkle" */,
+				353ABEF2B8DBEA35755A6A00 /* XCLocalSwiftPackageReference "." */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3E034E22799F25CC522A1262 /* Products */;
@@ -1000,6 +1014,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		353ABEF2B8DBEA35755A6A00 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		76692F1A5ADEE9BDB4D2EDF7 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -1016,6 +1037,10 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 76692F1A5ADEE9BDB4D2EDF7 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
+		};
+		FE624AB3D9955080B15829B1 /* ChorusEngine */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ChorusEngine;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
