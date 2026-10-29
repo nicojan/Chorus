@@ -10,8 +10,11 @@ import WebKit
 final class DataStoreManager {
     private var cache: [UUID: WKWebsiteDataStore] = [:]
 
-    func dataStore(for instance: ServiceInstance) -> WKWebsiteDataStore {
-        dataStore(forIdentifier: instance.dataStoreIdentifier)
+    func dataStore(for store: WebSurface.DataStore) -> WKWebsiteDataStore {
+        switch store {
+        case .persistent(let identifier):
+            dataStore(forIdentifier: identifier)
+        }
     }
 
     func dataStore(forIdentifier identifier: UUID) -> WKWebsiteDataStore {

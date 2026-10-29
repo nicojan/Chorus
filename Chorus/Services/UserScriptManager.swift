@@ -23,15 +23,15 @@ final class UserScriptManager {
     /// Full setup for a freshly built web view: the message handlers (added once)
     /// plus all user scripts.
     func configureScripts(
-        for instance: ServiceInstance,
+        for serviceID: UUID,
         customCSS: String?,
         darkInjection: DarkReaderSupport.DarkInjection,
         stayActiveInBackground: Bool,
         on controller: WKUserContentController
     ) {
-        installHandlers(for: instance, on: controller)
+        installHandlers(for: serviceID, on: controller)
         installUserScripts(
-            for: instance,
+            for: serviceID,
             customCSS: customCSS,
             darkInjection: darkInjection,
             stayActiveInBackground: stayActiveInBackground,
@@ -42,13 +42,13 @@ final class UserScriptManager {
     /// Registers the message handlers. Called once when the web view is built —
     /// NOT on reinstall, since `removeAllUserScripts()` leaves message handlers in
     /// place and re-adding would throw.
-    func installHandlers(for instance: ServiceInstance, on controller: WKUserContentController) {
+    func installHandlers(for serviceID: UUID, on controller: WKUserContentController) {
         let mutedCheck = isServiceMuted
         let notifyOSCheck = isServiceNotifyingOS
         let dndCheck = isDoNotDisturbActive
         let labelLookup = serviceLabel
         let handler = NotificationMessageHandler(
-            serviceID: instance.id,
+            serviceID: serviceID,
             labelLookup: { id in
                 labelLookup?(id) ?? nil
             },
@@ -70,13 +70,13 @@ final class UserScriptManager {
     /// navigation is correct. `darkInjection` selects what dark-theming scripts
     /// to bake.
     func installUserScripts(
-        for instance: ServiceInstance,
+        for serviceID: UUID,
         customCSS: String?,
         darkInjection: DarkReaderSupport.DarkInjection,
         stayActiveInBackground: Bool,
         on controller: WKUserContentController
     ) {
-        let notificationScript = makeNotificationInterceptionScript(serviceID: instance.id.uuidString)
+        let notificationScript = makeNotificationInterceptionScript(serviceID: serviceID.uuidString)
         let userScript = WKUserScript(
             source: notificationScript,
             injectionTime: .atDocumentStart,

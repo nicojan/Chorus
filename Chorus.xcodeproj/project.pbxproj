@@ -17,6 +17,7 @@
 		08325D59D0DA278497FDA446 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 33B60E7DE1B2CCE732C55AF9 /* LICENSE */; };
 		091825995DF2FD9C4A7BC86F /* KeyboardShortcutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2AC7E996360A4BC660FD194 /* KeyboardShortcutManager.swift */; };
 		17274B7DA79560457403E050 /* ServiceTabs.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E0761BBE5A85E34BC73573 /* ServiceTabs.swift */; };
+		17F2651E5C2195F32A130148 /* WebSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55ABC76BDFF206C2A3147974 /* WebSurface.swift */; };
 		1C5CD1937EFECD06DA479F86 /* Space.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC9767949C165F7DCD9A281 /* Space.swift */; };
 		1CC3A629AEC1BBF9ACDC5FB0 /* SpaceHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52D93229EEC510DC0850005E /* SpaceHeaderView.swift */; };
 		230144499E6BE9FD41C03338 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7458024AA17BF508D4807018 /* ContentView.swift */; };
@@ -71,6 +72,7 @@
 		96AB65EE0864CCD84279C86D /* RailItems.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8D1ECB45C649A2DC43CECD5 /* RailItems.swift */; };
 		9722D48056956FA71E911D98 /* ServicePopup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200FB7DAF9279B0E2764474D /* ServicePopup.swift */; };
 		9912BDFEE290E93DC57ED3C7 /* DemoControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42C2BEF1C847F26AD98EABF0 /* DemoControl.swift */; };
+		9A0520E87ACAE8A56BC23625 /* WebSurfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7F6622E313027CCFE7EA483 /* WebSurfaceTests.swift */; };
 		9EDF307D989D199DE994D432 /* EditServiceSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DD5F8F7C2450C88FA1A3886 /* EditServiceSheet.swift */; };
 		9F0C82A9D1AFDF927EC1A59C /* DarkReaderSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6935142E75345640B2C4D7F0 /* DarkReaderSupport.swift */; };
 		A22B72681582D92F92938917 /* WebToolbarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 538A1641C210F10E3CD43E14 /* WebToolbarView.swift */; };
@@ -109,6 +111,7 @@
 		DF712EA56B5AE10C7BF77176 /* WebViewCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438D78C9503E732B7792FA10 /* WebViewCoordinator.swift */; };
 		DFA25C2036755E1DAD624BA5 /* licenses in Resources */ = {isa = PBXBuildFile; fileRef = 7C3DF954AFE066BC42761ABC /* licenses */; };
 		DFF3C2C6D2BD8785482FDAD1 /* RailDivider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A83F5BC25BB6A8A26F8439DA /* RailDivider.swift */; };
+		E17903CD1F33C670CA1E1011 /* WebViewPool+Services.swift in Sources */ = {isa = PBXBuildFile; fileRef = E260C0CED95B2BE5B2F1D133 /* WebViewPool+Services.swift */; };
 		E28F6C4DD1E61484CEA773F0 /* ContentBlockerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 728A9599471A2AB033991157 /* ContentBlockerManager.swift */; };
 		E2BFB66EDC3B4F7CD92A1836 /* TrafficLights.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6161E11C236922FC7AEFB3DF /* TrafficLights.swift */; };
 		E8288CD202E937B4B6087D67 /* RailOrder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7264BBC99612EDA5183912E7 /* RailOrder.swift */; };
@@ -173,6 +176,7 @@
 		538A1641C210F10E3CD43E14 /* WebToolbarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebToolbarView.swift; sourceTree = "<group>"; };
 		542BCDA03CE248BE3E75D814 /* RailSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailSupport.swift; sourceTree = "<group>"; };
 		54BC620E896A6DD5CB16AF6D /* CookieConsentManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookieConsentManager.swift; sourceTree = "<group>"; };
+		55ABC76BDFF206C2A3147974 /* WebSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSurface.swift; sourceTree = "<group>"; };
 		5A1D24379DD182D4A7B6DD11 /* AppPresenceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPresenceManager.swift; sourceTree = "<group>"; };
 		608B27F538D778C6FC4B1697 /* WebViewPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewPool.swift; sourceTree = "<group>"; };
 		6161E11C236922FC7AEFB3DF /* TrafficLights.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficLights.swift; sourceTree = "<group>"; };
@@ -229,8 +233,10 @@
 		E110F19271457C83B3A2282E /* GlobalBoxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalBoxView.swift; sourceTree = "<group>"; };
 		E143D686890F381C5B42761F /* ChorusApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChorusApp.swift; sourceTree = "<group>"; };
 		E1E431CF7CE145D536081A23 /* UserAgentProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAgentProvider.swift; sourceTree = "<group>"; };
+		E260C0CED95B2BE5B2F1D133 /* WebViewPool+Services.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WebViewPool+Services.swift"; sourceTree = "<group>"; };
 		E30F23AFD0B5D81AF103BF37 /* ServiceCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceCatalog.swift; sourceTree = "<group>"; };
 		E4C64A46B57209C1BFA0F26C /* AppState+Rail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Rail.swift"; sourceTree = "<group>"; };
+		E7F6622E313027CCFE7EA483 /* WebSurfaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSurfaceTests.swift; sourceTree = "<group>"; };
 		E84C935C8A82FD6B6B969E6B /* ServiceIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceIconView.swift; sourceTree = "<group>"; };
 		E88CC47CBB66B4749ACDC068 /* AppLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogger.swift; sourceTree = "<group>"; };
 		EA17C93CEDF437318D536482 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -263,9 +269,11 @@
 				690DB6DBF74EAD8B040C1460 /* InAppBrowserWindow.swift */,
 				200FB7DAF9279B0E2764474D /* ServicePopup.swift */,
 				B8E0761BBE5A85E34BC73573 /* ServiceTabs.swift */,
+				55ABC76BDFF206C2A3147974 /* WebSurface.swift */,
 				09D9F34755F65BE5A3C76C88 /* WebViewContainer.swift */,
 				438D78C9503E732B7792FA10 /* WebViewCoordinator.swift */,
 				608B27F538D778C6FC4B1697 /* WebViewPool.swift */,
+				E260C0CED95B2BE5B2F1D133 /* WebViewPool+Services.swift */,
 				192C907C2215D62E02FF8408 /* WebViewState.swift */,
 			);
 			path = WebView;
@@ -524,6 +532,7 @@
 				FF1B76F1DCF6AD0DC9CD9FEB /* GroupTests.swift */,
 				9685F17CCE71FDC093EBA783 /* RailTests.swift */,
 				FE5EE9E12645C01E926701B1 /* SignInSharingTests.swift */,
+				E7F6622E313027CCFE7EA483 /* WebSurfaceTests.swift */,
 			);
 			path = ChorusTests;
 			sourceTree = "<group>";
@@ -714,9 +723,11 @@
 				4129642FB0AD19AC83F01A30 /* UserAgentProvider.swift in Sources */,
 				75C395B384D9E21AF94FBC4F /* UserScriptManager.swift in Sources */,
 				8F6E2C62BD277E5577FBE480 /* WebContentView.swift in Sources */,
+				17F2651E5C2195F32A130148 /* WebSurface.swift in Sources */,
 				A22B72681582D92F92938917 /* WebToolbarView.swift in Sources */,
 				5561BE9B6C6D8AA46CD42884 /* WebViewContainer.swift in Sources */,
 				DF712EA56B5AE10C7BF77176 /* WebViewCoordinator.swift in Sources */,
+				E17903CD1F33C670CA1E1011 /* WebViewPool+Services.swift in Sources */,
 				BAA5421430BDF6F9B918B7B5 /* WebViewPool.swift in Sources */,
 				783EF6C467034D74DE8D5F52 /* WebViewState.swift in Sources */,
 				27E1865FA1BB65766DBDB808 /* WhatsNew.swift in Sources */,
@@ -734,6 +745,7 @@
 				30F2487A1BC701C49D19A237 /* GroupTests.swift in Sources */,
 				BA1476755637D56C12D39BC0 /* RailTests.swift in Sources */,
 				3887C76A1F694AF9B197C9C6 /* SignInSharingTests.swift in Sources */,
+				9A0520E87ACAE8A56BC23625 /* WebSurfaceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

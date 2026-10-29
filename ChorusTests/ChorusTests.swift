@@ -7289,7 +7289,7 @@ final class ChorusTests: XCTestCase {
         let manager = UserScriptManager()
         let controller = WKUserContentController()
         manager.installUserScripts(
-            for: makeService(label: "Slack", catalogID: "slack"),
+            for: makeService(label: "Slack", catalogID: "slack").id,
             customCSS: nil,
             darkInjection: .none,
             stayActiveInBackground: false,

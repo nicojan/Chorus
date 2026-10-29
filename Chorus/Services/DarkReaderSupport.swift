@@ -32,8 +32,13 @@ enum DarkReaderSupport {
     /// The single source of truth for what a service needs: a service themes
     /// only when the user set it to On AND the app is currently dark. Pure;
     /// unit-tested.
+    static func injection(themed: Bool, appDark: Bool) -> DarkInjection {
+        appDark && themed ? .themed : .none
+    }
+
+    /// `injection(themed:appDark:)` for a service's stored mode.
     static func injection(mode: ServiceDarkMode, appDark: Bool) -> DarkInjection {
-        appDark && mode == .on ? .themed : .none
+        injection(themed: mode == .on, appDark: appDark)
     }
 
     /// The Dark Reader library source, loaded once from the app bundle.

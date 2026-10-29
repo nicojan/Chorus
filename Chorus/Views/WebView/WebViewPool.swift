@@ -236,70 +236,70 @@ final class WebViewPool {
         self.contentBlocker = contentBlocker
     }
 
-    func webView(for instance: ServiceInstance) -> WKWebView {
+    func webView(for surface: WebSurface) -> WKWebView {
         // Track the never-hibernate preference. Read the effective policy, not the
         // legacy `neverHibernate` flag, so the exemption can't diverge from what
         // the rest of the app treats as `.never`.
-        if instance.hibernationPolicyEffective == .never {
-            neverHibernateIDs.insert(instance.id)
+        if surface.keepsLoaded {
+            neverHibernateIDs.insert(surface.id)
         } else {
-            neverHibernateIDs.remove(instance.id)
+            neverHibernateIDs.remove(surface.id)
         }
 
         // Cache whether this service is notification-critical (chat), so both
         // hibernation sweeps can exempt it without consulting the catalog.
-        if isNotificationCritical?(instance.id) == true {
-            notificationCriticalIDs.insert(instance.id)
+        if isNotificationCritical?(surface.id) == true {
+            notificationCriticalIDs.insert(surface.id)
         } else {
-            notificationCriticalIDs.remove(instance.id)
+            notificationCriticalIDs.remove(surface.id)
         }
 
         // Soft-hibernate the previously active service (suspend media, take snapshot)
-        if let previousID = activeServiceID, previousID != instance.id {
+        if let previousID = activeServiceID, previousID != surface.id {
             softHibernateService(previousID)
         }
-        activeServiceID = instance.id
-        visits.activate(instance.id, at: Date())
+        activeServiceID = surface.id
+        visits.activate(surface.id, at: Date())
 
         // Wake from full hibernation if needed
-        if hibernatedServiceIDs.contains(instance.id) {
-            hibernatedServiceIDs.remove(instance.id)
-            onServiceWoke?(instance.id)
+        if hibernatedServiceIDs.contains(surface.id) {
+            hibernatedServiceIDs.remove(surface.id)
+            onServiceWoke?(surface.id)
         }
 
-        if let existing = webViews[instance.id] {
-            lastAccessTimes[instance.id] = Date()
-            wakeService(instance.id)
+        if let existing = webViews[surface.id] {
+            lastAccessTimes[surface.id] = Date()
+            wakeService(surface.id)
             return existing
         }
 
-        let config = makeConfiguration(for: instance)
+        let config = makeConfiguration(for: surface)
         let webView = WKWebView(frame: CGRect(origin: .zero, size: WebViewHostView.lastSize), configuration: config)
         webView.allowsBackForwardNavigationGestures = true
-        webView.customUserAgent = instance.userAgent ?? UserAgentProvider.safariDefault
+        webView.customUserAgent = surface.userAgent ?? UserAgentProvider.safariDefault
         #if DEBUG
         // Lets Safari's Develop menu attach to the page, to watch a sign-in.
         webView.isInspectable = true
         #endif
 
-        let coordinator = makeCoordinator(for: instance)
+        let coordinator = makeCoordinator(for: surface)
         webView.navigationDelegate = coordinator
         webView.uiDelegate = coordinator
-        coordinators[instance.id] = coordinator
+        coordinators[surface.id] = coordinator
 
-        webViews[instance.id] = webView
-        lastAccessTimes[instance.id] = Date()
-        visits.loaded(instance.id, at: Date())
-        observeCaptureState(webView, id: instance.id)
+        webViews[surface.id] = webView
+        lastAccessTimes[surface.id] = Date()
+        visits.loaded(surface.id, at: Date())
+        observeCaptureState(webView, id: surface.id)
 
         // Restore the last-visited URL when waking from full hibernation
         // so the user lands back where they left off, not at the home URL.
         // Falls back to the service home URL on first creation or when no
         // suspended URL is recorded.
-        let resumeURLString = suspendedURLs.removeValue(forKey: instance.id) ?? instance.url
+        let resumeURLString = suspendedURLs.removeValue(forKey: surface.id) ?? surface.url
         if let url = URL(string: resumeURLString), !resumeURLString.isEmpty {
             webView.load(URLRequest(url: url))
-        } else if let homeURL = URL(string: instance.url) {
+        } else if let homeURL = URL(string: surface.url) {
             webView.load(URLRequest(url: homeURL))
         }
 
@@ -315,78 +315,56 @@ final class WebViewPool {
     /// The web view is created and starts loading, but no soft-hibernation of other
     /// services is triggered and no notification polling starts. This makes the service
     /// feel instant when the user eventually selects it.
-    /// Skips services that already have a web view or are fully hibernated-by-user.
-    func preload(_ instance: ServiceInstance) {
-        guard webViews[instance.id] == nil else { return }
-        guard instance.modelContext != nil else { return }
-        // A Mac-app service has no page to load.
-        guard instance.nativeAppBundleID == nil else { return }
+    /// Skips a surface that already has a web view. The checks that need the
+    /// app's model (a deleted service, a Mac app) run before this; see
+    /// `WebViewPool+Services.swift`.
+    func preload(_ surface: WebSurface) {
+        guard webViews[surface.id] == nil else { return }
 
-        let config = makeConfiguration(for: instance)
+        let config = makeConfiguration(for: surface)
         let webView = WKWebView(frame: CGRect(origin: .zero, size: WebViewHostView.lastSize), configuration: config)
         webView.allowsBackForwardNavigationGestures = true
-        webView.customUserAgent = instance.userAgent ?? UserAgentProvider.safariDefault
+        webView.customUserAgent = surface.userAgent ?? UserAgentProvider.safariDefault
         #if DEBUG
         // Lets Safari's Develop menu attach to the page, to watch a sign-in.
         webView.isInspectable = true
         #endif
 
-        let coordinator = makeCoordinator(for: instance)
+        let coordinator = makeCoordinator(for: surface)
         webView.navigationDelegate = coordinator
         webView.uiDelegate = coordinator
-        coordinators[instance.id] = coordinator
+        coordinators[surface.id] = coordinator
 
-        webViews[instance.id] = webView
-        lastAccessTimes[instance.id] = Date()
-        visits.loaded(instance.id, at: Date())
-        observeCaptureState(webView, id: instance.id)
+        webViews[surface.id] = webView
+        lastAccessTimes[surface.id] = Date()
+        visits.loaded(surface.id, at: Date())
+        observeCaptureState(webView, id: surface.id)
 
         // Register the hibernation-exemption flags now, not just on first
         // activation. A service preloaded but never clicked would otherwise be
         // missing from these sets, so the idle sweep and the LRU cap could
         // hibernate or evict a "Keep Loaded" or chat service the user was
         // promised would stay live. Mirrors the same block in `webView(for:)`.
-        if instance.hibernationPolicyEffective == .never {
-            neverHibernateIDs.insert(instance.id)
+        if surface.keepsLoaded {
+            neverHibernateIDs.insert(surface.id)
         } else {
-            neverHibernateIDs.remove(instance.id)
+            neverHibernateIDs.remove(surface.id)
         }
-        if isNotificationCritical?(instance.id) == true {
-            notificationCriticalIDs.insert(instance.id)
+        if isNotificationCritical?(surface.id) == true {
+            notificationCriticalIDs.insert(surface.id)
         } else {
-            notificationCriticalIDs.remove(instance.id)
+            notificationCriticalIDs.remove(surface.id)
         }
 
-        if let url = URL(string: instance.url) {
+        if let url = URL(string: surface.url) {
             webView.load(URLRequest(url: url))
         }
 
-        AppLogger.webView.debug("Preloaded service \(instance.label)")
-        onServicePreloaded?(instance.id, webView)
+        AppLogger.webView.debug("Preloaded service \(surface.label)")
+        onServicePreloaded?(surface.id, webView)
 
         Task {
             await evictIfNeeded()
-        }
-    }
-
-    /// Preloads web views for multiple services with a staggered delay to avoid
-    /// overwhelming the network and CPU on startup.
-    /// Captures references before the loop so deleted SwiftData objects don't
-    /// cause issues across await suspension points.
-    func preloadAll(_ instances: [ServiceInstance], delayBetween: Duration = .milliseconds(500)) async {
-        // Snapshot the list before any suspension points — a service could be
-        // deleted during the staggered sleep, and accessing a deleted @Model
-        // object's properties is undefined.
-        struct PreloadEntry { let id: UUID; let instance: ServiceInstance }
-        let entries = instances.map { PreloadEntry(id: $0.id, instance: $0) }
-
-        for entry in entries {
-            guard !Task.isCancelled else { break }
-            guard webViews[entry.id] == nil else { continue }
-            // Verify the model object is still in a valid context before accessing it
-            guard entry.instance.modelContext != nil else { continue }
-            preload(entry.instance)
-            try? await Task.sleep(for: delayBetween)
         }
     }
 
@@ -825,10 +803,10 @@ final class WebViewPool {
     /// Builds a navigation/UI coordinator wired to this service. Shared by
     /// `webView(for:)` and `preload(_:)` so the instance id, fallback URL,
     /// external-link routing, and navigation-finished callback stay in sync.
-    private func makeCoordinator(for instance: ServiceInstance) -> WebViewCoordinator {
+    private func makeCoordinator(for surface: WebSurface) -> WebViewCoordinator {
         let coordinator = WebViewCoordinator()
-        coordinator.instanceID = instance.id
-        coordinator.fallbackURL = URL(string: instance.url)
+        coordinator.instanceID = surface.id
+        coordinator.fallbackURL = URL(string: surface.url)
         coordinator.externalLinkHandler = externalLinkHandler
         coordinator.serviceOwnsURL = serviceOwnsURL
         coordinator.downloadCenter = downloadCenter
@@ -839,7 +817,7 @@ final class WebViewPool {
         coordinator.onHealthEvent = { [weak self] id, event in
             self?.applyHealthEvent(event, to: id)
         }
-        let id = instance.id
+        let id = surface.id
         coordinator.onTabOpened = { [weak self] webView in
             self?.watchTab(webView, service: id)
         }
@@ -855,9 +833,9 @@ final class WebViewPool {
         return coordinator
     }
 
-    private func makeConfiguration(for instance: ServiceInstance) -> WKWebViewConfiguration {
+    private func makeConfiguration(for surface: WebSurface) -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
-        config.websiteDataStore = dataStoreManager.dataStore(for: instance)
+        config.websiteDataStore = dataStoreManager.dataStore(for: surface.dataStore)
         let prefs = WKWebpagePreferences()
         prefs.allowsContentJavaScript = true
         config.defaultWebpagePreferences = prefs
@@ -871,14 +849,14 @@ final class WebViewPool {
 
         let controller = WKUserContentController()
         let injection = DarkReaderSupport.injection(
-            mode: instance.darkMode,
+            themed: surface.darkThemed,
             appDark: effectiveAppearanceDark
         )
         userScriptManager.configureScripts(
-            for: instance,
-            customCSS: effectiveCSS(for: instance),
+            for: surface.id,
+            customCSS: effectiveCSS(for: surface),
             darkInjection: injection,
-            stayActiveInBackground: instance.staysActiveInBackgroundEffective,
+            stayActiveInBackground: surface.staysActiveInBackground,
             on: controller
         )
         // Attach the compiled content-blocking rule lists (ad/tracker domains)
@@ -911,14 +889,11 @@ final class WebViewPool {
         }
     }
 
-    /// The effective per-service CSS (service defaults + any custom CSS), or nil
-    /// when there's none. Shared by `makeConfiguration` and the dark-mode
-    /// reinstall paths so both bake the same scripts.
-    private func effectiveCSS(for instance: ServiceInstance) -> String? {
-        let css = ServiceCSSDefaults.effectiveCSS(
-            instanceCSS: instance.customCSS,
-            catalogID: instance.catalogEntryID
-        )
+    /// The surface's CSS, or nil when there's none. The app resolves the
+    /// effective CSS; this only drops a blank one. Shared by `makeConfiguration`
+    /// and the dark-mode reinstall paths so both bake the same scripts.
+    private func effectiveCSS(for surface: WebSurface) -> String? {
+        let css = surface.css
         guard let css, !css.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return css
     }
@@ -929,23 +904,24 @@ final class WebViewPool {
     /// starts in the right state (and without a flash). Mirrors
     /// `reattachContentBlocker`: live views only, in place, no teardown. Views
     /// rebuilt later read the new state via `makeConfiguration`.
-    func applyDarkState(isDark: Bool, services: [ServiceInstance]) {
+    /// `surface` is asked only for the ids that have a live view; a nil answer
+    /// skips that view.
+    func applyDarkState(isDark: Bool, surface: (UUID) -> WebSurface?) {
         effectiveAppearanceDark = isDark
-        let byID = Dictionary(services.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         for (id, webView) in webViews {
-            guard let instance = byID[id] else { continue }
-            let inj = DarkReaderSupport.injection(mode: instance.darkMode, appDark: isDark)
-            applyInjectionLive(inj, to: webView, instance: instance)
+            guard let surface = surface(id) else { continue }
+            let inj = DarkReaderSupport.injection(themed: surface.darkThemed, appDark: isDark)
+            applyInjectionLive(inj, to: webView, surface: surface)
         }
     }
 
     /// Recomputes and applies a single live service's dark injection — used after
     /// a per-service On/Off edit. A no-op if the view isn't live (it rebuilds via
     /// `makeConfiguration`).
-    func refreshDarkMode(for instance: ServiceInstance) {
-        guard let webView = webViews[instance.id] else { return }
-        let inj = DarkReaderSupport.injection(mode: instance.darkMode, appDark: effectiveAppearanceDark)
-        applyInjectionLive(inj, to: webView, instance: instance)
+    func refreshDarkMode(for surface: WebSurface) {
+        guard let webView = webViews[surface.id] else { return }
+        let inj = DarkReaderSupport.injection(themed: surface.darkThemed, appDark: effectiveAppearanceDark)
+        applyInjectionLive(inj, to: webView, surface: surface)
     }
 
     /// Applies an injection to a live web view in place: enable/disable theming
@@ -955,7 +931,7 @@ final class WebViewPool {
     private func applyInjectionLive(
         _ injection: DarkReaderSupport.DarkInjection,
         to webView: WKWebView,
-        instance: ServiceInstance
+        surface: WebSurface
     ) {
         let world = DarkReaderSupport.world
         switch injection {
@@ -968,10 +944,10 @@ final class WebViewPool {
         let controller = webView.configuration.userContentController
         controller.removeAllUserScripts()
         userScriptManager.installUserScripts(
-            for: instance,
-            customCSS: effectiveCSS(for: instance),
+            for: surface.id,
+            customCSS: effectiveCSS(for: surface),
             darkInjection: injection,
-            stayActiveInBackground: instance.staysActiveInBackgroundEffective,
+            stayActiveInBackground: surface.staysActiveInBackground,
             on: controller
         )
     }
