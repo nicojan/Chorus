@@ -26,6 +26,13 @@ extension ServiceInstance {
     }
 }
 
+extension DarkReaderSupport {
+    /// `injection(themed:appDark:)` for a service's stored mode.
+    static func injection(mode: ServiceDarkMode, appDark: Bool) -> DarkInjection {
+        injection(themed: mode == .on, appDark: appDark)
+    }
+}
+
 extension WebViewPool {
     func webView(for instance: ServiceInstance) -> WKWebView {
         webView(for: instance.webSurface)

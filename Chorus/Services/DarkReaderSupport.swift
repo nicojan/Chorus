@@ -36,10 +36,6 @@ enum DarkReaderSupport {
         appDark && themed ? .themed : .none
     }
 
-    /// `injection(themed:appDark:)` for a service's stored mode.
-    static func injection(mode: ServiceDarkMode, appDark: Bool) -> DarkInjection {
-        injection(themed: mode == .on, appDark: appDark)
-    }
 
     /// The Dark Reader library source, loaded once from the app bundle.
     static let libraryJS: String = {

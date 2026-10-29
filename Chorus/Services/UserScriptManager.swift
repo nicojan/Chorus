@@ -327,7 +327,7 @@ final class UserScriptManager {
     /// Reports the page as focused even when its web view is in the background,
     /// so a service that flips your status to "away"/"idle" on window blur
     /// (Microsoft Teams) keeps showing you active. Opt-in per service — see
-    /// `ServiceInstance.stayActiveInBackground`.
+    /// `WebSurface.staysActiveInBackground`.
     ///
     /// Overrides `document.hasFocus()` to true and swallows real `blur` events on
     /// both window and document (capture phase, before the page's own handlers)
