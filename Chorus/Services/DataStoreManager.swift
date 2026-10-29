@@ -1,3 +1,4 @@
+import ChorusEngine
 import WebKit
 
 /// Vends per-service `WKWebsiteDataStore` instances, caching them by

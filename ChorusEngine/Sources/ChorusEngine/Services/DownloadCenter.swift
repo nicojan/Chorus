@@ -15,45 +15,47 @@ import Foundation
 /// finished file is in Downloads whether or not the row survives a relaunch.
 @MainActor
 @Observable
-final class DownloadCenter {
-    enum State: Equatable {
+public final class DownloadCenter {
+    public enum State: Equatable {
         case running
         case finished
         case failed(String)
         case cancelled
     }
 
-    struct Item: Identifiable, Equatable {
-        let id: UUID
-        let serviceID: UUID?
-        let serviceName: String?
-        var filename: String
-        var destination: URL?
-        var state: State
+    public struct Item: Identifiable, Equatable {
+        public let id: UUID
+        public let serviceID: UUID?
+        public let serviceName: String?
+        public var filename: String
+        public var destination: URL?
+        public var state: State
         /// 0...1 while running, nil when the size is unknown.
-        var fraction: Double?
+        public var fraction: Double?
 
-        var isRunning: Bool { state == .running }
+        public var isRunning: Bool { state == .running }
     }
 
+    public init() {}
+
     /// Newest first.
-    private(set) var items: [Item] = []
+    public private(set) var items: [Item] = []
 
     /// How many rows the list keeps. Past this the oldest finished rows go;
     /// running ones always stay.
     static let maxItems = 50
 
     /// Resolves a service id to the name shown on its rows. Set by `AppState`.
-    @ObservationIgnored var serviceName: ((UUID) -> String?)?
+    @ObservationIgnored public var serviceName: ((UUID) -> String?)?
 
     @ObservationIgnored private var cancelHandlers: [UUID: () -> Void] = [:]
     @ObservationIgnored private var progressObservations: [UUID: NSKeyValueObservation] = [:]
 
-    var hasRunning: Bool { items.contains(where: \.isRunning) }
+    public var hasRunning: Bool { items.contains(where: \.isRunning) }
 
     /// The combined progress of the running downloads whose size is known, for
     /// the toolbar ring. Nil when none is running or no size is known.
-    var overallFraction: Double? {
+    public var overallFraction: Double? {
         let known = items.filter(\.isRunning).compactMap(\.fraction)
         guard !known.isEmpty else { return nil }
         return known.reduce(0, +) / Double(known.count)
@@ -62,7 +64,7 @@ final class DownloadCenter {
     /// Starts a row. Returns the id the coordinator reports the rest of the
     /// download's life under.
     @discardableResult
-    func begin(
+    public func begin(
         serviceID: UUID?,
         filename: String,
         progress: Progress?,
@@ -86,7 +88,7 @@ final class DownloadCenter {
     }
 
     /// The file's final name and place, once the coordinator has picked them.
-    func setDestination(_ url: URL, for id: UUID) {
+    public func setDestination(_ url: URL, for id: UUID) {
         update(id) { item in
             item.destination = url
             item.filename = url.lastPathComponent
@@ -95,33 +97,33 @@ final class DownloadCenter {
 
     /// A row ends once. A late report for a row that already ended, such as a
     /// finish that crosses a Cancel, leaves it as it is.
-    func finish(_ id: UUID) {
+    public func finish(_ id: UUID) {
         guard item(id)?.isRunning == true else { return }
         end(id, as: .finished)
     }
 
-    func fail(_ id: UUID, message: String) {
+    public func fail(_ id: UUID, message: String) {
         guard item(id)?.isRunning == true else { return }
         end(id, as: .failed(message))
     }
 
-    func cancel(_ id: UUID) {
+    public func cancel(_ id: UUID) {
         guard item(id)?.isRunning == true else { return }
         cancelHandlers[id]?()
         end(id, as: .cancelled)
     }
 
     /// Removes every row that is no longer running.
-    func clearFinished() {
+    public func clearFinished() {
         items.removeAll { !$0.isRunning }
     }
 
-    func reveal(_ id: UUID) {
+    public func reveal(_ id: UUID) {
         guard let url = item(id)?.destination else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
-    func open(_ id: UUID) {
+    public func open(_ id: UUID) {
         guard let item = item(id), item.state == .finished, let url = item.destination else { return }
         NSWorkspace.shared.open(url)
     }

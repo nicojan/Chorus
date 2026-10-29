@@ -15,7 +15,18 @@ let package = Package(
     targets: [
         .target(
             name: "ChorusEngine",
-            path: "ChorusEngine/Sources/ChorusEngine"
+            path: "ChorusEngine/Sources/ChorusEngine",
+            resources: [
+                .copy("Resources/hagezi-light.json"),
+                .copy("Resources/fanboy-annoyance.json"),
+                .copy("Resources/THIRD_PARTY_NOTICES.md"),
+                .copy("Resources/licenses"),
+            ]
+        ),
+        .testTarget(
+            name: "ChorusEngineTests",
+            dependencies: ["ChorusEngine"],
+            path: "ChorusEngine/Tests/ChorusEngineTests"
         ),
     ]
 )

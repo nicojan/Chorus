@@ -1,3 +1,4 @@
+import ChorusEngine
 import Foundation
 import WebKit
 import AppKit

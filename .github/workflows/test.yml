@@ -85,3 +85,9 @@ jobs:
             -scheme Chorus \
             -configuration Debug \
             -destination 'platform=macOS'
+
+      # The engine package has its own tests, and the app's suite does not run
+      # them. They check that the bundled lists and licenses load from the
+      # package's resource bundle, which a path change can break unseen.
+      - name: Engine package tests
+        run: swift test

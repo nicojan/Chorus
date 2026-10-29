@@ -9,7 +9,7 @@ import WebKit
 /// `WKContentRuleListStore` keyed on a content hash, so unchanged lists load fast.
 @MainActor
 @Observable
-final class ContentBlockerManager {
+public final class ContentBlockerManager {
 
     /// Compiled ad/tracker lists (usually one; more only if a list outgrows the
     /// per-list cap and is split).
@@ -19,22 +19,22 @@ final class ContentBlockerManager {
     private(set) var annoyanceLists: [WKContentRuleList] = []
 
     /// Ad/tracker blocking on/off, mirrored from `AppPreferences`.
-    var isEnabled: Bool
+    public var isEnabled: Bool
 
     /// Annoyance hiding on/off, mirrored from `AppPreferences`. Separate because
     /// cosmetic hiding is more aggressive and can occasionally hide real content.
-    var annoyanceEnabled: Bool
+    public var annoyanceEnabled: Bool
 
     /// Fired on the main actor once compilation finishes, so the app can
     /// re-attach the lists to any web views built before they were ready.
-    var onReady: (() -> Void)?
+    public var onReady: (() -> Void)?
 
     private let store = WKContentRuleListStore.default()
     private let adResource: String
     private let annoyanceResource: String
     private var hasStarted = false
 
-    init(
+    public init(
         adResource: String = "hagezi-light",
         annoyanceResource: String = "fanboy-annoyance",
         isEnabled: Bool = true,
@@ -48,13 +48,13 @@ final class ContentBlockerManager {
 
     /// The lists to install on a web view, honoring each toggle. Empty until
     /// compilation finishes.
-    func enabledLists() -> [WKContentRuleList] {
+    public func enabledLists() -> [WKContentRuleList] {
         (isEnabled ? adLists : []) + (annoyanceEnabled ? annoyanceLists : [])
     }
 
     /// Loads and compiles the bundled lists once. Safe to call during launch —
     /// WebKit does the work off the main thread and `onReady` fires when done.
-    func start() {
+    public func start() {
         guard !hasStarted else { return }
         hasStarted = true
         Task { await loadAndCompile() }
@@ -138,8 +138,13 @@ final class ContentBlockerManager {
         }
     }
 
+    /// Where a bundled list lives: in this package's resource bundle, not the app's.
+    nonisolated static func bundledListURL(_ resource: String) -> URL? {
+        Bundle.module.url(forResource: resource, withExtension: "json")
+    }
+
     private func loadBundledJSON(_ resource: String) -> String? {
-        guard let url = Bundle.main.url(forResource: resource, withExtension: "json") else {
+        guard let url = Self.bundledListURL(resource) else {
             AppLogger.general.error("Bundled list \(resource).json not found")
             return nil
         }

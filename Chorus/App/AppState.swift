@@ -1,3 +1,4 @@
+import ChorusEngine
 import SwiftUI
 import SwiftData
 import WebKit

@@ -14,17 +14,17 @@ import Foundation
 /// from a worker, and the IndexedDB files on disk, which only change when a
 /// write commits. Settled means no open transaction and no file change for
 /// `quietWindow`.
-struct WriteSettle<Stamp: Equatable> {
+public struct WriteSettle<Stamp: Equatable> {
     let quietWindow: Duration
     private var lastStamp: Stamp?
     private var quietSince: ContinuousClock.Instant?
 
-    init(quietWindow: Duration) {
+    public init(quietWindow: Duration) {
         self.quietWindow = quietWindow
     }
 
     /// Records one reading and says whether the writes have settled.
-    mutating func observe(pending: Int, stamp: Stamp, at now: ContinuousClock.Instant) -> Bool {
+    public mutating func observe(pending: Int, stamp: Stamp, at now: ContinuousClock.Instant) -> Bool {
         defer { lastStamp = stamp }
         guard pending == 0, stamp == lastStamp, let since = quietSince else {
             quietSince = pending == 0 ? now : nil
@@ -35,11 +35,11 @@ struct WriteSettle<Stamp: Equatable> {
 }
 
 /// Reads the IndexedDB files of WebKit's on-disk data stores.
-enum IndexedDBFiles {
+public enum IndexedDBFiles {
     /// What changes when a write commits: the newest modification date, and
     /// the byte and file counts. The `-shm` index is left out, since reading
     /// a database touches it too.
-    struct Stamp: Equatable, Sendable {
+    public struct Stamp: Equatable, Sendable {
         var latest: Date = .distantPast
         var bytes: Int64 = 0
         var files = 0
@@ -48,7 +48,7 @@ enum IndexedDBFiles {
     /// The folder WebKit keeps `WKWebsiteDataStore(forIdentifier:)` in. WebKit
     /// does not publish this layout, so a reader treats a missing folder as
     /// having nothing in it.
-    static func storeDirectory(for identifier: UUID, bundleID: String) -> URL? {
+    public static func storeDirectory(for identifier: UUID, bundleID: String) -> URL? {
         FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first?
             .appendingPathComponent("WebKit")
             .appendingPathComponent(bundleID)
@@ -59,7 +59,7 @@ enum IndexedDBFiles {
     /// Stamps every file under `Origins/<top>/<frame>/IndexedDB` in each store.
     /// The other folders in an origin are left alone: a service worker's
     /// cached scripts alone can run to hundreds of megabytes.
-    static func stamp(under storeDirectories: [URL]) -> Stamp {
+    public static func stamp(under storeDirectories: [URL]) -> Stamp {
         let fileManager = FileManager.default
         let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey]
         var stamp = Stamp()

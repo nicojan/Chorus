@@ -1,4 +1,5 @@
 import AppKit
+import ChorusEngine
 
 /// The one way Chorus quits. AppKit drops a quit while any window has a sheet
 /// attached, before `applicationShouldTerminate` is asked, so ⌘Q, Quit from the

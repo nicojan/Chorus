@@ -1,4 +1,5 @@
 import AppKit
+import ChorusEngine
 import WebKit
 
 /// A small in-app browser window for links that leave a service, used when the

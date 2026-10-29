@@ -1,3 +1,4 @@
+import ChorusEngine
 import Foundation
 
 // Immutable after init — `entries` is a `let` of Sendable elements and every

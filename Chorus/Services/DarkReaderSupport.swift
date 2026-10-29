@@ -1,3 +1,4 @@
+import ChorusEngine
 import WebKit
 
 /// Dark Reader integration: the isolated JS world it runs in, the bundled

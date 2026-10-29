@@ -2,6 +2,7 @@ import XCTest
 import SwiftData
 import WebKit
 @testable import Chorus
+@testable import ChorusEngine
 
 /// The engine seam: `ServiceInstance.webSurface` must hand the web engine the
 /// values Chorus used before the seam existed. Each mapping here fails silently

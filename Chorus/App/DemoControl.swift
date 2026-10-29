@@ -1,4 +1,5 @@
 #if DEBUG
+import ChorusEngine
 import Foundation
 import SwiftData
 
