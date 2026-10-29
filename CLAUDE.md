@@ -48,6 +48,17 @@ Write plain, direct, active, concrete prose. No marketing gloss, no AI tells.
   store and the release defaults domain, and this repo has already lost a real
   user's data to a careless run against live data.
 
+## The engine package boundary
+
+The WebKit layer is a Swift package, `ChorusEngine` (root `Package.swift`, sources in `ChorusEngine/Sources/ChorusEngine`). Another app builds on it, so the boundary runs one way:
+
+- Chorus may import the engine. The engine never imports or names anything from Chorus: `ServiceInstance`, `Space`, `SpaceServiceLink`, `AppState`, `AppPreferences`, SwiftData, `ServiceCatalog` or its entries, or any type under `Chorus/`. It knows a page only as a `WebSurface`.
+- Build a `WebSurface` only through `ServiceInstance.webSurface` in `WebViewPool+Services.swift`. Its store is `dataStoreIdentifier`, never the service's id. Checks that need the live model (a deleted service, a Mac app) stay on that side too.
+- Engine resources load through `Bundle.module`, never `Bundle.main`. A miss turns blocking or dark mode off without an error.
+- Make a declaration `public` only when Chorus calls it. Add every public API change to "Engine API changes by release" in `docs/internal/ENGINE.md`; another app pins a Chorus tag with `exact:` and reads that list.
+- Keep `Package.swift` at tools version 6.0 for CI's Xcode 16.2.
+- The engine still carries Chorus names that pages and the logs see (`__chorus*` globals, the `com.nicojan.Chorus` logger subsystem, and others listed in `ENGINE.md`). Changing one changes Chorus's behavior; treat it as a feature, not a rename.
+
 ## The store path (never go back to the default)
 
 Release builds open `Application Support/Chorus/default.store`, which
