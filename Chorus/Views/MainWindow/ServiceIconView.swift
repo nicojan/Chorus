@@ -1,3 +1,4 @@
+import ChorusEngine
 import SwiftUI
 
 /// Shared colors and helpers for service icons. Centralized so every surface

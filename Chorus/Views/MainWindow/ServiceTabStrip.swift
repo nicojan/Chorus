@@ -1,3 +1,4 @@
+import ChorusEngine
 import SwiftUI
 
 /// The row of tabs across the top of a service's card: the service's own page

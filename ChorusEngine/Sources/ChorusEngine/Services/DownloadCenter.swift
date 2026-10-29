@@ -64,7 +64,7 @@ public final class DownloadCenter {
     /// Starts a row. Returns the id the coordinator reports the rest of the
     /// download's life under.
     @discardableResult
-    public func begin(
+    func begin(
         serviceID: UUID?,
         filename: String,
         progress: Progress?,
@@ -88,7 +88,7 @@ public final class DownloadCenter {
     }
 
     /// The file's final name and place, once the coordinator has picked them.
-    public func setDestination(_ url: URL, for id: UUID) {
+    func setDestination(_ url: URL, for id: UUID) {
         update(id) { item in
             item.destination = url
             item.filename = url.lastPathComponent
@@ -102,7 +102,7 @@ public final class DownloadCenter {
         end(id, as: .finished)
     }
 
-    public func fail(_ id: UUID, message: String) {
+    func fail(_ id: UUID, message: String) {
         guard item(id)?.isRunning == true else { return }
         end(id, as: .failed(message))
     }

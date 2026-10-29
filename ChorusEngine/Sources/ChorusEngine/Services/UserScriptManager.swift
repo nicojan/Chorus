@@ -24,7 +24,7 @@ public final class UserScriptManager {
 
     /// Full setup for a freshly built web view: the message handlers (added once)
     /// plus all user scripts.
-    public func configureScripts(
+    func configureScripts(
         for serviceID: UUID,
         customCSS: String?,
         darkInjection: DarkReaderSupport.DarkInjection,
@@ -44,7 +44,7 @@ public final class UserScriptManager {
     /// Registers the message handlers. Called once when the web view is built —
     /// NOT on reinstall, since `removeAllUserScripts()` leaves message handlers in
     /// place and re-adding would throw.
-    public func installHandlers(for serviceID: UUID, on controller: WKUserContentController) {
+    func installHandlers(for serviceID: UUID, on controller: WKUserContentController) {
         let mutedCheck = isServiceMuted
         let notifyOSCheck = isServiceNotifyingOS
         let dndCheck = isDoNotDisturbActive
@@ -71,7 +71,7 @@ public final class UserScriptManager {
     /// to re-bake state (e.g. the Dark Reader theme scripts) so the next full
     /// navigation is correct. `darkInjection` selects what dark-theming scripts
     /// to bake.
-    public func installUserScripts(
+    func installUserScripts(
         for serviceID: UUID,
         customCSS: String?,
         darkInjection: DarkReaderSupport.DarkInjection,
@@ -221,7 +221,7 @@ public final class UserScriptManager {
 
     /// JavaScript that can be evaluated to check if a WebRTC call is active.
     /// Returns `true` if any RTCPeerConnection is in a connected/active state.
-    public nonisolated static let callDetectionQueryJS = "window.__chorusActiveCall === true"
+    nonisolated static let callDetectionQueryJS = "window.__chorusActiveCall === true"
 
     /// Reports the page as visible even when its web view is preloaded/off-screen,
     /// so services that gate their unread-count title updates on Page Visibility

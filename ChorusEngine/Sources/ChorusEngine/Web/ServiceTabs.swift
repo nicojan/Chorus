@@ -7,10 +7,10 @@ import WebKit
 /// of these.
 @MainActor
 @Observable
-final class ServiceTab: Identifiable {
-    let id = UUID()
-    let webView: WKWebView
-    private(set) var title: String?
+public final class ServiceTab: Identifiable {
+    public let id = UUID()
+    public let webView: WKWebView
+    public private(set) var title: String?
     @ObservationIgnored private var titleObservation: NSKeyValueObservation?
     /// Recent WebContent terminations, so a tab that crashes on every load
     /// gets the same backoff the service's page has instead of reloading forever.
@@ -43,39 +43,39 @@ final class ServiceTab: Identifiable {
 /// and are not restored at launch.
 @MainActor
 @Observable
-final class ServiceTabs {
-    private(set) var tabs: [ServiceTab] = []
-    private(set) var selectedID: UUID?
+public final class ServiceTabs {
+    public private(set) var tabs: [ServiceTab] = []
+    public private(set) var selectedID: UUID?
 
     /// Nonisolated so the coordinator can make one as a stored default.
     nonisolated init() {}
 
-    var selectedTab: ServiceTab? {
+    public var selectedTab: ServiceTab? {
         guard let selectedID else { return nil }
         return tabs.first { $0.id == selectedID }
     }
 
-    var isEmpty: Bool { tabs.isEmpty }
+    public var isEmpty: Bool { tabs.isEmpty }
 
-    func tab(for webView: WKWebView) -> ServiceTab? {
+    public func tab(for webView: WKWebView) -> ServiceTab? {
         tabs.first { $0.webView === webView }
     }
 
-    func add(_ tab: ServiceTab) {
+    public func add(_ tab: ServiceTab) {
         tabs = tabs + [tab]
         selectedID = tab.id
     }
 
     /// Shows a tab, or the service's own page for nil. An id that is not open
     /// is ignored.
-    func select(_ id: UUID?) {
+    public func select(_ id: UUID?) {
         guard id == nil || tabs.contains(where: { $0.id == id }) else { return }
         selectedID = id
     }
 
     /// Moves the selection by `offset` through the service's page and its tabs,
     /// wrapping at either end.
-    func selectOffset(_ offset: Int) {
+    public func selectOffset(_ offset: Int) {
         let index = TabSelection.index(of: selectedID, in: tabs.map(\.id))
         selectedID = TabSelection.moving(from: index, by: offset, tabCount: tabs.count)
             .map { tabs[$0].id }
@@ -83,7 +83,7 @@ final class ServiceTabs {
 
     /// Takes a tab out and returns it so the caller can tear its web view down.
     @discardableResult
-    func remove(_ id: UUID) -> ServiceTab? {
+    public func remove(_ id: UUID) -> ServiceTab? {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return nil }
         let removed = tabs[index]
         let selectedIndex = TabSelection.index(of: selectedID, in: tabs.map(\.id))
@@ -96,7 +96,7 @@ final class ServiceTabs {
     }
 
     /// Takes every tab out, for a teardown.
-    func removeAll() -> [ServiceTab] {
+    public func removeAll() -> [ServiceTab] {
         let removed = tabs
         tabs = []
         selectedID = nil

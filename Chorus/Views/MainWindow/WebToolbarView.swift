@@ -1,3 +1,4 @@
+import ChorusEngine
 import SwiftUI
 
 /// Compact web navigation controls for the active service — back, forward,

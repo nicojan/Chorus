@@ -1,10 +1,9 @@
-import ChorusEngine
 import Foundation
 import WebKit
 import AppKit
 
 @MainActor
-final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+public final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
 
     /// The popups this service has open, first-opened first. Usually none or
     /// one; a sign-in popup that opens its own adds a second. See `PopupChain`.
@@ -134,14 +133,14 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// http/https. Other schemes stay on the `openExternally` path so the vetted-
     /// scheme gate above still decides them (a `mailto:` reaches Mail, an
     /// `smb://` is dropped) — an in-app web view can't load them anyway.
-    nonisolated static func shouldOpenInAppBrowser(sourceOptedIn: Bool, url: URL) -> Bool {
+    public nonisolated static func shouldOpenInAppBrowser(sourceOptedIn: Bool, url: URL) -> Bool {
         guard sourceOptedIn, let scheme = url.scheme?.lowercased() else { return false }
         return scheme == "http" || scheme == "https"
     }
 
     /// Hands `url` to the system handler, but only on a vetted scheme. Anything
     /// else is dropped with a log line rather than silently ignored.
-    nonisolated static func openExternally(_ url: URL) {
+    public nonisolated static func openExternally(_ url: URL) {
         guard isSafeForExternalOpen(url) else {
             AppLogger.webView.info("Blocked external open on disallowed scheme: \(url.scheme ?? "none")")
             return
@@ -176,7 +175,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
     // MARK: - Navigation Delegate
 
-    func webView(
+    public func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationAction: WKNavigationAction
     ) async -> WKNavigationActionPolicy {
@@ -260,7 +259,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         return .allow
     }
 
-    func webView(
+    public func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationResponse: WKNavigationResponse
     ) async -> WKNavigationResponsePolicy {
@@ -274,7 +273,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         return navigationResponse.canShowMIMEType ? .allow : .download
     }
 
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         // Only the service's main web view carries a badge — ignore OAuth
         // popups (the coordinator is their navigation delegate too).
         guard !isAuxiliary(webView), let instanceID else { return }
@@ -296,7 +295,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     // the user just sees a brief flicker. But a page that crashes
     // deterministically would reload-crash forever, so back off after a few
     // crashes in a short window and show a recovery page instead.
-    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         // The OAuth/sign-in popup shares this coordinator as its delegate.
         // Don't apply the service's crash recovery (fallbackURL + home page) to
         // it — that would reload the popup on the service's home URL, not the
@@ -385,7 +384,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         }
     }
 
-    func webView(
+    public func webView(
         _ webView: WKWebView,
         didFailProvisionalNavigation navigation: WKNavigation!,
         withError error: Error
@@ -432,7 +431,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// screen, part-loaded, so it stays — but without this the rail's ring kept
     /// spinning. Stop is a stop; anything else, a connection lost mid-load, is a
     /// failure the rail should show.
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+    public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         if isAuxiliary(webView) { return }
         let nsError = error as NSError
         if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCancelled {
@@ -480,7 +479,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     ///
     /// On Chorus's own error page it retries the address that failed: reloading
     /// the error page itself would only show it again.
-    static func reload(_ webView: WKWebView, fallbackURL: URL?) {
+    public static func reload(_ webView: WKWebView, fallbackURL: URL?) {
         if let retry = (webView.navigationDelegate as? WebViewCoordinator)?.errorPageRetryURL(for: webView) {
             webView.load(URLRequest(url: retry))
             return
@@ -591,7 +590,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
     // MARK: - UI Delegate (OAuth Pop-ups)
 
-    func webView(
+    public func webView(
         _ webView: WKWebView,
         createWebViewWith configuration: WKWebViewConfiguration,
         for navigationAction: WKNavigationAction,
@@ -970,7 +969,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         popups.removeSubrange(range)
     }
 
-    func webViewDidClose(_ webView: WKWebView) {
+    public func webViewDidClose(_ webView: WKWebView) {
         if let tab = tabs.tab(for: webView) {
             // A page that closes itself may have been a sign-in on the
             // service's own host that `opensAsTab` couldn't tell apart; the
@@ -1001,7 +1000,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// silently declines to treat this as the witness — the method never reaches
     /// the Objective-C runtime (`responds(to:)` is false), WebKit never calls it,
     /// and the picker never opens, with no error or warning.
-    func webView(
+    public func webView(
         _ webView: WKWebView,
         runOpenPanelWith parameters: WKOpenPanelParameters,
         initiatedByFrame frame: WKFrameInfo,
@@ -1046,7 +1045,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// parameter is `WKSecurityOrigin` (not URL); getting it wrong also breaks the
     /// witness. The `Task` captures only locals — never `self` — so a coordinator
     /// torn down mid-decision leaves the handler a safe no-op.
-    func webView(
+    public func webView(
         _ webView: WKWebView,
         requestMediaCapturePermissionFor origin: WKSecurityOrigin,
         initiatedByFrame frame: WKFrameInfo,
@@ -1080,7 +1079,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// and Swift silently declines to treat this as the protocol witness — the
     /// method never reaches the Obj-C runtime, WebKit never calls it, and the
     /// page hangs. Same trap as `runOpenPanelWith` above.
-    func webView(
+    public func webView(
         _ webView: WKWebView,
         runJavaScriptAlertPanelWithMessage message: String,
         initiatedByFrame frame: WKFrameInfo,
@@ -1098,7 +1097,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// only when the user chooses OK; window-close-first resolves to `false`, the
     /// same as clicking Cancel. See the alert method above for the `@MainActor`
     /// witness requirement — it applies identically here.
-    func webView(
+    public func webView(
         _ webView: WKWebView,
         runJavaScriptConfirmPanelWithMessage message: String,
         initiatedByFrame frame: WKFrameInfo,
@@ -1117,7 +1116,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// entered text on OK, or nil on Cancel / window-close-first (which the page
     /// reads as a dismissed prompt). See the alert method above for the
     /// `@MainActor` witness requirement.
-    func webView(
+    public func webView(
         _ webView: WKWebView,
         runJavaScriptTextInputPanelWithPrompt prompt: String,
         defaultText: String?,
@@ -1169,7 +1168,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
     // MARK: - Download Delegate
 
-    func webView(
+    public func webView(
         _ webView: WKWebView,
         navigationAction: WKNavigationAction,
         didBecome download: WKDownload
@@ -1178,7 +1177,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         trackDownload(download)
     }
 
-    func webView(
+    public func webView(
         _ webView: WKWebView,
         navigationResponse: WKNavigationResponse,
         didBecome download: WKDownload
@@ -1273,7 +1272,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     // Save straight to the user's Downloads folder — the browser-like default —
     // rather than prompting with a save panel for every file. WKDownload fails
     // if the destination already exists, so we pick a non-colliding name.
-    func download(
+    public func download(
         _ download: WKDownload,
         decideDestinationUsing response: URLResponse,
         suggestedFilename: String
@@ -1308,7 +1307,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         return destination
     }
 
-    func downloadDidFinish(_ download: WKDownload) {
+    public func downloadDidFinish(_ download: WKDownload) {
         let key = ObjectIdentifier(download)
         let destination = downloadDestinations.removeValue(forKey: key)
         if let itemID = untrackDownload(download) {
@@ -1324,7 +1323,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         )
     }
 
-    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+    public func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
         downloadDestinations.removeValue(forKey: ObjectIdentifier(download))
         if let itemID = untrackDownload(download) {
             downloadCenter?.fail(itemID, message: Self.downloadFailureMessage(error))
@@ -1622,7 +1621,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// its host: OAuth and SAML parameters in the query, or a path segment such
     /// as `oauth`, `authorize` or `login`. Errs toward yes; a false yes costs a
     /// link its switch to another service, and a false no costs a sign-in.
-    nonisolated static func looksLikeSignIn(_ url: URL) -> Bool {
+    public nonisolated static func looksLikeSignIn(_ url: URL) -> Bool {
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let queryKeys = Set((components?.queryItems ?? []).map { $0.name.lowercased() })
         if !queryKeys.isDisjoint(with: signInQueryKeys) { return true }
@@ -1645,7 +1644,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// Slack can switch workspaces across *.slack.com in-app — except for
     /// shared-umbrella domains (see `sharedUmbrellaDomains`) where only the exact
     /// host matches. Used to decide in-app vs. browser for links and new windows.
-    nonisolated static func belongsToService(_ targetHost: String, serviceHost: String) -> Bool {
+    public nonisolated static func belongsToService(_ targetHost: String, serviceHost: String) -> Bool {
         let target = normalizedHost(targetHost)
         let service = normalizedHost(serviceHost)
         guard !target.isEmpty, !service.isEmpty else { return false }
@@ -1766,7 +1765,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// Whether `host` is a known authentication gateway (an exact match or a
     /// subdomain of one, or a customer's subdomain of a company sign-in
     /// provider). Callers keep such hosts in-app so sign-in completes.
-    nonisolated static func isAuthHost(_ host: String) -> Bool {
+    public nonisolated static func isAuthHost(_ host: String) -> Bool {
         let h = normalizedHost(host)
         if authHosts.contains(h) || authHosts.contains(where: { h.hasSuffix("." + $0) }) {
             return true

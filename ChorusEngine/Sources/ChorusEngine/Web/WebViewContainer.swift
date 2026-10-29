@@ -1,26 +1,31 @@
 import SwiftUI
 import WebKit
 
-struct WebViewContainer: NSViewRepresentable {
+public struct WebViewContainer: NSViewRepresentable {
     let webView: WKWebView
     /// The rounding of the page's corners.
     var cornerRadius: CGFloat = 0
 
-    func makeNSView(context: Context) -> WebViewHostView {
+    public init(webView: WKWebView, cornerRadius: CGFloat = 0) {
+        self.webView = webView
+        self.cornerRadius = cornerRadius
+    }
+
+    public func makeNSView(context: Context) -> WebViewHostView {
         let host = WebViewHostView()
         host.cornerRadius = cornerRadius
         host.setWebView(webView)
         return host
     }
 
-    func updateNSView(_ nsView: WebViewHostView, context: Context) {
+    public func updateNSView(_ nsView: WebViewHostView, context: Context) {
         nsView.setWebView(webView)
     }
 }
 
 /// Holds the current service's web view, clipped to the content card's
 /// rounded corners.
-final class WebViewHostView: NSView {
+public final class WebViewHostView: NSView {
     private weak var currentWebView: WKWebView?
 
     /// The size the page area last had, for the pool to make new web views at.
@@ -30,7 +35,7 @@ final class WebViewHostView: NSView {
     /// before the first layout, when the launch preload makes its views.
     static private(set) var lastSize = CGSize(width: 1024, height: 700)
 
-    override func layout() {
+    public override func layout() {
         super.layout()
         if bounds.width > 0, bounds.height > 0 {
             Self.lastSize = bounds.size
@@ -42,7 +47,7 @@ final class WebViewHostView: NSView {
         didSet { layer?.cornerRadius = cornerRadius }
     }
 
-    override init(frame frameRect: NSRect) {
+    public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         layer?.cornerRadius = cornerRadius

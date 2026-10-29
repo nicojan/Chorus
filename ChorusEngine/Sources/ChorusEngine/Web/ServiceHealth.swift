@@ -12,7 +12,7 @@ import Foundation
 /// (`ServiceCSSDefaults`, which ships CSS for exactly one service in the whole
 /// catalog) is the standing argument against pretending otherwise. The case
 /// exists so the rail can draw it the day someone prices it per service.
-enum ServiceHealth: Equatable, CaseIterable {
+public enum ServiceHealth: Equatable, CaseIterable {
     /// Loaded and working. Draws nothing — a dot on every service would be noise.
     case live
     case loading
@@ -21,7 +21,7 @@ enum ServiceHealth: Equatable, CaseIterable {
 
     /// What can happen to a service's page. Deliberately small: these are the
     /// three navigation callbacks the app already receives.
-    enum Event: CaseIterable {
+    public enum Event: CaseIterable {
         case startedLoading
         case finishedLoading
         /// A load that ended without finishing or failing: the user pressed
@@ -36,7 +36,7 @@ enum ServiceHealth: Equatable, CaseIterable {
     /// `startedLoading` beats a standing failure: a retry is genuinely in
     /// progress, and leaving the orange dot up through a successful reload
     /// would be a lie until the load finished.
-    func next(_ event: Event) -> ServiceHealth {
+    public func next(_ event: Event) -> ServiceHealth {
         switch event {
         case .startedLoading: return .loading
         case .finishedLoading: return .live
