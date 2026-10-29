@@ -298,7 +298,9 @@ final class NotificationManager {
         notifyOS: Bool,
         doNotDisturb: Bool
     ) -> Bool {
-        !isMuted && notifyOS && !doNotDisturb
+        NotificationMessageHandler.shouldPostOSNotification(
+            isMuted: isMuted, notifyOS: notifyOS, doNotDisturb: doNotDisturb
+        )
     }
 
     // MARK: - Notifications

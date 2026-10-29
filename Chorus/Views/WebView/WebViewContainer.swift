@@ -3,9 +3,12 @@ import WebKit
 
 struct WebViewContainer: NSViewRepresentable {
     let webView: WKWebView
+    /// The rounding of the page's corners.
+    var cornerRadius: CGFloat = 0
 
     func makeNSView(context: Context) -> WebViewHostView {
         let host = WebViewHostView()
+        host.cornerRadius = cornerRadius
         host.setWebView(webView)
         return host
     }
@@ -34,10 +37,15 @@ final class WebViewHostView: NSView {
         }
     }
 
+    /// The rounding of the page's corners, which the host clips to.
+    var cornerRadius: CGFloat = 0 {
+        didSet { layer?.cornerRadius = cornerRadius }
+    }
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.cornerRadius = ChorusCard.webCornerRadius
+        layer?.cornerRadius = cornerRadius
         layer?.cornerCurve = .continuous
         layer?.masksToBounds = true
     }
