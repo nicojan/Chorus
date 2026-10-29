@@ -1,5 +1,22 @@
 # Open items
 
+## Open: the web engine as a Swift package (`refactor/engine-package`), for 1.5.32
+
+Chorus's WebKit layer now lives in the `ChorusEngine` package (root `Package.swift`), so a second app, a browser, can depend on it by tag. `docs/internal/ENGINE.md` describes it. Nothing should look or behave differently. Branch head `88c9466`, pushed, not merged; every commit passed CI on macOS 14 and 15, and the last one also passed the new Release-build check. 471 app tests and 3 package tests pass. Two `qa-reviewer` passes found no behavior change; their findings are fixed.
+
+Left to do, in order:
+
+1. The by-hand pass in `VERIFY-BY-HAND.md`, "Next: the engine package", items 1 to 9, on a Debug build.
+2. Decide whether `WebSurface.DataStore` gains a `.nonPersistent` case now or with the browser work. Without it the engine cannot build a page on a throwaway store; the browser's container tabs need one. Recommended: with the browser work, so 1.5.32 stays a pure move.
+3. Merge to `main`, then release 1.5.32 by `release/DISTRIBUTION.md`, with item 10 of the by-hand list on the archive (after steps 3 and 5). The `CHANGELOG.md` entry sits under Unreleased. Add the 1.5.32 line to "Engine API changes by release" in `ENGINE.md` if anything public changes before then.
+
+Noticed during the move, not fixed:
+
+- Some public members of `ServiceTabs` and `DownloadCenter` may not need to be public. Whoever restored them matched by name, and a trial removal broke the build, so they stayed. A pass that removes one `public` at a time would settle it.
+- The names that still say Chorus (the `__chorus*` page globals, the `com.nicojan.Chorus` log subsystem, three user-facing strings, and others) are listed in `ENGINE.md` under "Names to parameterize". Another app sees them until each becomes a parameter.
+- Git records `AppLogger.swift` as a delete and an add, not a rename: most of its 13 lines gained `public`. Its history before the move sits under the old path, `Chorus/Utilities/AppLogger.swift`.
+- The worktrees under `.claude/worktrees/` (other sessions' branches) still name the old resource paths. They will need a rebase onto this change before they merge.
+
 ## Released: 1.5.31 on 2026-10-26
 
 Build 44, tag `v1.5.31` on `333d080`; DMG 10,759,403 bytes, sha256 `a2b74081…6283`; appcast `4bbc69c` on both feeds; cask `9a7d49d` here, `d796a2c` in the tap.

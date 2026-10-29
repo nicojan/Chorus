@@ -5,6 +5,10 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+
+- Nothing should look or work differently in this release. The part of Chorus that runs web pages (sign-ins, pop-ups, blocking, dark mode, downloads, notifications from pages) now sits in a Swift package of its own, ChorusEngine, inside this repository. A second app, a web browser, will be built on the same code, so fixes made in Chorus reach it too.
+
 ## [1.5.31] - 2026-10-26
 
 ### Added
