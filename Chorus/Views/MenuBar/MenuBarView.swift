@@ -59,7 +59,7 @@ struct MenuBarView: View {
             .keyboardShortcut(",", modifiers: .command)
 
             Button("Quit Chorus") {
-                SheetQuit.quit()
+                SheetQuit.quit(reason: .menu)
             }
             .keyboardShortcut("q", modifiers: .command)
         }

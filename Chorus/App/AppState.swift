@@ -1093,9 +1093,10 @@ final class AppState {
     /// wait until the writes have finished (`waitForWritesToSettle`), then read
     /// each data store's records — a round trip through the storage process that
     /// lands behind the writes just queued. That last step is best effort.
-    func releasePagesForQuit() async {
+    @discardableResult
+    func releasePagesForQuit() async -> QuitRecord.WriteWait? {
         let webViews = webViewPool.liveWebViews
-        guard !webViews.isEmpty else { return }
+        guard !webViews.isEmpty else { return nil }
 
         // Started together, awaited in turn: all the pages get the signal at
         // once, and the deadline bounds the wait for the slowest.
@@ -1118,7 +1119,7 @@ final class AppState {
         let storeDirectories = stores
             .compactMap(\.identifier)
             .compactMap { IndexedDBFiles.storeDirectory(for: $0, bundleID: bundleID) }
-        await waitForWritesToSettle(in: webViews, storeDirectories: storeDirectories)
+        let wait = await waitForWritesToSettle(in: webViews, storeDirectories: storeDirectories)
 
         await withDeadline(seconds: 0.5, fallback: ()) {
             let flushes = stores.map { store in
@@ -1132,6 +1133,7 @@ final class AppState {
             for flush in flushes { await flush.value }
         }
         AppLogger.webView.info("Released \(webViews.count) pages for quit")
+        return wait
     }
 
     /// How long pages get to start writing after going hidden before quit
@@ -1149,7 +1151,7 @@ final class AppState {
     /// for `quitQuietWindow`, or `quitSettleLimit` runs out. Quitting kills
     /// the process that holds every page's IndexedDB, and a write cut off
     /// there is what made WhatsApp ask to relink. See `WriteSettle`.
-    private func waitForWritesToSettle(in webViews: [WKWebView], storeDirectories: [URL]) async {
+    private func waitForWritesToSettle(in webViews: [WKWebView], storeDirectories: [URL]) async -> QuitRecord.WriteWait {
         let start = ContinuousClock.now
         var settle = WriteSettle<IndexedDBFiles.Stamp>(quietWindow: Self.quitQuietWindow)
         while ContinuousClock.now - start < Self.quitSettleLimit {
@@ -1161,11 +1163,12 @@ final class AppState {
             if settle.observe(pending: pending, stamp: stamp, at: .now) {
                 let waited = ContinuousClock.now - start
                 AppLogger.webView.notice("Quit: writes settled after \(waited.formatted(.units(allowed: [.milliseconds])), privacy: .public)")
-                return
+                return QuitRecord.WriteWait(waited: waited, settled: true)
             }
             try? await Task.sleep(for: .milliseconds(100))
         }
         AppLogger.webView.notice("Quit: writes still going after the \(Self.quitSettleLimit.formatted(), privacy: .public) limit; quitting anyway")
+        return QuitRecord.WriteWait(waited: ContinuousClock.now - start, settled: false)
     }
 
     /// The open IndexedDB writes across `webViews`, asked of every page at once.
@@ -2484,7 +2487,7 @@ final class AppState {
     func quitForScheduledRestore() {
         guard isRestoreRestartArmed else { return }
         isRestoreRestartArmed = false
-        SheetQuit.quit()
+        SheetQuit.quit(reason: .relaunch)
     }
 
     /// Records a request to abandon the current store and start on a new empty
@@ -2526,7 +2529,7 @@ final class AppState {
     func quitForScheduledFreshStart() {
         guard isFreshStartRestartArmed else { return }
         isFreshStartRestartArmed = false
-        SheetQuit.quit()
+        SheetQuit.quit(reason: .relaunch)
     }
 
     /// Safety net for crash-mid-delete (or stores written by a build that

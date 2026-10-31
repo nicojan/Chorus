@@ -17,6 +17,11 @@ final class ChorusAppDelegate: NSObject, NSApplicationDelegate {
     /// `SheetQuit`). AppKit's own handler hands the quit to `terminate`, which a
     /// sheet blocks.
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // A test run is killed rather than quit, so it would read as a run
+        // that never quit.
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            QuitRecord.noteLaunch()
+        }
         SheetQuit.beforeClosingSheets = { [weak self] in
             self?.appState?.clearPromptsForQuit()
         }
@@ -33,16 +38,18 @@ final class ChorusAppDelegate: NSObject, NSApplicationDelegate {
     /// a delayed quit, so a logout hears a refusal rather than waiting out its
     /// timeout on an app that said yes.
     @objc private func handleQuitEvent(_ event: NSAppleEventDescriptor, withReplyEvent reply: NSAppleEventDescriptor) {
+        let why = event.paramDescriptor(forKeyword: AEKeyword(kAEQuitReason)).map(\.enumCodeValue)
+        let reason = QuitRecord.Reason(quitEventReason: why)
         guard SheetQuit.hasSheet else {
-            SheetQuit.quitWithNoSheet()
+            SheetQuit.quitWithNoSheet(reason: reason)
             return
         }
         let manager = NSAppleEventManager.shared()
         guard let suspension = manager.suspendCurrentAppleEvent() else {
-            SheetQuit.quit()
+            SheetQuit.quit(reason: reason)
             return
         }
-        SheetQuit.quit { quitting in
+        SheetQuit.quit(reason: reason) { quitting in
             if !quitting {
                 reply.setParam(NSAppleEventDescriptor(int32: Int32(userCanceledErr)), forKeyword: keyErrorNumber)
             }
@@ -51,13 +58,20 @@ final class ChorusAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let start = ContinuousClock.now
+        let reason = SheetQuit.reason ?? .other
+        let pages = appState?.webViewPool.loadedCount ?? 0
         if !isReleasingPages { appState?.saveSelection() }
-        guard let appState, !isReleasingPages, appState.webViewPool.loadedCount > 0 else {
+        guard let appState, !isReleasingPages, pages > 0 else {
+            // A second quit during the wait lands here too, and its line
+            // shows the wait was cut short.
+            QuitRecord.noteQuit(reason: reason, pages: pages, wait: nil, since: start)
             return .terminateNow
         }
         isReleasingPages = true
         Task { @MainActor in
-            await appState.releasePagesForQuit()
+            let wait = await appState.releasePagesForQuit()
+            QuitRecord.noteQuit(reason: reason, pages: pages, wait: wait, since: start)
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater

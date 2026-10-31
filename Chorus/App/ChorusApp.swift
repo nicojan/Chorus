@@ -50,7 +50,7 @@ struct ChorusApp: App {
         .commands {
             // AppKit drops a quit while a sheet is open; see `SheetQuit`.
             CommandGroup(replacing: .appTermination) {
-                Button("Quit Chorus") { SheetQuit.quit() }
+                Button("Quit Chorus") { SheetQuit.quit(reason: .menu) }
                     .keyboardShortcut("q")
             }
 

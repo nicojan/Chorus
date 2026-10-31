@@ -19,6 +19,7 @@
 		1C5CD1937EFECD06DA479F86 /* Space.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC9767949C165F7DCD9A281 /* Space.swift */; };
 		1CC3A629AEC1BBF9ACDC5FB0 /* SpaceHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52D93229EEC510DC0850005E /* SpaceHeaderView.swift */; };
 		1E297395FC835B4863BD77B5 /* ChorusEngine in Frameworks */ = {isa = PBXBuildFile; productRef = FE624AB3D9955080B15829B1 /* ChorusEngine */; };
+		2060383BBB7763440315E22D /* QuitRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4816C0A63A37D82D52C3A8D4 /* QuitRecord.swift */; };
 		230144499E6BE9FD41C03338 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7458024AA17BF508D4807018 /* ContentView.swift */; };
 		27E1865FA1BB65766DBDB808 /* WhatsNew.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464C332182D96B75A17F363C /* WhatsNew.swift */; };
 		27F748301E07C3A6B2509AF0 /* ServiceHealthDot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 777CAB3291B475814A876834 /* ServiceHealthDot.swift */; };
@@ -93,6 +94,7 @@
 		DFF3C2C6D2BD8785482FDAD1 /* RailDivider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A83F5BC25BB6A8A26F8439DA /* RailDivider.swift */; };
 		E17903CD1F33C670CA1E1011 /* WebViewPool+Services.swift in Sources */ = {isa = PBXBuildFile; fileRef = E260C0CED95B2BE5B2F1D133 /* WebViewPool+Services.swift */; };
 		E2BFB66EDC3B4F7CD92A1836 /* TrafficLights.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6161E11C236922FC7AEFB3DF /* TrafficLights.swift */; };
+		E80A466D432A4BF3B9A928ED /* QuitRecordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07521B53363878D0066BEA7F /* QuitRecordTests.swift */; };
 		E8288CD202E937B4B6087D67 /* RailOrder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7264BBC99612EDA5183912E7 /* RailOrder.swift */; };
 		F1E3E4A757954012789BD79D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = F63EF11A2754495AEB09C97E /* Sparkle */; };
 		F485F694BEA64C6EDA2CD167 /* SheetQuit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29C26C37D627ADE04B904988 /* SheetQuit.swift */; };
@@ -116,6 +118,7 @@
 		03E9D5B98CFDDD0B2E7FD42C /* SpacePaletteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpacePaletteView.swift; sourceTree = "<group>"; };
 		0693A705E1552F5809BA3399 /* CatalogIconCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogIconCache.swift; sourceTree = "<group>"; };
 		06F91EDD3C2858890FA0B343 /* NativeAppSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAppSupport.swift; sourceTree = "<group>"; };
+		07521B53363878D0066BEA7F /* QuitRecordTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuitRecordTests.swift; sourceTree = "<group>"; };
 		09F8BC3392C6945D38F1AEA7 /* FeatureTips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureTips.swift; sourceTree = "<group>"; };
 		0DC16234E82B88C1DB338A49 /* StoreRepair.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreRepair.swift; sourceTree = "<group>"; };
 		0F2F565F064A603E639DC26E /* ServiceCatalog.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = ServiceCatalog.json; sourceTree = "<group>"; };
@@ -139,6 +142,7 @@
 		42C2BEF1C847F26AD98EABF0 /* DemoControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoControl.swift; sourceTree = "<group>"; };
 		464C332182D96B75A17F363C /* WhatsNew.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsNew.swift; sourceTree = "<group>"; };
 		4666C49AA129F26D936B0715 /* ServiceInstance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceInstance.swift; sourceTree = "<group>"; };
+		4816C0A63A37D82D52C3A8D4 /* QuitRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuitRecord.swift; sourceTree = "<group>"; };
 		4878D7EAAB3DCB48557A9984 /* GlobalPlacementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalPlacementTests.swift; sourceTree = "<group>"; };
 		4D2B28970B7AEF9B0EB53AFD /* UnifiedRailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedRailView.swift; sourceTree = "<group>"; };
 		4DA08B3832BE838917ABE7FD /* ServiceGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceGroup.swift; sourceTree = "<group>"; };
@@ -313,6 +317,7 @@
 				1ACFB877AD2138035F9E3EAE /* FaviconFetcher.swift */,
 				D01CC2330887CF5293843BF3 /* IconThumbnail.swift */,
 				313680424148829FCBEAA9BC /* ModelContext+Save.swift */,
+				4816C0A63A37D82D52C3A8D4 /* QuitRecord.swift */,
 				29C26C37D627ADE04B904988 /* SheetQuit.swift */,
 			);
 			path = Utilities;
@@ -468,6 +473,7 @@
 				FBA2B8A19B41207F66E51CC3 /* ChorusTests.swift */,
 				4878D7EAAB3DCB48557A9984 /* GlobalPlacementTests.swift */,
 				FF1B76F1DCF6AD0DC9CD9FEB /* GroupTests.swift */,
+				07521B53363878D0066BEA7F /* QuitRecordTests.swift */,
 				9685F17CCE71FDC093EBA783 /* RailTests.swift */,
 				FE5EE9E12645C01E926701B1 /* SignInSharingTests.swift */,
 				E7F6622E313027CCFE7EA483 /* WebSurfaceTests.swift */,
@@ -612,6 +618,7 @@
 				FC24793EEE444C3F48F17559 /* NotificationManager.swift in Sources */,
 				A96CBF7ECCEC4F44B5A6351E /* OutsideLinkDefault.swift in Sources */,
 				53C0B5A438EDC6C98FE081AB /* QuickSwitcherView.swift in Sources */,
+				2060383BBB7763440315E22D /* QuitRecord.swift in Sources */,
 				DFF3C2C6D2BD8785482FDAD1 /* RailDivider.swift in Sources */,
 				79F69990EE72D6196FBB80B8 /* RailDividerView.swift in Sources */,
 				D69EC4D73050E0B81AB43378 /* RailDragSession.swift in Sources */,
@@ -661,6 +668,7 @@
 				C4ADA7C24E806E00FF4709D1 /* ChorusTests.swift in Sources */,
 				DA30DDBA2100841126D77F95 /* GlobalPlacementTests.swift in Sources */,
 				30F2487A1BC701C49D19A237 /* GroupTests.swift in Sources */,
+				E80A466D432A4BF3B9A928ED /* QuitRecordTests.swift in Sources */,
 				BA1476755637D56C12D39BC0 /* RailTests.swift in Sources */,
 				3887C76A1F694AF9B197C9C6 /* SignInSharingTests.swift in Sources */,
 				9A0520E87ACAE8A56BC23625 /* WebSurfaceTests.swift in Sources */,
