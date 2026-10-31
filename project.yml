@@ -41,8 +41,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.nicojan.Chorus
         PRODUCT_NAME: Chorus
-        MARKETING_VERSION: "1.5.31"
-        CURRENT_PROJECT_VERSION: "44"
+        MARKETING_VERSION: "1.5.32"
+        CURRENT_PROJECT_VERSION: "45"
         SWIFT_VERSION: "6.0"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         INFOPLIST_FILE: Chorus/Info.plist
