@@ -1,3 +1,4 @@
+import ChorusEngine
 import SwiftUI
 
 /// One service in the rail, drawn as a labelled row in either axis.

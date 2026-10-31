@@ -4,6 +4,36 @@ What scripted input and the test suite cannot check, in the order that finds pro
 
 Record the result next to each item. An unrun item is not a passing item.
 
+## Next: the engine package (`refactor/engine-package`), for 1.5.32
+
+The web engine moved into a Swift package (`docs/internal/ENGINE.md`). Nothing should look or behave differently. Run 1 to 9 on a Debug build: it keeps its data in `Chorus-debug` and the `com.nicojan.Chorus.debug` domain, so it never opens the real store. Use your own accounts in the Debug build, or a copy of your data, but only as `CLAUDE.md` allows. Run 10 on the archive before publishing.
+
+**Pass, 2026-10-30, Debug build, macOS 26.** Nico ran what a Debug build allows; the rest was settled by reading the code against `main` (1.5.31).
+
+- 3 passed.
+- 4 looked right.
+- 1, 6, 8 and 9 could not be run: most services in the Debug build were never signed in, and a notification, a call or Wi-Fi off was not practical. WhatsApp, signed in on an earlier Debug run, stayed signed in. The code that picks each service's store, `ServiceInstance.webSurface`, opens the same `dataStoreIdentifier` as before, and the notification rule is the same one, copied over.
+- 2 showed no pop-up. That is right for Gmail, which signs in on its own page; the pop-up only comes from another site's Sign in with Google button. The item below is worded wrong.
+- 5 downloaded the file but showed no button. `DownloadCenter` and its wiring match `main` line for line apart from `public`, so 1.5.31 behaves the same; not a regression of this branch. Check the button on a release build. Nico suggested an in-app banner when a download starts (OPEN-ITEMS).
+- 7 came back on WhatsApp's home page. The wake code matches `main` line for line, and WhatsApp keeps one address for every chat, so its home page is the page you left. Try a service whose address changes, such as Gmail.
+
+Comparing each moved file with its `main` original, with `public`, imports and comments set aside: 12 of 20 are identical. The rest swap `ServiceInstance` for `WebSurface` or a service id, or move views and Chorus-only rules back to the app.
+
+1. **Still signed in.** Open each service you have in the Debug build. Each one loads signed in, with no sign-in page. A service that shares its sign-in with another (Edit Service) shows the same account as before.
+2. **Sign in with Google in a pop-up.** In a service that is not Google's own (Trello, Linear, Figma), press Sign in with Google. The Google window opens as a window, closes itself when done, and the service loads signed in. Gmail itself signs in on its own page, with no pop-up.
+3. **Ads are blocked.** Open a page that loads a known tracker (doubleclick.net, for one). The request is blocked: `/usr/bin/log show --last 5m --predicate 'subsystem == "com.nicojan.Chorus"'` shows "Content blocker ready" at launch, and Safari's Web Inspector (Develop menu, Debug builds only) shows the tracker request refused.
+4. **Dark mode.** Set the app to Dark and one service's dark theming to On. The page goes dark with no white flash. Turn it Off and the page goes back at once.
+5. **A download.** Download a file from a service. The button appears, the ring fills, and the row names the service.
+6. **A chat notification.** Have someone message you on Slack, WhatsApp or Teams while that service is in the background. A macOS banner arrives and the rail badge counts up.
+7. **Hibernation.** Hibernate a service from its menu, then click it. It wakes on the page you left, not its home page.
+8. **Camera and microphone.** Start a call on Meet or Teams. macOS asks for the camera and microphone the first time, and the service's own setting is honoured after that.
+9. **Offline.** Turn Wi-Fi off. The offline card shows, and the log says `Paused polling` with the reason `network unreachable`. Turn Wi-Fi back on and polling resumes.
+10. **The archive.** Inspect the Release app, and only inspect it: launching a Release build opens the real store.
+    - After step 3 of `release/DISTRIBUTION.md`, on `build/export/Chorus.app`: `ls Contents/Resources/ChorusEngine_ChorusEngine.bundle/Contents/Resources` lists `darkreader.js`, `hagezi-light.json`, `fanboy-annoyance.json`, `THIRD_PARTY_NOTICES.md` and `licenses`.
+    - `ls Contents/Resources` still lists `LICENSE`, `THIRD_PARTY_NOTICES.md` and `licenses`.
+    - `codesign --verify --deep --strict --verbose=2` on the app passes.
+    - After step 5, on the notarized, stapled `Chorus.app`: `spctl -a -vv` says accepted, source Notarized Developer ID. Before notarization it says Unnotarized, which is not a failure.
+
 ## Next: the Paguro branches (`fix/paguro-findings`, `feat/paguro-look`)
 
 Run these on the build that will ship as 1.5.22.

@@ -316,7 +316,7 @@ testers the notarized DMG directly.
 
 ## Content blocklist
 
-The ad/tracker blocker compiles a bundled rule list (`Chorus/Resources/hagezi-light.json`)
+The ad/tracker blocker compiles a bundled rule list (`ChorusEngine/Sources/ChorusEngine/Resources/hagezi-light.json`)
 at launch; there is no runtime download, so list updates ship with each release.
 
 To refresh it, run `HAGEZI_REF=<commit> scripts/convert_blocklist.sh`, where `<commit>` is a commit SHA from `hagezi/dns-blocklists`, not a tag. HaGezi deletes its old tags, and the tag the first lists came from is already gone. The script converts both lists with AdGuard's SafariConverterLib, and writes the exact source text of each into `vendor/blocklists` with a `manifest.json` of hashes. Commit the JSON and `vendor/blocklists` together: a test fails if the bundled JSON and the manifest disagree. If `curl` can't reach `raw.githubusercontent.com`, fetch the file with `gh api -H "Accept: application/vnd.github.raw" "repos/hagezi/dns-blocklists/contents/adblock/light.txt?ref=<commit>"` and pass it in as `HAGEZI_URL=file:///path/to/light.txt`.

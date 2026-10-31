@@ -16,7 +16,7 @@ import WebKit
 /// the OS close button is used, and mirror the page `<title>` from the KVO
 /// change value rather than reaching back into the web view off the main actor.
 @MainActor
-final class InAppBrowserWindow: NSObject, WKNavigationDelegate, WKUIDelegate {
+public final class InAppBrowserWindow: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     /// Strong references to the open windows. Removing an entry on close drops the
     /// last reference and deallocates the window and its web view; while it sits
@@ -30,7 +30,7 @@ final class InAppBrowserWindow: NSObject, WKNavigationDelegate, WKUIDelegate {
     /// Opens `url` in a new in-app browser window. Callers gate the scheme (see
     /// `WebViewCoordinator.shouldOpenInAppBrowser`); only http/https should reach
     /// here.
-    static func open(_ url: URL) {
+    public static func open(_ url: URL) {
         openWindows.insert(InAppBrowserWindow(url: url))
     }
 
@@ -102,7 +102,7 @@ final class InAppBrowserWindow: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     // MARK: - Navigation
 
-    func webView(
+    public func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationAction: WKNavigationAction
     ) async -> WKNavigationActionPolicy {
@@ -138,7 +138,7 @@ final class InAppBrowserWindow: NSObject, WKNavigationDelegate, WKUIDelegate {
     /// This window has no download handling of its own, so without this a
     /// click on a zip did nothing at all. The browser fetches it again with its
     /// own session; the throwaway one here has nothing worth keeping.
-    func webView(
+    public func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationResponse: WKNavigationResponse
     ) async -> WKNavigationResponsePolicy {
@@ -153,7 +153,7 @@ final class InAppBrowserWindow: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     /// `window.open` inside the in-app browser loads in the same window rather
     /// than spawning more.
-    func webView(
+    public func webView(
         _ webView: WKWebView,
         createWebViewWith configuration: WKWebViewConfiguration,
         for navigationAction: WKNavigationAction,

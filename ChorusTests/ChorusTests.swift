@@ -5,6 +5,7 @@ import JavaScriptCore
 import WebKit
 import CryptoKit
 @testable import Chorus
+@testable import ChorusEngine
 
 @MainActor
 final class ChorusTests: XCTestCase {
@@ -3244,6 +3245,21 @@ final class ChorusTests: XCTestCase {
         }
     }
 
+    /// The lists moved into the ChorusEngine package, so they load from its
+    /// resource bundle inside the app, not from `Bundle.main`.
+    func testBundledListsLoadFromThePackageBundleInsideTheApp() {
+        XCTAssertNotNil(ContentBlockerManager.bundledListURL("hagezi-light"))
+        XCTAssertNotNil(ContentBlockerManager.bundledListURL("fanboy-annoyance"))
+    }
+
+    /// Dark Reader moved into the package too. A missing file here is silent in
+    /// the app: `libraryJS` falls back to an empty string and dark theming stops
+    /// working. A missing resource bundle is not silent: `Bundle.module` stops
+    /// the app, which is why CI also checks a Release build for the bundle.
+    func testDarkReaderLibraryLoadsFromThePackageBundleInsideTheApp() {
+        XCTAssertFalse(DarkReaderSupport.libraryJS.isEmpty)
+    }
+
     /// `vendor/blocklists` is the source of the GPL list the app ships, so it has
     /// to describe the JSON actually bundled. Regenerating a list by any route
     /// other than `convert_blocklist.sh` would leave the two apart.
@@ -3261,7 +3277,7 @@ final class ChorusTests: XCTestCase {
                 let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
                 XCTAssertEqual(digest, list[hashKey] as? String, "\(name): \(path) no longer matches the manifest")
             }
-            let bundled = try XCTUnwrap(Bundle.main.url(forResource: name, withExtension: "json"))
+            let bundled = try XCTUnwrap(ContentBlockerManager.bundledListURL(name))
             let bundledDigest = SHA256.hash(data: try Data(contentsOf: bundled)).map { String(format: "%02x", $0) }.joined()
             XCTAssertEqual(bundledDigest, list["output_sha256"] as? String, "\(name): the app ships a different list")
         }
@@ -7289,7 +7305,7 @@ final class ChorusTests: XCTestCase {
         let manager = UserScriptManager()
         let controller = WKUserContentController()
         manager.installUserScripts(
-            for: makeService(label: "Slack", catalogID: "slack"),
+            for: makeService(label: "Slack", catalogID: "slack").id,
             customCSS: nil,
             darkInjection: .none,
             stayActiveInBackground: false,

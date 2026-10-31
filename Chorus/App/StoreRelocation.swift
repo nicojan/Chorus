@@ -1,3 +1,4 @@
+import ChorusEngine
 import Foundation
 
 /// Moves the store out of SwiftData's default, unscoped location and into a

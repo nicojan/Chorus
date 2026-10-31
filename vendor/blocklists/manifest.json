@@ -11,7 +11,7 @@
       "source_version": "2026.0929.0839.55",
       "source_file": "vendor/blocklists/hagezi-light.txt",
       "source_sha256": "bf3554c6de7baba3a811fcb88a4f5152dd521a92224023e97f9288e1c446dc77",
-      "output_file": "Chorus/Resources/hagezi-light.json",
+      "output_file": "ChorusEngine/Sources/ChorusEngine/Resources/hagezi-light.json",
       "output_sha256": "7bbb84183172244550debe9e76092c5cc1a619f23d42d781b0c9ea8f41d9a141",
       "rule_count": 45121,
       "license": "GPL-3.0"
@@ -22,7 +22,7 @@
       "source_version": "202609291512",
       "source_file": "vendor/blocklists/fanboy-annoyance.txt",
       "source_sha256": "8500aa2ac791ad9a605d3e65a7c7faa7be6672a67112fa775d30337a66814cac",
-      "output_file": "Chorus/Resources/fanboy-annoyance.json",
+      "output_file": "ChorusEngine/Sources/ChorusEngine/Resources/fanboy-annoyance.json",
       "output_sha256": "5ffb5a381905e953eb90a1f5790618b6aa5a3ac650c382d96d74213d5b7c2425",
       "rule_count": 17740,
       "license": "CC-BY-3.0"

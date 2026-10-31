@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import ChorusEngine
 
 /// Mac apps in the rail. macOS cannot put another app's window inside Chorus,
 /// so a Mac-app service is a launcher: selecting it opens or brings forward the

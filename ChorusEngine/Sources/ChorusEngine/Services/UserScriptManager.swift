@@ -10,28 +10,30 @@ struct NotificationPayload: Codable {
 }
 
 @MainActor
-final class UserScriptManager {
-    var isServiceMuted: (@Sendable (UUID) -> Bool)?
+public final class UserScriptManager {
+    public init() {}
+
+    public var isServiceMuted: (@Sendable (UUID) -> Bool)?
     /// Per-service "forward notifications to macOS" flag. Defaults to true when
     /// unset, preserving behavior for services that predate the toggle.
-    var isServiceNotifyingOS: (@Sendable (UUID) -> Bool)?
-    var isDoNotDisturbActive: (@Sendable () -> Bool)?
+    public var isServiceNotifyingOS: (@Sendable (UUID) -> Bool)?
+    public var isDoNotDisturbActive: (@Sendable () -> Bool)?
     /// The service's label, shown on each notification it posts.
-    var serviceLabel: (@Sendable (UUID) -> String?)?
-    var autoDismissCookieBanners: Bool = true
+    public var serviceLabel: (@Sendable (UUID) -> String?)?
+    public var autoDismissCookieBanners: Bool = true
 
     /// Full setup for a freshly built web view: the message handlers (added once)
     /// plus all user scripts.
     func configureScripts(
-        for instance: ServiceInstance,
+        for serviceID: UUID,
         customCSS: String?,
         darkInjection: DarkReaderSupport.DarkInjection,
         stayActiveInBackground: Bool,
         on controller: WKUserContentController
     ) {
-        installHandlers(for: instance, on: controller)
+        installHandlers(for: serviceID, on: controller)
         installUserScripts(
-            for: instance,
+            for: serviceID,
             customCSS: customCSS,
             darkInjection: darkInjection,
             stayActiveInBackground: stayActiveInBackground,
@@ -42,13 +44,13 @@ final class UserScriptManager {
     /// Registers the message handlers. Called once when the web view is built —
     /// NOT on reinstall, since `removeAllUserScripts()` leaves message handlers in
     /// place and re-adding would throw.
-    func installHandlers(for instance: ServiceInstance, on controller: WKUserContentController) {
+    func installHandlers(for serviceID: UUID, on controller: WKUserContentController) {
         let mutedCheck = isServiceMuted
         let notifyOSCheck = isServiceNotifyingOS
         let dndCheck = isDoNotDisturbActive
         let labelLookup = serviceLabel
         let handler = NotificationMessageHandler(
-            serviceID: instance.id,
+            serviceID: serviceID,
             labelLookup: { id in
                 labelLookup?(id) ?? nil
             },
@@ -70,13 +72,13 @@ final class UserScriptManager {
     /// navigation is correct. `darkInjection` selects what dark-theming scripts
     /// to bake.
     func installUserScripts(
-        for instance: ServiceInstance,
+        for serviceID: UUID,
         customCSS: String?,
         darkInjection: DarkReaderSupport.DarkInjection,
         stayActiveInBackground: Bool,
         on controller: WKUserContentController
     ) {
-        let notificationScript = makeNotificationInterceptionScript(serviceID: instance.id.uuidString)
+        let notificationScript = makeNotificationInterceptionScript(serviceID: serviceID.uuidString)
         let userScript = WKUserScript(
             source: notificationScript,
             injectionTime: .atDocumentStart,
@@ -235,7 +237,7 @@ final class UserScriptManager {
     /// the page pinned to visible it never got a save point at all, and WhatsApp
     /// could come back signed out. `quitReleaseJS` calls the function below,
     /// which lets the page go hidden and sends it both events.
-    static func makeVisibilityOverrideScript() -> String {
+    public static func makeVisibilityOverrideScript() -> String {
         return """
         (function() {
             try {
@@ -271,7 +273,7 @@ final class UserScriptManager {
 
     /// Evaluated in each live page just before quit. See
     /// `makeVisibilityOverrideScript`.
-    nonisolated static let quitReleaseJS = "window.__chorusReleaseForQuit && window.__chorusReleaseForQuit(); true"
+    public nonisolated static let quitReleaseJS = "window.__chorusReleaseForQuit && window.__chorusReleaseForQuit(); true"
 
     /// Counts the page's IndexedDB writes that have not finished: write and
     /// upgrade transactions until they complete or abort, and database opens
@@ -322,12 +324,12 @@ final class UserScriptManager {
 
     /// Evaluated in each live page while quit waits. See
     /// `makeWriteTrackerScript`.
-    nonisolated static let pendingWritesJS = "window.__chorusPendingWrites ? window.__chorusPendingWrites() : 0"
+    public nonisolated static let pendingWritesJS = "window.__chorusPendingWrites ? window.__chorusPendingWrites() : 0"
 
     /// Reports the page as focused even when its web view is in the background,
     /// so a service that flips your status to "away"/"idle" on window blur
     /// (Microsoft Teams) keeps showing you active. Opt-in per service — see
-    /// `ServiceInstance.stayActiveInBackground`.
+    /// `WebSurface.staysActiveInBackground`.
     ///
     /// Overrides `document.hasFocus()` to true and swallows real `blur` events on
     /// both window and document (capture phase, before the page's own handlers)
@@ -526,7 +528,18 @@ final class UserScriptManager {
     }
 }
 
-final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unchecked Sendable {
+public final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unchecked Sendable {
+    /// Whether an intercepted web notification goes on to macOS. It fires only
+    /// when the service is not muted, has OS notifications on, and Do Not
+    /// Disturb is off. Pure, so the policy is unit-testable.
+    public nonisolated static func shouldPostOSNotification(
+        isMuted: Bool,
+        notifyOS: Bool,
+        doNotDisturb: Bool
+    ) -> Bool {
+        !isMuted && notifyOS && !doNotDisturb
+    }
+
     let serviceID: UUID
     let labelLookup: @Sendable (UUID) -> String?
     let isMutedCheck: @Sendable (UUID) -> Bool
@@ -583,7 +596,7 @@ final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unche
         super.init()
     }
 
-    func userContentController(
+    public func userContentController(
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
@@ -628,7 +641,7 @@ final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unche
             return
         }
 
-        guard NotificationManager.shouldPostOSNotification(
+        guard Self.shouldPostOSNotification(
             isMuted: isMutedCheck(serviceID),
             notifyOS: notifyOSCheck(serviceID),
             doNotDisturb: isDoNotDisturbCheck()
@@ -666,62 +679,3 @@ final class NotificationMessageHandler: NSObject, WKScriptMessageHandler, @unche
         }
     }
 }
-
-// MARK: - Custom CSS presets and per-service defaults
-
-/// Baked-in default CSS for known catalog services, plus the rule that decides
-/// what actually gets injected for a service. Kept as pure functions so the
-/// resolution logic is unit-testable without a running web view.
-enum ServiceCSSDefaults {
-    /// The default CSS shipped for a catalog service, or nil when it has none.
-    static func css(forCatalogID id: String?) -> String? {
-        switch id {
-        case "linkedin": return linkedInMessaging
-        default: return nil
-        }
-    }
-
-    /// The CSS to inject for a service: the instance's own CSS when set,
-    /// otherwise the baked-in default. A blank result injects nothing — an
-    /// explicit "no CSS" override.
-    static func effectiveCSS(instanceCSS: String?, catalogID: String?) -> String? {
-        let raw = instanceCSS ?? css(forCatalogID: catalogID)
-        guard let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return nil
-        }
-        return raw
-    }
-
-    /// Trims LinkedIn down to just its messaging pane, filling the window like a
-    /// dedicated chat app: hides the global nav and right rail, and expands the
-    /// conversation list + thread to full width and height. Selectors are
-    /// LinkedIn's stable semantic names, verified against the live page.
-    static let linkedInMessaging = """
-    #global-nav, .global-nav { display: none !important; }
-    .authentication-outlet { padding-top: 0 !important; }
-    /* Fill the window by chaining height:100% from html all the way down to the
-       message panes — not 100vh, which binds to the WKWebView's initial zero
-       frame and never recomputes, and not flex/grid stretch, which doesn't hold
-       at every LinkedIn breakpoint (its content row is block, not grid, when
-       narrow). Scoped with :has(#messaging)/#messaging so only the messaging
-       page is height-constrained, never the feed. Responsive at any size. */
-    html:has(#messaging), body:has(#messaging) { height: 100% !important; }
-    .application-outlet:has(#messaging), .authentication-outlet:has(#messaging) { height: 100% !important; }
-    #messaging.scaffold-layout,
-    #messaging .scaffold-layout__inner,
-    #messaging .scaffold-layout__content,
-    #messaging .scaffold-layout__list-detail,
-    #messaging .scaffold-layout__list-detail-container,
-    #messaging .scaffold-layout__list-detail-inner,
-    #messaging .scaffold-layout__detail { height: 100% !important; }
-    .scaffold-layout__inner { margin-left: 0 !important; margin-right: 0 !important; max-width: none !important; width: 100% !important; }
-    /* Single column, and kill the grid column-gap: when the right rail is hidden
-       its grid track collapses to 0 but the gap stays, leaving a gray strip on
-       the right (most visible when zoomed out into the wide breakpoint). */
-    .scaffold-layout__content { grid-template-columns: minmax(0, 1fr) !important; column-gap: 0 !important; grid-column-gap: 0 !important; margin-top: 0 !important; }
-    .scaffold-layout__aside { display: none !important; }
-    .scaffold-layout__content, .scaffold-layout__list-detail, .scaffold-layout__list-detail-container, .scaffold-layout__list-detail-inner { max-width: none !important; width: 100% !important; }
-    .msg-overlay-list-bubble, .msg-overlay { display: none !important; }
-    """
-}
-

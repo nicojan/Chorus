@@ -10,13 +10,13 @@ import WebKit
 /// `window.chrome` — so it is injected into an ISOLATED content world, never the
 /// page's own world. The DOM is shared across worlds, so the theme `<style>` it
 /// creates still applies; only its JS globals stay hidden from the site.
-enum DarkReaderSupport {
+public enum DarkReaderSupport {
 
     /// The single isolated world Dark Reader lives in. `world(name:)` returns the
     /// same instance for a given name, so the world used to add user scripts is
     /// the one `evaluateJavaScript(_:in:contentWorld:)` reaches. Main-actor
     /// isolated because the WebKit lookup is.
-    @MainActor static var world: WKContentWorld {
+    @MainActor public static var world: WKContentWorld {
         WKContentWorld.world(name: "ChorusDarkReader")
     }
 
@@ -25,20 +25,26 @@ enum DarkReaderSupport {
     private static let antiFlashID = "chorus-dr-antiflash"
 
     /// What to inject for a service: nothing, or the theme (library + enable).
-    enum DarkInjection {
+    public enum DarkInjection {
         case none, themed
     }
 
     /// The single source of truth for what a service needs: a service themes
     /// only when the user set it to On AND the app is currently dark. Pure;
     /// unit-tested.
-    static func injection(mode: ServiceDarkMode, appDark: Bool) -> DarkInjection {
-        appDark && mode == .on ? .themed : .none
+    public static func injection(themed: Bool, appDark: Bool) -> DarkInjection {
+        appDark && themed ? .themed : .none
     }
 
-    /// The Dark Reader library source, loaded once from the app bundle.
+
+    /// Where the library lives: in this package's resource bundle, not the app's.
+    nonisolated static var libraryURL: URL? {
+        Bundle.module.url(forResource: "darkreader", withExtension: "js")
+    }
+
+    /// The Dark Reader library source, loaded once from the engine's resource bundle.
     static let libraryJS: String = {
-        guard let url = Bundle.main.url(forResource: "darkreader", withExtension: "js"),
+        guard let url = libraryURL,
               let js = try? String(contentsOf: url, encoding: .utf8) else {
             AppLogger.general.error("darkreader.js not found in bundle; dark theming disabled")
             return ""

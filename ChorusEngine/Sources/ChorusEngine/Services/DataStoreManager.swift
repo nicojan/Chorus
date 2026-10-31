@@ -7,14 +7,19 @@ import WebKit
 /// that already forced avoiding `allDataStoreIdentifiers`. Reusing one instance
 /// per identifier avoids that churn.
 @MainActor
-final class DataStoreManager {
+public final class DataStoreManager {
     private var cache: [UUID: WKWebsiteDataStore] = [:]
 
-    func dataStore(for instance: ServiceInstance) -> WKWebsiteDataStore {
-        dataStore(forIdentifier: instance.dataStoreIdentifier)
+    public init() {}
+
+    public func dataStore(for store: WebSurface.DataStore) -> WKWebsiteDataStore {
+        switch store {
+        case .persistent(let identifier):
+            dataStore(forIdentifier: identifier)
+        }
     }
 
-    func dataStore(forIdentifier identifier: UUID) -> WKWebsiteDataStore {
+    public func dataStore(forIdentifier identifier: UUID) -> WKWebsiteDataStore {
         if let cached = cache[identifier] {
             return cached
         }
@@ -105,7 +110,7 @@ final class DataStoreManager {
 
     /// Drops the cached instance for an identifier. Call before removing the
     /// store from disk so a stale handle can't keep it alive.
-    func evict(identifier: UUID) {
+    public func evict(identifier: UUID) {
         cache.removeValue(forKey: identifier)
     }
 

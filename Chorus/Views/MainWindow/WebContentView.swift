@@ -1,3 +1,4 @@
+import ChorusEngine
 import SwiftUI
 import SwiftData
 import WebKit
@@ -141,7 +142,7 @@ struct WebContentView: View {
     /// The live page with its load snapshot and find bar.
     private func pageContent(_ webView: WKWebView) -> some View {
         ZStack(alignment: .topTrailing) {
-            WebViewContainer(webView: webView)
+            WebViewContainer(webView: webView, cornerRadius: ChorusCard.webCornerRadius)
 
             // Show cached snapshot as instant visual feedback while page loads.
             // Fades out once the web view finishes loading. It fills the

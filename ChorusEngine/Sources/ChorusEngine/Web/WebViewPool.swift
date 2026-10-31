@@ -4,7 +4,7 @@ import AppKit
 
 @MainActor
 @Observable
-final class WebViewPool {
+public final class WebViewPool {
     private var webViews: [UUID: WKWebView] = [:]
     private var lastAccessTimes: [UUID: Date] = [:]
     private var coordinators: [UUID: WebViewCoordinator] = [:]
@@ -57,7 +57,7 @@ final class WebViewPool {
     private(set) var effectiveAppearanceDark = false
 
     /// The currently active/displayed service
-    private(set) var activeServiceID: UUID?
+    public private(set) var activeServiceID: UUID?
 
     /// Set of service IDs currently fully hibernated (web view destroyed)
     private(set) var hibernatedServiceIDs: Set<UUID> = []
@@ -65,12 +65,12 @@ final class WebViewPool {
     /// Per-service camera/microphone capture state, driven by KVO on each web
     /// view. Populated for background services too (a call on a service you're
     /// not viewing), so the rail can show an in-use dot. Absent ⇒ nothing live.
-    struct MediaCaptureState: Equatable {
-        var cameraActive = false   // camera live (capturing, not paused); a
+    public struct MediaCaptureState: Equatable {
+        public var cameraActive = false   // camera live (capturing, not paused); a
                                    // paused (.muted) camera shows no dot, matching
                                    // the mic's distinct muted state below
-        var micActive = false      // microphone live
-        var micMuted = false       // microphone engaged but muted
+        public var micActive = false      // microphone live
+        public var micMuted = false       // microphone engaged but muted
         var isCapturing: Bool { cameraActive || micActive || micMuted }
 
         /// One service's state from all its web views, the page and its tabs.
@@ -84,7 +84,7 @@ final class WebViewPool {
             return state
         }
     }
-    private(set) var mediaCaptureStates: [UUID: MediaCaptureState] = [:]
+    public private(set) var mediaCaptureStates: [UUID: MediaCaptureState] = [:]
     private var mediaObservations: [UUID: [NSKeyValueObservation]] = [:]
 
     /// Services whose page is making sound right now, from WebKit's own
@@ -112,7 +112,7 @@ final class WebViewPool {
     /// the whole point. Absent ⇒ `.live`, so a healthy service costs no entry.
     private(set) var serviceHealth: [UUID: ServiceHealth] = [:]
 
-    func health(for instanceID: UUID) -> ServiceHealth {
+    public func health(for instanceID: UUID) -> ServiceHealth {
         serviceHealth[instanceID] ?? .live
     }
 
@@ -128,87 +128,87 @@ final class WebViewPool {
     }
 
     /// Called when a service is fully hibernated (for badge poller tracking)
-    var onServiceHibernated: ((UUID) -> Void)?
+    public var onServiceHibernated: ((UUID) -> Void)?
 
     /// Called when a service wakes from full hibernation (for badge poller untracking)
     var onServiceWoke: ((UUID) -> Void)?
 
     /// Called when a service is soft-hibernated (for pausing notification polling)
-    var onServiceSoftHibernated: ((UUID) -> Void)?
+    public var onServiceSoftHibernated: ((UUID) -> Void)?
 
     /// Called when a service wakes from soft hibernation
-    var onServiceSoftWoke: ((UUID) -> Void)?
+    public var onServiceSoftWoke: ((UUID) -> Void)?
 
     /// Called when a service's web view is permanently removed (deletion, not hibernation)
-    var onServiceRemoved: ((UUID) -> Void)?
+    public var onServiceRemoved: ((UUID) -> Void)?
 
     /// Classifies whether a service must stay live for real-time notifications
     /// (Messaging category). Set by `AppState`, which owns the catalog. Read at
     /// load time to populate `notificationCriticalIDs`. Defaults to "not
     /// critical" when unset, so the pool never over-exempts.
-    var isNotificationCritical: ((UUID) -> Bool)?
+    public var isNotificationCritical: ((UUID) -> Bool)?
 
     /// Called whenever a service's web view is torn down for ANY reason — full
     /// hibernation, rebuild (recreateWebView), LRU eviction, or removal — i.e. the
     /// single `teardownWebView` chokepoint. Distinct from `onServiceRemoved`
     /// (permanent deletion only); used to invalidate a pending media prompt whose
     /// web view is going away.
-    var onServiceTornDown: ((UUID) -> Void)?
+    public var onServiceTornDown: ((UUID) -> Void)?
 
     /// Wired up at AppState init and applied to every coordinator the pool
     /// creates. Routes cross-domain target=_blank links + Cmd-clicks through
     /// service-aware matching before falling back to the system browser. The
     /// second argument is the source service's id, so AppState can honour that
     /// service's "open links in Chorus" choice.
-    var externalLinkHandler: ((URL, UUID?) -> Void)?
+    public var externalLinkHandler: ((URL, UUID?) -> Void)?
     /// Whether some Chorus service owns a URL. Passed to each coordinator.
-    var serviceOwnsURL: ((URL, UUID?) -> Bool)?
+    public var serviceOwnsURL: ((URL, UUID?) -> Bool)?
     /// The app-wide download list. Passed to each coordinator.
-    var downloadCenter: DownloadCenter?
+    public var downloadCenter: DownloadCenter?
 
     /// Wired up at AppState init and applied to every coordinator. Resolves a
     /// camera/microphone capture request to a WebKit decision from the persisted
     /// per-service policy. The pool is a pass-through — it owns neither the policy
     /// nor the prompt UI.
-    var mediaCapturePolicyProvider: ((UUID, WKMediaCaptureType, WKFrameInfo) async -> WKPermissionDecision)?
+    public var mediaCapturePolicyProvider: ((UUID, WKMediaCaptureType, WKFrameInfo) async -> WKPermissionDecision)?
 
     /// Called after a service has been preloaded (web view created and load
     /// dispatched, but not yet displayed). Allows callers to start background
     /// polling so the service can collect badge counts before the user clicks it.
-    var onServicePreloaded: ((UUID, WKWebView) -> Void)?
+    public var onServicePreloaded: ((UUID, WKWebView) -> Void)?
 
     /// Called when a service's main web view finishes a top-level navigation
     /// (fresh load or login redirect), so callers can fire an immediate badge
     /// poll. Forwarded from each coordinator's `onNavigationFinished`.
-    var onNavigationFinished: ((UUID) -> Void)?
+    public var onNavigationFinished: ((UUID) -> Void)?
 
     /// Exposes the live `WKWebView` for a service, if one currently exists.
     /// Used by callers that need to attach background polling to a soft-
     /// hibernated or preloaded webview without going through `webView(for:)`,
     /// which has the side-effect of marking the service active.
-    func liveWebView(for instanceID: UUID) -> WKWebView? {
+    public func liveWebView(for instanceID: UUID) -> WKWebView? {
         webViews[instanceID]
     }
 
     /// The tabs a live service has open. Nil when the service has no web view.
-    func tabs(for instanceID: UUID) -> ServiceTabs? {
+    public func tabs(for instanceID: UUID) -> ServiceTabs? {
         coordinators[instanceID]?.tabs
     }
 
     /// The web view on screen for a service: the selected tab, or its own page.
     /// What ⌘R, zoom and Find act on.
-    func displayedWebView(for instanceID: UUID) -> WKWebView? {
+    public func displayedWebView(for instanceID: UUID) -> WKWebView? {
         tabs(for: instanceID)?.selectedTab?.webView ?? webViews[instanceID]
     }
 
     /// Closes one of a service's tabs.
-    func closeTab(_ tabID: UUID, for instanceID: UUID) {
+    public func closeTab(_ tabID: UUID, for instanceID: UUID) {
         coordinators[instanceID]?.closeTab(tabID)
     }
 
     /// The service's own page and every tab it has open, for settings that
     /// apply to the whole service, such as zoom.
-    func allWebViews(for instanceID: UUID) -> [WKWebView] {
+    public func allWebViews(for instanceID: UUID) -> [WKWebView] {
         let page = webViews[instanceID].map { [$0] } ?? []
         return page + (tabs(for: instanceID)?.tabs.map(\.webView) ?? [])
     }
@@ -222,11 +222,11 @@ final class WebViewPool {
     /// Snapshot of all service IDs whose WKWebViews are currently alive.
     /// Used after system wake to restart polling for everything that survived
     /// the sleep cycle.
-    var liveServiceIDs: [UUID] {
+    public var liveServiceIDs: [UUID] {
         Array(webViews.keys)
     }
 
-    init(
+    public init(
         dataStoreManager: DataStoreManager,
         userScriptManager: UserScriptManager,
         contentBlocker: ContentBlockerManager
@@ -236,70 +236,70 @@ final class WebViewPool {
         self.contentBlocker = contentBlocker
     }
 
-    func webView(for instance: ServiceInstance) -> WKWebView {
+    public func webView(for surface: WebSurface) -> WKWebView {
         // Track the never-hibernate preference. Read the effective policy, not the
         // legacy `neverHibernate` flag, so the exemption can't diverge from what
         // the rest of the app treats as `.never`.
-        if instance.hibernationPolicyEffective == .never {
-            neverHibernateIDs.insert(instance.id)
+        if surface.keepsLoaded {
+            neverHibernateIDs.insert(surface.id)
         } else {
-            neverHibernateIDs.remove(instance.id)
+            neverHibernateIDs.remove(surface.id)
         }
 
         // Cache whether this service is notification-critical (chat), so both
         // hibernation sweeps can exempt it without consulting the catalog.
-        if isNotificationCritical?(instance.id) == true {
-            notificationCriticalIDs.insert(instance.id)
+        if isNotificationCritical?(surface.id) == true {
+            notificationCriticalIDs.insert(surface.id)
         } else {
-            notificationCriticalIDs.remove(instance.id)
+            notificationCriticalIDs.remove(surface.id)
         }
 
         // Soft-hibernate the previously active service (suspend media, take snapshot)
-        if let previousID = activeServiceID, previousID != instance.id {
+        if let previousID = activeServiceID, previousID != surface.id {
             softHibernateService(previousID)
         }
-        activeServiceID = instance.id
-        visits.activate(instance.id, at: Date())
+        activeServiceID = surface.id
+        visits.activate(surface.id, at: Date())
 
         // Wake from full hibernation if needed
-        if hibernatedServiceIDs.contains(instance.id) {
-            hibernatedServiceIDs.remove(instance.id)
-            onServiceWoke?(instance.id)
+        if hibernatedServiceIDs.contains(surface.id) {
+            hibernatedServiceIDs.remove(surface.id)
+            onServiceWoke?(surface.id)
         }
 
-        if let existing = webViews[instance.id] {
-            lastAccessTimes[instance.id] = Date()
-            wakeService(instance.id)
+        if let existing = webViews[surface.id] {
+            lastAccessTimes[surface.id] = Date()
+            wakeService(surface.id)
             return existing
         }
 
-        let config = makeConfiguration(for: instance)
+        let config = makeConfiguration(for: surface)
         let webView = WKWebView(frame: CGRect(origin: .zero, size: WebViewHostView.lastSize), configuration: config)
         webView.allowsBackForwardNavigationGestures = true
-        webView.customUserAgent = instance.userAgent ?? UserAgentProvider.safariDefault
+        webView.customUserAgent = surface.userAgent ?? UserAgentProvider.safariDefault
         #if DEBUG
         // Lets Safari's Develop menu attach to the page, to watch a sign-in.
         webView.isInspectable = true
         #endif
 
-        let coordinator = makeCoordinator(for: instance)
+        let coordinator = makeCoordinator(for: surface)
         webView.navigationDelegate = coordinator
         webView.uiDelegate = coordinator
-        coordinators[instance.id] = coordinator
+        coordinators[surface.id] = coordinator
 
-        webViews[instance.id] = webView
-        lastAccessTimes[instance.id] = Date()
-        visits.loaded(instance.id, at: Date())
-        observeCaptureState(webView, id: instance.id)
+        webViews[surface.id] = webView
+        lastAccessTimes[surface.id] = Date()
+        visits.loaded(surface.id, at: Date())
+        observeCaptureState(webView, id: surface.id)
 
         // Restore the last-visited URL when waking from full hibernation
         // so the user lands back where they left off, not at the home URL.
         // Falls back to the service home URL on first creation or when no
         // suspended URL is recorded.
-        let resumeURLString = suspendedURLs.removeValue(forKey: instance.id) ?? instance.url
+        let resumeURLString = suspendedURLs.removeValue(forKey: surface.id) ?? surface.url
         if let url = URL(string: resumeURLString), !resumeURLString.isEmpty {
             webView.load(URLRequest(url: url))
-        } else if let homeURL = URL(string: instance.url) {
+        } else if let homeURL = URL(string: surface.url) {
             webView.load(URLRequest(url: homeURL))
         }
 
@@ -315,87 +315,65 @@ final class WebViewPool {
     /// The web view is created and starts loading, but no soft-hibernation of other
     /// services is triggered and no notification polling starts. This makes the service
     /// feel instant when the user eventually selects it.
-    /// Skips services that already have a web view or are fully hibernated-by-user.
-    func preload(_ instance: ServiceInstance) {
-        guard webViews[instance.id] == nil else { return }
-        guard instance.modelContext != nil else { return }
-        // A Mac-app service has no page to load.
-        guard instance.nativeAppBundleID == nil else { return }
+    /// Skips a surface that already has a web view. The checks that need the
+    /// app's model (a deleted service, a Mac app) run before this; see
+    /// `WebViewPool+Services.swift`.
+    public func preload(_ surface: WebSurface) {
+        guard webViews[surface.id] == nil else { return }
 
-        let config = makeConfiguration(for: instance)
+        let config = makeConfiguration(for: surface)
         let webView = WKWebView(frame: CGRect(origin: .zero, size: WebViewHostView.lastSize), configuration: config)
         webView.allowsBackForwardNavigationGestures = true
-        webView.customUserAgent = instance.userAgent ?? UserAgentProvider.safariDefault
+        webView.customUserAgent = surface.userAgent ?? UserAgentProvider.safariDefault
         #if DEBUG
         // Lets Safari's Develop menu attach to the page, to watch a sign-in.
         webView.isInspectable = true
         #endif
 
-        let coordinator = makeCoordinator(for: instance)
+        let coordinator = makeCoordinator(for: surface)
         webView.navigationDelegate = coordinator
         webView.uiDelegate = coordinator
-        coordinators[instance.id] = coordinator
+        coordinators[surface.id] = coordinator
 
-        webViews[instance.id] = webView
-        lastAccessTimes[instance.id] = Date()
-        visits.loaded(instance.id, at: Date())
-        observeCaptureState(webView, id: instance.id)
+        webViews[surface.id] = webView
+        lastAccessTimes[surface.id] = Date()
+        visits.loaded(surface.id, at: Date())
+        observeCaptureState(webView, id: surface.id)
 
         // Register the hibernation-exemption flags now, not just on first
         // activation. A service preloaded but never clicked would otherwise be
         // missing from these sets, so the idle sweep and the LRU cap could
         // hibernate or evict a "Keep Loaded" or chat service the user was
         // promised would stay live. Mirrors the same block in `webView(for:)`.
-        if instance.hibernationPolicyEffective == .never {
-            neverHibernateIDs.insert(instance.id)
+        if surface.keepsLoaded {
+            neverHibernateIDs.insert(surface.id)
         } else {
-            neverHibernateIDs.remove(instance.id)
+            neverHibernateIDs.remove(surface.id)
         }
-        if isNotificationCritical?(instance.id) == true {
-            notificationCriticalIDs.insert(instance.id)
+        if isNotificationCritical?(surface.id) == true {
+            notificationCriticalIDs.insert(surface.id)
         } else {
-            notificationCriticalIDs.remove(instance.id)
+            notificationCriticalIDs.remove(surface.id)
         }
 
-        if let url = URL(string: instance.url) {
+        if let url = URL(string: surface.url) {
             webView.load(URLRequest(url: url))
         }
 
-        AppLogger.webView.debug("Preloaded service \(instance.label)")
-        onServicePreloaded?(instance.id, webView)
+        AppLogger.webView.debug("Preloaded service \(surface.label)")
+        onServicePreloaded?(surface.id, webView)
 
         Task {
             await evictIfNeeded()
         }
     }
 
-    /// Preloads web views for multiple services with a staggered delay to avoid
-    /// overwhelming the network and CPU on startup.
-    /// Captures references before the loop so deleted SwiftData objects don't
-    /// cause issues across await suspension points.
-    func preloadAll(_ instances: [ServiceInstance], delayBetween: Duration = .milliseconds(500)) async {
-        // Snapshot the list before any suspension points — a service could be
-        // deleted during the staggered sleep, and accessing a deleted @Model
-        // object's properties is undefined.
-        struct PreloadEntry { let id: UUID; let instance: ServiceInstance }
-        let entries = instances.map { PreloadEntry(id: $0.id, instance: $0) }
-
-        for entry in entries {
-            guard !Task.isCancelled else { break }
-            guard webViews[entry.id] == nil else { continue }
-            // Verify the model object is still in a valid context before accessing it
-            guard entry.instance.modelContext != nil else { continue }
-            preload(entry.instance)
-            try? await Task.sleep(for: delayBetween)
-        }
-    }
-
     /// Returns a snapshot of the service's last visible state (captured on switch-away)
-    func snapshot(for id: UUID) -> NSImage? {
+    public func snapshot(for id: UUID) -> NSImage? {
         snapshots[id]
     }
 
-    func removeWebView(for instanceID: UUID) {
+    public func removeWebView(for instanceID: UUID) {
         teardownWebView(instanceID)
         suspendedURLs.removeValue(forKey: instanceID)
         hibernatedServiceIDs.remove(instanceID)
@@ -417,17 +395,17 @@ final class WebViewPool {
         dropSnapshot(for: instanceID)
     }
 
-    func hasWebView(for instanceID: UUID) -> Bool {
+    public func hasWebView(for instanceID: UUID) -> Bool {
         webViews[instanceID] != nil
     }
 
-    func isHibernated(_ instanceID: UUID) -> Bool {
+    public func isHibernated(_ instanceID: UUID) -> Bool {
         hibernatedServiceIDs.contains(instanceID)
     }
 
     /// Manually hibernate a service — fully destroys the web view to reclaim all memory.
     /// The service reloads its home URL when next accessed.
-    func hibernate(_ instanceID: UUID) {
+    public func hibernate(_ instanceID: UUID) {
         guard let webView = webViews[instanceID] else { return }
         suspendedURLs[instanceID] = WebViewCoordinator.pageURL(of: webView)?.absoluteString ?? ""
         teardownWebView(instanceID)
@@ -451,7 +429,7 @@ final class WebViewPool {
     }
 
     /// Every live service web view and open tab, for the quit handoff.
-    var liveWebViews: [WKWebView] {
+    public var liveWebViews: [WKWebView] {
         webViews.keys.flatMap { allWebViews(for: $0) }
     }
 
@@ -466,26 +444,26 @@ final class WebViewPool {
     }
 
     /// Memory usage estimate: count of loaded web views
-    var loadedCount: Int {
+    public var loadedCount: Int {
         webViews.count
     }
 
     /// Mark a service as un-evictable. Used by callers that know a service
     /// will become active soon (e.g. preload of the selected service) but
     /// can't set `activeServiceID` themselves.
-    func pin(_ id: UUID) {
+    public func pin(_ id: UUID) {
         pinnedIDs.insert(id)
     }
 
     /// Remove the pin set by `pin(_:)`. Safe to call for an unpinned id.
-    func unpin(_ id: UUID) {
+    public func unpin(_ id: UUID) {
         pinnedIDs.remove(id)
     }
 
     /// Sync the never-hibernate flag for a service after the user toggles it
     /// in the editor. The flag is otherwise only read when a web view is
     /// created, so a live service wouldn't pick up the change until next load.
-    func setNeverHibernate(_ value: Bool, for id: UUID) {
+    public func setNeverHibernate(_ value: Bool, for id: UUID) {
         if value {
             neverHibernateIDs.insert(id)
         } else {
@@ -496,14 +474,14 @@ final class WebViewPool {
     /// Navigate a service's live web view to a URL. Used when the user edits a
     /// service's URL so the open page follows the change. No-op if the service
     /// has no live web view (it will load the new URL when next opened).
-    func navigate(_ id: UUID, to url: URL) {
+    public func navigate(_ id: UUID, to url: URL) {
         webViews[id]?.load(URLRequest(url: url))
     }
 
     /// Update a live web view's user agent (e.g. the Mobile view toggle) and
     /// reload so the site re-renders for the new agent. No-op without a live
     /// view — the new agent applies when the view is next created.
-    func setUserAgent(_ userAgent: String?, for id: UUID) {
+    public func setUserAgent(_ userAgent: String?, for id: UUID) {
         guard webViews[id] != nil else { return }
         for webView in allWebViews(for: id) {
             webView.customUserAgent = userAgent ?? UserAgentProvider.safariDefault
@@ -520,11 +498,11 @@ final class WebViewPool {
     /// Forgets the page a service was on, so its next web view opens its home
     /// page. For a change that makes the old page meaningless, such as a new
     /// sign-in, whether or not a view is up to tear down.
-    func forgetSuspendedURL(for instanceID: UUID) {
+    public func forgetSuspendedURL(for instanceID: UUID) {
         suspendedURLs.removeValue(forKey: instanceID)
     }
 
-    func recreateWebView(for instanceID: UUID, preserveURL: Bool = true) {
+    public func recreateWebView(for instanceID: UUID, preserveURL: Bool = true) {
         guard let webView = webViews[instanceID] else { return }
         if preserveURL {
             suspendedURLs[instanceID] = WebViewCoordinator.pageURL(of: webView)?.absoluteString ?? ""
@@ -539,7 +517,7 @@ final class WebViewPool {
     /// between pages. Without it the hidden page kept counting as the one on
     /// screen: its poll stopped, its media played on, and ⌘R and camera
     /// requests went to it.
-    func deactivateActiveService() {
+    public func deactivateActiveService() {
         guard let id = activeServiceID else { return }
         activeServiceID = nil
         visits.activate(nil, at: Date())
@@ -587,7 +565,7 @@ final class WebViewPool {
     }
 
     /// Whether a service's page is making sound. See `audibleServiceIDs`.
-    func isPlayingAudio(_ id: UUID) -> Bool {
+    public func isPlayingAudio(_ id: UUID) -> Bool {
         audibleServiceIDs.contains(id)
     }
 
@@ -597,7 +575,7 @@ final class WebViewPool {
     /// background it also suspends playback until you come back, as leaving a
     /// quiet service does: a pause alone does not hold there, because a page
     /// can start playing again by itself, and YouTube does when an ad ends.
-    func pauseAudio(for id: UUID) {
+    public func pauseAudio(for id: UUID) {
         let suspends = Self.suspendsMediaOnPause(isActive: id == activeServiceID)
         for webView in allWebViews(for: id) {
             webView.pauseAllMediaPlayback(completionHandler: nil)
@@ -784,7 +762,7 @@ final class WebViewPool {
     /// Mutes every service whose microphone is currently live. Returns how many
     /// were muted, so a caller can tell when nothing was live.
     @discardableResult
-    func muteAllMicrophones() -> Int {
+    public func muteAllMicrophones() -> Int {
         var count = 0
         let everyView = webViews.keys.flatMap { allWebViews(for: $0) }
         for webView in everyView where webView.microphoneCaptureState == .active {
@@ -825,10 +803,10 @@ final class WebViewPool {
     /// Builds a navigation/UI coordinator wired to this service. Shared by
     /// `webView(for:)` and `preload(_:)` so the instance id, fallback URL,
     /// external-link routing, and navigation-finished callback stay in sync.
-    private func makeCoordinator(for instance: ServiceInstance) -> WebViewCoordinator {
+    private func makeCoordinator(for surface: WebSurface) -> WebViewCoordinator {
         let coordinator = WebViewCoordinator()
-        coordinator.instanceID = instance.id
-        coordinator.fallbackURL = URL(string: instance.url)
+        coordinator.instanceID = surface.id
+        coordinator.fallbackURL = URL(string: surface.url)
         coordinator.externalLinkHandler = externalLinkHandler
         coordinator.serviceOwnsURL = serviceOwnsURL
         coordinator.downloadCenter = downloadCenter
@@ -839,7 +817,7 @@ final class WebViewPool {
         coordinator.onHealthEvent = { [weak self] id, event in
             self?.applyHealthEvent(event, to: id)
         }
-        let id = instance.id
+        let id = surface.id
         coordinator.onTabOpened = { [weak self] webView in
             self?.watchTab(webView, service: id)
         }
@@ -855,9 +833,9 @@ final class WebViewPool {
         return coordinator
     }
 
-    private func makeConfiguration(for instance: ServiceInstance) -> WKWebViewConfiguration {
+    private func makeConfiguration(for surface: WebSurface) -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
-        config.websiteDataStore = dataStoreManager.dataStore(for: instance)
+        config.websiteDataStore = dataStoreManager.dataStore(for: surface.dataStore)
         let prefs = WKWebpagePreferences()
         prefs.allowsContentJavaScript = true
         config.defaultWebpagePreferences = prefs
@@ -871,14 +849,14 @@ final class WebViewPool {
 
         let controller = WKUserContentController()
         let injection = DarkReaderSupport.injection(
-            mode: instance.darkMode,
+            themed: surface.darkThemed,
             appDark: effectiveAppearanceDark
         )
         userScriptManager.configureScripts(
-            for: instance,
-            customCSS: effectiveCSS(for: instance),
+            for: surface.id,
+            customCSS: effectiveCSS(for: surface),
             darkInjection: injection,
-            stayActiveInBackground: instance.staysActiveInBackgroundEffective,
+            stayActiveInBackground: surface.staysActiveInBackground,
             on: controller
         )
         // Attach the compiled content-blocking rule lists (ad/tracker domains)
@@ -900,7 +878,7 @@ final class WebViewPool {
     /// blocklist finishes compiling after launch and when the global toggle
     /// flips; views built afterward already carry the right lists via
     /// `makeConfiguration`.
-    func reattachContentBlocker() {
+    public func reattachContentBlocker() {
         let lists = contentBlocker.enabledLists()
         for webView in webViews.values {
             let controller = webView.configuration.userContentController
@@ -911,14 +889,11 @@ final class WebViewPool {
         }
     }
 
-    /// The effective per-service CSS (service defaults + any custom CSS), or nil
-    /// when there's none. Shared by `makeConfiguration` and the dark-mode
-    /// reinstall paths so both bake the same scripts.
-    private func effectiveCSS(for instance: ServiceInstance) -> String? {
-        let css = ServiceCSSDefaults.effectiveCSS(
-            instanceCSS: instance.customCSS,
-            catalogID: instance.catalogEntryID
-        )
+    /// The surface's CSS, or nil when there's none. The app resolves the
+    /// effective CSS; this only drops a blank one. Shared by `makeConfiguration`
+    /// and the dark-mode reinstall paths so both bake the same scripts.
+    private func effectiveCSS(for surface: WebSurface) -> String? {
+        let css = surface.css
         guard let css, !css.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return css
     }
@@ -929,23 +904,24 @@ final class WebViewPool {
     /// starts in the right state (and without a flash). Mirrors
     /// `reattachContentBlocker`: live views only, in place, no teardown. Views
     /// rebuilt later read the new state via `makeConfiguration`.
-    func applyDarkState(isDark: Bool, services: [ServiceInstance]) {
+    /// `surface` is asked only for the ids that have a live view; a nil answer
+    /// skips that view.
+    public func applyDarkState(isDark: Bool, surface: (UUID) -> WebSurface?) {
         effectiveAppearanceDark = isDark
-        let byID = Dictionary(services.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         for (id, webView) in webViews {
-            guard let instance = byID[id] else { continue }
-            let inj = DarkReaderSupport.injection(mode: instance.darkMode, appDark: isDark)
-            applyInjectionLive(inj, to: webView, instance: instance)
+            guard let surface = surface(id) else { continue }
+            let inj = DarkReaderSupport.injection(themed: surface.darkThemed, appDark: isDark)
+            applyInjectionLive(inj, to: webView, surface: surface)
         }
     }
 
     /// Recomputes and applies a single live service's dark injection — used after
     /// a per-service On/Off edit. A no-op if the view isn't live (it rebuilds via
     /// `makeConfiguration`).
-    func refreshDarkMode(for instance: ServiceInstance) {
-        guard let webView = webViews[instance.id] else { return }
-        let inj = DarkReaderSupport.injection(mode: instance.darkMode, appDark: effectiveAppearanceDark)
-        applyInjectionLive(inj, to: webView, instance: instance)
+    public func refreshDarkMode(for surface: WebSurface) {
+        guard let webView = webViews[surface.id] else { return }
+        let inj = DarkReaderSupport.injection(themed: surface.darkThemed, appDark: effectiveAppearanceDark)
+        applyInjectionLive(inj, to: webView, surface: surface)
     }
 
     /// Applies an injection to a live web view in place: enable/disable theming
@@ -955,7 +931,7 @@ final class WebViewPool {
     private func applyInjectionLive(
         _ injection: DarkReaderSupport.DarkInjection,
         to webView: WKWebView,
-        instance: ServiceInstance
+        surface: WebSurface
     ) {
         let world = DarkReaderSupport.world
         switch injection {
@@ -968,10 +944,10 @@ final class WebViewPool {
         let controller = webView.configuration.userContentController
         controller.removeAllUserScripts()
         userScriptManager.installUserScripts(
-            for: instance,
-            customCSS: effectiveCSS(for: instance),
+            for: surface.id,
+            customCSS: effectiveCSS(for: surface),
             darkInjection: injection,
-            stayActiveInBackground: instance.staysActiveInBackgroundEffective,
+            stayActiveInBackground: surface.staysActiveInBackground,
             on: controller
         )
     }
@@ -982,7 +958,7 @@ final class WebViewPool {
     /// threshold (its per-service policy, or the global one) and the active-call
     /// exemption — this only does the flag-and-liveness selection the pool can
     /// answer on its own.
-    func idleCandidates(now: Date) -> [(id: UUID, idle: TimeInterval)] {
+    public func idleCandidates(now: Date) -> [(id: UUID, idle: TimeInterval)] {
         lastAccessTimes.compactMap { id, accessed in
             guard id != activeServiceID,
                   !neverHibernateIDs.contains(id),
@@ -1006,7 +982,7 @@ final class WebViewPool {
     /// id. Shared by both callers so the re-validation lives in one place.
     /// Returns true iff it hibernated.
     @discardableResult
-    func hibernateIfStillIdle(_ id: UUID) async -> Bool {
+    public func hibernateIfStillIdle(_ id: UUID) async -> Bool {
         guard webViews[id] != nil,
               id != activeServiceID,
               !pinnedIDs.contains(id),
@@ -1074,7 +1050,7 @@ final class WebViewPool {
     /// one pinned, one set to Keep Loaded, one using the camera or microphone,
     /// one playing sound, or one with tabs open, since `teardownWebView` closes
     /// them. A footprint or baseline that could not be read rules it out too.
-    nonisolated static func wouldRebuild(
+    public nonisolated static func wouldRebuild(
         footprint: UInt64?,
         baseline: UInt64?,
         outOfSight: TimeInterval,
@@ -1123,14 +1099,14 @@ final class WebViewPool {
         return result == 0 ? info.ri_phys_footprint : nil
     }
 
-    struct MemoryReading {
-        let id: UUID
-        let pid: pid_t
-        let footprint: UInt64
-        let baseline: UInt64?
-        let outOfSight: TimeInterval
-        let hasOpenTabs: Bool
-        let wouldRebuild: Bool
+    public struct MemoryReading {
+        public let id: UUID
+        public let pid: pid_t
+        public let footprint: UInt64
+        public let baseline: UInt64?
+        public let outOfSight: TimeInterval
+        public let hasOpenTabs: Bool
+        public let wouldRebuild: Bool
     }
 
     /// One pass of the memory watch over one page: the baseline the page is
@@ -1160,7 +1136,7 @@ final class WebViewPool {
 
     /// Measures every live page once, for the memory watch to log. See
     /// `memoryWatchPass` for how the baseline moves.
-    func memoryReadings(now: Date = Date()) -> [MemoryReading] {
+    public func memoryReadings(now: Date = Date()) -> [MemoryReading] {
         webViews.keys.compactMap { id in
             guard let pid = webContentPID(for: id),
                   let footprint = Self.webContentFootprint(pid: pid)

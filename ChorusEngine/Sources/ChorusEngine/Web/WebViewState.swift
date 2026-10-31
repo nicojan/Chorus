@@ -3,16 +3,16 @@ import WebKit
 
 @MainActor
 @Observable
-final class WebViewState {
-    private(set) var canGoBack = false
-    private(set) var canGoForward = false
-    private(set) var isLoading = false
+public final class WebViewState {
+    public private(set) var canGoBack = false
+    public private(set) var canGoForward = false
+    public private(set) var isLoading = false
     private(set) var estimatedProgress: Double = 0
-    private(set) var currentURL: URL?
-    private(set) var title: String?
+    public private(set) var currentURL: URL?
+    public private(set) var title: String?
 
     private var observations: [NSKeyValueObservation] = []
-    private(set) weak var webView: WKWebView?
+    public private(set) weak var webView: WKWebView?
 
     /// Bumped on every attach/detach. Each observer captures the generation it
     /// was created under; a KVO callback that hops to the main queue after a
@@ -21,9 +21,9 @@ final class WebViewState {
     /// after a fast service switch.
     private var generation = 0
 
-    init() {}
+    public init() {}
 
-    func attach(to webView: WKWebView) {
+    public func attach(to webView: WKWebView) {
         self.webView = webView
         generation &+= 1
         let gen = generation
@@ -77,7 +77,7 @@ final class WebViewState {
         )
     }
 
-    func detach() {
+    public func detach() {
         generation &+= 1
         observations.removeAll()
         webView = nil

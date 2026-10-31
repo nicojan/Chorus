@@ -3,8 +3,8 @@
 # Regenerates the bundled content-blocking lists from pinned upstream sources,
 # using AdGuard's SafariConverterLib to convert filter lists into the
 # WKContentRuleList JSON the app compiles at launch:
-#   - Chorus/Resources/hagezi-light.json   (HaGezi "Light" ad/tracker domains)
-#   - Chorus/Resources/fanboy-annoyance.json (Fanboy annoyances, from EasyList)
+#   - ChorusEngine/Sources/ChorusEngine/Resources/hagezi-light.json   (HaGezi "Light" ad/tracker domains)
+#   - ChorusEngine/Sources/ChorusEngine/Resources/fanboy-annoyance.json (Fanboy annoyances, from EasyList)
 #
 # IMPORTANT: SafariConverterLib is GPLv3. It is used here ONLY as an offline
 # build tool — its JSON *output* is bundled, the library is never linked into
@@ -65,13 +65,13 @@ convert() {
 
 convert \
   "$HAGEZI_URL" \
-  "$REPO_ROOT/Chorus/Resources/hagezi-light.json" \
+  "$REPO_ROOT/ChorusEngine/Sources/ChorusEngine/Resources/hagezi-light.json" \
   "HaGezi Light @ ${HAGEZI_REF}" \
   "hagezi-light.txt"
 
 convert \
   "$FANBOY_URL" \
-  "$REPO_ROOT/Chorus/Resources/fanboy-annoyance.json" \
+  "$REPO_ROOT/ChorusEngine/Sources/ChorusEngine/Resources/fanboy-annoyance.json" \
   "Fanboy Annoyance List (EasyList)" \
   "fanboy-annoyance.txt"
 
@@ -101,7 +101,7 @@ lists = [
 out = []
 for name, source, license_id in lists:
     src = "vendor/blocklists/%s.txt" % name
-    dst = "Chorus/Resources/%s.json" % name
+    dst = "ChorusEngine/Sources/ChorusEngine/Resources/%s.json" % name
     with open(os.path.join(root, dst)) as f:
         count = len(json.load(f))
     out.append({

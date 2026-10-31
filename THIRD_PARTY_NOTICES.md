@@ -4,7 +4,7 @@ Chorus is MIT-licensed (see [LICENSE](LICENSE)), but it ships some work by other
 
 ## Blocklists
 
-Chorus converts two filter lists into WebKit content rules and ships the result as JSON in `Chorus/Resources`. It reads the files as data; nothing is linked into the app. Each JSON file keeps the license of the list it came from.
+Chorus converts two filter lists into WebKit content rules and ships the result as JSON in `ChorusEngine/Sources/ChorusEngine/Resources`, the resources of the ChorusEngine package the app is built on. It reads the files as data; nothing is linked into the app. Each JSON file keeps the license of the list it came from.
 
 `vendor/blocklists` holds the exact source text of each list at the version we converted, and `manifest.json` records where each came from, its version, the rule count, and SHA-256 hashes of the input and output. `scripts/convert_blocklist.sh` turns the source text into JSON. The source code is at <https://github.com/nicojan/Chorus>. For the exact lists in a given release, check out that release's tag, such as `v1.5.21`. Every release keeps its tag.
 

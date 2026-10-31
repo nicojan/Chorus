@@ -11,7 +11,7 @@ set -euo pipefail
 
 DARKREADER_REF="${DARKREADER_REF:-4.9.128}"   # pinned; bump deliberately
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="$REPO_ROOT/Chorus/Resources/darkreader.js"
+OUT="$REPO_ROOT/ChorusEngine/Sources/ChorusEngine/Resources/darkreader.js"
 TMP="$(mktemp)"
 trap 'rm -f "$TMP"' EXIT
 

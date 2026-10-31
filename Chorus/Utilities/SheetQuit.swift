@@ -1,4 +1,5 @@
 import AppKit
+import ChorusEngine
 
 /// The one way Chorus quits. AppKit drops a quit while any window has a sheet
 /// attached, before `applicationShouldTerminate` is asked, so ⌘Q, Quit from the
@@ -57,6 +58,10 @@ enum SheetQuit {
 
     @MainActor private static var isQuitting = false
 
+    /// What asked for the quit under way, for `QuitRecord`. Nil when nothing
+    /// came through here, which leaves Sparkle's install.
+    @MainActor private(set) static var reason: QuitRecord.Reason?
+
     /// Runs before any sheet is closed. Set by `ChorusAppDelegate` to clear the
     /// app's own prompts as unanswered: Escape on the camera question is
     /// Don't Allow, and that answer is remembered.
@@ -71,17 +76,19 @@ enum SheetQuit {
     /// dropped, as a quit drops it. `finish` hears whether the quit went ahead,
     /// right before it does; a quit already under way counts as going ahead.
     @MainActor
-    static func quit(finish: (@MainActor (_ quitting: Bool) -> Void)? = nil) {
+    static func quit(reason: QuitRecord.Reason, finish: (@MainActor (_ quitting: Bool) -> Void)? = nil) {
         guard startsQuit(alreadyQuitting: isQuitting) else {
             finish?(true)
             return
         }
         isQuitting = true
+        self.reason = reason
         beforeClosingSheets?()
         closeSheets { closed in
             finish?(closed)
             guard closed else {
                 isQuitting = false
+                self.reason = nil
                 NSSound.beep()
                 return
             }
@@ -92,9 +99,10 @@ enum SheetQuit {
     /// Quits at once, for a caller that knows no sheet is open and is not
     /// running inside a main-queue job (the quit Apple Event handler).
     @MainActor
-    static func quitWithNoSheet() {
+    static func quitWithNoSheet(reason: QuitRecord.Reason) {
         guard startsQuit(alreadyQuitting: isQuitting) else { return }
         isQuitting = true
+        self.reason = reason
         NSApp.terminate(nil)
     }
 

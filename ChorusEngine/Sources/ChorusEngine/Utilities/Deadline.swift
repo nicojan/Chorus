@@ -12,7 +12,7 @@ import Foundation
 /// (not awaiting) the loser. A leaked wedged call lingers until the OS reaps the
 /// process.
 @MainActor
-func withDeadline<T: Sendable>(
+public func withDeadline<T: Sendable>(
     seconds: Double,
     fallback: T,
     _ operation: @escaping @MainActor () async -> T

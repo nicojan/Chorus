@@ -1,4 +1,5 @@
 import AppKit
+import ChorusEngine
 
 /// Restarts Chorus. Used after the user picks a store to restore, because the
 /// swap can only happen at launch, before the container opens.

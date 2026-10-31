@@ -1,4 +1,5 @@
 import AppKit
+import ChorusEngine
 import SwiftUI
 import UniformTypeIdentifiers
 

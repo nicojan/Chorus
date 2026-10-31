@@ -1,3 +1,4 @@
+import ChorusEngine
 import SwiftData
 
 extension ModelContext {
