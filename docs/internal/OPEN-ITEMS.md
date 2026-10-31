@@ -7,7 +7,7 @@ Chorus's WebKit layer now lives in the `ChorusEngine` package (root `Package.swi
 Left to do, in order:
 
 1. The by-hand pass in `VERIFY-BY-HAND.md`, "Next: the engine package", items 1 to 9, on a Debug build.
-2. Decide whether `WebSurface.DataStore` gains a `.nonPersistent` case now or with the browser work. Without it the engine cannot build a page on a throwaway store; the browser's container tabs need one. Recommended: with the browser work, so 1.5.32 stays a pure move.
+2. Decided 2026-10-30: `WebSurface.DataStore` gets its `.nonPersistent` case with the browser work, not in 1.5.32, so 1.5.32 stays a pure move. Until then the engine cannot build a page on a throwaway store; the browser's container tabs will need one.
 3. Merge to `main`, then release 1.5.32 by `release/DISTRIBUTION.md`, with item 10 of the by-hand list on the archive (after steps 3 and 5). The `CHANGELOG.md` entry sits under Unreleased. Add the 1.5.32 line to "Engine API changes by release" in `ENGINE.md` if anything public changes before then.
 
 Noticed during the move, not fixed:
