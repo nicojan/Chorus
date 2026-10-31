@@ -7,7 +7,11 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ### Changed
 
-- Nothing should look or work differently in this release. The part of Chorus that runs web pages (sign-ins, pop-ups, blocking, dark mode, downloads, notifications from pages) now sits in a Swift package of its own, ChorusEngine, inside this repository. A second app, a web browser, will be built on the same code, so fixes made in Chorus reach it too.
+- Nothing should look or work differently in this release. The part of Chorus that runs web pages (sign-ins, pop-ups, blocking, dark mode, downloads, notifications from pages) now sits in a Swift package of its own, ChorusEngine, in this repository. The web browser I'm building next uses the same code, so a fix made in Chorus reaches it too.
+
+### Added
+
+- Chorus now writes a line to a file each time it opens or quits: `~/Library/Application Support/Chorus/quit-log.jsonl`. WhatsApp can still ask you to relink it with "A database error occurred", and this file shows how Chorus quit before that happened. It holds times, version numbers and counts, nothing from your pages, and keeps the last 500 lines.
 
 ## [1.5.31] - 2026-10-26
 

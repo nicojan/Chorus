@@ -12,6 +12,8 @@ Left to do, in order:
 
 Noticed during the move, not fixed:
 
+- Nico's by-hand pass (2026-10-30) saw no download button in the toolbar, though the file downloaded. The code is the same as 1.5.31's, so check it on a release build. He suggested an in-app banner when a download starts; that is a feature for later, not part of the move.
+
 - Some public members of `ServiceTabs` and `DownloadCenter` may not need to be public. Whoever restored them matched by name, and a trial removal broke the build, so they stayed. A pass that removes one `public` at a time would settle it.
 - The names that still say Chorus (the `__chorus*` page globals, the `com.nicojan.Chorus` log subsystem, three user-facing strings, and others) are listed in `ENGINE.md` under "Names to parameterize". Another app sees them until each becomes a parameter.
 - Git records `AppLogger.swift` as a delete and an add, not a rename: most of its 13 lines gained `public`. Its history before the move sits under the old path, `Chorus/Utilities/AppLogger.swift`.

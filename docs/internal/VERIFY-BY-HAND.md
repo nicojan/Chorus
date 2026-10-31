@@ -8,10 +8,19 @@ Record the result next to each item. An unrun item is not a passing item.
 
 The web engine moved into a Swift package (`docs/internal/ENGINE.md`). Nothing should look or behave differently. Run 1 to 9 on a Debug build: it keeps its data in `Chorus-debug` and the `com.nicojan.Chorus.debug` domain, so it never opens the real store. Use your own accounts in the Debug build, or a copy of your data, but only as `CLAUDE.md` allows. Run 10 on the archive before publishing.
 
-Not run yet.
+**Pass, 2026-10-30, Debug build, macOS 26.** Nico ran what a Debug build allows; the rest was settled by reading the code against `main` (1.5.31).
+
+- 3 passed.
+- 4 looked right.
+- 1, 6, 8 and 9 could not be run: most services in the Debug build were never signed in, and a notification, a call or Wi-Fi off was not practical. WhatsApp, signed in on an earlier Debug run, stayed signed in. The code that picks each service's store, `ServiceInstance.webSurface`, opens the same `dataStoreIdentifier` as before, and the notification rule is the same one, copied over.
+- 2 showed no pop-up. That is right for Gmail, which signs in on its own page; the pop-up only comes from another site's Sign in with Google button. The item below is worded wrong.
+- 5 downloaded the file but showed no button. `DownloadCenter` and its wiring match `main` line for line apart from `public`, so 1.5.31 behaves the same; not a regression of this branch. Check the button on a release build. Nico suggested an in-app banner when a download starts (OPEN-ITEMS).
+- 7 came back on WhatsApp's home page. The wake code matches `main` line for line, and WhatsApp keeps one address for every chat, so its home page is the page you left. Try a service whose address changes, such as Gmail.
+
+Comparing each moved file with its `main` original, with `public`, imports and comments set aside: 12 of 20 are identical. The rest swap `ServiceInstance` for `WebSurface` or a service id, or move views and Chorus-only rules back to the app.
 
 1. **Still signed in.** Open each service you have in the Debug build. Each one loads signed in, with no sign-in page. A service that shares its sign-in with another (Edit Service) shows the same account as before.
-2. **Gmail's sign-in pop-up.** Add Gmail, or sign out of it, and sign in with Google. The Google window opens as a window, closes itself when done, and Gmail loads signed in.
+2. **Sign in with Google in a pop-up.** In a service that is not Google's own (Trello, Linear, Figma), press Sign in with Google. The Google window opens as a window, closes itself when done, and the service loads signed in. Gmail itself signs in on its own page, with no pop-up.
 3. **Ads are blocked.** Open a page that loads a known tracker (doubleclick.net, for one). The request is blocked: `/usr/bin/log show --last 5m --predicate 'subsystem == "com.nicojan.Chorus"'` shows "Content blocker ready" at launch, and Safari's Web Inspector (Develop menu, Debug builds only) shows the tracker request refused.
 4. **Dark mode.** Set the app to Dark and one service's dark theming to On. The page goes dark with no white flash. Turn it Off and the page goes back at once.
 5. **A download.** Download a file from a service. The button appears, the ring fills, and the row names the service.
