@@ -1,12 +1,12 @@
 # Open items
 
-## Fixed on a branch: Google Docs and Sheets render blurry (#43)
+## Fixed, not released: Google Docs and Sheets render blurry (#43)
 
 Reported 2026-10-29 on 1.5.31, macOS 27, MacBook Air, bar along the top layout, by `naveenm0077`. Docs and Sheets added as a Custom URL service draw the document blurry while Google's toolbar stays sharp; Safari shows the same file sharp.
 
 Cause, found 2026-11-02: a `WKWebView` reports `window.outerWidth` and `outerHeight` as 0, since WebKit asks the app for the window frame and only Safari answers. Sheets compares outer and inner sizes to guess the zoom, and with 0 it sizes its canvas at 0.25 or 0.5 canvas pixels per CSS pixel. A Sheet preloaded off-screen stays at 0.25 after it comes on screen. `devicePixelRatio` is right, and the page zoom and the zero initial frame play no part. Answering WebKit's private window-frame request on the UI delegate was tried and rejected: a preloaded page still loads with 0.
 
-Fix on `fix/43-blurry-docs` (`a979355`): `UserScriptManager.windowSizeScript`, a document-start script in every frame that returns the inner size when the real outer size reads 0. In-app browser windows get it too. Tests in `WindowSizeShimTests`; CI green on 14 and 15. Checked with a temporary test that preloads a public Sheet through `WebViewPool`: 0.25 then 0.5 before, 1 then 2 after.
+Fix merged as `162e90a` (PR #46, fix commit `a979355`): `UserScriptManager.windowSizeScript`, a document-start script in every frame that returns the inner size when the real outer size reads 0. In-app browser windows get it too. Tests in `WindowSizeShimTests`; CI green on 14 and 15. Checked with a temporary test that preloads a public Sheet through `WebViewPool`: 0.25 then 0.5 before, 1 then 2 after.
 
 Checked by hand 2026-11-02: a Google Doc opened through a Custom URL service in the Debug build draws sharp. Not yet checked by hand: a Sheet in the running app.
 
