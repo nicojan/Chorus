@@ -37,6 +37,7 @@
 		4C95B602B3097401742080B7 /* GlobalPlacement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61D8B069E893E608C90E82EF /* GlobalPlacement.swift */; };
 		53C0B5A438EDC6C98FE081AB /* QuickSwitcherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA55A0E026084DC20071FBCE /* QuickSwitcherView.swift */; };
 		5E59730D46AE1AED21F82ECA /* AppPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88C307C75776869CE8A82618 /* AppPreferences.swift */; };
+		61D2283FB541E27140405B27 /* WindowSizeShimTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36BC477A3FFAE8464C094615 /* WindowSizeShimTests.swift */; };
 		6335C06C8BEA4BAFCC16F334 /* WindowBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5AEA5DCBB5AB96E2C962A90 /* WindowBackdrop.swift */; };
 		68FE172BCA70FBB55022F7B1 /* StoreRelocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B71CC3F7D7BD76E4100BC126 /* StoreRelocation.swift */; };
 		69AC657C2E3D81BFB330050A /* AppRelauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA77C4C73BEB532F6AC1C339 /* AppRelauncher.swift */; };
@@ -139,6 +140,7 @@
 		313680424148829FCBEAA9BC /* ModelContext+Save.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ModelContext+Save.swift"; sourceTree = "<group>"; };
 		33B60E7DE1B2CCE732C55AF9 /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
 		356D83F32D2ED8A8074B25DA /* Chorus */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Chorus; path = .; sourceTree = SOURCE_ROOT; };
+		36BC477A3FFAE8464C094615 /* WindowSizeShimTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowSizeShimTests.swift; sourceTree = "<group>"; };
 		3BEC6FCF1B60E1B9CD89A3A2 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		3E445F3C06431DE77892E682 /* RailEdits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailEdits.swift; sourceTree = "<group>"; };
 		42C2BEF1C847F26AD98EABF0 /* DemoControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoControl.swift; sourceTree = "<group>"; };
@@ -480,6 +482,7 @@
 				9685F17CCE71FDC093EBA783 /* RailTests.swift */,
 				FE5EE9E12645C01E926701B1 /* SignInSharingTests.swift */,
 				E7F6622E313027CCFE7EA483 /* WebSurfaceTests.swift */,
+				36BC477A3FFAE8464C094615 /* WindowSizeShimTests.swift */,
 			);
 			path = ChorusTests;
 			sourceTree = "<group>";
@@ -676,6 +679,7 @@
 				BA1476755637D56C12D39BC0 /* RailTests.swift in Sources */,
 				3887C76A1F694AF9B197C9C6 /* SignInSharingTests.swift in Sources */,
 				9A0520E87ACAE8A56BC23625 /* WebSurfaceTests.swift in Sources */,
+				61D2283FB541E27140405B27 /* WindowSizeShimTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
