@@ -2719,6 +2719,42 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(RailWidthHandle.showsNames(startingFrom: true, dragged: 200))
     }
 
+    /// The standard icon size is the compact rail as it was, so nobody's rail
+    /// changes on update. Large icons fit their cell, and the rail stays
+    /// narrower than the point a drag collapses it at.
+    func testRailIconSizesFitTheirCells() {
+        XCTAssertEqual(RailIconSize.standard.railWidth, ServiceRowView.compactRailWidth)
+        XCTAssertEqual(RailIconSize.standard.cellWidth, ServiceRowView.compactRailCellWidth)
+        XCTAssertEqual(RailIconSize.standard.cellHeight, ServiceRowView.rowHeight)
+        XCTAssertEqual(RailIconSize(rawValue: "nonsense"), nil)
+        for size in RailIconSize.allCases {
+            XCTAssertLessThanOrEqual(size.iconSize, size.cellWidth)
+            XCTAssertLessThanOrEqual(size.iconSize, size.cellHeight)
+            XCTAssertLessThan(size.railWidth, RailWidth.collapseBelow)
+            XCTAssertEqual(size.cardWidth - 2 * ChorusCard.railPadding, size.cellWidth)
+        }
+        XCTAssertGreaterThan(RailIconSize.large.iconSize, RailIconSize.standard.iconSize)
+    }
+
+    /// The settings picker reads the two stored values as one style, and
+    /// choosing names keeps the icon size for when the names go again.
+    func testRailStyleRoundTripsThroughItsTwoSettings() {
+        XCTAssertEqual(RailStyle(showsNames: true, iconSize: .large), .names)
+        XCTAssertEqual(RailStyle(showsNames: false, iconSize: .standard), .icons)
+        XCTAssertEqual(RailStyle(showsNames: false, iconSize: .large), .largeIcons)
+
+        XCTAssertEqual(RailStyle.names.iconSize(keeping: .large), .large)
+        XCTAssertEqual(RailStyle.names.iconSize(keeping: .standard), .standard)
+        XCTAssertEqual(RailStyle.icons.iconSize(keeping: .large), .standard)
+        XCTAssertEqual(RailStyle.largeIcons.iconSize(keeping: .standard), .large)
+
+        for style in RailStyle.allCases {
+            let size = style.iconSize(keeping: .standard)
+            let back = RailStyle(showsNames: style.showsNames, iconSize: size)
+            XCTAssertEqual(back, style)
+        }
+    }
+
     /// The rail's width follows a drag between its narrowest and widest named
     /// widths, shrinks to its icons past the collapse point, and comes back
     /// out past the expand point.

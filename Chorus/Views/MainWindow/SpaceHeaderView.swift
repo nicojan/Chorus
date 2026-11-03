@@ -48,11 +48,10 @@ struct SpaceHeaderView: View {
 
     @State private var isHovering = false
     @Environment(\.railWidth) private var railWidth
+    /// The nameless header matches the cells under it. See `RailIconSize`.
+    @Environment(\.railIconSize) private var railIconSize
 
     static let headerHeight: CGFloat = 36
-    /// The nameless header: the emoji alone, matching the compact service cell
-    /// under it.
-    static let compactWidth: CGFloat = ServiceRowView.compactRailCellWidth
     /// The horizontal bar's header is a fixed width rather than hugging its
     /// name: it is the leftmost thing in the bar and a header that resized on
     /// every space switch would shove every service tab sideways.
@@ -98,10 +97,10 @@ struct SpaceHeaderView: View {
     /// in the rail that opens on click.
     private var compactContent: some View {
         Text(emoji)
-            .font(.system(size: 18))
+            .font(.system(size: railIconSize.emojiSize))
             .opacity(isMuted ? 0.5 : 1.0)
             .accessibilityHidden(true)
-            .frame(width: Self.compactWidth, height: Self.headerHeight)
+            .frame(width: railIconSize.cellWidth, height: Swift.max(Self.headerHeight, railIconSize.cellHeight))
             .cornerBadge(badgeCount, needsAttention: needsAttention)
     }
 

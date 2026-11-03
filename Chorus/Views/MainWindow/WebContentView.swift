@@ -13,19 +13,22 @@ struct WebContentView: View {
     @State private var previousServiceID: UUID?
     @State private var showPasskeyNotice = false
     @AppStorage(ServiceNameVisibility.defaultsKey) private var showServiceNames = true
+    @AppStorage(RailIconSize.defaultsKey) private var railIconSizeRaw = RailIconSize.standard.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Shared nav state so the top tab bar can host the nav buttons.
     private var webViewState: WebViewState { appState.webViewState }
 
     /// How far the traffic lights reach past a left rail into this view's top
-    /// row. With names off the rail is 52 points, narrower than the lights, and
+    /// row. With names off the rail is 52 or 60 points, narrower than the lights, and
     /// the back button sat under the green one. The bar layouts put their own
     /// bar on top, so nothing here reaches the lights.
     private var trafficLightsOverhang: CGFloat {
         guard !appState.railLayout.hasTopBar else { return 0 }
         return SpaceStripMetrics.barLeadingInset(
-            stripWidth: showServiceNames ? ServiceRowView.railWidth : ServiceRowView.compactRailWidth,
+            stripWidth: showServiceNames
+                ? ServiceRowView.railWidth
+                : (RailIconSize(rawValue: railIconSizeRaw) ?? .standard).railWidth,
             lightsWidth: SpaceStripMetrics.trafficLightsWidth
         )
     }

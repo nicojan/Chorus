@@ -5,6 +5,10 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Settings has a new choice for the service rail: Names, Icons or Large icons. Large icons are 32 points, sit further apart and keep the unread count on the corner, so you can find and click a service by its icon. The rail grows from 52 to 60 points to fit them. Names and Icons work as before, and the rail you have now stays as it is.
+
 ## [1.5.34] - 2026-11-02
 
 ### Fixed

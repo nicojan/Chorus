@@ -63,6 +63,8 @@ struct UnifiedRailView: View {
 
     /// Whether service cells carry their names. See `ServiceNameVisibility`.
     @AppStorage(ServiceNameVisibility.defaultsKey) private var showServiceNames = true
+    /// How big the nameless cells are. See `RailIconSize`.
+    @AppStorage(RailIconSize.defaultsKey) private var railIconSizeRaw = RailIconSize.standard.rawValue
     /// The rail's width while it carries names. See `RailWidth`.
     @AppStorage(RailWidth.defaultsKey) private var namedWidth = Double(RailWidth.defaultNamed)
     /// The space strip's names setting, which global rows follow when this
@@ -124,10 +126,17 @@ struct UnifiedRailView: View {
         return links(in: spaceID)
     }
 
+    /// The nameless cell's size here. The strip of spaces and the horizontal
+    /// bar keep the standard one: their widths and heights are fixed.
+    private var iconSize: RailIconSize {
+        guard !globalsOnly, axis == .vertical else { return .standard }
+        return RailIconSize(rawValue: railIconSizeRaw) ?? .standard
+    }
+
     /// What the vertical rail takes from the window now, gutter included.
     private var railFootprint: CGFloat {
         if globalsOnly { return SpaceStripMetrics.width(showingNames: stripShowsNames) }
-        return showServiceNames ? RailWidth.clampNamed(CGFloat(namedWidth)) : ServiceRowView.compactRailWidth
+        return showServiceNames ? RailWidth.clampNamed(CGFloat(namedWidth)) : iconSize.railWidth
     }
 
     /// Whether rows carry names: the rail's setting, or the strip's when this
@@ -214,6 +223,7 @@ struct UnifiedRailView: View {
 
     var body: some View {
         content
+        .environment(\.railIconSize, iconSize)
         .modifier(GroupNaming(request: $namingGroup) { groupID, name in
             withAnimation(reorderAnimation) { _ = appState.nameGroup(groupID, name) }
         })
@@ -400,6 +410,7 @@ struct UnifiedRailView: View {
         // Names on and off move the rail between its two forms; the width
         // itself follows the pointer while it is dragged and does not animate.
         .animation(ChorusMotion.animation(ChorusMotion.sidebar, reduceMotion: reduceMotion), value: showServiceNames)
+        .animation(ChorusMotion.animation(ChorusMotion.sidebar, reduceMotion: reduceMotion), value: railIconSizeRaw)
     }
 
     /// One entry of a group's card in the all-services rail.
@@ -457,14 +468,14 @@ struct UnifiedRailView: View {
                     .frame(width: railColumnWidth)
                 } else {
                     Text(space.emoji)
-                        .font(.system(size: 16))
+                        .font(.system(size: iconSize == .large ? 24 : 16))
                         .fixedSize()
                         .opacity(space.isMutedEffective ? 0.5 : 1)
                         .accessibilityHidden(true)
-                        .frame(width: ServiceRowView.railCardWidth(showsName: false))
+                        .frame(width: iconSize.cardWidth)
                 }
             }
-            .frame(height: 22)
+            .frame(height: !showServiceNames && iconSize == .large ? 32 : 22)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -660,7 +671,7 @@ struct UnifiedRailView: View {
                 } else {
                     Image(systemName: systemImage)
                         .font(.system(size: 12, weight: .medium))
-                        .frame(width: ServiceRowView.compactRailCellWidth, height: ServiceRowView.rowHeight)
+                        .frame(width: iconSize.cellWidth, height: ServiceRowView.rowHeight)
                 }
             }
             .contentShape(Rectangle())
@@ -822,6 +833,7 @@ struct UnifiedRailView: View {
         .railDropZone()
         .environment(\.railWidth, railFootprint)
         .animation(ChorusMotion.animation(ChorusMotion.sidebar, reduceMotion: reduceMotion), value: showServiceNames)
+        .animation(ChorusMotion.animation(ChorusMotion.sidebar, reduceMotion: reduceMotion), value: railIconSizeRaw)
     }
 
     /// The bar: the header, the global box at the start, the space's tabs,
@@ -1151,7 +1163,7 @@ struct UnifiedRailView: View {
 
     /// A row's width in a vertical list, with or without names.
     private var namedOrCompactRowWidth: CGFloat {
-        namesShown ? namedRowWidth : ServiceRowView.compactRailCellWidth
+        namesShown ? namedRowWidth : iconSize.cellWidth
     }
 
     @ViewBuilder
@@ -1539,7 +1551,7 @@ struct UnifiedRailView: View {
     /// In the wide vertical rail this is a labelled row like the services above
     /// it, with the plus sitting in an 18 point box so its text starts on the same
     /// x as theirs. Everywhere else it is the plus alone: the horizontal bar has
-    /// no width to spare, and a nameless rail is 52 points wide, so the full-width
+    /// no width to spare, and a nameless rail is 52 or 60 points wide, so the full-width
     /// labelled row would hang out of it.
     private var addServiceButton: some View {
         Button {
@@ -1561,7 +1573,7 @@ struct UnifiedRailView: View {
                     Image(systemName: "plus")
                         .font(.system(size: 12, weight: .medium))
                         .frame(
-                            width: axis == .vertical ? ServiceRowView.compactRailCellWidth : ServiceRowView.compactCellWidth,
+                            width: axis == .vertical ? iconSize.cellWidth : ServiceRowView.compactCellWidth,
                             height: axis == .vertical ? ServiceRowView.rowHeight : ServiceRowView.tabHeight
                         )
                 }
