@@ -1,12 +1,30 @@
 # Open items
 
-## Open: WhatsApp "database error" is still seen on 1.5.31
+## Open: Google Docs and Sheets render blurry (#43)
 
-Nico saw "A database error occurred … relink" in WhatsApp on 2026-10-29, after the 1.5.31 quit fix. What the logs showed: the 1.5.31 copy that ran overnight ended at 00:14:58, 0.9 s after a key press with a modifier (most likely ⌘Q) while the key window was another process's view (the AutoFill pop-up or a file picker, say). It left no crash report, and no Claude session sent a kill. Chorus's own log lines for that run had already aged out, so whether the quit waited, and for how long, cannot be known. 0.9 s is enough for a normal wait (other quits settled in about 400 ms). Nico relaunched at 10:39 and saw the error at 11:46.
+Reported 2026-10-29 on 1.5.31, macOS 27, MacBook Air, bar along the top layout, by `naveenm0077`. Docs and Sheets added as a Custom URL service (`https://docs.google.com/`) draw the document blurry: the cell grid, cell text and document text look scaled up from a lower resolution. Google's own toolbar, title and menus stay sharp, and Safari shows the same file sharp. No reply on the issue yet.
 
-1.5.32 adds the quit record (`QuitRecord`, `~/Library/Application Support/Chorus/quit-log.jsonl`): a line per launch and per quit with the reason, the live pages, how long the write wait took, whether it settled and the total time, and a `missedQuit` line when a run ended without quitting. Next time the error shows, read the last lines of that file before anything else.
+Not looked at yet. Docs and Sheets draw the document on a `<canvas>`, sized from `window.devicePixelRatio`, while the toolbar is ordinary HTML, so the split between sharp and blurry points at the canvas. Places to check first: the per-service page zoom (`webView.pageZoom`, set in `AppState`), what `devicePixelRatio` reads inside a Chorus page compared with Safari, and whether the web view is laid out at one size and drawn at another (the zero initial frame in `webkit-vh-zero-frame-trap`). Reproduce it in a Debug build before changing anything.
 
-Leads, none proven: the write wait cannot count writes made from a worker, and treats 300 ms with no IndexedDB file change as finished, so a write that starts after that gap is cut off. Two quits of a Debug build about 12 s after launch both hit the 3 s limit with writes still going (`settled: false`), so a quit soon after launch may cut writes off. Don't lengthen the wait until the record shows which case it is; it would slow every quit on a guess.
+## Open: WhatsApp "database error", seen again on 1.5.32
+
+Seen 2026-11-02 on 1.5.32, the third time. This time the quit was clean. The quit record shows a menu quit at 23:19 the night before, with writes settled after 367 ms and no `missedQuit`. Chorus was closed for 16.5 hours. It opened at 15:49:55, WebKit saved a new WhatsApp build at 15:49:57, and at 15:50:30 WhatsApp deleted and rebuilt all of its databases in one burst: 5 came back, where a healthy WhatsApp has 13. WebKit logged no IndexedDB or storage failure in that window.
+
+Ruled out on 2026-11-02:
+
+- The quota. WebKit counts IndexedDB, Cache Storage and the file system API against an origin, not service worker scripts, so the 1.2 GB of old WhatsApp worker scripts (190 copies, one per WhatsApp build since July) do not count.
+- The two `shouldAbortDueToUnhandledRequestError: finished request count … is bigger than total request count` errors in the log. WebKit's code returns `false` there, so the transaction commits.
+- A new WhatsApp build arriving at launch, on its own. It came 2 s after launch this time and 4 s after the relaunch on 2026-10-26, but clean launches on 2026-10-31 and 2026-11-01 also fetched a new build.
+
+1.5.33 adds `page-storage-log.jsonl` next to the quit record. Each page writes a line for the databases it finds at load, each upgrade, each failed or blocked open, each `deleteDatabase` call with the code that made it, each write that aborts on an error, and each page error that mentions storage. When the error shows next, read that file together with `quit-log.jsonl`: the `pid` ties a page line to its launch.
+
+The first run of it, in a Debug build, turned up a lead: WhatsApp logs `storage bucket persistence denied (aquire-persistent-storage-denied)`. WebKit refuses its request to keep its data, and data that is not kept can be cleared by WebKit. Not proven. WhatsApp also deletes `sw`, `guest-events-storage` and `qpl-storage` on every load; that is normal and says nothing about the error.
+
+The 1.5.31 sighting (2026-10-29): the run ended at 00:14:58, 0.9 s after a key press with a modifier while another process's view was the key window. It left no crash report, and Chorus's own log lines had aged out. Leads from then, none proven: the write wait does not count writes made from a worker, and treats 300 ms with no file change as finished. Don't lengthen the wait on a guess.
+
+## Released: 1.5.33 on 2026-11-02, the page storage log (PR #45)
+
+Build 46, tag `v1.5.33` on `deb65b7`. DMG 13,440,619 bytes, sha256 `13260089…9b0c`, packed with `hdiutil`, signed, notarized and stapled. Appcast `42d5cb4`, served by both feeds; cask `add99cc` here and `e0b3874` in the tap, and `brew style`, `livecheck` and `audit` pass. CI passed on macOS 14 and 15, and 482 tests pass. The engine gained `PageStorageEvent` and `UserScriptManager.onStorageEvent` (`ENGINE.md`). Checked in a Debug build: 17 lines in the first 30 s, and a clean quit.
 
 ## Released: 1.5.32 on 2026-10-30, the web engine as a Swift package (PR #44)
 
