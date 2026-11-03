@@ -1,15 +1,5 @@
 # Open items
 
-## Fixed, not released: Google Docs and Sheets render blurry (#43)
-
-Reported 2026-10-29 on 1.5.31, macOS 27, MacBook Air, bar along the top layout, by `naveenm0077`. Docs and Sheets added as a Custom URL service draw the document blurry while Google's toolbar stays sharp; Safari shows the same file sharp.
-
-Cause, found 2026-11-02: a `WKWebView` reports `window.outerWidth` and `outerHeight` as 0, since WebKit asks the app for the window frame and only Safari answers. Sheets compares outer and inner sizes to guess the zoom, and with 0 it sizes its canvas at 0.25 or 0.5 canvas pixels per CSS pixel. A Sheet preloaded off-screen stays at 0.25 after it comes on screen. `devicePixelRatio` is right, and the page zoom and the zero initial frame play no part. Answering WebKit's private window-frame request on the UI delegate was tried and rejected: a preloaded page still loads with 0.
-
-Fix merged as `162e90a` (PR #46, fix commit `a979355`): `UserScriptManager.windowSizeScript`, a document-start script in every frame that returns the inner size when the real outer size reads 0. In-app browser windows get it too. Tests in `WindowSizeShimTests`; CI green on 14 and 15. Checked with a temporary test that preloads a public Sheet through `WebViewPool`: 0.25 then 0.5 before, 1 then 2 after.
-
-Checked by hand 2026-11-02: a Google Doc opened through a Custom URL service in the Debug build draws sharp. Not yet checked by hand: a Sheet in the running app.
-
 ## Open: WhatsApp "database error", seen again on 1.5.32
 
 Seen 2026-11-02 on 1.5.32, the third time. This time the quit was clean. The quit record shows a menu quit at 23:19 the night before, with writes settled after 367 ms and no `missedQuit`. Chorus was closed for 16.5 hours. It opened at 15:49:55, WebKit saved a new WhatsApp build at 15:49:57, and at 15:50:30 WhatsApp deleted and rebuilt all of its databases in one burst: 5 came back, where a healthy WhatsApp has 13. WebKit logged no IndexedDB or storage failure in that window.
@@ -25,6 +15,19 @@ Ruled out on 2026-11-02:
 The first run of it, in a Debug build, turned up a lead: WhatsApp logs `storage bucket persistence denied (aquire-persistent-storage-denied)`. WebKit refuses its request to keep its data, and data that is not kept can be cleared by WebKit. Not proven. WhatsApp also deletes `sw`, `guest-events-storage` and `qpl-storage` on every load; that is normal and says nothing about the error.
 
 The 1.5.31 sighting (2026-10-29): the run ended at 00:14:58, 0.9 s after a key press with a modifier while another process's view was the key window. It left no crash report, and Chorus's own log lines had aged out. Leads from then, none proven: the write wait does not count writes made from a worker, and treats 300 ms with no file change as finished. Don't lengthen the wait on a guess.
+
+## Released: 1.5.34 on 2026-11-02, Google Docs and Sheets render sharp (#43, PR #46)
+
+Build 47, tag `v1.5.34` on `6bf6681`. DMG 13,441,419 bytes, sha256 `9644eb87…816a`, packed with `hdiutil`, signed, notarized and stapled. Appcast `cdde67e`, served by both feeds; cask `9874842` here and `f2a0123` in the tap, and `brew style`, `livecheck` and `audit` pass. Replied on #43.
+
+
+Reported 2026-10-29 on 1.5.31, macOS 27, MacBook Air, bar along the top layout, by `naveenm0077`. Docs and Sheets added as a Custom URL service draw the document blurry while Google's toolbar stays sharp; Safari shows the same file sharp.
+
+Cause, found 2026-11-02: a `WKWebView` reports `window.outerWidth` and `outerHeight` as 0, since WebKit asks the app for the window frame and only Safari answers. Sheets compares outer and inner sizes to guess the zoom, and with 0 it sizes its canvas at 0.25 or 0.5 canvas pixels per CSS pixel. A Sheet preloaded off-screen stays at 0.25 after it comes on screen. `devicePixelRatio` is right, and the page zoom and the zero initial frame play no part. Answering WebKit's private window-frame request on the UI delegate was tried and rejected: a preloaded page still loads with 0.
+
+Fix merged as `162e90a` (PR #46, fix commit `a979355`): `UserScriptManager.windowSizeScript`, a document-start script in every frame that returns the inner size when the real outer size reads 0. In-app browser windows get it too. Tests in `WindowSizeShimTests`; CI green on 14 and 15. Checked with a temporary test that preloads a public Sheet through `WebViewPool`: 0.25 then 0.5 before, 1 then 2 after.
+
+Checked by hand 2026-11-02: a Google Doc opened through a Custom URL service in the Debug build draws sharp. Nico checked a Sheet in the Debug build the same day: sharp.
 
 ## Released: 1.5.33 on 2026-11-02, the page storage log (PR #45)
 
