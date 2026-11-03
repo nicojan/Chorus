@@ -3947,6 +3947,111 @@ final class ChorusTests: XCTestCase {
         XCTAssertEqual(query, 0)
     }
 
+    /// The storage watch reports what a page found at load, an upgrade, an
+    /// open that failed, a write that aborted on an error, a deleted database
+    /// and a page error that mentions storage. A transaction the page aborts
+    /// itself, and an error about something else, are left out.
+    func testStorageWatchReportsIndexedDBTrouble() async throws {
+        final class Box: @unchecked Sendable { var events: [PageStorageEvent] = [] }
+        let box = Box()
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = .nonPersistent()
+        let serviceID = UUID()
+        config.userContentController.add(
+            StorageEventHandler(serviceID: serviceID) { id, event in
+                XCTAssertEqual(id, serviceID)
+                box.events.append(event)
+            },
+            name: UserScriptManager.storageEventHandlerName
+        )
+        config.userContentController.addUserScript(WKUserScript(
+            source: UserScriptManager.makeStorageWatchScript(),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        ))
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.loadHTMLString("<html><body><div role=\"main\"></div></body></html>", baseURL: URL(string: "https://web.whatsapp.com/"))
+        try await waitForFixture(webView)
+
+        _ = try await webView.callAsyncJavaScript("""
+            const open = (version) => new Promise((resolve, reject) => {
+                const request = indexedDB.open('model-storage', version);
+                request.onupgradeneeded = () => {
+                    if (!request.result.objectStoreNames.contains('s')) { request.result.createObjectStore('s'); }
+                };
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = (e) => { e.preventDefault(); reject(request.error); };
+            });
+            const db = await open(2);
+            try { await open(1); } catch (e) {}
+            const failing = db.transaction('s', 'readwrite');
+            failing.objectStore('s').add(1, 'k');
+            failing.objectStore('s').add(2, 'k');
+            await new Promise(resolve => { failing.onabort = resolve; failing.oncomplete = resolve; });
+            const mine = db.transaction('s', 'readwrite');
+            await new Promise(resolve => { mine.onabort = resolve; mine.abort(); });
+            db.close();
+            await new Promise(resolve => { indexedDB.deleteDatabase('model-storage').onsuccess = resolve; });
+            console.error('Database error: could not open model-storage');
+            console.error('network down');
+            return true;
+            """, contentWorld: .page)
+
+        for _ in 0..<40 where !box.events.contains(where: { $0.kind == "pageError" }) {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        let kinds = box.events.map(\.kind)
+        XCTAssertEqual(kinds.filter { $0 != "inventory" }, ["upgrade", "openError", "txAbort", "delete", "pageError"])
+        XCTAssertTrue(kinds.contains("inventory"))
+
+        let upgrade = box.events.first { $0.kind == "upgrade" }
+        XCTAssertEqual(upgrade?.database, "model-storage")
+        XCTAssertEqual(upgrade?.oldVersion, 0)
+        XCTAssertEqual(upgrade?.newVersion, 2)
+        XCTAssertEqual(box.events.first { $0.kind == "openError" }?.errorName, "VersionError")
+        XCTAssertEqual(box.events.first { $0.kind == "txAbort" }?.errorName, "ConstraintError")
+        XCTAssertEqual(box.events.first { $0.kind == "delete" }?.database, "model-storage")
+        XCTAssertEqual(box.events.first { $0.kind == "pageError" }?.detail, "error: Database error: could not open model-storage")
+        XCTAssertTrue(box.events.allSatisfy { $0.host == "web.whatsapp.com" })
+    }
+
+    /// A message body becomes an event only when it names a known kind, and
+    /// the page's text is cut to length. The host is never taken from the page.
+    func testPageStorageEventDecodeChecksTheBody() throws {
+        XCTAssertNil(PageStorageEvent.decode(42))
+        XCTAssertNil(PageStorageEvent.decode("not json"))
+        XCTAssertNil(PageStorageEvent.decode(#"{"kind":"somethingElse"}"#))
+
+        let long = String(repeating: "x", count: 5000)
+        let event = try XCTUnwrap(PageStorageEvent.decode(#"{"kind":"delete","database":"\#(long)","detail":"\#(long)","host":"evil.example"}"#))
+        XCTAssertEqual(event.database?.count, PageStorageEvent.maxNameLength)
+        XCTAssertEqual(event.detail?.count, PageStorageEvent.maxDetailLength)
+        XCTAssertNil(event.host)
+    }
+
+    /// The log appends one JSON line per event and trims to the newest lines.
+    func testPageStorageLogAppendsAndTrims() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appending(path: PageStorageLog.fileName)
+        let service = UUID()
+        for index in 0..<5 {
+            PageStorageLog.append(.init(
+                at: Date(timeIntervalSince1970: TimeInterval(index)), pid: 7, service: service.uuidString,
+                label: "WhatsApp", event: PageStorageEvent(kind: "delete", database: "db\(index)")
+            ), to: file)
+        }
+        var lines = try String(contentsOf: file, encoding: .utf8).split(separator: "\n")
+        XCTAssertEqual(lines.count, 5)
+        XCTAssertTrue(lines[0].contains(#""database":"db0""#))
+        XCTAssertTrue(lines[0].contains(#""label":"WhatsApp""#))
+
+        PageStorageLog.trim(file, keeping: 2)
+        lines = try String(contentsOf: file, encoding: .utf8).split(separator: "\n")
+        XCTAssertEqual(lines.count, 2)
+        XCTAssertTrue(lines[0].contains(#""database":"db3""#))
+    }
+
     /// Settled needs no open write and an unchanged stamp for the whole quiet
     /// window; either kind of activity starts the window again.
     func testWriteSettleWaitsOutTheQuietWindow() {

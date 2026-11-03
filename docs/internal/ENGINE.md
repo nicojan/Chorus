@@ -132,6 +132,7 @@ Engine versions are Chorus's own release tags, `v1.5.32` and on. SwiftPM reads `
 
 List every change to the public API here, under the release that ships it, including additions. Another app reads this before moving its pin.
 
+- **1.5.33**: Adds `PageStorageEvent` and `UserScriptManager.onStorageEvent`. Every page now gets a script that watches IndexedDB and a message handler, `chorusStorageEvent`, that reports to `onStorageEvent`. Leave it nil and the events go nowhere.
 - **1.5.32**: First release as a package. The API above is the starting point. Before it, the same code lived in the app target and took `ServiceInstance` where it now takes `WebSurface`.
 
 ## Names to parameterize for other apps
@@ -142,8 +143,8 @@ These still say Chorus. They were left as they are so Chorus does not change in 
   - `WebViewCoordinator.swift`: the failed-reload message ("Chorus stopped reloading it automatically to avoid a loop…") and the pop-up window title fallback (`"Chorus"`).
   - `InAppBrowserWindow.swift`: the window title fallback (`"Chorus"`).
 - **The logger.** Subsystem `com.nicojan.Chorus`, categories General, DataStore, WebView, Notifications, Favicon, Badges and UI. Another app's log lines would land under Chorus's subsystem. The log recipes in these docs filter on it.
-- **JavaScript globals.** `__chorusActiveCall`, `__chorusCallFrames`, `__chorusPendingWrites` and `__chorusReleaseForQuit` sit in the page's own content world, so every page can see them. `__chorusCoverDismiss` sits in Dark Reader's isolated world, and pages cannot see it.
-- **The message handler.** `chorusNotification` is visible to pages as `window.webkit.messageHandlers.chorusNotification`.
+- **JavaScript globals.** `__chorusActiveCall`, `__chorusCallFrames`, `__chorusPendingWrites`, `__chorusReleaseForQuit` and `__chorusStorageWatch` sit in the page's own content world, so every page can see them. `__chorusCoverDismiss` sits in Dark Reader's isolated world, and pages cannot see it.
+- **The message handlers.** `chorusNotification` and `chorusStorageEvent` are visible to pages under `window.webkit.messageHandlers`.
 - **Element ids** the engine puts in pages: `chorus-custom-css`, `chorus-dr-antiflash` and `chorus-retry`.
 - **The content world** `ChorusDarkReader`.
 - **The rule-list ids.** They are named after the list files: `hagezi-light-<n>-<hash>` and `fanboy-annoyance-<n>-<hash>`. `ContentBlockerManager` removes stale lists by those prefixes from WebKit's default rule-list store. That store is per app, so two apps do not touch each other's lists. Changing a prefix strands the old compiled lists on disk.
