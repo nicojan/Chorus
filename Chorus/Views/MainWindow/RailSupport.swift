@@ -164,11 +164,11 @@ enum RailIconSize: String, CaseIterable {
     }
 
     /// The cell's height. The rail stacks cells 2 points apart, so large
-    /// icons sit 48 points apart, with room to tell them apart and hit one.
+    /// icons sit 53 points apart, with room to tell them apart and hit one.
     var cellHeight: CGFloat {
         switch self {
         case .standard: 28
-        case .large: 46
+        case .large: 51
         }
     }
 
