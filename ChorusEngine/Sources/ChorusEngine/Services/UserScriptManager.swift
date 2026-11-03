@@ -21,6 +21,10 @@ public final class UserScriptManager {
     /// The service's label, shown on each notification it posts.
     public var serviceLabel: (@Sendable (UUID) -> String?)?
     public var autoDismissCookieBanners: Bool = true
+    /// Gets each IndexedDB event a page's main frame reports (see
+    /// `PageStorageEvent`), with the service it came from. Called on the main
+    /// thread. Nil drops them.
+    public var onStorageEvent: (@Sendable (UUID, PageStorageEvent) -> Void)?
 
     /// Full setup for a freshly built web view: the message handlers (added once)
     /// plus all user scripts.
@@ -65,6 +69,12 @@ public final class UserScriptManager {
             }
         )
         controller.add(handler, name: "chorusNotification")
+
+        let storageSink = onStorageEvent
+        controller.add(
+            StorageEventHandler(serviceID: serviceID) { id, event in storageSink?(id, event) },
+            name: Self.storageEventHandlerName
+        )
     }
 
     /// Adds all user scripts. Safe to call again after `removeAllUserScripts()`
@@ -101,6 +111,14 @@ public final class UserScriptManager {
         // quit reads it with `evaluateJavaScript`, which only reaches that frame.
         controller.addUserScript(WKUserScript(
             source: Self.makeWriteTrackerScript(),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        ))
+
+        // IndexedDB watch: records upgrades, failed opens, deletions and
+        // aborted writes, so a page that wipes its own data leaves a trace.
+        controller.addUserScript(WKUserScript(
+            source: Self.makeStorageWatchScript(),
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true
         ))

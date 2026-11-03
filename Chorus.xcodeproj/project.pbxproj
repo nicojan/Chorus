@@ -88,6 +88,7 @@
 		D341B327E1C20FA11DEC2C2B /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D533B667501DF0913FF62B9A /* AppState.swift */; };
 		D4721545C5C3DD809AE549A7 /* ChorusStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50260A359445D2B4C556E1E6 /* ChorusStyle.swift */; };
 		D69EC4D73050E0B81AB43378 /* RailDragSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E069CF77DB1CF73319797269 /* RailDragSession.swift */; };
+		D892E75CE5BE0A055B6A8498 /* PageStorageLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 029A612576B7D0CEC15D3C8F /* PageStorageLog.swift */; };
 		DA30DDBA2100841126D77F95 /* GlobalPlacementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4878D7EAAB3DCB48557A9984 /* GlobalPlacementTests.swift */; };
 		DB9B6FD9265D63DCA11B6CFC /* AppCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E0D298EDEBDC1F1EB614912 /* AppCapabilities.swift */; };
 		DFA25C2036755E1DAD624BA5 /* licenses in Resources */ = {isa = PBXBuildFile; fileRef = 7C3DF954AFE066BC42761ABC /* licenses */; };
@@ -115,6 +116,7 @@
 
 /* Begin PBXFileReference section */
 		01EC3720B49A4D8B953CDA90 /* EmojiPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiPickerView.swift; sourceTree = "<group>"; };
+		029A612576B7D0CEC15D3C8F /* PageStorageLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageStorageLog.swift; sourceTree = "<group>"; };
 		03E9D5B98CFDDD0B2E7FD42C /* SpacePaletteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpacePaletteView.swift; sourceTree = "<group>"; };
 		0693A705E1552F5809BA3399 /* CatalogIconCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogIconCache.swift; sourceTree = "<group>"; };
 		06F91EDD3C2858890FA0B343 /* NativeAppSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAppSupport.swift; sourceTree = "<group>"; };
@@ -317,6 +319,7 @@
 				1ACFB877AD2138035F9E3EAE /* FaviconFetcher.swift */,
 				D01CC2330887CF5293843BF3 /* IconThumbnail.swift */,
 				313680424148829FCBEAA9BC /* ModelContext+Save.swift */,
+				029A612576B7D0CEC15D3C8F /* PageStorageLog.swift */,
 				4816C0A63A37D82D52C3A8D4 /* QuitRecord.swift */,
 				29C26C37D627ADE04B904988 /* SheetQuit.swift */,
 			);
@@ -617,6 +620,7 @@
 				BAEE46A4791ABB6963914A5D /* NativeAppSupport.swift in Sources */,
 				FC24793EEE444C3F48F17559 /* NotificationManager.swift in Sources */,
 				A96CBF7ECCEC4F44B5A6351E /* OutsideLinkDefault.swift in Sources */,
+				D892E75CE5BE0A055B6A8498 /* PageStorageLog.swift in Sources */,
 				53C0B5A438EDC6C98FE081AB /* QuickSwitcherView.swift in Sources */,
 				2060383BBB7763440315E22D /* QuitRecord.swift in Sources */,
 				DFF3C2C6D2BD8785482FDAD1 /* RailDivider.swift in Sources */,

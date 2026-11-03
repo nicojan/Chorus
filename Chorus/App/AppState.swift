@@ -539,6 +539,20 @@ final class AppState {
                 return (try? container.mainContext.fetch(descriptor).first)?.label
             }
         }
+        // Each page's IndexedDB trouble goes to `page-storage-log.jsonl`. Not in
+        // a test run, whose pages are fixtures.
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            self.userScriptManager.onStorageEvent = { @Sendable serviceID, event in
+                MainActor.assumeIsolated {
+                    var descriptor = FetchDescriptor<ServiceInstance>(
+                        predicate: #Predicate { $0.id == serviceID }
+                    )
+                    descriptor.fetchLimit = 1
+                    let label = (try? container.mainContext.fetch(descriptor).first)?.label
+                    PageStorageLog.note(event, service: serviceID, label: label)
+                }
+            }
+        }
         self.notificationManager = NotificationManager(badgeManager: badgeManager)
         self.transientBadgeFetcher = TransientBadgeFetcher(
             badgeManager: badgeManager,

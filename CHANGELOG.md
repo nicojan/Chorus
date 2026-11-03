@@ -5,6 +5,10 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Chorus now keeps a second file next to the quit record: `~/Library/Application Support/Chorus/page-storage-log.jsonl`. A page gets a line there when it upgrades or deletes one of its databases, when its storage fails, or when it reports an error about storage. WhatsApp asked to be relinked again on 1.5.32 after a clean quit, and nothing on the Mac showed why. This file keeps what WhatsApp itself saw. It holds database names and the errors pages report, and keeps the last 3,000 lines.
+
 ## [1.5.32] - 2026-10-30
 
 ### Changed

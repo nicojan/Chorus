@@ -21,6 +21,7 @@ final class ChorusAppDelegate: NSObject, NSApplicationDelegate {
         // that never quit.
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
             QuitRecord.noteLaunch()
+            PageStorageLog.trim()
         }
         SheetQuit.beforeClosingSheets = { [weak self] in
             self?.appState?.clearPromptsForQuit()
