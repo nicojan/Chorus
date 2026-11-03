@@ -5,6 +5,10 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Google Docs and Sheets no longer look blurry. Chorus told every page its window was 0 pixels wide, because Safari reports that size to a page and Chorus did not. Docs and Sheets compare that number with the size of the page to work out the browser zoom, and with 0 they drew the document at a quarter or half of the pixels your screen needs. The toolbar and menus stayed sharp because they are drawn another way. Pages now get their own size in place of 0. Thanks to naveenm0077 for the report (#43).
+
 ## [1.5.33] - 2026-11-02
 
 ### Added
