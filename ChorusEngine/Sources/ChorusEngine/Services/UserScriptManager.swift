@@ -107,6 +107,9 @@ public final class UserScriptManager {
         )
         controller.addUserScript(visibilityScript)
 
+        // The window's outer size, which a web view reports as 0 (#43).
+        controller.addUserScript(Self.windowSizeScript)
+
         // IndexedDB write count, which quit waits on. Main frame only, since
         // quit reads it with `evaluateJavaScript`, which only reaches that frame.
         controller.addUserScript(WKUserScript(
@@ -283,6 +286,46 @@ public final class UserScriptManager {
                         document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
                         window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }));
                     }
+                });
+            } catch (e) {}
+        })();
+        """
+    }
+
+    /// Makes `window.outerWidth` and `outerHeight` report the page's own size
+    /// when they would read 0, as they always do in a `WKWebView`: WebKit asks
+    /// the app for the window frame, and only Safari answers. Google Sheets and
+    /// Docs compare the outer and inner sizes to guess the browser zoom, and
+    /// with 0 they draw the document at a quarter or half of the screen's
+    /// pixels, which looks blurry (#43). A real, non-zero value passes through.
+    /// Every frame, since Docs can sit inside one. In-app browser windows use
+    /// it too.
+    static let windowSizeScript = WKUserScript(
+        source: makeWindowSizeScript(),
+        injectionTime: .atDocumentStart,
+        forMainFrameOnly: false
+    )
+
+    static func makeWindowSizeScript() -> String {
+        return """
+        (function() {
+            try {
+                [['outerWidth', 'innerWidth'], ['outerHeight', 'innerHeight']].forEach(function(pair) {
+                    var owner = window;
+                    while (owner && !Object.getOwnPropertyDescriptor(owner, pair[0])) {
+                        owner = Object.getPrototypeOf(owner);
+                    }
+                    var native = owner && Object.getOwnPropertyDescriptor(owner, pair[0]);
+                    if (!native || !native.get || !native.configurable) { return; }
+                    Object.defineProperty(owner, pair[0], {
+                        configurable: true,
+                        enumerable: native.enumerable,
+                        get: function() {
+                            var value = native.get.call(this);
+                            return value > 0 ? value : this[pair[1]];
+                        },
+                        set: native.set
+                    });
                 });
             } catch (e) {}
         })();
