@@ -213,7 +213,7 @@ struct GeneralSettingsView: View {
                         Text(style.title).tag(style)
                     }
                 }
-                Text("Icons leave the page more room. Large icons are easier to find and click. Without names, hold the pointer over an icon to see its name.")
+                Text("Icons leave the page more room. Large icons take a little more of it but are easier to find and click, and without names you can hold the pointer over any icon to see its name.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
