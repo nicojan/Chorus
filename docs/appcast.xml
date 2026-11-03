@@ -3,6 +3,20 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.33</title>
+            <pubDate>Mon, 02 Nov 2026 18:32:34 -0700</pubDate>
+            <sparkle:version>46</sparkle:version>
+            <sparkle:shortVersionString>1.5.33</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Added</h3>
+<ul>
+<li>Chorus now keeps a second file next to the quit record: ~/Library/Application Support/Chorus/page-storage-log.jsonl. A page gets a line there when it upgrades or deletes one of its databases, when its storage fails, or when it reports an error about storage. WhatsApp asked to be relinked again on 1.5.32 after a clean quit, and nothing on the Mac showed why. This file keeps what WhatsApp itself saw. It holds database names and the errors pages report, and keeps the last 3,000 lines.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.33/Chorus-1.5.33.dmg" length="13440619" type="application/octet-stream" sparkle:edSignature="eEOEFPFA78QYj9HlrbLVCfgctfzuYW752ZHiTX/QL71W31aAmsh85OjhRjjv/9Boi2T5aL8q9zYsLIOTZSywDQ=="/>
+        </item>
+        <item>
             <title>1.5.32</title>
             <pubDate>Fri, 30 Oct 2026 19:55:00 -0700</pubDate>
             <sparkle:version>45</sparkle:version>
