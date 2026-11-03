@@ -52,6 +52,8 @@ struct ServiceRowView: View {
     @State private var isHovering = false
     /// The rail's width, which the named row fills. See `RailWidth`.
     @Environment(\.railWidth) private var railWidth
+    /// The nameless cell's size in the vertical rail. See `RailIconSize`.
+    @Environment(\.railIconSize) private var railIconSize
 
     /// The rail's default width with names, gutter included; the rail itself can
     /// be dragged from 150 to 300 (see `RailWidth`). A row is that less the 8
@@ -74,11 +76,11 @@ struct ServiceRowView: View {
     /// gutters.
     static let compactCellWidth: CGFloat = 36
     /// The nameless cell in the vertical rail: what the 44 point card leaves
-    /// inside its padding.
-    static let compactRailCellWidth: CGFloat = compactRailWidth - ChorusCard.gutter - 2 * ChorusCard.railPadding
+    /// inside its padding. Large icons widen it; see `RailIconSize`.
+    static let compactRailCellWidth: CGFloat = RailIconSize.standard.cellWidth
     /// Width of the vertical rail when the rows carry no name: the gutter, and
     /// a 44 point card round the 32 point cell.
-    static let compactRailWidth: CGFloat = 52
+    static let compactRailWidth: CGFloat = RailIconSize.standard.railWidth
 
     /// The rail card's width: the rail's footprint less the gutter beside it.
     static func railCardWidth(showsName: Bool) -> CGFloat {
@@ -154,19 +156,23 @@ struct ServiceRowView: View {
     /// the row grew a name. The moon, the bell and the media glyph do not come
     /// with it: four things on an 18 point icon is what the audit called
     /// unreadable, and all three are still in the tooltip and the spoken label.
+    ///
+    /// In the vertical rail the cell takes its size from `RailIconSize`; the
+    /// horizontal bar keeps the 18 point icon, since its band is fixed.
     private var compactContent: some View {
-        ServiceIconSquare(
+        let size = axis == .vertical ? railIconSize : .standard
+        return ServiceIconSquare(
             instance: instance,
-            size: Self.iconSize,
-            cornerRadius: Self.iconCornerRadius
+            size: size.iconSize,
+            cornerRadius: size == .large ? ChorusRadius.control : Self.iconCornerRadius
         )
         .overlay(alignment: .bottomTrailing) {
             ServiceHealthDot(health: health)
                 .offset(x: 3, y: 3)
         }
         .frame(
-            width: axis == .vertical ? Self.compactRailCellWidth : Self.compactCellWidth,
-            height: axis == .vertical ? Self.rowHeight : Self.tabHeight
+            width: axis == .vertical ? size.cellWidth : Self.compactCellWidth,
+            height: axis == .vertical ? size.cellHeight : Self.tabHeight
         )
         // On the cell, not the icon, so it sits over the corner that the
         // selection fill and the focus ring are drawn on.

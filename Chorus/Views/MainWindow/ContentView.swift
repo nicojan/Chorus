@@ -11,6 +11,12 @@ struct ContentView: View {
     /// Whether the rail carries service names, which dragging its edge sets.
     @AppStorage(ServiceNameVisibility.defaultsKey) private var showServiceNames = true
     @AppStorage(RailWidth.defaultsKey) private var railNamedWidth = Double(RailWidth.defaultNamed)
+    @AppStorage(RailIconSize.defaultsKey) private var railIconSizeRaw = RailIconSize.standard.rawValue
+
+    /// The service rail's width without names, where a resize drag starts.
+    private var compactRailWidth: CGFloat {
+        (RailIconSize(rawValue: railIconSizeRaw) ?? .standard).railWidth
+    }
     /// Which bar of the hybrid layout holds the global services. See
     /// `GlobalPlacement`; the strip and the bar read the edge themselves.
     @AppStorage(GlobalPlacement.barKey) private var globalBarRaw = GlobalBar.spaces.rawValue
@@ -199,7 +205,7 @@ struct ContentView: View {
             HStack(spacing: 0) {
                 rail(axis: .vertical, spaceSelection: spaceSelection, serviceSelection: serviceSelection, contentInset: ChorusCard.topBand)
                 webContent
-                    .overlay(alignment: .leading) { RailResizeHandle(showsNames: $showServiceNames, namedWidth: $railNamedWidth, topInset: ChorusCard.topBand) }
+                    .overlay(alignment: .leading) { RailResizeHandle(showsNames: $showServiceNames, namedWidth: $railNamedWidth, topInset: ChorusCard.topBand, compactWidth: compactRailWidth) }
             }
         case .allServices:
             HStack(spacing: 0) {
@@ -212,7 +218,7 @@ struct ContentView: View {
                     showsAllSpaces: true
                 )
                 webContent
-                    .overlay(alignment: .leading) { RailResizeHandle(showsNames: $showServiceNames, namedWidth: $railNamedWidth, topInset: ChorusCard.topBand) }
+                    .overlay(alignment: .leading) { RailResizeHandle(showsNames: $showServiceNames, namedWidth: $railNamedWidth, topInset: ChorusCard.topBand, compactWidth: compactRailWidth) }
             }
         case .topBars:
             VStack(spacing: 0) {

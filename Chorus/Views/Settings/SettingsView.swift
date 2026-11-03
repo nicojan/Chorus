@@ -92,6 +92,8 @@ struct GeneralSettingsView: View {
     /// Window chrome rather than user data, so it sits in defaults instead of
     /// `AppPreferences` — see `ServiceNameVisibility`.
     @AppStorage(ServiceNameVisibility.defaultsKey) private var showServiceNames = true
+    /// How big the icons are once the names are off. See `RailIconSize`.
+    @AppStorage(RailIconSize.defaultsKey) private var railIconSizeRaw = RailIconSize.standard.rawValue
     /// The same, for the hybrid layout's strip of spaces — see `SpaceStripMetrics`.
     @AppStorage(SpaceStripMetrics.defaultsKey) private var showSpaceNames = true
     @AppStorage(OutsideLinkDefault.defaultsKey) private var linksOpenInChorus = false
@@ -103,6 +105,23 @@ struct GeneralSettingsView: View {
 
     private var prefs: AppPreferences {
         preferences.first ?? AppPreferences()
+    }
+
+    /// The rail's names and icon size, set together. See `RailStyle`.
+    private var railStyle: Binding<RailStyle> {
+        Binding(
+            get: {
+                RailStyle(
+                    showsNames: showServiceNames,
+                    iconSize: RailIconSize(rawValue: railIconSizeRaw) ?? .standard
+                )
+            },
+            set: { style in
+                let current = RailIconSize(rawValue: railIconSizeRaw) ?? .standard
+                railIconSizeRaw = style.iconSize(keeping: current).rawValue
+                showServiceNames = style.showsNames
+            }
+        )
     }
 
     var body: some View {
@@ -189,8 +208,12 @@ struct GeneralSettingsView: View {
                     }
                 }
 
-                Toggle("Show service names in the rail", isOn: $showServiceNames)
-                Text("Turn this off and a service is its icon alone, in a rail narrow enough to leave the page more room. The name stays in the tooltip.")
+                Picker("Service rail", selection: railStyle) {
+                    ForEach(RailStyle.allCases) { style in
+                        Text(style.title).tag(style)
+                    }
+                }
+                Text("Icons leave the page more room. Large icons are easier to find and click. Without names, hold the pointer over an icon to see its name.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 

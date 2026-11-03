@@ -145,6 +145,99 @@ enum ServiceNameVisibility {
     static let defaultsKey = "showServiceNames"
 }
 
+/// How big the icons are in the vertical rail once it carries no names: the
+/// 18 point icon of the compact cell, or a 32 point one in a wider rail for
+/// people who find their services by the icon and want it easy to hit. It
+/// sits in defaults beside `ServiceNameVisibility` for the same reason. The
+/// named rail and the horizontal bar ignore it.
+enum RailIconSize: String, CaseIterable {
+    case standard
+    case large
+
+    static let defaultsKey = "railIconSize"
+
+    var iconSize: CGFloat {
+        switch self {
+        case .standard: 18
+        case .large: 32
+        }
+    }
+
+    /// The cell's height. The rail stacks cells 2 points apart, so large
+    /// icons sit 48 points apart, with room to tell them apart and hit one.
+    var cellHeight: CGFloat {
+        switch self {
+        case .standard: 28
+        case .large: 46
+        }
+    }
+
+    /// The space's emoji over the nameless cells, sized to match the icons.
+    var emojiSize: CGFloat {
+        switch self {
+        case .standard: 18
+        case .large: 28
+        }
+    }
+
+    /// The rail's width, gutter included.
+    var railWidth: CGFloat {
+        switch self {
+        case .standard: 52
+        case .large: 60
+        }
+    }
+
+    /// The cell's width: what the rail card leaves inside its padding.
+    var cellWidth: CGFloat {
+        railWidth - ChorusCard.gutter - 2 * ChorusCard.railPadding
+    }
+
+    /// The rail card's width: the rail less the gutter beside it.
+    var cardWidth: CGFloat {
+        railWidth - ChorusCard.gutter
+    }
+}
+
+/// The three forms of the vertical rail that Settings offers. Names are one
+/// setting and the icon size another, so the size is kept while you drag the
+/// rail out to its names and back.
+enum RailStyle: String, CaseIterable, Identifiable {
+    case names
+    case icons
+    case largeIcons
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .names: "Names"
+        case .icons: "Icons"
+        case .largeIcons: "Large icons"
+        }
+    }
+
+    init(showsNames: Bool, iconSize: RailIconSize) {
+        if showsNames {
+            self = .names
+        } else {
+            self = iconSize == .large ? .largeIcons : .icons
+        }
+    }
+
+    var showsNames: Bool { self == .names }
+
+    /// The icon size this style stores. Names keep whatever size was there,
+    /// so the rail goes back to it when the names are turned off.
+    func iconSize(keeping current: RailIconSize) -> RailIconSize {
+        switch self {
+        case .names: current
+        case .icons: .standard
+        case .largeIcons: .large
+        }
+    }
+}
+
 /// The width of the space strip in the hybrid layout, and what that width
 /// means.
 ///
@@ -750,12 +843,22 @@ private struct RailWidthKey: EnvironmentKey {
     static let defaultValue: CGFloat = RailWidth.defaultNamed
 }
 
+private struct RailIconSizeKey: EnvironmentKey {
+    static let defaultValue: RailIconSize = .standard
+}
+
 extension EnvironmentValues {
     /// The width the vertical service rail takes from the window, gutter
     /// included. Rows, headers and headings size themselves from it.
     var railWidth: CGFloat {
         get { self[RailWidthKey.self] }
         set { self[RailWidthKey.self] = newValue }
+    }
+
+    /// The size of a nameless cell in the vertical rail. See `RailIconSize`.
+    var railIconSize: RailIconSize {
+        get { self[RailIconSizeKey.self] }
+        set { self[RailIconSizeKey.self] = newValue }
     }
 }
 
@@ -768,6 +871,8 @@ struct RailResizeHandle: View {
     @Binding var namedWidth: Double
     /// Room left at the top. See `RailWidthHandle.topInset`.
     var topInset: CGFloat = 0
+    /// The rail's width without names, which a drag starts from.
+    var compactWidth: CGFloat = ServiceRowView.compactRailWidth
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The rail's width when this drag began.
     @State private var startWidth: CGFloat?
@@ -782,7 +887,7 @@ struct RailResizeHandle: View {
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in
-                        let start = startWidth ?? (showsNames ? RailWidth.clampNamed(CGFloat(namedWidth)) : ServiceRowView.compactRailWidth)
+                        let start = startWidth ?? (showsNames ? RailWidth.clampNamed(CGFloat(namedWidth)) : compactWidth)
                         startWidth = start
                         let result = RailWidth.resolve(proposed: start + value.translation.width, namesOn: showsNames)
                         if result.namesOn != showsNames {
