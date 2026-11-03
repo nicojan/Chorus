@@ -3,6 +3,20 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.34</title>
+            <pubDate>Mon, 02 Nov 2026 20:10:46 -0700</pubDate>
+            <sparkle:version>47</sparkle:version>
+            <sparkle:shortVersionString>1.5.34</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Fixed</h3>
+<ul>
+<li>Google Docs and Sheets no longer look blurry. Chorus told every page its window was 0 pixels wide, because Safari reports that size to a page and Chorus did not. Docs and Sheets compare that number with the size of the page to work out the browser zoom, and with 0 they drew the document at a quarter or half of the pixels your screen needs. The toolbar and menus stayed sharp because they are drawn another way. Pages now get their own size in place of 0. Thanks to naveenm0077 for the report (#43).</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.34/Chorus-1.5.34.dmg" length="13441419" type="application/octet-stream" sparkle:edSignature="JyI3MlVF0rrzCWkvGYl/J758Uy0a7c0lFEWNbgHIn+1CqcSHYOcv20k7lKsTUWx3xaQ9tI4ICHv4ezpz7qSyDg=="/>
+        </item>
+        <item>
             <title>1.5.33</title>
             <pubDate>Mon, 02 Nov 2026 18:32:34 -0700</pubDate>
             <sparkle:version>46</sparkle:version>
