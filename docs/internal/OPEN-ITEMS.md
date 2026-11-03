@@ -8,7 +8,7 @@ Cause, found 2026-11-02: a `WKWebView` reports `window.outerWidth` and `outerHei
 
 Fix on `fix/43-blurry-docs` (`a979355`): `UserScriptManager.windowSizeScript`, a document-start script in every frame that returns the inner size when the real outer size reads 0. In-app browser windows get it too. Tests in `WindowSizeShimTests`; CI green on 14 and 15. Checked with a temporary test that preloads a public Sheet through `WebViewPool`: 0.25 then 0.5 before, 1 then 2 after.
 
-Not yet checked: Google Docs itself (no public Doc to load), and a Doc or Sheet opened as a Custom URL service in a Debug build.
+Checked by hand 2026-11-02: a Google Doc opened through a Custom URL service in the Debug build draws sharp. Not yet checked by hand: a Sheet in the running app.
 
 ## Open: WhatsApp "database error", seen again on 1.5.32
 
