@@ -3,6 +3,24 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.35</title>
+            <pubDate>Wed, 04 Nov 2026 06:09:06 -0700</pubDate>
+            <sparkle:version>48</sparkle:version>
+            <sparkle:shortVersionString>1.5.35</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Fixed</h3>
+<ul>
+<li>WhatsApp no longer signs you out while Chorus is open. When you moved to another service, Chorus took WhatsApp's page out of its window, and macOS froze the page; each time Chorus looked at the page for new messages, macOS woke it for a moment and froze it again. One freeze landed in the middle of a save. WhatsApp took that as broken storage, deleted it and asked you to relink. Covering Chorus with other windows, or minimizing it, did the same after a few minutes. Chat services and services set to Keep Loaded now stay awake in the background in all of these cases, at the cost of a little more battery than a frozen page.</li>
+</ul>
+<h3>Removed</h3>
+<ul>
+<li>The memory readings Chorus wrote to the system log every five minutes, added in 1.5.29. macOS kept them for only a few hours. They were meant to cover days.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.35/Chorus-1.5.35.dmg" length="13441396" type="application/octet-stream" sparkle:edSignature="rqGTxHwiuA+f4qIXHXy1ny0/79FA3S/EHfEZ17tjfmZdgcPUSMAIxqeTZFPUwXUVllxjtaDKpbgR2OOSMiETBA=="/>
+        </item>
+        <item>
             <title>1.5.34</title>
             <pubDate>Mon, 02 Nov 2026 20:10:46 -0700</pubDate>
             <sparkle:version>47</sparkle:version>
