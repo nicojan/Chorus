@@ -8,6 +8,24 @@ final class ChorusAppDelegate: NSObject, NSApplicationDelegate {
     /// release, and a quit goes straight through.
     weak var appState: AppState?
 
+    /// Opens the main window, from SwiftUI's `openWindow`. The main window
+    /// sets it when it first appears.
+    var openMainWindow: (() -> Void)?
+
+    /// A click on the Dock icon. AppKit only reopens a window when none is
+    /// visible, and the parking lot's window (`WebViewParking`) always is, so
+    /// Chorus brings the main window back itself.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        let main = NSApp.windows.first { $0.identifier?.rawValue == "main" }
+        if let main, main.isVisible { return true }
+        if let main, main.isMiniaturized {
+            main.deminiaturize(nil)
+        } else {
+            openMainWindow?()
+        }
+        return false
+    }
+
     /// The handoff runs once. The second `terminate` it triggers, and any quit
     /// asked for while it runs, must not start it again.
     private var isReleasingPages = false

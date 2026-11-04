@@ -142,7 +142,11 @@ struct WebContentView: View {
     /// The live page with its load snapshot and find bar.
     private func pageContent(_ webView: WKWebView) -> some View {
         ZStack(alignment: .topTrailing) {
-            WebViewContainer(webView: webView, cornerRadius: ChorusCard.webCornerRadius)
+            WebViewContainer(
+                webView: webView,
+                cornerRadius: ChorusCard.webCornerRadius,
+                parking: appState.webViewPool.parking
+            )
 
             // Show cached snapshot as instant visual feedback while page loads.
             // Fades out once the web view finishes loading. It fills the

@@ -247,7 +247,6 @@ final class AppState {
     }
     @ObservationIgnored nonisolated(unsafe) private var quietHoursTask: Task<Void, Never>?
     @ObservationIgnored nonisolated(unsafe) private var idleHibernationTask: Task<Void, Never>?
-    @ObservationIgnored nonisolated(unsafe) private var memoryWatchTask: Task<Void, Never>?
     /// Per-service grace timers for the `.immediate` hibernation policy: a service
     /// switched away from is torn down a few seconds later unless switched back to.
     /// Keyed by service id so switching back can cancel the pending teardown.
@@ -627,7 +626,6 @@ final class AppState {
         }
         quietHoursTask?.cancel()
         idleHibernationTask?.cancel()
-        memoryWatchTask?.cancel()
     }
 
     /// Wires the WebViewPool's external-link handler so that cross-domain
@@ -1529,41 +1527,6 @@ final class AppState {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(60))
                 await self?.hibernateIdleServices()
-            }
-        }
-    }
-
-    /// Every five minutes, logs each page's memory, and says when a page has
-    /// grown enough that it would be rebuilt (`WebViewPool.wouldRebuild`).
-    /// Nothing is rebuilt yet: this release only measures, to show whether a
-    /// background page really keeps climbing. Each pass is one
-    /// `proc_pid_rusage` call per live page. Read it back with
-    /// `/usr/bin/log show --predicate 'subsystem == "com.nicojan.Chorus" AND eventMessage BEGINSWITH "Memory watch"'`.
-    private func startMemoryWatchTimer() {
-        memoryWatchTask?.cancel()
-        memoryWatchTask = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(300))
-                self?.logMemoryWatch()
-            }
-        }
-    }
-
-    private func logMemoryWatch() {
-        for reading in webViewPool.memoryReadings() {
-            // The catalog id names the service without the user's own label,
-            // and the pid tells two accounts of one service apart. An id the
-            // catalog does not know, say from an imported setup, is logged as
-            // custom rather than trusted.
-            let service = fetchService(id: reading.id)?.catalogEntryID
-                .flatMap { ServiceCatalog.shared.entry(for: $0) != nil ? $0 : nil } ?? "custom"
-            let megabytes = reading.footprint / 1_048_576
-            let baseline = reading.baseline.map { "\($0 / 1_048_576) MB" } ?? "not yet"
-            let outOfSight = Int(reading.outOfSight)
-            if reading.wouldRebuild {
-                AppLogger.webView.notice("Memory watch: would rebuild \(service, privacy: .public) pid \(reading.pid) at \(megabytes) MB, baseline \(baseline, privacy: .public), out of sight \(outOfSight) s")
-            } else {
-                AppLogger.webView.notice("Memory watch: \(service, privacy: .public) pid \(reading.pid) \(megabytes) MB, baseline \(baseline, privacy: .public), out of sight \(outOfSight) s, tabs \(reading.hasOpenTabs)")
             }
         }
     }
@@ -3319,7 +3282,6 @@ final class AppState {
             self.refreshEffectiveDoNotDisturb()
             self.startQuietHoursTimer()
             self.startIdleHibernationTimer()
-            self.startMemoryWatchTimer()
             self.setupLockObservers()
             self.startDarkMode()
         }

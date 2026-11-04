@@ -81,13 +81,14 @@ Public means Chorus calls it, or a WebKit or AppKit protocol requires it. Nothin
   - Building pages: `webView(for:)`, `preload(_:)`, `hasWebView(for:)`, `liveWebView(for:)`, `displayedWebView(for:)`, `allWebViews(for:)`, `tabs(for:)`, `snapshot(for:)`, `liveServiceIDs`, `liveWebViews`, `loadedCount`, `activeServiceID`.
   - Lifecycle: `removeWebView`, `recreateWebView`, `deactivateActiveService`, `closeTab`, `navigate`, `setUserAgent`, `forgetSuspendedURL`.
   - Hibernation: `hibernate`, `hibernateIfStillIdle`, `isHibernated`, `idleCandidates(now:)`, `pin`, `unpin`, `setNeverHibernate`.
-  - Media and memory: `isPlayingAudio`, `pauseAudio`, `muteAllMicrophones`, `mediaCaptureStates` with `MediaCaptureState`, and `memoryReadings(now:)` with `MemoryReading`, `wouldRebuild`.
+  - Media and memory: `isPlayingAudio`, `pauseAudio`, `muteAllMicrophones`, and `mediaCaptureStates` with `MediaCaptureState`.
+  - Parking: `parking`, a `WebViewParking`. It has no public members; Chorus only passes it to `WebViewContainer`.
   - Appearance and blocking: `applyDarkState(isDark:surface:)`, `refreshDarkMode(for:)`, `reattachContentBlocker()`, `health(for:)`.
   - Callbacks the app sets: `onServiceHibernated`, `onServiceSoftHibernated`, `onServiceSoftWoke`, `onServiceRemoved`, `onServiceTornDown`, `onServicePreloaded`, `onNavigationFinished`, `isNotificationCritical`, `externalLinkHandler`, `serviceOwnsURL`, `mediaCapturePolicyProvider`, `downloadCenter`.
 - `WebViewCoordinator` (statics only): `shouldOpenInAppBrowser`, `openExternally`, `reload(_:fallbackURL:)`, `looksLikeSignIn`, `belongsToService`, `isAuthHost`.
 - `ServiceTabs` and `ServiceTab`: `tabs`, `selectedID`, `selectedTab`, `isEmpty`, `tab(for:)`, `add`, `select`, `selectOffset`, `remove`, `removeAll`; a tab's `id`, `webView`, `title`.
 - `WebViewState`: `init()`, `attach(to:)`, `detach()`, `canGoBack`, `canGoForward`, `isLoading`, `currentURL`, `title`, `webView`.
-- `WebViewContainer`: `init(webView:cornerRadius:)`. `WebViewHostView` is public because `WebViewContainer` returns it.
+- `WebViewContainer`: `init(webView:cornerRadius:parking:)`. `WebViewHostView` is public because `WebViewContainer` returns it.
 - `InAppBrowserWindow`: `open(_:)`.
 - `ServiceHealth`: `live`, `loading`, `failed`, `signedOut`, `Event`, `next(_:)`.
 - `DataStoreManager`: `init()`, `dataStore(for:)`, `dataStore(forIdentifier:)`, `evict(identifier:)`.
@@ -132,6 +133,7 @@ Engine versions are Chorus's own release tags, `v1.5.32` and on. SwiftPM reads `
 
 List every change to the public API here, under the release that ships it, including additions. Another app reads this before moving its pin.
 
+- **1.5.35**: Adds `WebViewParking`, a type with no public members, the pool's `parking` property, and a `parking` argument on `WebViewContainer` that defaults to nil. WebKit suspends a page within seconds when it is out of a window or hidden, about five minutes after other windows cover its window, and about four minutes after its window is minimized. A page suspended in the middle of a write can lose its IndexedDB data. The pool keeps chat and Keep Loaded pages running: they ignore window occlusion, and while no host shows them they sit in a window of their own, off screen and invisible. Pass the pool's `parking` to the container so it can hand those pages over. Without it, pages leave the window as before. Removes `memoryReadings(now:)`, `MemoryReading` and `wouldRebuild`, the log-only memory watch. Its log lines aged out within hours, so it could not show a page climbing over days.
 - **1.5.33**: Adds `PageStorageEvent` and `UserScriptManager.onStorageEvent`. Every page now gets a script that watches IndexedDB and a message handler, `chorusStorageEvent`, that reports to `onStorageEvent`. Leave it nil and the events go nowhere.
 - **1.5.32**: First release as a package. The API above is the starting point. Before it, the same code lived in the app target and took `ServiceInstance` where it now takes `WebSurface`.
 

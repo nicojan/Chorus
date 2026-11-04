@@ -41,6 +41,7 @@ struct ChorusApp: App {
                 .onAppear {
                     appDelegate.appState = appState
                 }
+                .modifier(MainWindowOpener(delegate: appDelegate))
                 .onDisappear {
                     appState.saveSelection()
                 }
@@ -327,3 +328,18 @@ final class UpdaterQuitDelegate: NSObject, SPUUpdaterDelegate {
     }
 }
 #endif
+
+/// Hands SwiftUI's `openWindow` to the app delegate, which needs it to bring
+/// the main window back from a Dock click. See
+/// `ChorusAppDelegate.applicationShouldHandleReopen`.
+private struct MainWindowOpener: ViewModifier {
+    let delegate: ChorusAppDelegate
+    @Environment(\.openWindow) private var openWindow
+
+    func body(content: Content) -> some View {
+        content.onAppear {
+            let open = openWindow
+            delegate.openMainWindow = { open(id: "main") }
+        }
+    }
+}
