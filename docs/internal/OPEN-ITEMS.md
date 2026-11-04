@@ -1,6 +1,8 @@
 # Open items
 
-## Open: WhatsApp "database error", cause found 2026-11-03, fix on `fix/whatsapp-hidden-suspension`
+## Open: WhatsApp "database error", cause found 2026-11-03, fix shipped in 1.5.35 (2026-11-04, PR #48)
+
+Open until a few days on 1.5.35 pass with WhatsApp still linked on Nico's release copy. If it signs out again, read `~/Library/Application Support/Chorus/page-storage-log.jsonl` and `quit-log.jsonl` first, then `/usr/bin/log show --predicate 'eventMessage CONTAINS "sendPrepareToSuspendIPC"'` for the WhatsApp WebContent pid.
 
 The fourth sighting, on 1.5.34 on 2026-11-03, happened while Chorus ran. The launch at 16:52 found all 13 WhatsApp databases. At 16:53:17 and again at 16:53:47 the page logged "Attempt to get records from database without an in-progress transaction", and at 16:53:48 WhatsApp's own code deleted signal-storage, wawc_db_enc, model-storage and the rest. The quit before it was clean.
 
@@ -19,7 +21,7 @@ The branch keeps chat and Keep Loaded pages running (`WebViewParking`). They ign
 
 Overnight Debug run, 19:19 on 2026-11-03 to 05:42 on 2026-11-04, Chorus in the background: passed. In 63 ten-minute samples WebKit sent PrepareToSuspend to other pages every time and never to WhatsApp's process (pid 67607). The page storage log has no WhatsApp line after the usual launch set (`sw`, `guest-events-storage`, `qpl-storage`, 18:58 to 19:04). At 05:44 WhatsApp's origin still held all 13 databases and was writing them. The quit at 05:45 settled in 687 ms. CPU: WhatsApp's page used 11.7 minutes over 10.4 hours, about 2% of one core, steady from start to end; each other kept page used under 1.5 minutes; footprint 862 to 919 MB.
 
-Still to check: a Release build, a Sparkle relaunch with the parking window open, and that window in Mission Control and on a second display.
+Still to check: the 1.5.35 release build running (only inspected: bundle, signature, notarization), a Sparkle relaunch with the parking window open (Nico's update from 1.5.34 is the first), and that window in Mission Control and on a second display.
 
 ## Open: the main app process uses about 36% of a core while idle
 
