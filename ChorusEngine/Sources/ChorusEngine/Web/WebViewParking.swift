@@ -44,7 +44,7 @@ public final class WebViewParking {
     /// exist before it.
     private var isReady = false
 
-    public init() {}
+    init() {}
 
     /// The view parked pages sit in. Made on first use.
     var lot: WebViewParkingLotView {
@@ -58,7 +58,7 @@ public final class WebViewParking {
     /// Sets the pages to keep running. A page that drops out of the set leaves
     /// the lot and gets occlusion back; a page that joins it ignores occlusion
     /// from now on and moves into the lot unless a window shows it.
-    public func keepAlive(_ webViews: [WKWebView]) {
+    func keepAlive(_ webViews: [WKWebView]) {
         let next = Dictionary(
             webViews.map { (ObjectIdentifier($0), WeakView(view: $0)) },
             uniquingKeysWith: { first, _ in first }
@@ -79,7 +79,7 @@ public final class WebViewParking {
 
     /// Takes back a page its host stopped showing: a kept page goes into the
     /// lot, any other leaves the window.
-    public func release(_ webView: WKWebView) {
+    func release(_ webView: WKWebView) {
         if isReady, isKept(webView) {
             lot.park(webView)
         } else {
@@ -88,12 +88,12 @@ public final class WebViewParking {
     }
 
     /// Whether the page is in the set to keep running.
-    public func isKept(_ webView: WKWebView) -> Bool {
+    func isKept(_ webView: WKWebView) -> Bool {
         kept[ObjectIdentifier(webView)]?.view === webView
     }
 
     /// Whether the page sits in the lot now.
-    public func isParked(_ webView: WKWebView) -> Bool {
+    func isParked(_ webView: WKWebView) -> Bool {
         guard let lotView else { return false }
         return webView.superview === lotView
     }
@@ -162,8 +162,8 @@ public final class WebViewParking {
 
 /// The view that holds parked pages, as the lot window's content. Each page
 /// fills it, takes no clicks, and shows nothing to accessibility.
-public final class WebViewParkingLotView: NSView {
-    public override init(frame frameRect: NSRect) {
+final class WebViewParkingLotView: NSView {
+    override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         setAccessibilityElement(false)
     }
@@ -181,7 +181,7 @@ public final class WebViewParkingLotView: NSView {
         addSubview(webView)
     }
 
-    public override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    public override func accessibilityChildren() -> [Any]? { [] }
+    override func accessibilityChildren() -> [Any]? { [] }
 }
