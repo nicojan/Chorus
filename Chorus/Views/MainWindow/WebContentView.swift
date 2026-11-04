@@ -78,7 +78,7 @@ struct WebContentView: View {
             // Everything below the nav row is one card: the page, the loading
             // placeholder and the empty state alike, so the window keeps its
             // shape while a service loads or when there is none.
-            cardContent
+            parkedCardContent
                 .contentCard()
 
         }
@@ -112,6 +112,14 @@ struct WebContentView: View {
         }
     }
 
+    /// The card's content over the parking lot, which keeps chat and Keep
+    /// Loaded pages in the window while they are off screen. A separate
+    /// property keeps `body`'s modifier chain short for the older compilers.
+    private var parkedCardContent: some View {
+        cardContent
+            .background(WebViewParkingLot(parking: appState.webViewPool.parking))
+    }
+
     /// What the card holds: the live page with its snapshot and find bar, the
     /// placeholder while a web view is made, or the empty state.
     @ViewBuilder
@@ -142,7 +150,11 @@ struct WebContentView: View {
     /// The live page with its load snapshot and find bar.
     private func pageContent(_ webView: WKWebView) -> some View {
         ZStack(alignment: .topTrailing) {
-            WebViewContainer(webView: webView, cornerRadius: ChorusCard.webCornerRadius)
+            WebViewContainer(
+                webView: webView,
+                cornerRadius: ChorusCard.webCornerRadius,
+                parking: appState.webViewPool.parking
+            )
 
             // Show cached snapshot as instant visual feedback while page loads.
             // Fades out once the web view finishes loading. It fills the

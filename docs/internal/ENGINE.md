@@ -132,6 +132,7 @@ Engine versions are Chorus's own release tags, `v1.5.32` and on. SwiftPM reads `
 
 List every change to the public API here, under the release that ships it, including additions. Another app reads this before moving its pin.
 
+- **1.5.35**: Adds `WebViewParking`, `WebViewParkingLot` and `WebViewParkingLotView`, the pool's `parking` property, and a `parking` argument on `WebViewContainer` that defaults to nil. WebKit suspends a page that is out of the window or hidden, and a page suspended in the middle of a write can lose its IndexedDB data. Put a `WebViewParkingLot` behind the page area and pass the pool's `parking` to the container, and the pool keeps chat and Keep Loaded pages in the window while they are off screen. Leave both out and pages leave the window as before.
 - **1.5.33**: Adds `PageStorageEvent` and `UserScriptManager.onStorageEvent`. Every page now gets a script that watches IndexedDB and a message handler, `chorusStorageEvent`, that reports to `onStorageEvent`. Leave it nil and the events go nowhere.
 - **1.5.32**: First release as a package. The API above is the starting point. Before it, the same code lived in the app target and took `ServiceInstance` where it now takes `WebSurface`.
 

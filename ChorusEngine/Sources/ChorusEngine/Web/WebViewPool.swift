@@ -42,6 +42,10 @@ public final class WebViewPool {
     /// closure and the pool caches the result here at load time.
     private var notificationCriticalIDs: Set<UUID> = []
 
+    /// Holds the chat and Keep Loaded pages in the window while they are off
+    /// screen, so WebKit does not suspend them. See `WebViewParking`.
+    public let parking = WebViewParking()
+
     /// Services pinned by external callers (e.g. the selected service
     /// during initial preload, before WebContentView attaches and sets
     /// `activeServiceID`). Exempt from eviction.
@@ -270,6 +274,7 @@ public final class WebViewPool {
         if let existing = webViews[surface.id] {
             lastAccessTimes[surface.id] = Date()
             wakeService(surface.id)
+            syncParking()
             return existing
         }
 
@@ -302,6 +307,8 @@ public final class WebViewPool {
         } else if let homeURL = URL(string: surface.url) {
             webView.load(URLRequest(url: homeURL))
         }
+
+        syncParking()
 
         // Check eviction asynchronously (needs to query JS for active calls)
         Task {
@@ -360,6 +367,7 @@ public final class WebViewPool {
             webView.load(URLRequest(url: url))
         }
 
+        syncParking()
         AppLogger.webView.debug("Preloaded service \(surface.label)")
         onServicePreloaded?(surface.id, webView)
 
@@ -391,6 +399,7 @@ public final class WebViewPool {
         neverHibernateIDs.remove(instanceID)
         notificationCriticalIDs.remove(instanceID)
         evictionInFlight.remove(instanceID)
+        syncParking()
         onServiceRemoved?(instanceID)
         dropSnapshot(for: instanceID)
     }
@@ -469,6 +478,7 @@ public final class WebViewPool {
         } else {
             neverHibernateIDs.remove(id)
         }
+        syncParking()
     }
 
     /// Navigate a service's live web view to a URL. Used when the user edits a
@@ -772,6 +782,18 @@ public final class WebViewPool {
         return count
     }
 
+    /// The services whose pages stay running off screen: chat services, which
+    /// must keep their storage and alerts live, and Keep Loaded ones.
+    var keptAliveIDs: Set<UUID> {
+        neverHibernateIDs.union(notificationCriticalIDs)
+    }
+
+    /// Tells the parking lot which pages to keep running. Called after every
+    /// change to the loaded pages or to the two sets above.
+    private func syncParking() {
+        parking.keepAlive(keptAliveIDs.compactMap { webViews[$0] })
+    }
+
     private func teardownWebView(_ instanceID: UUID) {
         coordinators[instanceID]?.closeAllTabs()
         if let webView = webViews[instanceID] {
@@ -797,6 +819,7 @@ public final class WebViewPool {
         visits.remove(instanceID)
         baselineFootprints.removeValue(forKey: instanceID)
         dropSnapshot(for: instanceID)
+        syncParking()
         onServiceTornDown?(instanceID)
     }
 

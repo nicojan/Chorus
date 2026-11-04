@@ -5,22 +5,31 @@ public struct WebViewContainer: NSViewRepresentable {
     let webView: WKWebView
     /// The rounding of the page's corners.
     var cornerRadius: CGFloat = 0
+    /// Takes the pages this host stops showing. Nil removes them from the window.
+    var parking: WebViewParking?
 
-    public init(webView: WKWebView, cornerRadius: CGFloat = 0) {
+    public init(webView: WKWebView, cornerRadius: CGFloat = 0, parking: WebViewParking? = nil) {
         self.webView = webView
         self.cornerRadius = cornerRadius
+        self.parking = parking
     }
 
     public func makeNSView(context: Context) -> WebViewHostView {
         let host = WebViewHostView()
         host.cornerRadius = cornerRadius
+        host.parking = parking
         host.setWebView(webView)
         return host
     }
 
     public func updateNSView(_ nsView: WebViewHostView, context: Context) {
         nsView.cornerRadius = cornerRadius
+        nsView.parking = parking
         nsView.setWebView(webView)
+    }
+
+    public static func dismantleNSView(_ nsView: WebViewHostView, coordinator: ()) {
+        nsView.releaseWebView()
     }
 }
 
@@ -61,10 +70,17 @@ public final class WebViewHostView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    func setWebView(_ webView: WKWebView) {
-        guard webView !== currentWebView else { return }
+    /// Takes the pages this host stops showing. See `WebViewParking`.
+    weak var parking: WebViewParking?
 
-        currentWebView?.removeFromSuperview()
+    func setWebView(_ webView: WKWebView) {
+        // The parking lot can take the page while this host is out of the
+        // window, so the same page may need adding back.
+        guard webView !== currentWebView || webView.superview !== self else { return }
+
+        if let previous = currentWebView, previous !== webView {
+            release(previous)
+        }
         currentWebView = webView
 
         webView.translatesAutoresizingMaskIntoConstraints = false
@@ -75,5 +91,22 @@ public final class WebViewHostView: NSView {
             webView.leadingAnchor.constraint(equalTo: leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: trailingAnchor),
         ])
+    }
+
+    /// Gives up the page, as when SwiftUI removes this host.
+    func releaseWebView() {
+        if let current = currentWebView {
+            release(current)
+        }
+        currentWebView = nil
+    }
+
+    private func release(_ webView: WKWebView) {
+        guard webView.superview === self else { return }
+        if let parking {
+            parking.release(webView)
+        } else {
+            webView.removeFromSuperview()
+        }
     }
 }
