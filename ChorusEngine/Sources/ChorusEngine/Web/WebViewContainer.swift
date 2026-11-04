@@ -62,6 +62,7 @@ public final class WebViewHostView: NSView {
         }
         miniaturizeObservers = []
         guard let window else { return }
+        parking?.hostAppeared()
         // WebKit suspends a page in a minimized window after about four
         // minutes, so a kept page waits out the minimize in the parking lot.
         let center = NotificationCenter.default
@@ -110,6 +111,7 @@ public final class WebViewHostView: NSView {
     weak var parking: WebViewParking?
 
     func setWebView(_ webView: WKWebView) {
+        if window != nil { parking?.hostAppeared() }
         // The parking lot can take the page while this host is out of the
         // window, so the same page may need adding back.
         guard webView !== currentWebView || webView.superview !== self else { return }

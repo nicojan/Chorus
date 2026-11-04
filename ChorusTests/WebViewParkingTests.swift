@@ -18,6 +18,13 @@ final class WebViewParkingTests: XCTestCase {
         return window
     }
 
+    /// A parking object past launch, as after the main window opened.
+    private func makeParking() -> WebViewParking {
+        let parking = WebViewParking()
+        parking.hostAppeared()
+        return parking
+    }
+
     private func makeWebView() -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent()
@@ -39,7 +46,7 @@ final class WebViewParkingTests: XCTestCase {
     // MARK: - The lot window
 
     func testAKeptPageOutOfEveryWindowGoesToTheLot() throws {
-        let parking = WebViewParking()
+        let parking = makeParking()
         let page = makeWebView()
 
         parking.keepAlive([page])
@@ -51,7 +58,7 @@ final class WebViewParkingTests: XCTestCase {
     }
 
     func testTheLotWindowIsInvisibleOffScreenAndStaysWhenTheAppHides() throws {
-        let parking = WebViewParking()
+        let parking = makeParking()
         parking.keepAlive([makeWebView()])
         let lot = try XCTUnwrap(parking.lotWindowForTesting)
 
@@ -70,7 +77,7 @@ final class WebViewParkingTests: XCTestCase {
     }
 
     func testParkedPagesLayOutAtThePageAreasSize() throws {
-        let parking = WebViewParking()
+        let parking = makeParking()
         let page = makeWebView()
         parking.keepAlive([page])
 
@@ -79,8 +86,20 @@ final class WebViewParkingTests: XCTestCase {
         XCTAssertEqual(page.frame.size, CGSize(width: 900, height: 640))
     }
 
-    func testNoPageNoLotWindow() {
+    func testNoLotWindowBeforeAHostIsInAWindow() {
         let parking = WebViewParking()
+        let page = makeWebView()
+
+        parking.keepAlive([page])
+        XCTAssertNil(parking.lotWindowForTesting)
+        XCTAssertNil(page.superview)
+
+        parking.hostAppeared()
+        XCTAssertTrue(parking.isParked(page))
+    }
+
+    func testNoPageNoLotWindow() {
+        let parking = makeParking()
         parking.keepAlive([])
         XCTAssertNil(parking.lotWindowForTesting)
     }
@@ -88,7 +107,7 @@ final class WebViewParkingTests: XCTestCase {
     // MARK: - Keeping and dropping
 
     func testAKeptPageIgnoresOcclusionAndGetsItBackWhenDropped() throws {
-        let parking = WebViewParking()
+        let parking = makeParking()
         let page = makeWebView()
         try XCTSkipIf(occlusionDetection(of: page) == nil, "WebKit has no occlusion switch")
         XCTAssertEqual(occlusionDetection(of: page), true)
@@ -105,7 +124,7 @@ final class WebViewParkingTests: XCTestCase {
     func testAKeptPageShownInAWindowIsNotTaken() {
         let window = makeWindow()
         defer { window.close() }
-        let parking = WebViewParking()
+        let parking = makeParking()
         let shown = makeWebView()
         let host = NSView(frame: window.contentView!.bounds)
         window.contentView!.addSubview(host)
@@ -119,7 +138,7 @@ final class WebViewParkingTests: XCTestCase {
     func testReleaseParksAKeptPageAndRemovesAnyOther() {
         let window = makeWindow()
         defer { window.close() }
-        let parking = WebViewParking()
+        let parking = makeParking()
         let kept = makeWebView()
         let other = makeWebView()
         let host = NSView()
@@ -140,7 +159,7 @@ final class WebViewParkingTests: XCTestCase {
     func testSwitchingAwayParksAKeptPageAndRemovesAnOrdinaryOne() {
         let window = makeWindow()
         defer { window.close() }
-        let parking = WebViewParking()
+        let parking = makeParking()
         let host = makeHost(in: window, parking: parking)
         let chat = makeWebView()
         let ordinary = makeWebView()
@@ -160,7 +179,7 @@ final class WebViewParkingTests: XCTestCase {
     func testAHostTakesBackAPageTheLotParkedWhileItWasAway() {
         let window = makeWindow()
         defer { window.close() }
-        let parking = WebViewParking()
+        let parking = makeParking()
         let host = WebViewHostView(frame: window.contentView!.bounds)
         host.parking = parking
         let chat = makeWebView()
@@ -178,7 +197,7 @@ final class WebViewParkingTests: XCTestCase {
     func testARemovedHostHandsItsPageToTheLot() {
         let window = makeWindow()
         defer { window.close() }
-        let parking = WebViewParking()
+        let parking = makeParking()
         let host = makeHost(in: window, parking: parking)
         let chat = makeWebView()
         parking.keepAlive([chat])
@@ -192,7 +211,7 @@ final class WebViewParkingTests: XCTestCase {
     func testAKeptPageWaitsOutAMinimizeInTheLot() {
         let window = makeWindow()
         defer { window.close() }
-        let parking = WebViewParking()
+        let parking = makeParking()
         let host = makeHost(in: window, parking: parking)
         let chat = makeWebView()
         parking.keepAlive([chat])
@@ -208,7 +227,7 @@ final class WebViewParkingTests: XCTestCase {
     func testAnOrdinaryPageStaysPutThroughAMinimize() {
         let window = makeWindow()
         defer { window.close() }
-        let parking = WebViewParking()
+        let parking = makeParking()
         let host = makeHost(in: window, parking: parking)
         let page = makeWebView()
         host.setWebView(page)
@@ -260,7 +279,7 @@ final class WebViewParkingTests: XCTestCase {
     /// same page freezes on macOS 26 and later; that half is only printed,
     /// since older systems don't suspend it.
     func testAParkedPageKeepsRunning() async throws {
-        let parking = WebViewParking()
+        let parking = makeParking()
         let page = """
         <html><body><script>
         window.maxGap = 0; let last = Date.now();

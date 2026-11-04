@@ -39,6 +39,10 @@ public final class WebViewParking {
     private var lotWindow: NSWindow?
     private var lotView: WebViewParkingLotView?
     private var pageSize = CGSize(width: 1024, height: 700)
+    /// False until a page host is in a window. SwiftUI opens the main window
+    /// at launch only when no other window is up, so the lot window must not
+    /// exist before it.
+    private var isReady = false
 
     public init() {}
 
@@ -76,7 +80,7 @@ public final class WebViewParking {
     /// Takes back a page its host stopped showing: a kept page goes into the
     /// lot, any other leaves the window.
     public func release(_ webView: WKWebView) {
-        if isKept(webView) {
+        if isReady, isKept(webView) {
             lot.park(webView)
         } else {
             webView.removeFromSuperview()
@@ -102,12 +106,21 @@ public final class WebViewParking {
         lotWindow?.setContentSize(size)
     }
 
+    /// A page host is in a window, so the main window is up and the lot
+    /// window may open.
+    func hostAppeared() {
+        guard !isReady else { return }
+        isReady = true
+        parkLooseViews()
+    }
+
     /// The lot window, for tests.
     var lotWindowForTesting: NSWindow? { lotWindow }
 
     /// Moves each kept page that is out of every window into the lot. A page a
     /// host shows in a window stays where it is.
     private func parkLooseViews() {
+        guard isReady else { return }
         let loose = kept.values.compactMap(\.view).filter { $0.window == nil }
         guard !loose.isEmpty else { return }
         let lotView = lot
