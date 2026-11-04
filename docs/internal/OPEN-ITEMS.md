@@ -1,6 +1,27 @@
 # Open items
 
-## Open: WhatsApp "database error", seen again on 1.5.32
+## Open: WhatsApp "database error", cause found 2026-11-03, fix on `fix/whatsapp-hidden-suspension`
+
+The fourth sighting, on 1.5.34 on 2026-11-03, happened while Chorus ran. The launch at 16:52 found all 13 WhatsApp databases. At 16:53:17 and again at 16:53:47 the page logged "Attempt to get records from database without an in-progress transaction", and at 16:53:48 WhatsApp's own code deleted signal-storage, wawc_db_enc, model-storage and the rest. The quit before it was clean.
+
+The system log shows why. WebKit had suspended WhatsApp's page process because Chorus took the page out of its window on switching away. Each `evaluateJavaScript` from Chorus woke the process for a moment, and WebKit sent PrepareToSuspend again within milliseconds. Both errors fall inside one of those cycles, and each is followed by a burst of database closes (`tryCloseDatabase`) on WhatsApp's store. Telegram and Perplexity log the same error and recover; WhatsApp wipes itself. This also fits the launch-time sightings, when WhatsApp rebuilds its databases as a hidden preloaded page.
+
+Measured on macOS 27 with a timer page, over 8 to 9 minutes:
+
+- Out of a window, or `isHidden`: suspended within seconds.
+- In a shown window under another view, or at alpha 0: runs.
+- Window covered by other apps: suspended after about 5.5 minutes. `_windowOcclusionDetectionEnabled = false` on the web view stops it.
+- Window minimized: suspended after about 3.8 minutes, occlusion setting or not.
+- Its own borderless window, off screen, alpha 0, occlusion off: runs for 9 minutes, with the app shown and with it hidden.
+- `_alwaysRunsAtForegroundPriority` is gone from WebKit.
+
+The branch keeps chat and Keep Loaded pages running (`WebViewParking`). They ignore occlusion; they sit in a window of their own whenever no host shows them; and the host lends the page on screen to that window while the main window is minimized. That window opens only after the main window, since SwiftUI skips opening the main window at launch when another window is up. A Dock click now brings back a closed or minimized main window, which AppKit stopped doing once a window was always open. Nico checked both Dock cases by hand.
+
+Still to check: a Debug run with WhatsApp linked, left overnight from 19:18 on 2026-11-03. The monitor writes every 10 minutes to the session scratchpad (`overnight.sh`, `overnight.txt`). Pass: WhatsApp's process is never suspended and the page storage log shows no deletions beyond `sw`, `guest-events-storage` and `qpl-storage`. Also read the CPU time the parked pages used.
+
+Ruled out earlier and still out: the quota, the `shouldAbortDueToUnhandledRequestError` lines, and a new WhatsApp build at launch on its own. The 1.5.31 quit wait and the `storage bucket persistence denied` lead are not the cause of this sighting.
+
+### Earlier sightings
 
 Seen 2026-11-02 on 1.5.32, the third time. This time the quit was clean. The quit record shows a menu quit at 23:19 the night before, with writes settled after 367 ms and no `missedQuit`. Chorus was closed for 16.5 hours. It opened at 15:49:55, WebKit saved a new WhatsApp build at 15:49:57, and at 15:50:30 WhatsApp deleted and rebuilt all of its databases in one burst: 5 came back, where a healthy WhatsApp has 13. WebKit logged no IndexedDB or storage failure in that window.
 
@@ -502,7 +523,7 @@ A fully hibernated service is torn down, so no page script runs and it fires no 
 
 Two further edges in the same rule, both live in shipped code:
 
-- **A service added by typing its address is never exempt.** `isNotificationCritical` returns false when `catalogEntryID` is nil, so a self-hosted Mattermost, a second Slack added by hand, or any chat app outside the 74 hibernates like any other page and goes quiet. Anyone who turned the setting on has been silencing those with nothing to tell them: the reassuring "chat apps stay loaded" note in `EditServiceSheet` only draws for catalog services. **A caption for the custom case is added on `main` as of 2026-09-22**, which is the honest minimum; it does not make the behaviour right, it stops it being silent.
+- **A service added by typing its address is never exempt.** `isNotificationCritical` returns false when `catalogEntryID` is nil, so a self-hosted Mattermost, a second Slack added by hand, or any chat app outside the 74 hibernates like any other page and goes quiet. Anyone who turned the setting on has been silencing those with nothing to tell them: the reassuring "chat apps stay loaded" note in `EditServiceSheet` only draws for catalog services. **A caption for the custom case is added on `main` as of 2026-09-22**, which is the honest minimum; it does not make the behaviour right, it stops it being silent. **Corrected 2026-11-03:** `isNotificationCritical` also matches the page's host against the catalog, so a WhatsApp, Slack or Discord added by typing its address counts as chat. Only a self-hosted chat matches nothing; Keep Loaded covers those.
 - **The rule is over-inclusive too.** LinkedIn and Zoom sit in `Messaging`, so they stay resident for the life of the process whatever you set, which is memory spent for very little alert value.
 
 What would make a default-on defensible is a behavioural exemption rather than a categorical one: the app already sees every notification a page posts through the `chorusNotification` handler, so "this service actually pushed something in the last week" is a fact it can hold, and it covers custom services, which no category ever will. That needs the data collected first and is not 1.5.20 work.
@@ -510,6 +531,8 @@ What would make a default-on defensible is a behavioural exemption rather than a
 And soft hibernation does not help here. It suspends media and lets WebKit drop GPU and compositor resources while the WebContent process stays up, so the multi-GB figure is untouched. The page has to stop running for that memory to come back, and a page that has stopped running cannot notify you. That trade is real and cannot be designed away.
 
 **A memory watch, log only (PR #36).** The sum above hides one page that climbs, and reading one WebContent process at a time shows it. On 2026-10-01 a single Chorus WebContent process went from 154 MB at 18:00 to 1.6 GB at 18:28 and 2.2 GB at 18:30, 1.5 GB of it `WebKit Malloc` (`footprint -p`) and 41 MB of WebAssembly. That is one process on one evening on macOS 27, and the service is a guess: the WebKit logs hide URLs, and WhatsApp Web is only the likeliest of the six. The WhatsApp app sat at about 460 MB on the same machine.
+
+**Removed on `fix/whatsapp-hidden-suspension`, 2026-11-03 (`cb69a81`).** The watch never answered its question: the system log keeps its notice lines for a few hours, so on 2026-11-03 only 13:17 to 18:07 survived. In that window no page crossed the rebuild line, and the largest was WhatsApp at 902 MB while it rebuilt after a relink. To measure a climb over days, write readings to a file, as the quit record does.
 
 So PR #36 measures before it acts. Merged 2026-10-18 for the release after 1.5.28. Every five minutes `AppState.logMemoryWatch` logs each page's footprint, read with `proc_pid_rusage` on the pid from `_webProcessIdentifier` (SPI, probed), under the service's catalog id and its WebContent pid. The pid splits two accounts of one service, and a new pid means the process was swapped or crashed, not that the page shrank. It also logs when a page would be rebuilt (`WebViewPool.wouldRebuild`): past both 1.5 GB and twice its baseline, out of sight for ten minutes counted from when the user switched away inside Chorus (`ServiceVisits`), and not the selected service, pinned, Keep Loaded, capturing, audible or holding tabs. "Out of sight" means not selected: a hidden window or the lock screen still reads 0 s, which undercounts. When a page counts, its footprint becomes its new baseline (`WebViewPool.memoryWatchPass`), so a page that settled heavy counts once rather than every pass. A real rebuild would restart the page small and count again sooner, so the number of "would rebuild" lines is a floor; read the five-minute footprint series for how often a rebuild would really happen. Nothing is rebuilt. Read it back with `/usr/bin/log show --predicate 'subsystem == "com.nicojan.Chorus" AND eventMessage BEGINSWITH "Memory watch"'` (in zsh, plain `log` is a builtin). Checked live on a Debug build on 2026-10-18: one line per page after five minutes, the pids matched the WebContent processes the app started.
 
