@@ -17,7 +17,15 @@ Measured on macOS 27 with a timer page, over 8 to 9 minutes:
 
 The branch keeps chat and Keep Loaded pages running (`WebViewParking`). They ignore occlusion; they sit in a window of their own whenever no host shows them; and the host lends the page on screen to that window while the main window is minimized. That window opens only after the main window, since SwiftUI skips opening the main window at launch when another window is up. A Dock click now brings back a closed or minimized main window, which AppKit stopped doing once a window was always open. Nico checked both Dock cases by hand.
 
-Still to check: a Debug run with WhatsApp linked, left overnight from 19:18 on 2026-11-03. The monitor writes every 10 minutes to the session scratchpad (`overnight.sh`, `overnight.txt`). Pass: WhatsApp's process is never suspended and the page storage log shows no deletions beyond `sw`, `guest-events-storage` and `qpl-storage`. Also read the CPU time the parked pages used.
+Overnight Debug run, 19:19 on 2026-11-03 to 05:42 on 2026-11-04, Chorus in the background: passed. In 63 ten-minute samples WebKit sent PrepareToSuspend to other pages every time and never to WhatsApp's process (pid 67607). The page storage log has no WhatsApp line after the usual launch set (`sw`, `guest-events-storage`, `qpl-storage`, 18:58 to 19:04). At 05:44 WhatsApp's origin still held all 13 databases and was writing them. The quit at 05:45 settled in 687 ms. CPU: WhatsApp's page used 11.7 minutes over 10.4 hours, about 2% of one core, steady from start to end; each other kept page used under 1.5 minutes; footprint 862 to 919 MB.
+
+Still to check: a Release build, a Sparkle relaunch with the parking window open, and that window in Mission Control and on a second display.
+
+## Open: the main app process uses about 36% of a core while idle
+
+Seen in the overnight run above: the Debug app's own process used 232 CPU minutes in 10.75 hours, all on the main thread in SwiftUI layout and display (`NSHostingView.layout`, `NSAnimationContext`, `FluidSpringAnimation`), so some animation never stops. The demo build, made from main, used 29% over 7 hours, so the parking branch did not cause it. Suspect, not confirmed: the repeating pulse on an unseen count (`CountMotion` in `ServiceIconView.swift`, since 1.5.23), which runs for as long as a count waits. Check by sampling with no waiting counts, or with Reduce Motion on, and compare.
+
+Also seen there, likely harmless: about 20 short-lived WebContent processes a ten-minute sample, each suspended about 17 times. Find out what spawns them (badge fetches for hibernated services are the first guess).
 
 Ruled out earlier and still out: the quota, the `shouldAbortDueToUnhandledRequestError` lines, and a new WhatsApp build at launch on its own. The 1.5.31 quit wait and the `storage bucket persistence denied` lead are not the cause of this sighting.
 
