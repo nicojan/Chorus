@@ -5,6 +5,8 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.5.35] - 2026-11-04
+
 ### Fixed
 
 - WhatsApp no longer signs you out while Chorus is open. When you moved to another service, Chorus took WhatsApp's page out of its window, and macOS froze the page; each time Chorus looked at the page for new messages, macOS woke it for a moment and froze it again. One freeze landed in the middle of a save. WhatsApp took that as broken storage, deleted it and asked you to relink. Covering Chorus with other windows, or minimizing it, did the same after a few minutes. Chat services and services set to Keep Loaded now stay awake in the background in all of these cases, at the cost of a little more battery than a frozen page.
