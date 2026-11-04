@@ -78,7 +78,7 @@ struct WebContentView: View {
             // Everything below the nav row is one card: the page, the loading
             // placeholder and the empty state alike, so the window keeps its
             // shape while a service loads or when there is none.
-            parkedCardContent
+            cardContent
                 .contentCard()
 
         }
@@ -110,14 +110,6 @@ struct WebContentView: View {
                 if !webViewState.isLoading { transitionSnapshot = nil }
             }
         }
-    }
-
-    /// The card's content over the parking lot, which keeps chat and Keep
-    /// Loaded pages in the window while they are off screen. A separate
-    /// property keeps `body`'s modifier chain short for the older compilers.
-    private var parkedCardContent: some View {
-        cardContent
-            .background(WebViewParkingLot(parking: appState.webViewPool.parking))
     }
 
     /// What the card holds: the live page with its snapshot and find bar, the

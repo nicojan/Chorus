@@ -49,7 +49,43 @@ public final class WebViewHostView: NSView {
         super.layout()
         if bounds.width > 0, bounds.height > 0 {
             Self.lastSize = bounds.size
+            parking?.setPageSize(bounds.size)
         }
+    }
+
+    private var miniaturizeObservers: [NSObjectProtocol] = []
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        for observer in miniaturizeObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        miniaturizeObservers = []
+        guard let window else { return }
+        // WebKit suspends a page in a minimized window after about four
+        // minutes, so a kept page waits out the minimize in the parking lot.
+        let center = NotificationCenter.default
+        miniaturizeObservers = [
+            center.addObserver(forName: NSWindow.willMiniaturizeNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.parkForMinimize() }
+            },
+            center.addObserver(forName: NSWindow.didDeminiaturizeNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.returnFromMinimize() }
+            },
+        ]
+    }
+
+    /// Lends a kept page to the parking lot while the window is minimized.
+    func parkForMinimize() {
+        guard let current = currentWebView, current.superview === self,
+              let parking, parking.isKept(current) else { return }
+        parking.release(current)
+    }
+
+    /// Takes the page back after the window comes back.
+    func returnFromMinimize() {
+        guard let current = currentWebView, current.superview !== self else { return }
+        setWebView(current)
     }
 
     /// The rounding of the page's corners, which the host clips to.
