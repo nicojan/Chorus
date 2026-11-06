@@ -23,7 +23,11 @@ Overnight Debug run, 19:19 on 2026-11-03 to 05:42 on 2026-11-04, Chorus in the b
 
 Still to check: the 1.5.35 release build running (only inspected: bundle, signature, notarization), a Sparkle relaunch with the parking window open (Nico's update from 1.5.34 is the first), and that window in Mission Control and on a second display.
 
-## Open: the main app process uses about 36% of a core while idle
+## Fixed on `fix/idle-pulse-cpu`: the main app process uses about 36% of a core while idle
+
+Cause found and fixed 2026-11-05: the pulse on a waiting (red) count. `CountMotion` ran it as a SwiftUI `repeatForever`, so SwiftUI updated the graph every frame, and each update made `NSHostingView.updateWindowContentSizeExtremaIfNecessary` lay out the whole window for its minimum size. Measured on a Debug build with the mock ticker off: 2.6% of a core with no waiting count, 34.4% after `bumpBadge` on two services. The Debug mock ticker raises a count every six seconds, so an unattended Debug run always has a red count; that is why the overnight Debug run showed it so strongly. The release app averaged 21% over 3.5 hours on 2026-11-05 and sat at 0 to 3% once its counts were grey.
+
+Fix: `CountPulse.swift` hosts the count in an `NSHostingController` (no sizing options) inside a layer-backed view and pulses that layer with a `CABasicAnimation`. After: 1.2 to 1.9% with two counts pulsing. Gotcha hit on the way: `NSHostingView.fittingSize` is 0 by 0 with `sizingOptions = []`, which collapsed the badge's frame and clipped it at the rail's edge; size it with `NSHostingController.sizeThatFits(in:)` (pinned by `testPulsingBadgeKeepsTheStillBadgesFrame`). Seen live in the Debug build: red badges whole, on their corners, pulsing about their centers. The named-row count (`SidebarCount`) is pinned by a size test but not seen pulsing live (the Debug store is on the hybrid layout). Not yet checked: the release build over a full day.
 
 Seen in the overnight run above: the Debug app's own process used 232 CPU minutes in 10.75 hours, all on the main thread in SwiftUI layout and display (`NSHostingView.layout`, `NSAnimationContext`, `FluidSpringAnimation`), so some animation never stops. The demo build, made from main, used 29% over 7 hours, so the parking branch did not cause it. Suspect, not confirmed: the repeating pulse on an unseen count (`CountMotion` in `ServiceIconView.swift`, since 1.5.23), which runs for as long as a count waits. Check by sampling with no waiting counts, or with Reduce Motion on, and compare.
 

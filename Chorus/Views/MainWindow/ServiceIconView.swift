@@ -305,26 +305,18 @@ struct SidebarCount: View {
 /// How a count moves: a quick flash when it goes up, and a slow pulse while
 /// it waits to be seen (see `BadgeManager.attentionIDs`). Under Reduce Motion
 /// it stays still; the red of a waiting count still marks it.
+///
+/// The pulse runs in Core Animation (`CountPulse`), not as a SwiftUI
+/// `repeatForever`, which cost about a third of a core while a count waited.
 private struct CountMotion: ViewModifier {
     let count: Int
     let needsAttention: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isFlashing = false
-    @State private var isPulsing = false
 
     func body(content: Content) -> some View {
         content
-            // One scale each, so the flash's spring never takes over the
-            // pulse's repeating animation and leaves it frozen part way.
-            .scaleEffect(isPulsing ? 1.12 : 1)
             .scaleEffect(isFlashing ? 1.25 : 1)
-            .onChange(of: reduceMotion) { _, reduced in
-                if reduced {
-                    isPulsing = false
-                } else if needsAttention {
-                    startPulse()
-                }
-            }
             .onChange(of: count) { old, new in
                 guard new > old, !reduceMotion else { return }
                 withAnimation(.spring(response: 0.16, dampingFraction: 0.45)) { isFlashing = true }
@@ -333,18 +325,6 @@ private struct CountMotion: ViewModifier {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { isFlashing = false }
                 }
             }
-            .onChange(of: needsAttention, initial: true) { _, waiting in
-                guard !reduceMotion else { isPulsing = false; return }
-                if waiting {
-                    startPulse()
-                } else {
-                    withAnimation(.easeOut(duration: 0.2)) { isPulsing = false }
-                }
-            }
-    }
-
-    private func startPulse() {
-        withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) { isPulsing = true }
     }
 }
 
@@ -352,7 +332,10 @@ extension View {
     /// Flashes this count when it goes up and pulses it while it waits to be
     /// seen. See `CountMotion`.
     func countMotion(_ count: Int, needsAttention: Bool) -> some View {
-        modifier(CountMotion(count: count, needsAttention: needsAttention))
+        // The pulse hosts `self`, a whole view, rather than a modifier's
+        // content, which only draws inside SwiftUI's own graph.
+        AttentionPulse(isOn: needsAttention, content: self)
+            .modifier(CountMotion(count: count, needsAttention: needsAttention))
     }
 }
 
