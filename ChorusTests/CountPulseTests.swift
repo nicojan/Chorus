@@ -35,6 +35,15 @@ final class CountPulseTests: XCTestCase {
         XCTAssertEqual(view.controller.sizingOptions, [])
     }
 
+    /// The hosted count ignores the window's safe area. In the tab bar, which
+    /// sits in the titlebar band, the inset pushed a red count down under its
+    /// icon.
+    @MainActor
+    func testHostedCountIgnoresTheSafeArea() {
+        let view = PulseView(rootView: Text("3"))
+        XCTAssertEqual(view.controller.safeAreaRegions, [])
+    }
+
     /// A pulsing badge takes the size a still one takes. Measured with
     /// `fittingSize`, the hosted badge came out 0 by 0, and the red count
     /// drew from its corner and was cut off by the rail. `CountPulse` is used
