@@ -83,33 +83,30 @@ final class NotificationManager {
         catalogEntry: ServiceCatalogEntry?
     ) async {
         var interval = 5
-        var tick = 0
         var unchangedCycles = 0
 
         while !Task.isCancelled {
-            try? await Task.sleep(for: .seconds(1))
+            // Sleeps the whole interval. It used to wake every second to count
+            // up to it, five to thirty times as often as it read anything.
+            try? await Task.sleep(for: .seconds(interval))
             guard let manager = weakSelf(), let webView = weakWebView(), !Task.isCancelled else { break }
 
-            tick += 1
+            let previousCount = manager.badgeManager.rawCount(for: instanceID)
+            // Authoritative source (DOM selector if defined, else title).
+            // resetToZero: true — the user is looking, so an empty inbox
+            // clearing to 0 is correct.
+            await manager.pollPrimaryCount(webView: webView, instanceID: instanceID, isMuted: isMuted(), showBadge: showBadge(), catalogEntry: catalogEntry, resetToZero: true)
+            let newCount = manager.badgeManager.rawCount(for: instanceID)
 
-            if tick % interval == 0 {
-                let previousCount = manager.badgeManager.rawCount(for: instanceID)
-                // Authoritative source (DOM selector if defined, else title).
-                // resetToZero: true — the user is looking, so an empty inbox
-                // clearing to 0 is correct.
-                await manager.pollPrimaryCount(webView: webView, instanceID: instanceID, isMuted: isMuted(), showBadge: showBadge(), catalogEntry: catalogEntry, resetToZero: true)
-                let newCount = manager.badgeManager.rawCount(for: instanceID)
-
-                if newCount == previousCount {
-                    unchangedCycles += 1
-                    if unchangedCycles >= 120 {
-                        interval = min(interval + 5, 30)
-                        unchangedCycles = 0
-                    }
-                } else {
-                    interval = 5
+            if newCount == previousCount {
+                unchangedCycles += 1
+                if unchangedCycles >= 120 {
+                    interval = min(interval + 5, 30)
                     unchangedCycles = 0
                 }
+            } else {
+                interval = 5
+                unchangedCycles = 0
             }
         }
     }
