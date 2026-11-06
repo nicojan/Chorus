@@ -3,6 +3,14 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- A red count in the tab bar sat under its icon instead of on the icon's top corner, and the red count beside a space's name sat low. This came with 1.5.36: to save processor time, a red count is now drawn apart from the rest of the window, and that drawing kept clear of the window's title bar, where the tab bar sits. Red counts now sit where grey ones do.
+- While a download of unknown size runs, the turning ring on the downloads button no longer makes Chorus redraw the whole window on every frame. It now turns the same way the red count pulses, in Core Animation, and looks the same.
+- The service you are looking at no longer wakes Chorus every second to check whether it is time to read its unread count. Chorus now waits the full five to thirty seconds between reads.
+
 ## [1.5.36] - 2026-11-06
 
 ### Changed
