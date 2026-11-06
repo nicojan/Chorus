@@ -271,15 +271,11 @@ extension View {
     func navCircle() -> some View {
         let sized = frame(width: ChorusNav.buttonSize, height: ChorusNav.buttonSize)
             .contentShape(Circle())
-        #if compiler(>=6.2)
         if #available(macOS 26, *) {
             sized.glassEffect(.regular.interactive(), in: Circle()).circleEdge()
         } else {
             sized.background(.regularMaterial, in: Circle()).circleEdge()
         }
-        #else
-        sized.background(.regularMaterial, in: Circle()).circleEdge()
-        #endif
     }
 
     fileprivate func circleEdge() -> some View {
