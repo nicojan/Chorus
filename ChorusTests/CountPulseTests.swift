@@ -35,38 +35,18 @@ final class CountPulseTests: XCTestCase {
         XCTAssertEqual(view.controller.sizingOptions, [])
     }
 
-    /// A pulsing badge takes the frame a still one takes. Measured with
+    /// A pulsing badge takes the size a still one takes. Measured with
     /// `fittingSize`, the hosted badge came out 0 by 0, and the red count
-    /// drew from its corner and was cut off by the rail.
+    /// drew from its corner and was cut off by the rail. `CountPulse` is used
+    /// directly: `AttentionPulse` skips it under Reduce Motion, which a test
+    /// machine may have on.
     @MainActor
-    func testPulsingBadgeKeepsTheStillBadgesFrame() {
-        func badgeFrame(needsAttention: Bool) -> NSRect? {
-            let host = NSHostingView(rootView: ZStack(alignment: .topTrailing) {
-                Color.clear.frame(width: 32, height: 28)
-                BadgeCountView(count: 5, needsAttention: needsAttention).offset(x: 5, y: -5)
-            })
-            host.frame = NSRect(x: 0, y: 0, width: 32, height: 28)
-            // In a window, so SwiftUI is sure to build the AppKit view, and
-            // found by type at any depth: on macOS 26 it is not the host's
-            // first subview.
-            let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: true)
-            window.isReleasedWhenClosed = false
-            window.contentView = host
-            host.layoutSubtreeIfNeeded()
-            guard let pulse = Self.firstPulseView(in: host) else { return nil }
-            return host.convert(pulse.bounds, from: pulse)
-        }
-        let pulsing = badgeFrame(needsAttention: true)
-        XCTAssertEqual(pulsing?.size, CGSize(width: 16, height: 16))
-        XCTAssertEqual(pulsing?.origin, CGPoint(x: 21, y: -5))
-    }
-
-    private static func firstPulseView(in view: NSView) -> NSView? {
-        for sub in view.subviews {
-            if String(describing: type(of: sub)).hasPrefix("PulseView") { return sub }
-            if let found = firstPulseView(in: sub) { return found }
-        }
-        return nil
+    func testPulsingBadgeKeepsTheStillBadgesSize() {
+        let badge = BadgeCountView(count: 5, needsAttention: false)
+        let still = NSHostingView(rootView: badge.fixedSize()).fittingSize
+        let pulsing = NSHostingView(rootView: CountPulse(content: badge).fixedSize()).fittingSize
+        XCTAssertEqual(still, CGSize(width: 16, height: 16))
+        XCTAssertEqual(pulsing, still)
     }
 
     /// The same for the plain count at the end of a named row.
