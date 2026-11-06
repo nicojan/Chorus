@@ -5,10 +5,7 @@ are all welcome.
 
 ## Build and test
 
-You will need macOS 14 or later, Xcode 16 or newer, and XcodeGen
-(`brew install xcodegen`). Xcode 15 cannot open the project: the file is in the
-format Xcode 16 introduced, and older versions refuse it outright rather than
-warning you.
+You will need macOS 15.6 or later, Xcode 26 or newer, and XcodeGen (`brew install xcodegen`). Xcode 16 cannot build Chorus: the code calls the macOS 26 SDK for the glass window styles.
 
 ```sh
 xcodegen generate
@@ -17,14 +14,7 @@ xcodebuild test -project Chorus.xcodeproj -scheme Chorus -destination 'platform=
 
 You can also open `Chorus.xcodeproj` in Xcode and run the Chorus scheme.
 
-CI builds with Xcode 16.2, whose compiler rejects some code that newer Xcode accepts. Six cases so far:
-
-- A private stored property in a View makes its memberwise initialiser private, so another file cannot build the view.
-- An overloaded method passed to `contains(where:)` reads as a throwing one. Pass a closure.
-- `NSItemProvider`'s `registerDataRepresentation` loader is taken as main-actor bound. Build the provider with `NSItemProvider(item:typeIdentifier:)`.
-- A View's static property cannot be read from a `nonisolated` function. Mark the property `nonisolated`.
-- A main-actor function passed by name to `forEach` reads as nonisolated and throwing. Call it in a `for` loop.
-- A static member of a generic View, read with a placeholder such as `GroupBox<EmptyView>.barEndPadding`, fails with "generic parameter could not be inferred". Keep such a value in a plain enum beside the view.
+CI runs the suite on macOS 15 and macOS 26, each with the newest Xcode it has. SwiftData acts differently on the two, so a change that passes on your Mac can still fail in CI on the other.
 
 ## Making a change
 

@@ -5,7 +5,7 @@ Notion, ChatGPT, and more) into one window, each with its own fully isolated
 session. A lightweight, WebKit-based alternative to Chromium apps like Rambox
 and Franz, built for Apple Silicon.
 
-**[Download the latest release](https://github.com/nicojan/Chorus/releases/latest)** (macOS 14 or later), or install it with Homebrew:
+**[Download the latest release](https://github.com/nicojan/Chorus/releases/latest)** (macOS 15 or later; on macOS 14, use [1.5.35](https://github.com/nicojan/Chorus/releases/tag/v1.5.35)), or install it with Homebrew:
 
 ```sh
 brew install --cask nicojan/tap/chorus
@@ -67,7 +67,7 @@ with the source open under the MIT license.
 | Price | Free, every feature | Freemium | Freemium; free tier caps at 3 services |
 | Open source | Yes (MIT) | No | No |
 | Engine | Native WebKit | Electron | Electron |
-| Platforms | macOS 14+ | Windows, macOS, Linux | Windows, macOS, Linux |
+| Platforms | macOS 15+ | Windows, macOS, Linux | Windows, macOS, Linux |
 | Preset services | ~70, plus any URL | 700+ | 70+ |
 | Isolated session per service | Yes | Yes | Yes |
 | Spaces / workspaces | Unlimited | Yes | Free tier: 1 |
@@ -92,8 +92,8 @@ To stop the daily check, turn off **Automatically check for updates** in Setting
 
 ## Requirements
 
-- macOS 14 (Sonoma) or later
-- Xcode 16+ / Swift 6
+- macOS 15 (Sequoia) or later
+- Xcode 26 or later, Swift 6.2
 - [XcodeGen](https://github.com/yonsm/XcodeGen) (`brew install xcodegen`). The
   Xcode project is generated from `project.yml`.
 

@@ -67,9 +67,9 @@ Licenses: the notices and license texts for the lists and Dark Reader are packag
 ## Tests and CI
 
 - App-hosted tests that touch engine internals use `@testable import ChorusEngine` next to `@testable import Chorus`. Debug builds the package with testability.
-- `swift test` at the root runs the package tests. CI runs it in the "Engine package tests" step on macOS 14 and 15. Locally, give SwiftPM a scratch folder outside the repo so `.build` stays out of it (it is ignored anyway).
+- `swift test` at the root runs the package tests. CI runs it in the "Engine package tests" step on macOS 15 and 26. Locally, give SwiftPM a scratch folder outside the repo so `.build` stays out of it (it is ignored anyway).
 - CI's "Every Swift file belongs to a target" step scans only `Chorus` and `ChorusTests`. The package needs no such check: SwiftPM compiles every Swift file under the target folder.
-- `Package.swift` stays at tools version 6.0, because CI's macOS 14 job builds with Xcode 16.2, which reads nothing newer.
+- `Package.swift` stays at tools version 6.0. Nothing needs newer, and an app that pins the engine reads the manifest with its own toolchain.
 
 ## Public API
 
@@ -133,6 +133,7 @@ Engine versions are Chorus's own release tags, `v1.5.32` and on. SwiftPM reads `
 
 List every change to the public API here, under the release that ships it, including additions. Another app reads this before moving its pin.
 
+- **1.5.36**: The package needs macOS 15 (`platforms: [.macOS(.v15)]`). SwiftPM refuses it in a package that declares macOS 14, so raise your own platform to `.v15` before moving the pin past 1.5.35. The public API is unchanged.
 - **1.5.35**: Adds `WebViewParking`, a type with no public members, the pool's `parking` property, and a `parking` argument on `WebViewContainer` that defaults to nil. WebKit suspends a page within seconds when it is out of a window or hidden, about five minutes after other windows cover its window, and about four minutes after its window is minimized. A page suspended in the middle of a write can lose its IndexedDB data. The pool keeps chat and Keep Loaded pages running: they ignore window occlusion, and while no host shows them they sit in a window of their own, off screen and invisible. Pass the pool's `parking` to the container so it can hand those pages over. Without it, pages leave the window as before. Removes `memoryReadings(now:)`, `MemoryReading` and `wouldRebuild`, the log-only memory watch. Its log lines aged out within hours, so it could not show a page climbing over days.
 - **1.5.33**: Adds `PageStorageEvent` and `UserScriptManager.onStorageEvent`. Every page now gets a script that watches IndexedDB and a message handler, `chorusStorageEvent`, that reports to `onStorageEvent`. Leave it nil and the events go nowhere.
 - **1.5.32**: First release as a package. The API above is the starting point. Before it, the same code lived in the app target and took `ServiceInstance` where it now takes `WebSurface`.
