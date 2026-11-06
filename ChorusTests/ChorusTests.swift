@@ -2466,16 +2466,6 @@ final class ChorusTests: XCTestCase {
             urlAtClose: nil, urlNow: nil, isLoading: false))
     }
 
-    func testKnownAuthGatewaysAreRecognisedIncludingSubdomains() {
-        XCTAssertTrue(WebViewCoordinator.isAuthHost("login.microsoftonline.com"))
-        XCTAssertTrue(WebViewCoordinator.isAuthHost("accounts.google.com"))
-        // A subdomain of a gateway still counts.
-        XCTAssertTrue(WebViewCoordinator.isAuthHost("eu.login.microsoftonline.com"))
-        // An ordinary link target does not.
-        XCTAssertFalse(WebViewCoordinator.isAuthHost("teams.cloud.microsoft"))
-        XCTAssertFalse(WebViewCoordinator.isAuthHost("example.com"))
-    }
-
     /// Signed-out Trello's "Log in" is a plain link to id.atlassian.com with a
     /// `continue` back to trello.com. Routed out as a link that leaves the
     /// service, the sign-in went to the browser and Trello could never sign in.
@@ -3252,8 +3242,6 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(muted.micMuted)
     }
 
-    /// A bundled brand icon is found by `brand-<catalog id>`; these three
-    /// once carried short names (`brand-gchat`) and were never shown.
     /// A chat app added by its address is still a chat app: it stays loaded and
     /// the badge sweep leaves it alone.
     func testCustomChatServiceIsNotificationCriticalByHost() {
@@ -3264,6 +3252,8 @@ final class ChorusTests: XCTestCase {
                        "a catalog service outside Messaging is not")
     }
 
+    /// A bundled brand icon is found by `brand-<catalog id>`; these three
+    /// once carried short names (`brand-gchat`) and were never shown.
     func testGoogleBrandIconsMatchTheirCatalogIDs() {
         for id in ["google-chat", "google-calendar", "google-drive"] {
             XCTAssertNotNil(ServiceCatalog.shared.entry(for: id), id)
@@ -3514,6 +3504,7 @@ final class ChorusTests: XCTestCase {
         XCTAssertTrue(WebViewCoordinator.isAuthHost("eu.login.microsoftonline.com"))
         // Ordinary product hosts are not auth gateways.
         XCTAssertFalse(WebViewCoordinator.isAuthHost("mail.google.com"))
+        XCTAssertFalse(WebViewCoordinator.isAuthHost("teams.cloud.microsoft"))
         XCTAssertFalse(WebViewCoordinator.isAuthHost("docs.google.com"))
         XCTAssertFalse(WebViewCoordinator.isAuthHost("example.com"))
     }
