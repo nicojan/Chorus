@@ -1834,7 +1834,7 @@ final class AppState {
         // `.cascade` rule, because the rule does not mean the same thing on
         // every OS. On macOS 15 and 26 deleting the space takes its links with
         // it. On macOS 14 it does not: the links survive with their `space`
-        // nulled, which is the dangling-link state that `reapDanglingLinks`
+        // nulled, which is the dangling-link state that `StoreRepair.repairDanglingLinks`
         // exists to clean up after — and leaving rows for a reaper to find on
         // one OS and not another is not a difference worth carrying.
         //

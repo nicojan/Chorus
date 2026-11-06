@@ -27,7 +27,7 @@ final class SpaceServiceLink {
     /// with nobody on a current machine able to reproduce it.
     ///
     /// The cost is that every read has to cope with `nil`. That is honest: a
-    /// dangling link has always been possible here (see `reapDanglingLinks`),
+    /// dangling link has always been possible here (see `StoreRepair.repairDanglingLinks`),
     /// and the code was already guarding for it by hand with
     /// `modelContext != nil` checks. `nil` now means the same thing those
     /// guards meant — the other end is gone, skip this link.
