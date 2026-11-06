@@ -751,14 +751,6 @@ public final class WebViewPool {
         }
     }
 
-    /// Mutes or unmutes a service's live microphone (host-side, so the far end
-    /// sees it). No-op without a live capturing web view.
-    func setMicrophoneMuted(_ muted: Bool, for id: UUID) {
-        for webView in allWebViews(for: id) where webView.microphoneCaptureState != WKMediaCaptureState.none {
-            webView.setMicrophoneCaptureState(muted ? .muted : .active, completionHandler: nil)
-        }
-    }
-
     /// Mutes every service whose microphone is currently live. Returns how many
     /// were muted, so a caller can tell when nothing was live.
     @discardableResult

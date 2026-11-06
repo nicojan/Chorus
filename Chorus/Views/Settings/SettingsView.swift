@@ -317,13 +317,8 @@ struct GeneralSettingsView: View {
 struct NotificationSettingsView: View {
     @Query private var services: [ServiceInstance]
     @Query(sort: \Space.sortOrder) private var spaces: [Space]
-    @Query private var preferences: [AppPreferences]
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
-
-    private var prefs: AppPreferences {
-        preferences.first ?? AppPreferences()
-    }
 
     var body: some View {
         Form {

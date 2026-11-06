@@ -152,8 +152,8 @@ final class ServiceInstance {
     var userAgent: String?
     var dataStoreIdentifier: UUID
     /// Per-service page zoom (e.g. 1.0 = 100%, 1.25 = 125%). Stored optional
-    /// so SwiftData lightweight migration succeeds on existing rows — read
-    /// sites should use `zoomLevelEffective` which substitutes 1.0 for nil.
+    /// so SwiftData lightweight migration succeeds on existing rows; nil
+    /// means 1.0.
     var pageZoom: Double?
 
     /// Whether this service forwards its web notifications to macOS Notification
@@ -249,9 +249,6 @@ final class ServiceInstance {
     /// The bundle id of the Mac app this service opens, or nil for a web
     /// service. See `NativeApp`.
     var nativeAppBundleID: String? { NativeApp.bundleID(fromServiceURL: url) }
-
-    /// Materialises the storage-optional zoom into a Double (nil → 1.0).
-    var zoomLevelEffective: Double { pageZoom ?? 1.0 }
 
     /// Materialises the storage-optional force-dark flag (nil → false).
     var isForceDarkModeEnabled: Bool { forceDarkMode ?? false }

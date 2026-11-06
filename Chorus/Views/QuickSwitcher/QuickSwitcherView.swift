@@ -8,7 +8,6 @@ import SwiftData
 struct QuickSwitcherView: View {
     @Environment(AppState.self) private var appState
     @Query private var allLinks: [SpaceServiceLink]
-    @Query(sort: \Space.sortOrder) private var spaces: [Space]
     /// Global services have no links, so the link query never sees them.
     @Query(filter: #Predicate<ServiceInstance> { $0.isGlobal == true })
     private var globalServices: [ServiceInstance]

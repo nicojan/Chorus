@@ -58,7 +58,6 @@ struct ServiceRowView: View {
     /// point gutter and 6 points of padding each side, 220 at the default. The
     /// gap between the rail and the web card is the web card's own gutter.
     static let railWidth: CGFloat = 240
-    static let rowWidth: CGFloat = rowWidth(forRail: railWidth)
 
     /// A named row's width in a rail `rail` points wide: less the gutter and
     /// the card's padding.
