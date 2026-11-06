@@ -1,5 +1,15 @@
 # Open items
 
+## Released: 1.5.37 on 2026-11-06, red counts back on the top corner
+
+Published 2026-11-06 as `v1.5.37`, build 50, tag commit `8970b59` (PR #51, merged `824b851`). DMG 13,401,348 bytes, sha256 `784999cde69c2c8e41207c1798602240a7da5b222a79055e486f603b8d528bb2`, app and DMG notarized and stapled, Gatekeeper accepts both. Appcast `2ee717a`, both feeds serve 1.5.37. Cask `b4999ff`, tap `e89ffc6`; brew style, livecheck and audit clean.
+
+- The fix: 1.5.36's Core Animation pulse hosts the count in an `NSHostingController`, which honored the titlebar safe area. The tab bar sits in that band, so red counts drew under their icons and `sizeThatFits` grew by the inset each pass. `safeAreaRegions = []`.
+- The download spinner now turns in Core Animation (`SpinningArc`); checked in an on-screen window, not during a real download.
+- The foreground badge poll sleeps the whole 5 to 30 s interval instead of waking every second.
+- Not done, measure first: the background badge poll wakes each loaded service's web process every 30 s with a JavaScript read. Making it react to title changes would save more, but changes how counts arrive. Only worth it if a day-long idle CPU and energy measurement says so.
+- The Release build itself was not launched (it opens the real store); the fixes were checked in a Debug build of the same code.
+
 ## Released: 1.5.36 on 2026-11-06, macOS 15 required and the idle-CPU fix
 
 Published 2026-11-06 as `v1.5.36`, build 49, tag commit `0f74026`. DMG 13,398,805 bytes, sha256 `0f0c785bf0f96d43ef6c07d3511a32ae31c8b0f308858da252d451aa9ad54258`, app and DMG notarized and stapled, Gatekeeper accepts both. Appcast `2d244ec`: both feeds serve 1.5.36 with `minimumSystemVersion` 15.0.0 and a `<link>`. Cask `b957e5f` here, `cf715d0` in the tap, `depends_on macos: :sequoia`; `brew style`, `livecheck` and `audit --online` clean. Not checked: the release build launched (it would open the real store), a Sparkle update from 1.5.35 on 15 or later, and that a Mac on 14 is not offered 1.5.36 (no 14 machine here; Sparkle's source says it drops the item). Stave still pins 1.5.32 on macOS 14; moving it past 1.5.35 needs `.v15` there first.
