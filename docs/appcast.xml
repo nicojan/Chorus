@@ -3,6 +3,23 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.37</title>
+            <link>https://github.com/nicojan/Chorus/releases/tag/v1.5.37</link>
+            <pubDate>Fri, 06 Nov 2026 14:23:45 -0700</pubDate>
+            <sparkle:version>50</sparkle:version>
+            <sparkle:shortVersionString>1.5.37</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Fixed</h3>
+<ul>
+<li>A red count in the tab bar sat under its icon instead of on the icon's top corner, and the red count beside a space's name sat low. This came with 1.5.36: to save processor time, a red count is now drawn apart from the rest of the window, and that drawing kept clear of the window's title bar, where the tab bar sits. Red counts now sit where grey ones do.</li>
+<li>While a download of unknown size runs, the turning ring on the downloads button no longer makes Chorus redraw the whole window on every frame. It now turns the same way the red count pulses, in Core Animation, and looks the same.</li>
+<li>The service you are looking at no longer wakes Chorus every second to check whether it is time to read its unread count. Chorus now waits the full five to thirty seconds between reads.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.37/Chorus-1.5.37.dmg" length="13401348" type="application/octet-stream" sparkle:edSignature="4oWhFmD3YmXSZG/Cdw7gbdm/mbhJQXs18WOsP9PuF83Lef8l8LlfMiNqLOpswUPEe1doyWnMuurNYitXIx9+BA=="/>
+        </item>
+        <item>
             <title>1.5.36</title>
             <link>https://github.com/nicojan/Chorus/releases/tag/v1.5.36</link>
             <pubDate>Fri, 06 Nov 2026 00:15:14 -0700</pubDate>
