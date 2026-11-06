@@ -1,5 +1,20 @@
 # Open items
 
+## Open: drop macOS 14 in the next release (1.5.36), and remove what only 14 needed
+
+Decided by Nico 2026-11-05. Why: GitHub retired the `macos-14` runner on 2026-11-02 (https://github.blog/changelog/2026-10-01-github-actions-macos-14-runner-image-retirement/). Every macOS 14 job now dies in 1 s with "The configuration 'macos-14-arm64-us-default' is not supported" (seen on run 42165383938, twice). Apple's current releases are 27, 26 and 15, so 14 is out of security support too. No data on how many users run 14: the appcast Worker reads only the Chorus version from the user-agent.
+
+Draft plan, to be checked by the next session before any of it is done:
+
+1. Merge `fix/idle-pulse-cpu` (`27c0f23`, plus a docs commit) into main. macOS 15 CI passed on it; the 14 job could not run. It has not been built with Xcode 16.2; after step 2 that stops mattering.
+2. Raise the minimum to macOS 15: `project.yml` and the `.pbxproj` (`MACOSX_DEPLOYMENT_TARGET`, both targets), `Package.swift` platforms, `LSMinimumSystemVersion` if set, the Homebrew cask's `depends_on macos:`, and `sparkle:minimumSystemVersion` on the 1.5.36 appcast item so 14 users stay on 1.5.35 without being offered an update they cannot run. Check how 1.5.35's item is written and whether earlier items need the tag.
+3. CI: matrix to `macos-15` and `macos-26` (check that label exists). Decide what Xcode each uses. Keep testing on two OSes: the SwiftData differences between 15 and 26 are real (the cascade trap lived on 15).
+4. Debloat. Remove what exists only for macOS 14 or Xcode 16.2, each with evidence it is 14-only: `#available(macOS 15, *)` checks and their fallbacks, the 14-only SwiftData workarounds (read CLAUDE.md's "SwiftData behaves differently" section, and keep any rule that 15 also needs: the cascade and optional-to-one rules are 15 rules too), `#if compiler(>=6.2)` guards only if CI no longer builds with an older compiler (the 15 image's default Xcode may still be 16.x: check before removing), `Package.swift` tools version 6.0 only if every CI Xcode can read a newer one, and the `Sendable` workarounds for Xcode 16 SDKs. Then the wider debloat Nico asked for: dead code, unused files and assets, stale tests. Each removal backed by a build and the full suite.
+5. Docs: CLAUDE.md (CI, SwiftData by OS, engine boundary tools-version line), CONTRIBUTING.md (Xcode version), README system requirements, `docs/internal/ENGINE.md` "Engine API changes by release" (the engine's minimum moves to 15; the other app that pins a Chorus tag has to know), DISTRIBUTION.md if a release step changes.
+6. Release 1.5.36 per `release/DISTRIBUTION.md`: the release notes say it needs macOS 15 and that macOS 14 stays on 1.5.35. Nico signs and notarizes; the rest (DMG, gh release, appcast on both feeds, cask) follows the doc. Public text through the humanizer loop.
+
+Open questions for the review: whether a "last version for 14" notice release is worth it (Nico asked for the drop in the next update, so the draft skips it); whether `macos-26` runners are available on the free plan; whether Xcode 16.2 is still on `macos-15` (it matters only until step 2 lands).
+
 ## Open: WhatsApp "database error", cause found 2026-11-03, fix shipped in 1.5.35 (2026-11-04, PR #48)
 
 Open until a few days on 1.5.35 pass with WhatsApp still linked on Nico's release copy. If it signs out again, read `~/Library/Application Support/Chorus/page-storage-log.jsonl` and `quit-log.jsonl` first, then `/usr/bin/log show --predicate 'eventMessage CONTAINS "sendPrepareToSuspendIPC"'` for the WhatsApp WebContent pid.
