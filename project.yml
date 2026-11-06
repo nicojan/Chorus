@@ -2,7 +2,7 @@ name: Chorus
 options:
   bundleIdPrefix: com.nicojan
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "15.0"
   xcodeVersion: "16.0"
   createIntermediateGroups: true
 
@@ -44,7 +44,7 @@ targets:
         MARKETING_VERSION: "1.5.35"
         CURRENT_PROJECT_VERSION: "48"
         SWIFT_VERSION: "6.0"
-        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
         INFOPLIST_FILE: Chorus/Info.plist
         CODE_SIGN_ENTITLEMENTS: Chorus/Chorus.entitlements
         ENABLE_HARDENED_RUNTIME: true
@@ -82,7 +82,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.nicojan.ChorusTests
         SWIFT_VERSION: "6.0"
-        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
         # Required so the test bundle can be code-signed; without an explicit
         # Info.plist this generates one. (Some XcodeGen versions add it by
         # default and some don't, so set it explicitly.)

@@ -1,6 +1,6 @@
 // swift-tools-version: 6.0
-// 6.0 on purpose: CI's macOS 14 job builds with Xcode 16.2, which reads
-// nothing newer.
+// 6.0 on purpose: nothing here needs newer, and another app that pins this
+// package reads the manifest with its own toolchain.
 import PackageDescription
 
 // ChorusEngine is Chorus's WebKit layer, shared with other apps. Chorus builds
@@ -8,7 +8,7 @@ import PackageDescription
 // URL and pins a release tag with `exact:`. See docs/internal/ENGINE.md.
 let package = Package(
     name: "ChorusEngine",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v15)],
     products: [
         .library(name: "ChorusEngine", targets: ["ChorusEngine"]),
     ],
