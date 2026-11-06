@@ -3,6 +3,25 @@
     <channel>
         <title>Chorus</title>
         <item>
+            <title>1.5.36</title>
+            <link>https://github.com/nicojan/Chorus/releases/tag/v1.5.36</link>
+            <pubDate>Fri, 06 Nov 2026 00:15:14 -0700</pubDate>
+            <sparkle:version>49</sparkle:version>
+            <sparkle:shortVersionString>1.5.36</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Changed</h3>
+<ul>
+<li>Chorus now needs macOS 15 (Sequoia) or later. GitHub has retired the macOS 14 machines this project tests on, and Apple no longer fixes security problems in 14, so testing and support for it end here. On macOS 14, Chorus stays on 1.5.35. That version keeps working, and Chorus will not offer you this update. To install Chorus on a Mac with macOS 14, download <a href="https://github.com/nicojan/Chorus/releases/tag/v1.5.35">1.5.35</a>.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Chorus no longer uses a third of a processor core while a red count waits for you to read it. The slow pulse on that count ran as a SwiftUI animation, which made Chorus redraw the whole window and measure it again on every frame, for as long as the count stayed red. Left overnight with unread messages, Chorus spent hours of processor time on it. The pulse now runs in Core Animation, which macOS draws on its own. It looks the same, and Chorus stays under 2% of a core with or without a red count.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/nicojan/Chorus/releases/download/v1.5.36/Chorus-1.5.36.dmg" length="13398805" type="application/octet-stream" sparkle:edSignature="JNibEJb+zCF6Bsdn14gOG5PjuByJPpd4k1wDHLe1XGBh/6QX+SuUGseIFT096/JrFzuRv3R+guXW7u8U+TRKCw=="/>
+        </item>
+        <item>
             <title>1.5.35</title>
             <pubDate>Wed, 04 Nov 2026 06:09:06 -0700</pubDate>
             <sparkle:version>48</sparkle:version>
