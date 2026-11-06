@@ -1,6 +1,10 @@
 # Open items
 
-## Open: drop macOS 14 in the next release (1.5.36), and remove what only 14 needed
+## Released: 1.5.36 on 2026-11-06, macOS 15 required and the idle-CPU fix
+
+Published 2026-11-06 as `v1.5.36`, build 49, tag commit `0f74026`. DMG 13,398,805 bytes, sha256 `0f0c785bf0f96d43ef6c07d3511a32ae31c8b0f308858da252d451aa9ad54258`, app and DMG notarized and stapled, Gatekeeper accepts both. Appcast `2d244ec`: both feeds serve 1.5.36 with `minimumSystemVersion` 15.0.0 and a `<link>`. Cask `b957e5f` here, `cf715d0` in the tap, `depends_on macos: :sequoia`; `brew style`, `livecheck` and `audit --online` clean. Not checked: the release build launched (it would open the real store), a Sparkle update from 1.5.35 on 15 or later, and that a Mac on 14 is not offered 1.5.36 (no 14 machine here; Sparkle's source says it drops the item). Stave still pins 1.5.32 on macOS 14; moving it past 1.5.35 needs `.v15` there first.
+
+The plan as carried out:
 
 Decided by Nico 2026-11-05. Why: GitHub retired the `macos-14` runner on 2026-11-02 (https://github.blog/changelog/2026-10-01-github-actions-macos-14-runner-image-retirement/). Every macOS 14 job now dies in 1 s with "The configuration 'macos-14-arm64-us-default' is not supported" (run 42165383938, twice). Apple's current releases are 27, 26 and 15, so 14 is out of security support too. No data on how many users run 14: the appcast Worker reads only the Chorus version from the user-agent.
 
@@ -55,7 +59,7 @@ Overnight Debug run, 19:19 on 2026-11-03 to 05:42 on 2026-11-04, Chorus in the b
 
 Still to check: the 1.5.35 release build running (only inspected: bundle, signature, notarization), a Sparkle relaunch with the parking window open (Nico's update from 1.5.34 is the first), and that window in Mission Control and on a second display.
 
-## Fixed on `fix/idle-pulse-cpu`: the main app process uses about 36% of a core while idle
+## Shipped in 1.5.36: the main app process used about 36% of a core while idle
 
 Cause found and fixed 2026-11-05: the pulse on a waiting (red) count. `CountMotion` ran it as a SwiftUI `repeatForever`, so SwiftUI updated the graph every frame, and each update made `NSHostingView.updateWindowContentSizeExtremaIfNecessary` lay out the whole window for its minimum size. Measured on a Debug build with the mock ticker off: 2.6% of a core with no waiting count, 34.4% after `bumpBadge` on two services. The Debug mock ticker raises a count every six seconds, so an unattended Debug run always has a red count; that is why the overnight Debug run showed it so strongly. The release app averaged 21% over 3.5 hours on 2026-11-05 and sat at 0 to 3% once its counts were grey.
 
