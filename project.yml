@@ -32,8 +32,6 @@ targets:
         buildPhase: resources
     resources:
       - path: Chorus/Resources/ServiceCatalog.json
-      - path: Chorus/Resources/NotificationScripts
-        optional: true
     dependencies:
       - package: Sparkle
       - package: ChorusEngine
