@@ -36,9 +36,9 @@ Write plain, direct, active, concrete prose. No marketing gloss, no AI tells.
   settings (for example a version bump), edit both `project.yml` and the
   `.pbxproj` so a later `xcodegen generate` stays consistent.
 - `xcodegen generate` reproduces the checked-in `.pbxproj` byte for byte, so add a new `.swift` file and run it; commit the regenerated project. To ship a file that is not under `Chorus/`, add a `sources:` entry with `buildPhase: resources`. A target-level `resources:` key is not XcodeGen's, and it ignores it silently.
-- CI's macOS 14 job builds with Xcode 16.2, which has no macOS 26 SDK, so `#available(macOS 26, *)` alone does not compile there. Wrap any macOS 26 symbol, such as `NSGlassEffectView` or `.glassEffect`, in `#if compiler(>=6.2)` as well. A stored property holds it as a plain `NSView`, since it cannot name a type the deployment target lacks.
+- The minimum is macOS 15 and the code needs Xcode 26. Guard a macOS 26 symbol, such as `NSGlassEffectView` or `.glassEffect`, with `#available(macOS 26, *)`. A stored property holds it as a plain `NSView`, since it cannot name a type the deployment target lacks.
 - **Do not run the tests while a Debug Chorus is open.** They start a second copy on the same `Chorus-debug` data. Quit the Debug app first, or use `xcodebuild build-for-testing` and let CI run the suite.
-- **Run CI after every commit on a branch, not only before merging.** Xcode 16.2's compiler rejects code that Xcode 26 accepts; the known cases are in `CONTRIBUTING.md` under Build and test. CI starts by itself only on a pull request or a push to main. To run it on a branch with no PR, start it by hand: `gh workflow run test.yml --ref <branch>`.
+- **Run CI after every commit on a branch, not only before merging.** CI runs on macOS 15 and 26, and SwiftData acts differently on each (see below). CI starts by itself only on a pull request or a push to main. To run it on a branch with no PR, start it by hand: `gh workflow run test.yml --ref <branch>`.
 - **Keep a SwiftUI `body` modifier chain short.** The macOS 15 runner's compiler gave up type-checking `ContentView.body` once one more dialog was added, while the dev machine built it fine. Move a dialog or `onChange` group into a `ViewModifier` of its own (see `RailMoveConfirmation`).
 - **Never add `-configuration Release` to that test command.** `ChorusTests` is
   app-hosted, and `ChorusApp.init` builds an `AppState`, so every test run
@@ -57,7 +57,7 @@ The WebKit layer is a Swift package, `ChorusEngine` (root `Package.swift`, sourc
 - Build a `WebSurface` only through `ServiceInstance.webSurface` in `WebViewPool+Services.swift`. Its store is `dataStoreIdentifier`, never the service's id. Checks that need the live model (a deleted service, a Mac app) stay on that side too.
 - Engine resources load through `Bundle.module`, never `Bundle.main`. A missing file turns blocking or dark mode off without an error; a missing resource bundle stops the app at launch, which CI's Release build step checks for.
 - Make a declaration `public` only when Chorus calls it. Add every public API change to "Engine API changes by release" in `docs/internal/ENGINE.md`; another app pins a Chorus tag with `exact:` and reads that list.
-- Keep `Package.swift` at tools version 6.0 for CI's Xcode 16.2.
+- Keep `Package.swift` at tools version 6.0 unless something needs newer: Stave, the other app on the engine, reads the manifest with its own toolchain.
 - **Never take a page out of its window yourself.** Hand it to `WebViewParking.release`. WebKit suspends a page out of a window, and WhatsApp signs out when that cuts off a write; the measurements are in `docs/internal/OPEN-ITEMS.md` under the WhatsApp entry.
 - The engine still carries Chorus names that pages and the logs see (`__chorus*` globals, the `com.nicojan.Chorus` logger subsystem, and others listed in `ENGINE.md`). Changing one changes Chorus's behavior; treat it as a feature, not a rename.
 
@@ -112,30 +112,14 @@ through; write the directory to `/tmp/chorus-real-store-copy` and run it. Copy
 all three files — a store without its `-wal` and `-shm` cannot be opened
 read-only. Never point it at the live store: it migrates in place.
 
-## SwiftData behaves differently on macOS 14, 15 and 26
+## SwiftData behaves differently on macOS 15 and 26
 
-The dev machine is the newest of the three and the most forgiving of all three,
-so it is the worst place to conclude anything. CI runs the suite on macOS 14 and
-15 for this reason; do not delete those jobs to make a red build green.
+The dev machine is the newest and the most forgiving, so it is the worst place to conclude anything. CI runs the suite on macOS 15 and 26 for this reason; do not delete a job to make a red build green. The rules below came from crashes on 14 and 15. Chorus has needed 15 since 1.5.36, but keep them: they are right on every OS, and nobody has shown 15 is safe without them.
 
-- **`.cascade` is not a promise.** Deleting a `Space` takes its
-  `SpaceServiceLink` rows on 15 and 26. On 14 it leaves them with `space` nulled.
-  Delete join rows explicitly rather than leaning on the rule.
-- **A to-one relationship that a cascade must clear has to be optional.** While
-  `SpaceServiceLink.space` and `.service` were not, macOS 15 trapped with
-  "an appropriate default value is not configured" and deleting a space killed
-  the app for five releases. macOS 26 allowed it, which is why nobody saw it.
-- **Do not double-register a model.** Building a join row wires the inverses, so
-  when both ends are in the context the row is already registered and a following
-  `insert` is a second registration — fatal on 14, tolerated on 26. Insert only
-  when `modelContext == nil`, and never `append` to a relationship the
-  initializer already set.
-- **Do not wire detached models to each other.** Fabricating a dangling link from
-  never-inserted objects crashes 14 several different ways. Make a real link and
-  null one end instead.
-- **Older SDKs are missing `Sendable` conformances.** `Schema.Version`,
-  `UNNotificationSettings` and `NSImage` are all unmarked under Xcode 16, which
-  `CONTRIBUTING.md` tells contributors to use.
+- **`.cascade` is not a promise.** Deleting a `Space` takes its `SpaceServiceLink` rows on 15 and 26; on 14 it left them with `space` nulled. Delete join rows explicitly rather than leaning on the rule.
+- **A to-one relationship that a cascade must clear has to be optional.** While `SpaceServiceLink.space` and `.service` were not, macOS 15 trapped with "an appropriate default value is not configured" and deleting a space killed the app for five releases. macOS 26 allowed it, which is why nobody saw it.
+- **Do not double-register a model.** Building a join row wires the inverses, so when both ends are in the context the row is already registered and a following `insert` is a second registration (fatal on 14, tolerated on 26). Insert only when `modelContext == nil`, and never `append` to a relationship the initializer already set.
+- **Do not wire detached models to each other.** Fabricating a dangling link from never-inserted objects crashed 14 several different ways. Make a real link and null one end instead.
 
 ## Releasing
 

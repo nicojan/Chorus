@@ -29,7 +29,7 @@ On Apple Silicon, WebKit processes share optimization with Safari: unified memor
 
 | Requirement         | Value                              |
 |---------------------|------------------------------------|
-| Platform            | macOS 14.0+ (Sonoma)               |
+| Platform            | macOS 15.0+ (Sequoia)              |
 | Architecture        | Apple Silicon (arm64), Intel (x86_64) via Universal Binary |
 | UI Framework        | SwiftUI                            |
 | Web Engine          | WKWebView (WebKit)                 |

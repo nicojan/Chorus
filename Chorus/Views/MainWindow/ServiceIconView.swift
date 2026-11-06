@@ -310,7 +310,6 @@ struct SidebarCount: View {
 /// `repeatForever`, which cost about a third of a core while a count waited.
 private struct CountMotion: ViewModifier {
     let count: Int
-    let needsAttention: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isFlashing = false
 
@@ -335,7 +334,7 @@ extension View {
         // The pulse hosts `self`, a whole view, rather than a modifier's
         // content, which only draws inside SwiftUI's own graph.
         AttentionPulse(isOn: needsAttention, content: self)
-            .modifier(CountMotion(count: count, needsAttention: needsAttention))
+            .modifier(CountMotion(count: count))
     }
 }
 

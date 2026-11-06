@@ -21,6 +21,17 @@ Plan, reviewed 2026-11-05 against the repo, the runner-images READMEs, Sparkle's
 
 Settled in the review: no "last version for 14" notice release. Sparkle already keeps 14 users on 1.5.35 and explains on a manual check, and a 1.5.35.1 would cost a full signed release.
 
+Progress, 2026-11-05 (branch `chore/macos-15`, not merged): steps 1 to 6 done. Main fast-forwarded to `59a2824` and pushed. Minimum, CI, the compiler guards, docs, the CHANGELOG entry. Debloat with Periphery 3.8 (installed by Homebrew) plus a by-hand check of each hit, Release-only paths included: removed `zoomLevelEffective`, `ChorusColor.canvas`, `ServiceRowView.rowWidth`, `CountMotion.needsAttention`, two unused `@Query`s, the engine's internal `setMicrophoneMuted`, the catalog's unread `icon` field (75 lines of JSON), the missing `NotificationScripts` entry in `project.yml`, and one duplicate auth-host test. Asset catalog, bundled resources and test helpers: all in use. Local suite 500 tests, 0 failures. CI on macos-26 caught `testPulsingBadgeKeepsTheStillBadgesFrame` reading the hosting view's first subview, which is not the pulse view there; the test now searches by type.
+
+Kept, for Nico to decide:
+- Periphery hits kept on purpose: `updaterDelegate`, `NativeAppDocker.observers` and `selfRetainWhileDownloading` hold objects alive; `StoreRelocation.resolveStoreURL()` and `storeName` are Release-only; the `ChorusSchemaV1_5_12` initializers are frozen history; `DownloadCenter.Item.serviceID` is public engine API; `WebViewPool.TabWatch.serviceID` is written and never read (harmless).
+- The Xcode 16 compiler workarounds listed in step 4: equivalent code, nothing to gain.
+- `specs/2026-06-28-service-notification-prefs-and-eager-badge-fetch-design.md`: nothing links to it; moved out of `docs/` on purpose (c46d836).
+- `docs/.nojekyll`: not needed while Pages deploys through Actions.
+- `scripts/install_mem_sampler.sh`: re-running it undoes the `~/bin` fix noted under the memory entry; delete it or fix it.
+- `testMigratesARealStoreCopy` never runs in CI by design (CLAUDE.md).
+- `ServiceCatalog.json` listed twice in `project.yml` (source glob and `resources:`); one build file results, so harmless.
+
 ## Open: WhatsApp "database error", cause found 2026-11-03, fix shipped in 1.5.35 (2026-11-04, PR #48)
 
 Open until a few days on 1.5.35 pass with WhatsApp still linked on Nico's release copy. If it signs out again, read `~/Library/Application Support/Chorus/page-storage-log.jsonl` and `quit-log.jsonl` first, then `/usr/bin/log show --predicate 'eventMessage CONTAINS "sendPrepareToSuspendIPC"'` for the WhatsApp WebContent pid.

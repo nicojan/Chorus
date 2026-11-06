@@ -29,13 +29,9 @@ enum WindowGlassStyle: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Whether this Mac can draw the glass styles at all.
-    /// A build made without the macOS 26 SDK has no glass layer to draw, even
-    /// when it runs on 26, so it answers no as well.
+    /// Whether this Mac can draw the glass styles at all: macOS 26 and later.
     static var isGlassAvailable: Bool {
-        #if compiler(>=6.2)
         if #available(macOS 26, *) { return true }
-        #endif
         return false
     }
 
@@ -93,7 +89,6 @@ final class WindowBackdropView: NSView {
         frostView.state = .followsWindowActiveState
         addSubview(frostView)
 
-        #if compiler(>=6.2)
         if #available(macOS 26, *) {
             let glass = NSGlassEffectView()
             glass.frame = bounds
@@ -102,7 +97,6 @@ final class WindowBackdropView: NSView {
             addSubview(glass, positioned: .above, relativeTo: frostView)
             glassView = glass
         }
-        #endif
 
         tintView.frame = bounds
         tintView.autoresizingMask = [.width, .height]
@@ -123,11 +117,9 @@ final class WindowBackdropView: NSView {
         frostView.isHidden = style == .off
         glassView?.isHidden = style == .off
 
-        #if compiler(>=6.2)
         if #available(macOS 26, *), let glass = glassView as? NSGlassEffectView {
             glass.style = style == .clear ? .clear : .regular
         }
-        #endif
 
         tintView.opacity = style.tintOpacity
     }

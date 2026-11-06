@@ -27,8 +27,6 @@ enum ChorusRadius {
 /// is grey with a black or white name; blue is kept for the keyboard focus ring,
 /// which is the one mark that has to stand out from selection (see `RowMark`).
 enum ChorusColor {
-    /// The window itself, behind the rail card and the web card.
-    static let canvas = dynamic(light: canvasNSColor(isDark: false), dark: canvasNSColor(isDark: true))
     /// Chrome that sits on the canvas: the rail card. Ink rather than an opaque
     /// grey, so it lands on EC / 20 over the flat canvas and still lets the
     /// frost through when a glass style is on.
@@ -271,15 +269,11 @@ extension View {
     func navCircle() -> some View {
         let sized = frame(width: ChorusNav.buttonSize, height: ChorusNav.buttonSize)
             .contentShape(Circle())
-        #if compiler(>=6.2)
         if #available(macOS 26, *) {
             sized.glassEffect(.regular.interactive(), in: Circle()).circleEdge()
         } else {
             sized.background(.regularMaterial, in: Circle()).circleEdge()
         }
-        #else
-        sized.background(.regularMaterial, in: Circle()).circleEdge()
-        #endif
     }
 
     fileprivate func circleEdge() -> some View {
