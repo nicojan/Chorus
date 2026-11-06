@@ -20,28 +20,28 @@ concurrency:
 
 jobs:
   test:
-    # Both OSes on purpose, and macOS 14 is the one that matters most: it is the
+    # Both OSes on purpose, and macOS 15 is the one that matters most: it is the
     # deployment target, and the SwiftData behaviour this suite guards differs by
     # OS. A cascade delete that traps on 15 passes on 26, which is how a crash
     # lived through five releases. Testing only the newest is how that happens.
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, macos-15]
+        os: [macos-15, macos-26]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
 
-      # The checked-in .pbxproj is object format 77, which Xcode 16 introduced.
-      # Both images default to something older and refuse to open the project at
-      # all ("a future Xcode project file format") — macos-14 defaults to 15.4 —
-      # so pick the newest Xcode installed rather than trusting the default.
-      # macos-14 carries 16.2 and macos-15 carries 26.3, and both can open it.
+      # The code needs Xcode 26 (Swift 6.2 and the macOS 26 SDK, for the glass
+      # on 26). macos-15 defaults to Xcode 16.4, which cannot build it, so pick
+      # the newest Xcode installed rather than trusting the default: 26.3 on
+      # macos-15, 26.6 on macos-26 as of November 2026. Betas and release
+      # candidates are skipped, so a preview Xcode never decides a run.
       - name: Use the newest installed Xcode
         run: |
-          newest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          newest=$(ls -d /Applications/Xcode*.app | grep -viE 'beta|rc|release.candidate' | sort -V | tail -1)
           echo "Selecting $newest"
           sudo xcode-select -s "$newest/Contents/Developer"
           xcodebuild -version
