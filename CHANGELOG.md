@@ -5,6 +5,10 @@ All notable changes to Chorus are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+
+- Chorus now needs macOS 15 (Sequoia) or later. GitHub has retired the macOS 14 machines this project tests on, and Apple no longer fixes security problems in 14, so testing and support for it end here. On macOS 14, Chorus stays on 1.5.35. That version keeps working, and Chorus will not offer you this update.
+
 ### Fixed
 
 - Chorus no longer uses a third of a processor core while a red count waits for you to read it. The slow pulse on that count ran as a SwiftUI animation, which made Chorus redraw the whole window and measure it again on every frame, for as long as the count stayed red. Left overnight with unread messages, Chorus spent hours of processor time on it. The pulse now runs in Core Animation, which macOS draws on its own. It looks the same, and Chorus stays under 2% of a core with or without a red count.
