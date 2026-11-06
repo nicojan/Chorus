@@ -68,6 +68,11 @@ final class PulseView<Content: View>: NSView {
         controller = NSHostingController(rootView: rootView)
         // The count must not size the window: that is the work this view exists to avoid.
         controller.sizingOptions = []
+        // No safe area. The tab bar sits in the titlebar band, and a hosted
+        // view pads its content down out of that band, so a red count drew
+        // under its icon instead of on its top corner, and the measured size
+        // grew by the inset.
+        controller.safeAreaRegions = []
         super.init(frame: .zero)
         wantsLayer = true
         addSubview(controller.view)

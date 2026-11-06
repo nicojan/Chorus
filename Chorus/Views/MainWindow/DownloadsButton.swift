@@ -43,7 +43,6 @@ struct DownloadsButton: View {
 /// spinning arc when it isn't.
 private struct ProgressRing: View {
     let fraction: Double?
-    @State private var spin = false
 
     var body: some View {
         if let fraction {
@@ -53,13 +52,78 @@ private struct ProgressRing: View {
                 .rotationEffect(.degrees(-90))
                 .animation(.linear(duration: 0.2), value: fraction)
         } else {
-            Circle()
-                .trim(from: 0, to: 0.25)
-                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                .rotationEffect(.degrees(spin ? 360 : 0))
-                .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: spin)
-                .onAppear { spin = true }
+            SpinningArc()
         }
+    }
+}
+
+/// A quarter arc that turns once a second, run by Core Animation. As a
+/// SwiftUI `repeatForever` it made SwiftUI update, and the window lay itself
+/// out again, on every frame for as long as the download ran (see
+/// `CountPulse`).
+struct SpinningArc: NSViewRepresentable {
+    static var lineWidth: CGFloat { 2 }
+    static var period: CFTimeInterval { 1 }
+
+    func makeNSView(context: Context) -> SpinningArcView { SpinningArcView() }
+    func updateNSView(_ view: SpinningArcView, context: Context) {}
+}
+
+final class SpinningArcView: NSView {
+    static var animationKey: String { "chorus.downloadSpin" }
+    let arc = CAShapeLayer()
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        arc.fillColor = nil
+        arc.lineWidth = SpinningArc.lineWidth
+        arc.lineCap = .round
+        layer?.addSublayer(arc)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override func layout() {
+        super.layout()
+        arc.frame = bounds
+        let inset = SpinningArc.lineWidth / 2
+        // A quarter turn from the top, clockwise on screen.
+        let path = CGMutablePath()
+        let radius = max(0, min(bounds.width, bounds.height) / 2 - inset)
+        path.addArc(center: CGPoint(x: bounds.midX, y: bounds.midY), radius: radius, startAngle: .pi / 2, endAngle: 0, clockwise: true)
+        arc.path = path
+        startSpin()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        startSpin()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateColor()
+    }
+
+    private func updateColor() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            arc.strokeColor = NSColor.controlAccentColor.cgColor
+        }
+    }
+
+    private func startSpin() {
+        updateColor()
+        guard window != nil, bounds.size != .zero, arc.animation(forKey: Self.animationKey) == nil else { return }
+        let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+        spin.fromValue = 0
+        // Negative turns clockwise in AppKit's upward y.
+        spin.toValue = -2 * Double.pi
+        spin.duration = SpinningArc.period
+        spin.repeatCount = .infinity
+        spin.isRemovedOnCompletion = false
+        arc.add(spin, forKey: Self.animationKey)
     }
 }
 
