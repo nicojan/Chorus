@@ -387,7 +387,8 @@ private struct SupportButton: View {
 }
 
 /// Opaque cover shown while the app is locked, hiding all content until the user
-/// authenticates. Prompts for Touch ID on appear; the button retries.
+/// authenticates. Prompts for Touch ID on appear, or once Chorus comes to the
+/// front if it locked in the background; the button retries.
 /// Covers a sheet with the lock screen while Chorus is locked. A sheet is its
 /// own window, which the main window's lock cover doesn't reach, so an Edit
 /// Service sheet left open when the Mac slept stayed usable above it.
@@ -434,7 +435,9 @@ struct LockView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
-            if promptsOnAppear { appState.authenticate() }
+            // Waits for Chorus to be in front: a lock that happens in the
+            // background must not pull the window forward with a prompt.
+            if promptsOnAppear { appState.authenticateWhenActive() }
         }
     }
 }

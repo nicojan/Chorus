@@ -276,6 +276,10 @@ final class AppState {
     }
     /// Windows `lock()` hid, and the observer that drops any of them closed
     /// while locked so unlocking doesn't bring back a window that is gone.
+    /// The Touch ID prompt is up, and the observer that shows it once Chorus
+    /// comes to the front after a lock in the background.
+    @ObservationIgnored private var isPromptingForUnlock = false
+    @ObservationIgnored private var unlockOnActivateObserver: NSObjectProtocol?
     @ObservationIgnored private var windowsHiddenForLock: [NSWindow] = []
     @ObservationIgnored private var lockCloseObserver: NSObjectProtocol?
 
@@ -1760,10 +1764,41 @@ final class AppState {
         windows.forEach { $0.orderFront(nil) }
     }
 
+    /// Whether to ask for Touch ID now. An idle or sleep lock happens while
+    /// Chorus is in the background, and the prompt pulled Chorus to the front;
+    /// it waits until the user brings Chorus forward, and never stacks.
+    nonisolated static func shouldPromptForUnlock(isLocked: Bool, appIsActive: Bool, isPrompting: Bool) -> Bool {
+        isLocked && appIsActive && !isPrompting
+    }
+
+    /// Asks for Touch ID if Chorus is in front; otherwise waits until it is.
+    /// The lock screen calls this when it appears.
+    func authenticateWhenActive() {
+        guard isLocked else { return }
+        if NSApp.isActive {
+            authenticate()
+            return
+        }
+        guard unlockOnActivateObserver == nil else { return }
+        unlockOnActivateObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if let observer = self.unlockOnActivateObserver {
+                    NotificationCenter.default.removeObserver(observer)
+                }
+                self.unlockOnActivateObserver = nil
+                self.authenticate()
+            }
+        }
+    }
+
     /// Prompts for Touch ID (with the login password as fallback) and unlocks on
     /// success. If the device can't evaluate the policy at all (no password set),
     /// unlock rather than trap the user out of their app.
     func authenticate() {
+        guard Self.shouldPromptForUnlock(isLocked: isLocked, appIsActive: NSApp.isActive, isPrompting: isPromptingForUnlock) else { return }
         let context = LAContext()
         context.localizedFallbackTitle = "Enter Password"
         var policyError: NSError?
@@ -1772,9 +1807,11 @@ final class AppState {
             isLocked = false
             return
         }
+        isPromptingForUnlock = true
         context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Unlock Chorus") { [weak self] success, error in
             Task { @MainActor in
                 guard let self else { return }
+                self.isPromptingForUnlock = false
                 if success {
                     self.isLocked = false
                 } else {
