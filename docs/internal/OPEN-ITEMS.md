@@ -1,5 +1,42 @@
 # Open items
 
+## Open: following Ferdium (#49), four features built on `feat/ferdium-gaps`
+
+A user asked Chorus to do what Ferdium does without Electron's weight (#49). Nico replied on 2026-11-09 that he would look into it. A survey of Ferdium's settings, source and issue tracker ranked the gaps. Chorus already has spaces, the quick switcher, hibernation, quiet hours, the Touch ID lock, custom CSS, dark mode and zoom per service, downloads, the menu bar item and launch at login.
+
+Built on `feat/ferdium-gaps` (`94cb01b`, pushed, CI green on macOS 15 and 26, 515 tests pass locally). No PR yet.
+
+- Edit Service: a Browser identity picker with Default Safari, iPhone, or a custom user agent. It replaces the Mobile view switch. The field was already stored.
+- Custom JavaScript per service. It runs at document end in the page's own world, main frame only, inside a try/catch. Setup files never export or import it.
+- Lock after no activity: 1 to 60 minutes of system idle time, read with `CGEventSource`, checked every 30 s.
+- Hide message text in notifications: the banner shows the service name and "New notification".
+- Schema 1.5.30 to 1.5.38, lightweight, three optional fields. A copy of the real store migrated intact (3 spaces, 19 services, 16 links).
+- Not tried in the running app: a custom user agent reaching a site, a script running, the idle lock firing, a hidden-text banner.
+
+### Ranked gaps still open
+
+1. Password managers through web extensions (Ferdium #135, 181 reactions). See the next section.
+2. Port Ferdium's MIT recipes: 441 against Chorus's 75. Their `Ferdium.setBadge(direct, indirect)` maps onto `badgeJS`. Some recipes use Node and need rewriting. Credit Ferdium in the release notes.
+3. Split view: two services side by side. Pages must still leave a window only through `WebViewParking.release`.
+4. A proxy per sign-in group: `WKWebsiteDataStore.proxyConfigurations`. Proxies attach to a store, and services share stores.
+5. Small ones: a global show/hide hotkey, the link address on hover, a basic-auth dialog.
+6. Skipped: the todo panel, the translator, the 2FA code catcher.
+
+Where Ferdium is weak and Chorus wins: it needs its account server to load services (#2005, #2176, #2369); it is heavy (#647, #1013, #2248); and it trails Chromium versions (#2465). Measured memory and CPU next to Ferdium would answer #49 best; nobody has measured them.
+
+### Password managers and web extensions
+
+Research on 2026-11-09, plus a probe.
+
+- Closed: Apple Passwords autofill. From macOS 15.5 only browsers on Apple's list may use it, and joining takes a macOS update. Passkeys need an entitlement Apple is slow to grant.
+- Likely: Bitwarden and Proton Pass. They work on their own with their own login. Another WebKit browser, "Search", runs Bitwarden's Chrome build through `WKWebExtension`.
+- Likely: 1Password. Orion runs its Chrome build, and the user adds Orion under 1Password > Settings > Browser. Chorus would have to connect the extension to the 1Password app itself (`connectUsing`); nobody documents that link.
+- Probe (`/Volumes/n1TB/Personal/Projects/dev/chorus-extprobe`, outside the repo, built with `swiftc -O -parse-as-library`): a plain, non-sandboxed process with no bundle loaded four installed Safari extensions from other vendors with `WKWebExtension(appExtensionBundle:)`: SponsorBlock, Velja, Zotero Connector and Downie. All loaded with no errors and their background pages started. A small extension of its own loaded from a folder too.
+- Not yet seen: a content script running. The probe's own extension marks the page from its content script, and the mark never appeared on example.com, with or without a tab and window registered with the controller. Next to rule out: a real app bundle with a bundle id, a persistent data store, the web view on screen, and creating the web view after the context loads.
+- Probe gotchas: a relative `resourceBaseURL` killed the process (exit 137); pass an absolute directory URL. Rebuild to a new file name; overwriting the binary in place also got it killed.
+- 1Password 8.12.44 is installed from brew for testing. Its Safari extension comes from the Mac App Store and is not installed.
+- Engine fit: `WebViewPool.swift:840` and `InAppBrowserWindow.swift:43` build every configuration, so one `WKWebExtensionController` can go on each. It needs `#available(macOS 15.4, *)`. Services would map to the extension's tabs and windows. Rough size: two to three weeks, plus a week for 1Password's app link.
+
 ## Released: 1.5.37 on 2026-11-06, red counts back on the top corner
 
 Published 2026-11-06 as `v1.5.37`, build 50, tag commit `8970b59` (PR #51, merged `824b851`). DMG 13,401,348 bytes, sha256 `784999cde69c2c8e41207c1798602240a7da5b222a79055e486f603b8d528bb2`, app and DMG notarized and stapled, Gatekeeper accepts both. Appcast `2ee717a`, both feeds serve 1.5.37. Cask `b4999ff`, tap `e89ffc6`; brew style, livecheck and audit clean.
