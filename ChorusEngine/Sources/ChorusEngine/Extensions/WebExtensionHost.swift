@@ -50,6 +50,10 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
     /// turning the extension off or removing it.
     @ObservationIgnored private var loading: Set<UUID> = []
     @ObservationIgnored private var cancelledLoads: Set<UUID> = []
+    /// Loads waiting for an extension's background to start.
+    @ObservationIgnored private var backgroundWaits: [UUID: (token: UUID, continuation: CheckedContinuation<Void, Never>)] = [:]
+    /// How long a load waits for a background before going on without it.
+    static let backgroundStartLimit: Duration = .seconds(10)
     @ObservationIgnored private(set) lazy var window = WebExtensionWindow(host: self)
     @ObservationIgnored private var anchors: [UUID: WeakView] = [:]
     @ObservationIgnored private var notificationTokens: [NSObjectProtocol] = []
@@ -136,6 +140,37 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         try await load(record, library: library, grantingAccess: true)
     }
 
+    /// Starts a background and waits until it is up, the extension is
+    /// unloaded, or the time limit passes. WebKit never answers a start whose
+    /// context was unloaded meanwhile, so waiting on it alone hung forever
+    /// and left the extension marked as loading for good.
+    private func startBackground(of context: WKWebExtensionContext, id: UUID, name: String) async {
+        let token = UUID()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            backgroundWaits[id] = (token, continuation)
+            Task { @MainActor [weak self] in
+                do {
+                    try await context.loadBackgroundContent()
+                } catch {
+                    AppLogger.extensions.error("Background of \(name, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+                }
+                self?.endBackgroundWait(id, token: token)
+            }
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: Self.backgroundStartLimit)
+                self?.endBackgroundWait(id, token: token)
+            }
+        }
+    }
+
+    /// Ends the wait for `id`; with a token, only that wait, so a late answer
+    /// from an earlier load cannot cut a newer one short.
+    private func endBackgroundWait(_ id: UUID, token: UUID? = nil) {
+        guard let wait = backgroundWaits[id], token == nil || wait.token == token else { return }
+        backgroundWaits.removeValue(forKey: id)
+        wait.continuation.resume()
+    }
+
     /// `grantingAccess` false loads the extension with no permissions or
     /// sites, so it can reach no page: for finding its stored data to delete.
     private func load(_ record: WebExtensionRecord, library: WebExtensionLibrary, grantingAccess: Bool) async throws {
@@ -172,21 +207,19 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         contexts[record.id] = context
         loadedIDs = loadedIDs.union([record.id])
         actionRevision += 1
+        // Wait for the background to start before returning. On macOS 15 and
+        // 26, WebKit drops a content script's message that arrives while the
+        // background is still starting (macOS 27 queues it); CI caught this.
+        // Callers that build pages after `load` returns are then safe.
         if grantingAccess, webExtension.hasBackgroundContent {
-            let name = record.name
-            Task { @MainActor in
-                do {
-                    try await context.loadBackgroundContent()
-                } catch {
-                    AppLogger.extensions.error("Background of \(name, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
-                }
-            }
+            await startBackground(of: context, id: record.id, name: record.name)
         }
         AppLogger.extensions.info("Loaded extension \(record.name, privacy: .public)")
     }
 
     public func unload(_ id: UUID) {
         if loading.contains(id) { cancelledLoads.insert(id) }
+        endBackgroundWait(id)
         guard let context = contexts.removeValue(forKey: id) else { return }
         do {
             try controller.unload(context)

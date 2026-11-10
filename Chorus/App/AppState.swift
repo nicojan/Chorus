@@ -610,7 +610,7 @@ final class AppState {
         let didUpdate = Self.recordLaunchVersionAndCheckUpdate()
         fetchMissingAndStaleFavicons(force: didUpdate)
         fetchCatalogIcons(force: didUpdate)
-        preloadActiveSpaceServices()
+        preloadAfterExtensions()
         startTransientBadgeFetcher()
         startNativeAppBadgeReader()
         FeatureTips.configure()
@@ -694,7 +694,6 @@ final class AppState {
         host.onGrantsChanged = { [weak self] id, permissions, patterns in
             self?.extensions.updateGrants(id, permissions: permissions, matchPatterns: patterns)
         }
-        Task { await extensions.startEnabled() }
     }
 
     /// Quits and reopens Chorus so pages that were open before the first
@@ -3007,6 +3006,21 @@ final class AppState {
     /// Preloads web views for all services in the currently selected space.
     /// Runs after window state is restored so `selectedSpaceID` is already set.
     /// The selected service (if any) loads first, then the rest stagger at 500ms intervals.
+    /// Starts the enabled extensions, then preloads. With an extension on,
+    /// pages must not load before its background is up: on macOS 15 and 26 a
+    /// content script's first message would go unanswered. With none on,
+    /// preloading starts at once, as it always has.
+    private func preloadAfterExtensions() {
+        guard !extensions.enabledIDs.isEmpty else {
+            preloadActiveSpaceServices()
+            return
+        }
+        Task {
+            await extensions.startEnabled()
+            preloadActiveSpaceServices()
+        }
+    }
+
     private func preloadActiveSpaceServices() {
         guard let spaceID = selectedSpaceID else { return }
         let services = railServices(forSpace: spaceID)
