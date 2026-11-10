@@ -38,12 +38,12 @@ final class WebExtensionHostTests: XCTestCase {
         """
         try Data(manifest.utf8).write(to: folder.appending(path: "manifest.json"))
         try Data("""
-        browser.runtime.onMessage.addListener((msg, sender, send) => { send({pong: 1}); return true; });
+        browser.runtime.onMessage.addListener((msg, sender, send) => { send({pong: 1}); });
         """.utf8).write(to: folder.appending(path: "bg.js"))
         try Data("""
         document.documentElement.setAttribute('data-probe', 'ran');
         browser.runtime.sendMessage({ping: 1})
-          .then(r => document.documentElement.setAttribute('data-probe-bg', JSON.stringify(r)))
+          .then(r => document.documentElement.setAttribute('data-probe-bg', r === undefined ? 'no reply' : JSON.stringify(r)))
           .catch(e => document.documentElement.setAttribute('data-probe-bg', 'err ' + e));
         """.utf8).write(to: folder.appending(path: "cs.js"))
         return try library.importPackage(from: folder)
