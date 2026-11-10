@@ -4,14 +4,15 @@
 
 A user asked Chorus to do what Ferdium does without Electron's weight (#49). Nico replied on 2026-11-09 that he would look into it. A survey of Ferdium's settings, source and issue tracker ranked the gaps. Chorus already has spaces, the quick switcher, hibernation, quiet hours, the Touch ID lock, custom CSS, dark mode and zoom per service, downloads, the menu bar item and launch at login.
 
-Built on `feat/ferdium-gaps` (`94cb01b`, pushed, CI green on macOS 15 and 26, 515 tests pass locally). No PR yet. Web extensions are on `feat/web-extensions`, branched from it (see below); open this branch's PR first.
+Built on `feat/ferdium-gaps` (`c8d6d27`, pushed, CI green on macOS 15 and 26, 516 tests pass locally). No PR yet. Web extensions are on `feat/web-extensions`, branched from it (see below); open this branch's PR first.
 
 - Edit Service: a Browser identity picker with Default Safari, iPhone, or a custom user agent. It replaces the Mobile view switch. The field was already stored.
 - Custom JavaScript per service. It runs at document end in the page's own world, main frame only, inside a try/catch. Setup files never export or import it.
 - Lock after no activity: 1 to 60 minutes of system idle time, read with `CGEventSource`, checked every 30 s.
 - Hide message text in notifications: the banner shows the service name and "New notification".
 - Schema 1.5.30 to 1.5.38, lightweight, three optional fields. A copy of the real store migrated intact (3 spaces, 19 services, 16 links).
-- Not tried in the running app: a custom user agent reaching a site, a script running, the idle lock firing, a hidden-text banner.
+- Checked by hand on 2026-11-10 in a Debug build, driven through Accessibility. A custom user agent reached httpbin.org as "ChorusCheck/1.0". The lock fired after a minute with no input. The hidden-text setting saves; the code that builds the banner reads it, but no banner can show on this Mac, so that one is unverified live.
+- The check found one bug: Custom JavaScript and Custom CSS were SwiftUI TextEditors, which follow the Mac's typing settings. A typed ' became a curly quote and two hyphens became a dash, so a typed script failed to parse and never ran. Both fields are now a plain NSTextView with every substitution off (`CodeTextEditor`, `c8d6d27`). After the fix the script ran and drew its heading. It went in through Accessibility, not typed keys: the Mac's input source was Chinese Pinyin, which eats '. The test types through the text view and has a control that proves typing that way does curl quotes.
 
 ### Ranked gaps still open
 
@@ -44,7 +45,14 @@ What the branch does:
 
 - CI found (2026-11-09, `cdf5078`): on macOS 15 and 26, WebKit drops a content script's message that arrives while the extension's background is still starting; macOS 27 queues it, so the dev machine never showed it. The host now waits for the background (bounded at 10 s, and ended by an unload, because WebKit never answers a start whose context was unloaded) and launch preloads services only after enabled extensions start. CI green on macOS 15 and 26 at `cdf5078`.
 
-Not tried by hand yet: any of it in the Debug app. Check: add SponsorBlock from Safari extensions, see its controls on YouTube in a service; add Bitwarden's Chrome build from its release zip, sign in through its popup, fill a login; Restart Chorus after the first extension (open pages then have it); remove an extension and see its data gone.
+Checked by hand on 2026-11-10 in a Debug build (`a756ab9`): the Safari extension list, adding SponsorBlock (sheet, version, the Restart Chorus banner), Restart Chorus (new process), SponsorBlock's controls in the YouTube player and its popup, adding Bitwarden's Chrome build from its release zip (2026.10.2), its popup reaching the Log in screen, turning SponsorBlock off and on, removing it. Its stored data went; WebKit's 1.3 KB State.plist stays in its folder.
+
+The pass also turned up a bug in the host, fixed in `a756ab9`. Extension pages claimed Safari in their user agent, so Bitwarden's Chrome build took its Safari path, which talks to the Bitwarden Mac app. Its background read `browser.runtime.sendNativeMessage` in a loop that never yielded: 100% CPU, 1.4 GB, and the popup page, in the same process, never loaded. With no browser named it found no device and its background failed to start. Extension pages now end in "Chrome/134.0.0.0 Safari/605.1.15"; service pages still claim Safari. SponsorBlock still drew its controls and opened its popup. One controller serves every page, so the agent cannot differ per extension.
+
+Still open:
+- Bitwarden signing in and filling a login. Its background logs that `chrome.scripting.ExecutionWorld` is undefined in WebKit, and its autofill script injection fails with it, so filling may not work. It also logs that notification clicks are not supported. The CHANGELOG line "as Bitwarden's Chrome build does" waits on this.
+- Velja, Zotero and Downie were listed but not added or clicked.
+- SponsorBlock logged one TypeError ("e is not an Object") after its popup closed.
 
 Known gaps: in-app browser windows get no extensions (their store is private); `tabs.create` returns no tab object; context-menu items from extensions are not shown; keyboard commands are not wired; no proxy for native messaging, and none is possible.
 
