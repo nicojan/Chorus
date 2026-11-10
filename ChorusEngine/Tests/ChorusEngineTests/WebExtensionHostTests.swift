@@ -23,8 +23,9 @@ final class WebExtensionHostTests: XCTestCase {
     }
 
     /// The probe extension: a content script that marks the page and asks the
-    /// background for a reply, and a toolbar button.
-    private func makeProbe(extraPermissions: [String] = []) throws -> String {
+    /// background for a reply, and a toolbar button. `asksForAgent` makes the
+    /// content script ask for the background's user agent instead.
+    private func makeProbe(extraPermissions: [String] = [], asksForAgent: Bool = false) throws -> String {
         let folder = root.appending(path: "probe", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let permissions = (["storage"] + extraPermissions).map { "\"\($0)\"" }.joined(separator: ", ")
@@ -38,11 +39,11 @@ final class WebExtensionHostTests: XCTestCase {
         """
         try Data(manifest.utf8).write(to: folder.appending(path: "manifest.json"))
         try Data("""
-        browser.runtime.onMessage.addListener((msg, sender, send) => { send({pong: 1}); });
+        browser.runtime.onMessage.addListener((msg, sender, send) => { send(msg.ua ? {ua: navigator.userAgent} : {pong: 1}); });
         """.utf8).write(to: folder.appending(path: "bg.js"))
         try Data("""
         document.documentElement.setAttribute('data-probe', 'ran');
-        browser.runtime.sendMessage({ping: 1})
+        browser.runtime.sendMessage(\(asksForAgent ? "{ua: 1}" : "{ping: 1}"))
           .then(r => document.documentElement.setAttribute('data-probe-bg', r === undefined ? 'no reply' : JSON.stringify(r)))
           .catch(e => document.documentElement.setAttribute('data-probe-bg', 'err ' + e));
         """.utf8).write(to: folder.appending(path: "cs.js"))
@@ -148,11 +149,34 @@ final class WebExtensionHostTests: XCTestCase {
         XCTAssertEqual(summary.matchPatterns, ["<all_urls>"])
     }
 
-    func testExtensionPagesClaimSafari() {
-        guard #available(macOS 15.4, *) else { return }
-        XCTAssertTrue(WebExtensionHost.safariApplicationName.hasPrefix("Version/"))
-        XCTAssertTrue(WebExtensionHost.safariApplicationName.contains("Safari/"),
-                      "extensions such as Velja pick their Safari code path from this")
+    /// Extensions pick a code path from the user agent. "Safari" alone sends
+    /// a Chrome build such as Bitwarden's down its Safari path, which needs
+    /// the vendor's Mac app: Bitwarden's background then spun on
+    /// `browser.runtime.sendNativeMessage` and its popup never loaded. With
+    /// neither name it found no device and its background failed to start.
+    func testExtensionBackgroundClaimsChrome() async throws {
+        guard #available(macOS 15.4, *) else { throw XCTSkip("Web extensions need macOS 15.4") }
+        let host = WebExtensionHost(storageIdentifier: nil)
+        host.isActive = true
+        let record = record(folder: try makeProbe(asksForAgent: true))
+        try await host.load(record, library: library)
+        host.contexts[record.id]?.hasAccessToPrivateData = true
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        host.attach(to: configuration)
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
+        host.pageOpened(webView, service: UUID())
+        host.pageActivated(webView)
+        webView.loadHTMLString("<html><body>page</body></html>", baseURL: URL(string: "https://example.com/")!)
+
+        let reply = try await poll(webView, "document.documentElement.getAttribute('data-probe-bg')")
+        let agent = try XCTUnwrap(reply.flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: String] }?["ua"],
+                                  "the background answered with its user agent: \(reply ?? "nil")")
+        XCTAssertTrue(agent.contains(" Chrome/"), agent)
+        XCTAssertTrue(agent.contains(" Safari/"), agent)
+
+        host.pageClosed(webView)
+        host.unload(record.id)
     }
 
     private func poll(_ webView: WKWebView, _ script: String, timeout: TimeInterval = 15) async throws -> String? {

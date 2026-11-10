@@ -94,12 +94,14 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
     public init(storageIdentifier: UUID?) {
         let configuration = storageIdentifier.map { WKWebExtensionController.Configuration(identifier: $0) }
             ?? .nonPersistent()
-        // Extensions branch on the user agent: without "Safari" in it, many
-        // take their Chrome code path, which in Velja's case opens a custom
-        // URL scheme instead of messaging. Chorus's pages claim Safari, so the
-        // extension pages do too.
+        // Extensions pick a code path from the user agent of their own pages.
+        // A Safari path talks to the vendor's Mac app, which only Safari can
+        // reach, so extension pages claim Chrome and take the path that works
+        // alone. Bitwarden's Chrome build, told it was in Safari, spun waiting
+        // for its app and its popup never opened; with no browser named it
+        // could not start at all. Service pages still claim Safari.
         let pageConfiguration = configuration.webViewConfiguration ?? WKWebViewConfiguration()
-        pageConfiguration.applicationNameForUserAgent = Self.safariApplicationName
+        pageConfiguration.applicationNameForUserAgent = Self.extensionApplicationName
         configuration.webViewConfiguration = pageConfiguration
         controller = WKWebExtensionController(configuration: configuration)
         super.init()
@@ -109,12 +111,9 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         observeGrantChanges()
     }
 
-    /// "Version/26.0 Safari/605.1.15", the tail of Chorus's Safari user agent.
-    static var safariApplicationName: String {
-        let agent = UserAgentProvider.safariDefault
-        guard let range = agent.range(of: "Version/") else { return "Safari/605.1.15" }
-        return String(agent[range.lowerBound...])
-    }
+    /// The tail of an extension page's user agent. Chrome 134 is the oldest
+    /// that Bitwarden's Chrome build accepts.
+    static let extensionApplicationName = "Chrome/134.0.0.0 Safari/605.1.15"
 
     // MARK: - Loading
 
