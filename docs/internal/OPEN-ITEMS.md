@@ -39,11 +39,12 @@ What the branch does:
 
 - Engine (`ChorusEngine/Sources/ChorusEngine/Extensions/`): `WebExtensionHost` (one controller, one context per extension, every service page and service tab a tab of one window), `WebExtensionLibrary` (JSON list plus copied packages; folder, .zip, .crx, .xpi), `SafariExtensionScanner` (reads app bundles, since PlugInKit will not list them), `WebExtensionPermissionText`. The pool attaches the controller only while an extension is on.
 - App: `ExtensionManager`, Settings > Extensions (add a Safari extension, add from a file, on/off, extension settings page, remove), toolbar buttons with popups, a prompt for permissions asked at run time. The list lives in `Application Support/Chorus(-debug)/Extensions`, outside SwiftData: no schema change.
-- Tests: 20 engine tests (one loads a real extension and checks its content script and background reply), 4 app tests.
+- Tests: 26 engine tests (one loads a real extension and checks its content script and background reply; others pin the active tab, a load cancelled by turning off, and symlink rejection), 4 app tests.
+- A review (qa-reviewer, 2026-11-09) led to: a restart through the quit path instead of rebuilding open pages in place (which skipped chat pages' save handshake and dropped calls); the active tab worked out from the page on screen; load/unload race guards; sign-in popups registered as tabs; site data under the extension's origin deleted on removal; archive import off the main thread; packages with symbolic links refused; unused packages swept at launch (never while an unreadable list is set aside).
 
-Not tried by hand yet: any of it in the Debug app. Check: add SponsorBlock from Safari extensions, see its controls on YouTube in a service; add Bitwarden's Chrome build from its release zip, sign in through its popup, fill a login; the Reload Pages button after the first extension; remove an extension and see its data gone.
+Not tried by hand yet: any of it in the Debug app. Check: add SponsorBlock from Safari extensions, see its controls on YouTube in a service; add Bitwarden's Chrome build from its release zip, sign in through its popup, fill a login; Restart Chorus after the first extension (open pages then have it); remove an extension and see its data gone.
 
-Known gaps: OAuth popups and in-app browser windows are not registered as tabs (content scripts run in popups, messaging from them fails); context-menu items from extensions are not shown; keyboard commands are not wired; no proxy for native messaging, and none is possible.
+Known gaps: in-app browser windows get no extensions (their store is private); `tabs.create` returns no tab object; context-menu items from extensions are not shown; keyboard commands are not wired; no proxy for native messaging, and none is possible.
 
 ## Released: 1.5.37 on 2026-11-06, red counts back on the top corner
 
