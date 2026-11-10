@@ -1,10 +1,10 @@
 # Open items
 
-## Open: following Ferdium (#49), four features built on `feat/ferdium-gaps`
+## Open: following Ferdium (#49), four features on `feat/ferdium-gaps` and web extensions on `feat/web-extensions`
 
 A user asked Chorus to do what Ferdium does without Electron's weight (#49). Nico replied on 2026-11-09 that he would look into it. A survey of Ferdium's settings, source and issue tracker ranked the gaps. Chorus already has spaces, the quick switcher, hibernation, quiet hours, the Touch ID lock, custom CSS, dark mode and zoom per service, downloads, the menu bar item and launch at login.
 
-Built on `feat/ferdium-gaps` (`94cb01b`, pushed, CI green on macOS 15 and 26, 515 tests pass locally). No PR yet.
+Built on `feat/ferdium-gaps` (`94cb01b`, pushed, CI green on macOS 15 and 26, 515 tests pass locally). No PR yet. Web extensions are on `feat/web-extensions`, branched from it (see below); open this branch's PR first.
 
 - Edit Service: a Browser identity picker with Default Safari, iPhone, or a custom user agent. It replaces the Mobile view switch. The field was already stored.
 - Custom JavaScript per service. It runs at document end in the page's own world, main frame only, inside a try/catch. Setup files never export or import it.
