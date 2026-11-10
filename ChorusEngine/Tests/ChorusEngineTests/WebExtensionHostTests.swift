@@ -38,7 +38,8 @@ final class WebExtensionHostTests: XCTestCase {
           "host_permissions": ["<all_urls>"],
           "action": { "default_title": "Probe Button" },
           "background": { "service_worker": "bg.js" },
-          "content_scripts": [{ "matches": ["<all_urls>"], "js": ["cs.js"], "run_at": "document_end" }] }
+          "content_scripts": [{ "matches": ["<all_urls>"], "js": ["cs.js"], "run_at": "document_end" },
+                              { "matches": ["<all_urls>"], "js": ["cs2.js"], "run_at": "document_end" }] }
         """
         try Data(manifest.utf8).write(to: folder.appending(path: "manifest.json"))
         try Data("""
@@ -79,6 +80,8 @@ final class WebExtensionHostTests: XCTestCase {
           .then(r => document.documentElement.setAttribute('data-probe-bg', r === undefined ? 'no reply' : JSON.stringify(r)))
           .catch(e => document.documentElement.setAttribute('data-probe-bg', 'err ' + e));
         """.utf8).write(to: folder.appending(path: "cs.js"))
+        try Data("document.documentElement.setAttribute('data-probe-second', 'ran');".utf8)
+            .write(to: folder.appending(path: "cs2.js"))
         try Data("document.documentElement.setAttribute('data-injected', (document.documentElement.getAttribute('data-injected') || '') + 'x');".utf8)
             .write(to: folder.appending(path: "inject.js"))
         try Data(#"<!doctype html><html><head><script src="page.js"></script></head><body></body></html>"#.utf8)
@@ -274,6 +277,11 @@ final class WebExtensionHostTests: XCTestCase {
         XCTAssertEqual(object(reply), ["dispose": "symbol", "asyncDispose": "symbol"], "the service worker has both symbols: \(reply ?? "nil")")
         let contentScript = try await poll(webView, "document.documentElement.getAttribute('data-probe-dispose')")
         XCTAssertEqual(contentScript, "symbol", "the content script has Symbol.dispose")
+        // Two content script entries run the compatibility script twice in
+        // one world, as Bitwarden's do; the second run must not throw.
+        let second = try await poll(webView, "document.documentElement.getAttribute('data-probe-second')")
+        XCTAssertEqual(second, "ran")
+        XCTAssertEqual(host.problems(for: record.id).filter { $0.contains("__chorus_compat") }, [])
 
         let context = try XCTUnwrap(host.contexts[record.id])
         let extensionPage = WKWebView(frame: .zero, configuration: try XCTUnwrap(context.webViewConfiguration))

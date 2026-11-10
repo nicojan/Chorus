@@ -135,6 +135,8 @@ enum ExtensionCompatibility {
       // WebKit drops the wrapper of an API object nothing refers to and builds
       // a new one on the next read, without what was added below. Holding
       // each patched object keeps its wrapper, and the additions, alive.
+      // Two content script entries run this twice in one world; once is enough.
+      if (globalThis.__chorusCompatibilityObjects) return;
       const held = [];
       Object.defineProperty(globalThis, "__chorusCompatibilityObjects", { value: held });
 
