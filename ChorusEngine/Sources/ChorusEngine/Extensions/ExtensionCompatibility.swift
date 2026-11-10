@@ -20,6 +20,10 @@ import Foundation
 ///    WebKit's `permissions.contains` throws where Chrome answers false.
 ///    Bitwarden's popup asks on its start screen, and the throw left it
 ///    blank. The script answers false.
+/// 4. WebKit takes "ISOLATED" and "MAIN" as a script's world but has no
+///    `scripting.ExecutionWorld` to name them. Bitwarden reads it each time
+///    it injects its fill scripts, so every injection failed. The script adds
+///    it.
 ///
 /// The script loads first in the service worker (through a new entry file),
 /// in every HTML page, in background scripts and ahead of each content script.
@@ -122,6 +126,18 @@ enum ExtensionCompatibility {
         if (typeof Symbol[name] !== "symbol") {
           Object.defineProperty(Symbol, name, { value: Symbol("Symbol." + name) });
         }
+      }
+
+      // WebKit takes "ISOLATED" and "MAIN" as a script's world but has no
+      // `scripting.ExecutionWorld` to name them, which Chrome builds read.
+      for (const api of [globalThis.chrome, globalThis.browser]) {
+        const scripting = api && api.scripting;
+        if (!scripting || scripting.ExecutionWorld) continue;
+        try {
+          Object.defineProperty(scripting, "ExecutionWorld", {
+            value: Object.freeze({ ISOLATED: "ISOLATED", MAIN: "MAIN" }), configurable: true
+          });
+        } catch (error) {}
       }
 
       // WebKit throws when asked about a permission it does not know, such as

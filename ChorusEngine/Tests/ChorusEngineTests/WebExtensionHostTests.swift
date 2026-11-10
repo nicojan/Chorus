@@ -28,7 +28,7 @@ final class WebExtensionHostTests: XCTestCase {
     /// `opensSocket` makes the background open a WebSocket to a closed port
     /// and answer when it closes.
     private func makeProbe(extraPermissions: [String] = [], asksForAgent: Bool = false, opensSocket: Bool = false,
-                           asksForDispose: Bool = false) throws -> String {
+                           asksForDispose: Bool = false, injects: Bool = false) throws -> String {
         let folder = root.appending(path: "probe", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let permissions = (["storage"] + extraPermissions).map { "\"\($0)\"" }.joined(separator: ", ")
@@ -48,6 +48,14 @@ final class WebExtensionHostTests: XCTestCase {
             socket.onclose = (event) => send({pong: 1, closed: event.code});
             return true;
           }
+          if (msg.inject) {
+            const world = chrome.scripting.ExecutionWorld;
+            const run = (w) => chrome.scripting.executeScript({target: {tabId: sender.tab.id}, files: ['inject.js'], injectImmediately: false, world: w})
+              .then(() => 'ok', (e) => 'err ' + e.message);
+            Promise.all([world ? 'enum' : 'no enum', run(world ? world.ISOLATED : 'ISOLATED'), run(world ? world.MAIN : 'MAIN')])
+              .then((parts) => send({inject: parts.join(' | ')}));
+            return true;
+          }
           if (msg.dispose) return send({dispose: typeof Symbol.dispose, asyncDispose: typeof Symbol.asyncDispose});
           send(msg.ua ? {ua: navigator.userAgent} : {pong: 1});
         });
@@ -55,10 +63,12 @@ final class WebExtensionHostTests: XCTestCase {
         try Data("""
         document.documentElement.setAttribute('data-probe', 'ran');
         document.documentElement.setAttribute('data-probe-dispose', typeof Symbol.dispose);
-        browser.runtime.sendMessage(\(asksForAgent ? "{ua: 1}" : asksForDispose ? "{dispose: 1}" : "{ping: 1}"))
+        browser.runtime.sendMessage(\(asksForAgent ? "{ua: 1}" : asksForDispose ? "{dispose: 1}" : injects ? "{inject: 1}" : "{ping: 1}"))
           .then(r => document.documentElement.setAttribute('data-probe-bg', r === undefined ? 'no reply' : JSON.stringify(r)))
           .catch(e => document.documentElement.setAttribute('data-probe-bg', 'err ' + e));
         """.utf8).write(to: folder.appending(path: "cs.js"))
+        try Data("document.documentElement.setAttribute('data-injected', (document.documentElement.getAttribute('data-injected') || '') + 'x');".utf8)
+            .write(to: folder.appending(path: "inject.js"))
         try Data(#"<!doctype html><html><head><script src="page.js"></script></head><body></body></html>"#.utf8)
             .write(to: folder.appending(path: "page.html"))
         try Data("""
@@ -263,6 +273,34 @@ final class WebExtensionHostTests: XCTestCase {
         // `privacy` on its start screen, and the throw left the popup blank.
         let answers = try await extensionPage.callAsyncJavaScript("return await window.permissionAnswers", contentWorld: .page) as? String
         XCTAssertEqual(answers, "privacy=false; nativeMessaging=false; storage=true; tabs=false")
+
+        host.pageClosed(webView)
+        host.unload(record.id)
+    }
+
+    /// Bitwarden fills a login by injecting its scripts with
+    /// `chrome.scripting.executeScript`, naming the world through
+    /// `chrome.scripting.ExecutionWorld`, which WebKit does not define.
+    func testScriptingExecutionWorldWorks() async throws {
+        guard #available(macOS 15.4, *) else { throw XCTSkip("Web extensions need macOS 15.4") }
+        let host = WebExtensionHost(storageIdentifier: nil)
+        host.isActive = true
+        let record = WebExtensionRecord(source: .package(folder: try makeProbe(extraPermissions: ["scripting"], injects: true)),
+                                        name: "Probe", grantedPermissions: ["storage", "scripting"], grantedMatchPatterns: ["<all_urls>"])
+        try await host.load(record, library: library)
+        host.contexts[record.id]?.hasAccessToPrivateData = true
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        host.attach(to: configuration)
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
+        host.pageOpened(webView, service: UUID())
+        host.pageActivated(webView)
+        webView.loadHTMLString("<html><body>page</body></html>", baseURL: URL(string: "https://example.com/")!)
+
+        let reply = try await poll(webView, "document.documentElement.getAttribute('data-probe-bg')")
+        XCTAssertEqual(object(reply), ["inject": "enum | ok | ok"], reply ?? "nil")
+        let injected = try await poll(webView, "document.documentElement.getAttribute('data-injected')")
+        XCTAssertEqual(injected, "xx", "both scripts ran")
 
         host.pageClosed(webView)
         host.unload(record.id)
