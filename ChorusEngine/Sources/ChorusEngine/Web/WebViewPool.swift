@@ -453,7 +453,7 @@ public final class WebViewPool {
     /// tasks carry only Sendable values.
     private func probeCallDetection(_ instanceID: UUID) async -> Bool {
         guard let webView = webViews[instanceID] else { return false }
-        let result = try? await webView.evaluateJavaScript(UserScriptManager.callDetectionQueryJS)
+        let result = try? await PageScript.evaluate(UserScriptManager.callDetectionQueryJS, in: webView)
         return (result as? Bool) == true
     }
 
@@ -798,10 +798,14 @@ public final class WebViewPool {
         coordinators[instanceID]?.closeAllTabs()
         if let webView = webViews[instanceID] {
             extensionHost?.pageClosed(webView)
+            // A badge read or call check waiting on a stuck page would keep
+            // the web view, and with it the store, alive for good.
+            PageScript.abandonPending(for: webView)
             webView.configuration.userContentController.removeAllScriptMessageHandlers()
             webView.stopLoading()
             webView.navigationDelegate = nil
             webView.uiDelegate = nil
+            Self.endProcessIfStuck(webView)
         }
         mediaObservations[instanceID]?.forEach { $0.invalidate() }
         mediaObservations.removeValue(forKey: instanceID)
@@ -820,6 +824,59 @@ public final class WebViewPool {
         dropSnapshot(for: instanceID)
         syncParking()
         onServiceTornDown?(instanceID)
+    }
+
+    /// How long a page being torn down has to answer before its process is
+    /// taken as stuck. A working page answers in milliseconds.
+    static let stuckPageTimeout: Double = 2
+
+    /// Ends a torn-down page's process if the page no longer answers.
+    ///
+    /// A process whose main thread is stuck never exits by itself, and WebKit's
+    /// network process keeps that page's data store in use for as long as it
+    /// lives: `WKWebsiteDataStore.remove(forIdentifier:)` fails with "Data store
+    /// is in use (by network process)", and clearing the store waits on the
+    /// process for good. Measured on 2026-11-10: still in use after 90 s. A
+    /// stuck process can serve no page, so ending it costs nothing.
+    ///
+    /// Holds the view for the check, at most `stuckPageTimeout`, then lets it go.
+    private static func endProcessIfStuck(_ webView: WKWebView) {
+        Task { @MainActor in
+            let answered = await withDeadline(seconds: stuckPageTimeout, fallback: false) {
+                do { _ = try await PageScript.evaluate("0", in: webView) }
+                catch is CancellationError { return false }
+                catch { /* A script error is still an answer. */ }
+                return true
+            }
+            guard !answered else { return }
+            killContentProcess(of: webView)
+            // The check's own wait ends with the process; end it here too, in
+            // case WebKit never calls back.
+            PageScript.abandonPending(for: webView)
+        }
+    }
+
+    /// WebKit SPI with no public equivalent, so it is probed rather than
+    /// called blind. Without it a stuck process lives on and its store stays
+    /// in use until the next launch, as before.
+    ///
+    /// The pid, not `_killWebContentProcess`: that asks the process to quit,
+    /// and a stuck process never does. Measured on 2026-11-10: alive and its
+    /// store in use 8 s after `_killWebContentProcess`, gone and the store
+    /// removable a second after SIGKILL.
+    private static let webProcessIdentifierSelector = Selector(("_webProcessIdentifier"))
+
+    private static func killContentProcess(of webView: WKWebView) {
+        guard webView.responds(to: webProcessIdentifierSelector) else {
+            AppLogger.webView.warning("A torn-down page stopped answering, and WebKit no longer offers _webProcessIdentifier; its store stays in use until relaunch")
+            return
+        }
+        // Read while the view still holds the process, so the pid cannot have
+        // been reused.
+        let pid = (webView.value(forKey: "_webProcessIdentifier") as? NSNumber)?.int32Value ?? 0
+        guard pid > 0, pid != getpid() else { return }
+        AppLogger.webView.warning("A torn-down page stopped answering; ending its web content process")
+        kill(pid, SIGKILL)
     }
 
     /// Builds a navigation/UI coordinator wired to this service. Shared by

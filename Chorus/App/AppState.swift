@@ -2880,8 +2880,13 @@ final class AppState {
         if tombstones.contains(identifier) {
             Self.saveOrphanedIdentifiers(tombstones.subtracting([identifier]))
         }
-        let store = dataStoreManager.dataStore(forIdentifier: identifier)
-        await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
+        // WebKit waits on every process using the store, and one that has
+        // stopped answering never replies: Add Service waited for good on
+        // 2026-11-10. The pool ends a removed page's stuck process, so this
+        // limit is the backstop. A clear that gives up still runs on.
+        if await !dataStoreManager.clearAllData(identifier: identifier, within: 5) {
+            AppLogger.dataStore.warning("Clearing data store \(identifier) did not finish in 5 s; adding the service anyway")
+        }
         // A removal may have started during the clear; wait for it too, and
         // drop the handle it may have made stale.
         await waitOutRemoval(of: identifier)

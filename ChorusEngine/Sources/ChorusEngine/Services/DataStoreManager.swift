@@ -114,6 +114,21 @@ public final class DataStoreManager {
         cache.removeValue(forKey: identifier)
     }
 
+    /// Clears everything a store holds, or gives up after `seconds` and
+    /// returns false.
+    ///
+    /// WebKit asks every web process on the store to drop its copies and
+    /// waits for each to answer. A process that has stopped answering never
+    /// does, and without a limit the caller waits forever. Giving up leaves
+    /// the clear running, so it may still finish later.
+    public func clearAllData(identifier: UUID, within seconds: Double) async -> Bool {
+        let store = dataStore(forIdentifier: identifier)
+        return await withDeadline(seconds: seconds, fallback: false) {
+            await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
+            return true
+        }
+    }
+
     // NOTE: there is deliberately no direct `deleteDataStore(...)` here. Removing
     // a `WKWebsiteDataStore` while its `WKWebView` is still retained hard-crashes
     // inside WebKit, so every on-disk removal must go through AppState's
