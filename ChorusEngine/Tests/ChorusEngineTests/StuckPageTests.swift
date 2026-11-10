@@ -6,11 +6,33 @@ import XCTest
 /// was removed on 2026-11-10 and the Add that followed waited for good.
 @MainActor
 final class StuckPageTests: XCTestCase {
-    /// A page that stops answering half a second after it loads: its main
-    /// thread spins, so its process never replies to anything again.
+    /// A page that writes to its store, so the network process holds it.
+    /// `stall(_:)` makes it stop answering once it has loaded.
     private static let stuckHTML = """
-    <html><body>x<script>localStorage.a = 1; setTimeout(() => { while (true) {} }, 500)</script></body></html>
+    <html><body>x<script>localStorage.a = 1</script></body></html>
     """
+
+    /// Waits until `webView` has finished loading its page at example.com. A fixed sleep was too short
+    /// on a cold CI runner.
+    private func waitForLoad(_ webView: WKWebView) async throws {
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline {
+            // The blank page before the load is "complete" too.
+            let script = "document.readyState === 'complete' && location.href === 'https://example.com/'"
+            if (try? await PageScript.evaluate(script, in: webView) as? Bool) == true { return }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTFail("the page never loaded")
+    }
+
+    /// Loads the stuck page and spins its main thread, so its process never
+    /// replies to anything again.
+    private func loadStuckPage(in webView: WKWebView) async throws {
+        webView.loadHTMLString(Self.stuckHTML, baseURL: URL(string: "https://example.com/"))
+        try await waitForLoad(webView)
+        webView.evaluateJavaScript("setTimeout(() => { while (true) {} }, 0); 1", completionHandler: nil)
+        try await Task.sleep(for: .milliseconds(500))
+    }
 
     private func surface(store: UUID) -> WebSurface {
         WebSurface(
@@ -45,8 +67,7 @@ final class StuckPageTests: XCTestCase {
         let s = surface(store: store)
         pool.preload(s)
         weak var weakView = pool.liveWebView(for: s.id)
-        try XCTUnwrap(weakView).loadHTMLString(Self.stuckHTML, baseURL: URL(string: "https://example.com/"))
-        try await Task.sleep(for: .seconds(1.5))
+        try await loadStuckPage(in: XCTUnwrap(weakView))
 
         // A badge poll reads the page as it goes, the way the live poll does.
         let read = Task { @MainActor [weak pool] in
@@ -74,8 +95,7 @@ final class StuckPageTests: XCTestCase {
         let store = UUID()
         let s = surface(store: store)
         pool.preload(s)
-        try XCTUnwrap(pool.liveWebView(for: s.id)).loadHTMLString(Self.stuckHTML, baseURL: URL(string: "https://example.com/"))
-        try await Task.sleep(for: .seconds(1.5))
+        try await loadStuckPage(in: XCTUnwrap(pool.liveWebView(for: s.id)))
         pool.removeWebView(for: s.id)
         manager.evict(identifier: store)
         let removed = try await removeStore(store)
@@ -92,7 +112,7 @@ final class StuckPageTests: XCTestCase {
         pool.preload(s)
         weak var weakView = pool.liveWebView(for: s.id)
         try XCTUnwrap(weakView).loadHTMLString("<html><body>fine<script>localStorage.a = 1</script></body></html>", baseURL: URL(string: "https://example.com/"))
-        try await Task.sleep(for: .seconds(1.5))
+        try await waitForLoad(XCTUnwrap(weakView))
         pool.removeWebView(for: s.id)
         manager.evict(identifier: store)
         try await Task.sleep(for: .milliseconds(500))
@@ -108,8 +128,7 @@ final class StuckPageTests: XCTestCase {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent()
         let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), configuration: config)
-        webView.loadHTMLString(Self.stuckHTML, baseURL: URL(string: "https://example.com/"))
-        try await Task.sleep(for: .seconds(1.5))
+        try await loadStuckPage(in: webView)
 
         let read = Task { @MainActor in
             do { _ = try await PageScript.evaluate("document.title", in: webView); return "answered" }
@@ -127,7 +146,7 @@ final class StuckPageTests: XCTestCase {
         config.websiteDataStore = .nonPersistent()
         let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), configuration: config)
         webView.loadHTMLString("<html><head><title>Inbox (3)</title></head><body>x</body></html>", baseURL: URL(string: "https://example.com/"))
-        try await Task.sleep(for: .seconds(1))
+        try await waitForLoad(webView)
         let title = try await PageScript.evaluate("document.title", in: webView) as? String
         XCTAssertEqual(title, "Inbox (3)")
     }
@@ -141,8 +160,7 @@ final class StuckPageTests: XCTestCase {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = manager.dataStore(forIdentifier: store)
         let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), configuration: config)
-        webView.loadHTMLString(Self.stuckHTML, baseURL: URL(string: "https://example.com/"))
-        try await Task.sleep(for: .seconds(1.5))
+        try await loadStuckPage(in: webView)
 
         let started = Date()
         let cleared = await withDeadline(seconds: 6, fallback: nil as Bool?) {
