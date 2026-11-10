@@ -24,8 +24,11 @@ final class WebExtensionHostTests: XCTestCase {
 
     /// The probe extension: a content script that marks the page and asks the
     /// background for a reply, and a toolbar button. `asksForAgent` makes the
-    /// content script ask for the background's user agent instead.
-    private func makeProbe(extraPermissions: [String] = [], asksForAgent: Bool = false) throws -> String {
+    /// content script ask for the background's user agent instead;
+    /// `opensSocket` makes the background open a WebSocket to a closed port
+    /// and answer when it closes.
+    private func makeProbe(extraPermissions: [String] = [], asksForAgent: Bool = false, opensSocket: Bool = false,
+                           asksForDispose: Bool = false) throws -> String {
         let folder = root.appending(path: "probe", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let permissions = (["storage"] + extraPermissions).map { "\"\($0)\"" }.joined(separator: ", ")
@@ -39,14 +42,26 @@ final class WebExtensionHostTests: XCTestCase {
         """
         try Data(manifest.utf8).write(to: folder.appending(path: "manifest.json"))
         try Data("""
-        browser.runtime.onMessage.addListener((msg, sender, send) => { send(msg.ua ? {ua: navigator.userAgent} : {pong: 1}); });
+        browser.runtime.onMessage.addListener((msg, sender, send) => {
+          if (\(opensSocket)) {
+            const socket = new WebSocket('wss://127.0.0.1:44301/');
+            socket.onclose = (event) => send({pong: 1, closed: event.code});
+            return true;
+          }
+          if (msg.dispose) return send({dispose: typeof Symbol.dispose, asyncDispose: typeof Symbol.asyncDispose});
+          send(msg.ua ? {ua: navigator.userAgent} : {pong: 1});
+        });
         """.utf8).write(to: folder.appending(path: "bg.js"))
         try Data("""
         document.documentElement.setAttribute('data-probe', 'ran');
-        browser.runtime.sendMessage(\(asksForAgent ? "{ua: 1}" : "{ping: 1}"))
+        document.documentElement.setAttribute('data-probe-dispose', typeof Symbol.dispose);
+        browser.runtime.sendMessage(\(asksForAgent ? "{ua: 1}" : asksForDispose ? "{dispose: 1}" : "{ping: 1}"))
           .then(r => document.documentElement.setAttribute('data-probe-bg', r === undefined ? 'no reply' : JSON.stringify(r)))
           .catch(e => document.documentElement.setAttribute('data-probe-bg', 'err ' + e));
         """.utf8).write(to: folder.appending(path: "cs.js"))
+        try Data(#"<!doctype html><html><head><script src="page.js"></script></head><body></body></html>"#.utf8)
+            .write(to: folder.appending(path: "page.html"))
+        try Data("document.title = typeof Symbol.dispose;".utf8).write(to: folder.appending(path: "page.js"))
         return try library.importPackage(from: folder)
     }
 
@@ -174,6 +189,68 @@ final class WebExtensionHostTests: XCTestCase {
                                   "the background answered with its user agent: \(reply ?? "nil")")
         XCTAssertTrue(agent.contains(" Chrome/"), agent)
         XCTAssertTrue(agent.contains(" Safari/"), agent)
+
+        host.pageClosed(webView)
+        host.unload(record.id)
+    }
+
+    /// WebKit runs an extension's service worker on its process's main thread,
+    /// and opening a WebSocket from a worker waits for that same thread: the
+    /// process stops for good, popups included. Bitwarden opens one to its
+    /// notifications server as soon as someone signs in, so its sign-in spun
+    /// forever and its popup never opened again. (Port 9 would not show it:
+    /// WebKit refuses that port before it builds a channel.)
+    func testServiceWorkerSurvivesOpeningAWebSocket() async throws {
+        guard #available(macOS 15.4, *) else { throw XCTSkip("Web extensions need macOS 15.4") }
+        let host = WebExtensionHost(storageIdentifier: nil)
+        host.isActive = true
+        let record = record(folder: try makeProbe(opensSocket: true))
+        try await host.load(record, library: library)
+        host.contexts[record.id]?.hasAccessToPrivateData = true
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        host.attach(to: configuration)
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
+        host.pageOpened(webView, service: UUID())
+        host.pageActivated(webView)
+        webView.loadHTMLString("<html><body>page</body></html>", baseURL: URL(string: "https://example.com/")!)
+
+        let reply = try await poll(webView, "document.documentElement.getAttribute('data-probe-bg')")
+        XCTAssertEqual(reply, #"{"pong":1,"closed":1006}"#, "the socket failed and the background still answered")
+
+        host.pageClosed(webView)
+        host.unload(record.id)
+    }
+
+    /// Chrome 134 has `Symbol.dispose`, and Bitwarden's Chrome build leans on
+    /// it through TypeScript's `using` (unlocking, decrypting the vault).
+    /// WebKit has neither symbol, so Chorus defines both in each extension's
+    /// service worker, pages and content scripts.
+    func testExtensionContextsHaveDisposeSymbols() async throws {
+        guard #available(macOS 15.4, *) else { throw XCTSkip("Web extensions need macOS 15.4") }
+        let host = WebExtensionHost(storageIdentifier: nil)
+        host.isActive = true
+        let record = record(folder: try makeProbe(asksForDispose: true))
+        try await host.load(record, library: library)
+        host.contexts[record.id]?.hasAccessToPrivateData = true
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        host.attach(to: configuration)
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
+        host.pageOpened(webView, service: UUID())
+        host.pageActivated(webView)
+        webView.loadHTMLString("<html><body>page</body></html>", baseURL: URL(string: "https://example.com/")!)
+
+        let reply = try await poll(webView, "document.documentElement.getAttribute('data-probe-bg')")
+        XCTAssertEqual(reply, #"{"dispose":"symbol","asyncDispose":"symbol"}"#, "the service worker has both symbols")
+        let contentScript = try await poll(webView, "document.documentElement.getAttribute('data-probe-dispose')")
+        XCTAssertEqual(contentScript, "symbol", "the content script has Symbol.dispose")
+
+        let context = try XCTUnwrap(host.contexts[record.id])
+        let extensionPage = WKWebView(frame: .zero, configuration: try XCTUnwrap(context.webViewConfiguration))
+        extensionPage.load(URLRequest(url: context.baseURL.appending(path: "page.html")))
+        let pageResult = try await poll(extensionPage, "location.href.endsWith('page.html') && document.readyState === 'complete' ? document.title : null")
+        XCTAssertEqual(pageResult, "symbol", "an extension page has Symbol.dispose")
 
         host.pageClosed(webView)
         host.unload(record.id)

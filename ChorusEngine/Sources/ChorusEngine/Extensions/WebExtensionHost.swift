@@ -305,7 +305,13 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         case .package(let folder):
             // Must be an absolute directory URL: a relative one kills the
             // process outright (found in the 2026-11-09 probe).
-            return try await WKWebExtension(resourceBaseURL: library.packageURL(folder: folder).absoluteURL)
+            let root = library.packageURL(folder: folder).absoluteURL
+            do {
+                try ExtensionCompatibility.apply(to: root)
+            } catch {
+                AppLogger.extensions.error("Compatibility script not added to \(folder, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+            return try await WKWebExtension(resourceBaseURL: root)
         }
     }
 
