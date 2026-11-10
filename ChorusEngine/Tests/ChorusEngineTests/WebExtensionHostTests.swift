@@ -61,7 +61,14 @@ final class WebExtensionHostTests: XCTestCase {
         """.utf8).write(to: folder.appending(path: "cs.js"))
         try Data(#"<!doctype html><html><head><script src="page.js"></script></head><body></body></html>"#.utf8)
             .write(to: folder.appending(path: "page.html"))
-        try Data("document.title = typeof Symbol.dispose;".utf8).write(to: folder.appending(path: "page.js"))
+        try Data("""
+        document.title = typeof Symbol.dispose;
+        window.permissionAnswers = Promise.all(['privacy', 'nativeMessaging', 'storage', 'tabs'].map(name =>
+          new Promise(resolve => {
+            try { chrome.permissions.contains({permissions: [name]}, r => resolve(name + '=' + r)); }
+            catch (e) { resolve(name + ' threw ' + e.message); }
+          }))).then(list => list.join('; '));
+        """.utf8).write(to: folder.appending(path: "page.js"))
         return try library.importPackage(from: folder)
     }
 
@@ -251,6 +258,11 @@ final class WebExtensionHostTests: XCTestCase {
         extensionPage.load(URLRequest(url: context.baseURL.appending(path: "page.html")))
         let pageResult = try await poll(extensionPage, "location.href.endsWith('page.html') && document.readyState === 'complete' ? document.title : null")
         XCTAssertEqual(pageResult, "symbol", "an extension page has Symbol.dispose")
+        // WebKit throws for a permission it does not know, such as Chrome's
+        // `privacy`; Chrome answers false. Bitwarden's popup asks about
+        // `privacy` on its start screen, and the throw left the popup blank.
+        let answers = try await extensionPage.callAsyncJavaScript("return await window.permissionAnswers", contentWorld: .page) as? String
+        XCTAssertEqual(answers, "privacy=false; nativeMessaging=false; storage=true; tabs=false")
 
         host.pageClosed(webView)
         host.unload(record.id)

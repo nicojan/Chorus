@@ -1,6 +1,6 @@
 import Foundation
 
-/// Fills two gaps between WebKit and Chrome that stop Chrome builds of
+/// Fills gaps between WebKit and Chrome that stop Chrome builds of
 /// extensions, by adding one script to each package Chorus copied in.
 ///
 /// 1. WebKit runs an extension's service worker on its process's main thread.
@@ -16,6 +16,10 @@ import Foundation
 /// 2. Chrome 134 has `Symbol.dispose` and `Symbol.asyncDispose`; WebKit has
 ///    neither. TypeScript's `using` throws without them, and Bitwarden uses it
 ///    to unlock and to decrypt the vault. The script defines both.
+/// 3. Asked about a permission it does not know, such as Chrome's `privacy`,
+///    WebKit's `permissions.contains` throws where Chrome answers false.
+///    Bitwarden's popup asks on its start screen, and the throw left it
+///    blank. The script answers false.
 ///
 /// The script loads first in the service worker (through a new entry file),
 /// in every HTML page, in background scripts and ahead of each content script.
@@ -118,6 +122,31 @@ enum ExtensionCompatibility {
         if (typeof Symbol[name] !== "symbol") {
           Object.defineProperty(Symbol, name, { value: Symbol("Symbol." + name) });
         }
+      }
+
+      // WebKit throws when asked about a permission it does not know, such as
+      // Chrome's "privacy"; Chrome answers false. Answer false here too.
+      const wrapped = new WeakSet();
+      for (const api of [globalThis.chrome, globalThis.browser]) {
+        const permissions = api && api.permissions;
+        if (!permissions || typeof permissions.contains !== "function" || wrapped.has(permissions)) continue;
+        wrapped.add(permissions);
+        const contains = permissions.contains.bind(permissions);
+        const answer = function (details, callback) {
+          try {
+            return contains(details, callback);
+          } catch (error) {
+            if (!/is not a valid permission/.test(String(error && error.message))) throw error;
+            if (typeof callback === "function") {
+              setTimeout(() => callback(false), 0);
+              return undefined;
+            }
+            return Promise.resolve(false);
+          }
+        };
+        try {
+          Object.defineProperty(permissions, "contains", { value: answer, writable: true, configurable: true });
+        } catch (error) {}
       }
 
       // WebKit runs an extension's service worker on its process's main thread,
