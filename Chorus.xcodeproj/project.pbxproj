@@ -80,6 +80,7 @@
 		B38213E2F7A905BC31FE8120 /* ExtensionInstallSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6CCFAE0F53BA8609148D7DE /* ExtensionInstallSheets.swift */; };
 		BA1476755637D56C12D39BC0 /* RailTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9685F17CCE71FDC093EBA783 /* RailTests.swift */; };
 		BAEE46A4791ABB6963914A5D /* NativeAppSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06F91EDD3C2858890FA0B343 /* NativeAppSupport.swift */; };
+		BBA02EFA2A776B5823246AC4 /* CodeTextEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2B4BE7419A06A9B6BF953BD /* CodeTextEditor.swift */; };
 		BD121CBDE1FAE58D2F8B6786 /* GlobalBoxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E110F19271457C83B3A2282E /* GlobalBoxView.swift */; };
 		BD6B6CD0E903780B610BD6B5 /* StoreRecoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E05727F83BFEFB338D97E4DF /* StoreRecoveryView.swift */; };
 		C0852A818DF6C7A869CD2B42 /* ServiceAdding.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC87946B5AEAD323DA191E29 /* ServiceAdding.swift */; };
@@ -216,6 +217,7 @@
 		D01CC2330887CF5293843BF3 /* IconThumbnail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconThumbnail.swift; sourceTree = "<group>"; };
 		D0C165770A657F8FF9DB4274 /* GroupBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupBox.swift; sourceTree = "<group>"; };
 		D2AC7E996360A4BC660FD194 /* KeyboardShortcutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardShortcutManager.swift; sourceTree = "<group>"; };
+		D2B4BE7419A06A9B6BF953BD /* CodeTextEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeTextEditor.swift; sourceTree = "<group>"; };
 		D533B667501DF0913FF62B9A /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		DA4617D503719C1701307F28 /* WebContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebContentView.swift; sourceTree = "<group>"; };
 		DCE1C5083FF8571A533E856F /* ChorusTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChorusTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -277,6 +279,7 @@
 				B71EE82DCC8428040B3FCA57 /* AddServicePlacementPage.swift */,
 				ECCC4A3133903E40BFB42AA6 /* AddServiceSheet.swift */,
 				8F17BFF4DCC563429E130A13 /* CatalogGridView.swift */,
+				D2B4BE7419A06A9B6BF953BD /* CodeTextEditor.swift */,
 				9DD5F8F7C2450C88FA1A3886 /* EditServiceSheet.swift */,
 			);
 			path = AddService;
@@ -636,6 +639,7 @@
 				D2FF4AA7BA395992C0609D93 /* ChorusAppDelegate.swift in Sources */,
 				B095E6333D67F97829F12E97 /* ChorusSchema.swift in Sources */,
 				D4721545C5C3DD809AE549A7 /* ChorusStyle.swift in Sources */,
+				BBA02EFA2A776B5823246AC4 /* CodeTextEditor.swift in Sources */,
 				230144499E6BE9FD41C03338 /* ContentView.swift in Sources */,
 				F91A02313DC1AA39BDF7A40E /* CountPulse.swift in Sources */,
 				9912BDFEE290E93DC57ED3C7 /* DemoControl.swift in Sources */,

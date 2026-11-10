@@ -9,6 +9,45 @@ import ChorusEngine
 /// notifications (the gaps found against Ferdium, issue #49).
 @MainActor
 final class FerdiumGapsTests: XCTestCase {
+    // MARK: - Code editor
+
+    /// Custom JavaScript and CSS are typed into a text view. A plain SwiftUI
+    /// TextEditor follows the Mac's typing settings and turned ' into a curly
+    /// quote and -- into a dash, so a typed script failed to parse and never
+    /// ran. Types through the text view the way keys do; the trailing space
+    /// is what makes AppKit apply its substitutions.
+    func testCodeEditorKeepsTypedQuotesAndDashes() throws {
+        let typed = "document.body.insertAdjacentHTML('afterbegin', \"<b>x</b>\"); i -- 1; "
+
+        let control = NSTextView.scrollableTextView()
+        let controlView = try XCTUnwrap(control.documentView as? NSTextView)
+        XCTAssertNotEqual(try type(typed, into: control) {
+            controlView.isAutomaticQuoteSubstitutionEnabled = true
+            controlView.isAutomaticDashSubstitutionEnabled = true
+        }, typed, "control: with substitutions on, typing this way changes the text")
+
+        let editor = CodeTextEditor.makeScrollView()
+        XCTAssertEqual(try type(typed, into: editor) {}, typed)
+        XCTAssertFalse(try XCTUnwrap(editor.documentView as? NSTextView).isRichText)
+    }
+
+    /// Puts `scrollView` in a window, focuses its text view, runs `prepare`,
+    /// and types `text` one character at a time.
+    private func type(_ text: String, into scrollView: NSScrollView, prepare: () -> Void) throws -> String {
+        let textView = try XCTUnwrap(scrollView.documentView as? NSTextView)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 120), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.contentView = scrollView
+        window.makeFirstResponder(textView)
+        prepare()
+        for character in text {
+            textView.insertText(String(character), replacementRange: NSRange(location: NSNotFound, length: 0))
+        }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        return textView.string
+    }
+
     // MARK: - User agent choice
 
     func testUserAgentChoiceResolvesStoredValues() {

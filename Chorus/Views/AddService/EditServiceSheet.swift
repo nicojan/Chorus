@@ -485,14 +485,12 @@ struct EditServiceSheet: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            TextEditor(text: $customJS)
-                .font(.system(.caption, design: .monospaced))
+            CodeTextEditor(text: $customJS, label: "Custom JavaScript")
                 .frame(height: 120)
                 .overlay(
                     RoundedRectangle(cornerRadius: ChorusRadius.control)
                         .stroke(Color(nsColor: .separatorColor))
                 )
-                .accessibilityLabel("Custom JavaScript")
 
             Text("Runs in this service's page, with your signed-in session. Paste only code you trust. Exported setups leave it out. Saving reloads the page.")
                 .font(.caption)
@@ -507,14 +505,12 @@ struct EditServiceSheet: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            TextEditor(text: $customCSS)
-                .font(.system(.caption, design: .monospaced))
+            CodeTextEditor(text: $customCSS, label: "Custom CSS")
                 .frame(height: 120)
                 .overlay(
                     RoundedRectangle(cornerRadius: ChorusRadius.control)
                         .stroke(Color(nsColor: .separatorColor))
                 )
-                .accessibilityLabel("Custom CSS")
 
             HStack {
                 Spacer()
