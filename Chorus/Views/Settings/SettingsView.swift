@@ -337,6 +337,8 @@ struct NotificationSettingsView: View {
 
             scheduledDNDSection
 
+            privateNotificationsSection
+
             Section("Per-Service") {
                 if services.isEmpty {
                     Text("No services added yet.")
@@ -455,6 +457,23 @@ struct NotificationSettingsView: View {
                 appState.refreshBadgeState(for: service.id)
             }
         )
+    }
+
+    @ViewBuilder
+    private var privateNotificationsSection: some View {
+        Section("Privacy") {
+            Toggle("Hide message text in notifications", isOn: Binding(
+                get: { appState.hideNotificationText },
+                set: { value in
+                    appState.hideNotificationText = value
+                    ensurePrefs().hideNotificationText = value
+                    save("hide notification text")
+                }
+            ))
+            Text("Banners show only the service name and \"New notification\".")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     @ViewBuilder
@@ -578,6 +597,19 @@ struct PrivacySettingsView: View {
                             save("lock on sleep")
                         }
                     ))
+                    Picker("Lock after no activity", selection: Binding(
+                        get: { appState.lockAfterIdleMinutes },
+                        set: { value in
+                            appState.lockAfterIdleMinutes = value
+                            ensurePrefs().lockAfterIdleMinutes = value
+                            save("lock after idle")
+                        }
+                    )) {
+                        Text("Never").tag(0)
+                        ForEach([1, 5, 15, 30, 60], id: \.self) { minutes in
+                            Text(minutes == 1 ? "1 minute" : "\(minutes) minutes").tag(minutes)
+                        }
+                    }
                 }
 
                 Text("Uses Touch ID, with your login password as a fallback. Lock immediately from the File menu (⇧⌘L).")

@@ -5124,7 +5124,7 @@ final class ChorusTests: XCTestCase {
                 "forceDarkMode", "darkModeRaw", "cameraPolicyRaw", "microphonePolicyRaw",
                 "openExternalLinksInApp", "stayActiveInBackground", "hasSeenPasskeyNotice",
                 "hibernationPolicyRaw", "hibernateAfterMinutes", "createdAt", "lastAccessedAt",
-                "isGlobal", "globalSortOrder",
+                "isGlobal", "globalSortOrder", "customJS",
             ],
             "ServiceInstance stored attributes changed without a new schema version"
         )
@@ -5199,6 +5199,7 @@ final class ChorusTests: XCTestCase {
                 "appearanceModeRaw", "contentBlockingEnabled", "annoyanceBlockingEnabled",
                 "defaultCameraPolicyRaw", "defaultMicrophonePolicyRaw", "googleFaviconFallbackEnabled",
                 "autoHibernateIdleEnabled", "autoHibernateIdleMinutes",
+                "lockAfterIdleMinutes", "hideNotificationText",
             ],
             "AppPreferences stored attributes changed — freeze its historical shape before editing (see ChorusSchema.swift)"
         )
@@ -5210,14 +5211,19 @@ final class ChorusTests: XCTestCase {
     /// and the frozen copy isn't updated with a new version, a real old store
     /// stops matching its declared version. Compare their attribute sets directly.
     func testFrozenAppPreferencesMatchesLiveModel() {
-        let frozen = Schema([ChorusSchemaV1_5_11.AppPreferences.self])
+        let frozen = Schema([ChorusSchemaV1_5_30.AppPreferences.self])
         let live = Schema([AppPreferences.self])
         let frozenAttrs = Set((frozen.entities.first?.attributes ?? []).map(\.name))
         let liveAttrs = Set((live.entities.first?.attributes ?? []).map(\.name))
+        // The two fields 1.5.38 added; the 1.5.30 copy must not have them.
+        let addedSince1_5_30: Set<String> = ["lockAfterIdleMinutes", "hideNotificationText"]
         XCTAssertEqual(
-            frozenAttrs, liveAttrs,
+            frozenAttrs.union(addedSince1_5_30), liveAttrs,
             "frozen AppPreferences drifted from live — if you added a settings field, freeze the prior shape and add a new schema version"
         )
+        // The 1.5.11 copy that versions up to 1.5.29 share is the same shape.
+        let oldest = Schema([ChorusSchemaV1_5_11.AppPreferences.self])
+        XCTAssertEqual(Set((oldest.entities.first?.attributes ?? []).map(\.name)), frozenAttrs)
     }
 
     /// The incident path. Write a store at the 1.5.11 shape, reopen it at the

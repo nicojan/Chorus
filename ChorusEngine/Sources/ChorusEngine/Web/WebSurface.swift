@@ -23,6 +23,9 @@ public struct WebSurface: Sendable, Equatable {
     public let userAgent: String?
     /// The effective CSS to inject, or nil for none.
     public let css: String?
+    /// The user's own JavaScript to run in the page after it loads, or nil for
+    /// none. It runs in the page's own content world, with the signed-in session.
+    public let customJS: String?
     /// The user turned dark theming on for this page. It themes only while the
     /// app is dark too.
     public let darkThemed: Bool
@@ -39,6 +42,7 @@ public struct WebSurface: Sendable, Equatable {
         dataStore: DataStore,
         userAgent: String?,
         css: String?,
+        customJS: String? = nil,
         darkThemed: Bool,
         keepsLoaded: Bool,
         staysActiveInBackground: Bool,
@@ -49,6 +53,7 @@ public struct WebSurface: Sendable, Equatable {
         self.dataStore = dataStore
         self.userAgent = userAgent
         self.css = css
+        self.customJS = customJS
         self.darkThemed = darkThemed
         self.keepsLoaded = keepsLoaded
         self.staysActiveInBackground = staysActiveInBackground

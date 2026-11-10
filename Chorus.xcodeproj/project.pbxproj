@@ -58,6 +58,7 @@
 		817A70A10923352BBAC3F63E /* CatalogIconCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0693A705E1552F5809BA3399 /* CatalogIconCache.swift */; };
 		8325C3DEC3242E7E2C19EB07 /* SpacePaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03E9D5B98CFDDD0B2E7FD42C /* SpacePaletteView.swift */; };
 		863BAA64BC341E5286D8915E /* UnifiedRailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D2B28970B7AEF9B0EB53AFD /* UnifiedRailView.swift */; };
+		89606D5178F21DDE4744211E /* UserAgentChoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8A7E8CC060D732C04B951B8 /* UserAgentChoice.swift */; };
 		8AEFF9F928EBEA5194112A21 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DD7FF3D960F0FCA3A2F310B1 /* Assets.xcassets */; };
 		8DEAA301843C94622A4061F4 /* ServiceTabStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD2B240CAC6C5AD94A056FA8 /* ServiceTabStrip.swift */; };
 		8F6E2C62BD277E5577FBE480 /* WebContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA4617D503719C1701307F28 /* WebContentView.swift */; };
@@ -102,6 +103,7 @@
 		E80A466D432A4BF3B9A928ED /* QuitRecordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07521B53363878D0066BEA7F /* QuitRecordTests.swift */; };
 		E8288CD202E937B4B6087D67 /* RailOrder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7264BBC99612EDA5183912E7 /* RailOrder.swift */; };
 		F1E3E4A757954012789BD79D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = F63EF11A2754495AEB09C97E /* Sparkle */; };
+		F369648B855D9C624FE11F7C /* FerdiumGapsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25154F5D22DA7EE91EE5629A /* FerdiumGapsTests.swift */; };
 		F485F694BEA64C6EDA2CD167 /* SheetQuit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29C26C37D627ADE04B904988 /* SheetQuit.swift */; };
 		F709F5524B2146C260A0BCB0 /* BadgeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 706D85D3C09C182826CD4EBA /* BadgeManager.swift */; };
 		F91A02313DC1AA39BDF7A40E /* CountPulse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90B192B469204BF505EDAA7E /* CountPulse.swift */; };
@@ -138,6 +140,7 @@
 		2200EDE680C15FBE00601E12 /* RailRuns.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailRuns.swift; sourceTree = "<group>"; };
 		24ECDB7D8F7F0F324289AD37 /* RailDividerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailDividerView.swift; sourceTree = "<group>"; };
 		24EE83C0600AFD4A12914883 /* HibernatedBadgePoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HibernatedBadgePoller.swift; sourceTree = "<group>"; };
+		25154F5D22DA7EE91EE5629A /* FerdiumGapsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FerdiumGapsTests.swift; sourceTree = "<group>"; };
 		288DEBD3535A7B48F3D5D841 /* ServiceCSSDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceCSSDefaults.swift; sourceTree = "<group>"; };
 		29C26C37D627ADE04B904988 /* SheetQuit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SheetQuit.swift; sourceTree = "<group>"; };
 		311EEF2D99711EA929371A79 /* ChorusSchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChorusSchema.swift; sourceTree = "<group>"; };
@@ -188,6 +191,7 @@
 		A57E5D591EBF1C07CB81460D /* CountPulseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountPulseTests.swift; sourceTree = "<group>"; };
 		A81455BBBD65D1115E9A8DA3 /* OutsideLinkDefault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutsideLinkDefault.swift; sourceTree = "<group>"; };
 		A83F5BC25BB6A8A26F8439DA /* RailDivider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailDivider.swift; sourceTree = "<group>"; };
+		A8A7E8CC060D732C04B951B8 /* UserAgentChoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAgentChoice.swift; sourceTree = "<group>"; };
 		AD2B240CAC6C5AD94A056FA8 /* ServiceTabStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceTabStrip.swift; sourceTree = "<group>"; };
 		B2E3F3C66C05EA91501A73EF /* ChorusAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChorusAppDelegate.swift; sourceTree = "<group>"; };
 		B3506A7D95472D8F3E822A39 /* ServiceCatalogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceCatalogEntry.swift; sourceTree = "<group>"; };
@@ -282,6 +286,7 @@
 				E30F23AFD0B5D81AF103BF37 /* ServiceCatalog.swift */,
 				288DEBD3535A7B48F3D5D841 /* ServiceCSSDefaults.swift */,
 				EB2C3D766E33A238E3561B34 /* SetupArchive.swift */,
+				A8A7E8CC060D732C04B951B8 /* UserAgentChoice.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -486,6 +491,7 @@
 			children = (
 				FBA2B8A19B41207F66E51CC3 /* ChorusTests.swift */,
 				A57E5D591EBF1C07CB81460D /* CountPulseTests.swift */,
+				25154F5D22DA7EE91EE5629A /* FerdiumGapsTests.swift */,
 				4878D7EAAB3DCB48557A9984 /* GlobalPlacementTests.swift */,
 				FF1B76F1DCF6AD0DC9CD9FEB /* GroupTests.swift */,
 				07521B53363878D0066BEA7F /* QuitRecordTests.swift */,
@@ -673,6 +679,7 @@
 				D19CD58F64D002620BE6850C /* StoreRepair.swift in Sources */,
 				E2BFB66EDC3B4F7CD92A1836 /* TrafficLights.swift in Sources */,
 				863BAA64BC341E5286D8915E /* UnifiedRailView.swift in Sources */,
+				89606D5178F21DDE4744211E /* UserAgentChoice.swift in Sources */,
 				8F6E2C62BD277E5577FBE480 /* WebContentView.swift in Sources */,
 				A22B72681582D92F92938917 /* WebToolbarView.swift in Sources */,
 				E17903CD1F33C670CA1E1011 /* WebViewPool+Services.swift in Sources */,
@@ -687,6 +694,7 @@
 			files = (
 				C4ADA7C24E806E00FF4709D1 /* ChorusTests.swift in Sources */,
 				3047D7319F96D9895287FB49 /* CountPulseTests.swift in Sources */,
+				F369648B855D9C624FE11F7C /* FerdiumGapsTests.swift in Sources */,
 				DA30DDBA2100841126D77F95 /* GlobalPlacementTests.swift in Sources */,
 				30F2487A1BC701C49D19A237 /* GroupTests.swift in Sources */,
 				E80A466D432A4BF3B9A928ED /* QuitRecordTests.swift in Sources */,

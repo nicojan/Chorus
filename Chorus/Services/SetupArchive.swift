@@ -99,6 +99,10 @@ struct SetupArchive: Codable, Equatable {
     /// - `forceDarkMode`: the retired flag; `darkModeRaw` carries its meaning.
     /// - `hasSeenPasskeyNotice`: about this Mac's copy, not the service.
     /// - `createdAt`, `lastAccessedAt`: set fresh by the import.
+    /// - `customJS`: code that runs in the page with the user's signed-in
+    ///   session. A setup file can come from someone else, so it never carries
+    ///   code in or out. The record has no key for it, so an archive that holds
+    ///   one is read without it.
     /// - `cameraPolicyRaw`, `microphonePolicyRaw`: a permission is granted by a
     ///   person on a Mac, not carried in a file. A file that could grant camera
     ///   access to an address of its choosing, under a familiar name and icon,
@@ -107,7 +111,7 @@ struct SetupArchive: Codable, Equatable {
         "isGlobal", "globalSortOrder",
         "id", "dataStoreIdentifier", "fetchedIconData", "faviconFetchedAt",
         "forceDarkMode", "hasSeenPasskeyNotice", "createdAt", "lastAccessedAt",
-        "cameraPolicyRaw", "microphonePolicyRaw",
+        "cameraPolicyRaw", "microphonePolicyRaw", "customJS",
     ]
 
     // MARK: - Limits

@@ -254,9 +254,21 @@ final class AppState {
 
     /// App lock (Touch ID / password), loaded from AppPreferences. `isLocked`
     /// drives an opaque cover over the window content in ContentView.
-    var appLockEnabled = false
+    var appLockEnabled = false {
+        didSet { if isLaunchComplete { startIdleLockTimer() } }
+    }
     var lockOnLaunch = true
     var lockOnSleep = true
+    /// Minutes with no keyboard or mouse use before the app locks; 0 is off.
+    var lockAfterIdleMinutes = 0 {
+        didSet { if isLaunchComplete { startIdleLockTimer() } }
+    }
+    @ObservationIgnored private var idleLockTask: Task<Void, Never>?
+    /// Show only the service name and a fixed line in notification banners.
+    /// Pushed to the engine's script manager, which builds the banner.
+    var hideNotificationText = false {
+        didSet { userScriptManager.hidesNotificationText = hideNotificationText }
+    }
     var isLocked = false {
         didSet { if oldValue && !isLocked { showWindowsHiddenForLock() } }
     }
@@ -1639,6 +1651,48 @@ final class AppState {
         // Don't leave a capture prompt hanging over the lock screen.
         drainAllMediaRequests()
         hideWindowsForLock()
+    }
+
+    /// How often the idle lock checks the system idle time.
+    private static let idleLockCheckInterval: Duration = .seconds(30)
+
+    /// The idle-lock rule: lock when the lock is on, the app is not already
+    /// locked, a timeout is set, and the Mac has been idle at least that long.
+    nonisolated static func shouldLockForIdle(
+        idleSeconds: TimeInterval, minutes: Int, isLocked: Bool, lockEnabled: Bool
+    ) -> Bool {
+        guard lockEnabled, !isLocked, minutes > 0 else { return false }
+        return idleSeconds >= TimeInterval(minutes) * 60
+    }
+
+    /// Seconds since the last keyboard or mouse event anywhere on the Mac.
+    private static func systemIdleSeconds() -> TimeInterval {
+        // `~0` is "any event type".
+        CGEventSource.secondsSinceLastEventType(
+            .combinedSessionState, eventType: CGEventType(rawValue: ~0)!
+        )
+    }
+
+    /// Starts, restarts or stops the idle-lock check to match the settings.
+    /// Safe to call on every change.
+    private func startIdleLockTimer() {
+        idleLockTask?.cancel()
+        idleLockTask = nil
+        guard appLockEnabled, lockAfterIdleMinutes > 0 else { return }
+        idleLockTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.idleLockCheckInterval)
+                guard let self, !Task.isCancelled else { return }
+                if Self.shouldLockForIdle(
+                    idleSeconds: Self.systemIdleSeconds(),
+                    minutes: self.lockAfterIdleMinutes,
+                    isLocked: self.isLocked,
+                    lockEnabled: self.appLockEnabled
+                ) {
+                    self.lock()
+                }
+            }
+        }
     }
 
     /// Hides every other titled window: sign-in popups and link windows show
@@ -3256,6 +3310,8 @@ final class AppState {
         appLockEnabled = prefs?.appLockEnabled ?? false
         lockOnLaunch = prefs?.lockOnLaunch ?? true
         lockOnSleep = prefs?.lockOnSleep ?? true
+        lockAfterIdleMinutes = max(0, prefs?.lockAfterIdleMinutes ?? 0)
+        hideNotificationText = prefs?.hideNotificationText ?? false
         contentBlockingEnabled = prefs?.contentBlockingEnabledEffective ?? true
         annoyanceBlockingEnabled = prefs?.annoyanceBlockingEnabledEffective ?? false
         let googleFallback = prefs?.googleFaviconFallbackEnabledEffective ?? false
@@ -3282,6 +3338,7 @@ final class AppState {
             self.refreshEffectiveDoNotDisturb()
             self.startQuietHoursTimer()
             self.startIdleHibernationTimer()
+            self.startIdleLockTimer()
             self.setupLockObservers()
             self.startDarkMode()
         }

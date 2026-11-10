@@ -3,6 +3,17 @@
 All notable changes to Chorus are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+
+These four come from Ferdium, which a user asked Chorus to follow (#49).
+
+- Edit Service now lets you choose the browser a service sees: Safari, iPhone, or any user agent you type. Some sites, such as Notion or ChatGPT, turn away browsers they don't know; a custom user agent gets you past them. The iPhone choice replaces the Mobile view switch and does the same thing.
+- You can give a service your own JavaScript, in Edit Service under Custom JavaScript. Chorus runs it in the page each time the page loads, with your signed-in session, so paste only code you trust. Exported setups never include it, and importing a setup never adds it.
+- Settings > Privacy can lock Chorus after 1 to 60 minutes with no keyboard or mouse use on your Mac. It needs the app lock to be on.
+- Settings > Notifications can hide what a message says. A banner then shows only the service's name and "New notification".
+
 ## [1.5.37] - 2026-11-06
 
 ### Fixed

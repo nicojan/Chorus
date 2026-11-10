@@ -170,6 +170,12 @@ final class ServiceInstance {
     /// A non-nil value overrides the default; a blank value disables both.
     var customCSS: String?
 
+    /// Per-service custom JavaScript, run in the service's page after it loads.
+    /// Stored optional so SwiftData lightweight migration succeeds on existing
+    /// rows; nil (or blank) means none. It runs with the user's signed-in
+    /// session, so it is never exported or imported with a setup file.
+    var customJS: String?
+
     /// Force a dark appearance on a service that has no dark theme of its own,
     /// by inverting the page. Services that DO have a dark theme should leave
     /// this off and simply follow the system appearance. Optional for SwiftData
@@ -367,6 +373,7 @@ final class ServiceInstance {
         pageZoom: Double? = nil,
         osNotificationsEnabled: Bool? = nil,
         customCSS: String? = nil,
+        customJS: String? = nil,
         forceDarkMode: Bool? = nil,
         darkModeRaw: String? = nil,
         hasSeenPasskeyNotice: Bool? = nil,
@@ -394,6 +401,7 @@ final class ServiceInstance {
         self.pageZoom = pageZoom
         self.osNotificationsEnabled = osNotificationsEnabled
         self.customCSS = customCSS
+        self.customJS = customJS
         self.forceDarkMode = forceDarkMode
         self.darkModeRaw = darkModeRaw
         self.hasSeenPasskeyNotice = hasSeenPasskeyNotice
