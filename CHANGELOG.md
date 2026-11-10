@@ -13,7 +13,11 @@ These four come from Ferdium, which a user asked Chorus to follow (#49).
 - You can give a service your own JavaScript, in Edit Service under Custom JavaScript. Chorus runs it in the page each time the page loads, with your signed-in session, so paste only code you trust. Exported setups never include it, and importing a setup never adds it.
 - Settings > Privacy can lock Chorus after 1 to 60 minutes with no keyboard or mouse use on your Mac. It needs the app lock to be on.
 - Settings > Notifications can hide what a message says. A banner then shows only the service's name and "New notification".
-- Chorus can now run web extensions, on macOS 15.4 and later. Add one in Settings > Extensions: pick a Safari extension that came with one of your Mac apps, or add a Chrome or Firefox build from a folder or a .zip, .crx or .xpi file. Before an extension goes on, Chorus lists what it will be able to do. Its button sits in the toolbar beside the downloads button. An extension can't reach its own Mac app from Chorus, since macOS lets only Safari do that, so the Safari version of 1Password can't reach 1Password itself. Where an extension comes in a version that works on its own, as Bitwarden's Chrome build does, add that one.
+- Chorus can now run web extensions, on macOS 15.4 and later. Add one in Settings > Extensions: pick a Safari extension that came with one of your Mac apps, or add a Chrome or Firefox build from a folder or a .zip, .crx or .xpi file. Before an extension goes on, Chorus lists what it will be able to do. Its button sits at the end of the toolbar, after a thin line. An extension can't reach its own Mac app from Chorus, since macOS lets only Safari do that, so the Safari version of 1Password can't reach 1Password itself. Where an extension comes in a version that works on its own, add that one. Bitwarden's Chrome build signs in, opens its popup and fills logins in Chorus. It gets no live updates from Bitwarden's server, so a change made on another device shows up when Bitwarden next syncs.
+
+### Fixed
+
+- When Chorus locks while you work in another app, it no longer asks for Touch ID at once and pulls its window to the front. The lock screen covers the window as before, and Touch ID asks when you switch to Chorus.
 
 ## [1.5.37] - 2026-11-06
 
