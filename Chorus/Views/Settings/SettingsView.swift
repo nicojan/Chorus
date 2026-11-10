@@ -55,6 +55,11 @@ struct SettingsView: View {
                     Label("Privacy", systemImage: "lock")
                 }
 
+            ExtensionsSettingsView()
+                .tabItem {
+                    Label("Extensions", systemImage: "puzzlepiece.extension")
+                }
+
             aboutTab
                 .tabItem {
                     Label("About", systemImage: "info.circle")

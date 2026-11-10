@@ -24,18 +24,26 @@ Built on `feat/ferdium-gaps` (`94cb01b`, pushed, CI green on macOS 15 and 26, 51
 
 Where Ferdium is weak and Chorus wins: it needs its account server to load services (#2005, #2176, #2369); it is heavy (#647, #1013, #2248); and it trails Chromium versions (#2465). Measured memory and CPU next to Ferdium would answer #49 best; nobody has measured them.
 
-### Password managers and web extensions
+### Web extensions, built on `feat/web-extensions` (off `feat/ferdium-gaps`)
 
-Research on 2026-11-09, plus a probe.
+Nico chose on 2026-11-09 to build extension support without a Bitwarden fill test first, and to test everything by hand before a release.
 
-- Closed: Apple Passwords autofill. From macOS 15.5 only browsers on Apple's list may use it, and joining takes a macOS update. Passkeys need an entitlement Apple is slow to grant.
-- Likely: Bitwarden and Proton Pass. They work on their own with their own login. Another WebKit browser, "Search", runs Bitwarden's Chrome build through `WKWebExtension`.
-- Likely: 1Password. Orion runs its Chrome build, and the user adds Orion under 1Password > Settings > Browser. Chorus would have to connect the extension to the 1Password app itself (`connectUsing`); nobody documents that link.
-- Probe (`/Volumes/n1TB/Personal/Projects/dev/chorus-extprobe`, outside the repo, built with `swiftc -O -parse-as-library`): a plain, non-sandboxed process with no bundle loaded four installed Safari extensions from other vendors with `WKWebExtension(appExtensionBundle:)`: SponsorBlock, Velja, Zotero Connector and Downie. All loaded with no errors and their background pages started. A small extension of its own loaded from a folder too.
-- Not yet seen: a content script running. The probe's own extension marks the page from its content script, and the mark never appeared on example.com, with or without a tab and window registered with the controller. Next to rule out: a real app bundle with a bundle id, a persistent data store, the web view on screen, and creating the web view after the context loads.
-- Probe gotchas: a relative `resourceBaseURL` killed the process (exit 137); pass an absolute directory URL. Rebuild to a new file name; overwriting the binary in place also got it killed.
-- 1Password 8.12.44 is installed from brew for testing. Its Safari extension comes from the Mac App Store and is not installed.
-- Engine fit: `WebViewPool.swift:840` and `InAppBrowserWindow.swift:43` build every configuration, so one `WKWebExtensionController` can go on each. It needs `#available(macOS 15.4, *)`. Services would map to the extension's tabs and windows. Rough size: two to three weeks, plus a week for 1Password's app link.
+Probe results (2026-11-09, `/Volumes/n1TB/Personal/Projects/dev/chorus-extprobe`, outside the repo):
+
+- Content scripts never ran in the first probe because its pages used a non-persistent store. WebKit treats that as private browsing and skips content scripts unless the context has `hasAccessToPrivateData`. A persistent store, or that flag, fixes it. The web view being on screen made no difference, and URL access was already granted. Every Chorus service store is persistent.
+- Installed Safari extensions from other vendors run in full. SponsorBlock drew its sponsor-segment controls in the YouTube player. Content-to-background messaging works once the page is registered with the controller as a tab; without that it fails with "Tab not found".
+- Extension background pages have no "Safari" in their user agent unless the host sets `applicationNameForUserAgent`. Velja then took its Chrome path (`tabs.update` to a `velja:` URL).
+- Native messaging to a vendor's Mac app is closed. Without the delegate methods WebKit answers "Native messaging is not supported". Forwarding by hand fails too: PlugInKit refuses the lookup ("the host does not have the com.apple.private.can-load-any-content-blocker entitlement"). So the Safari builds of 1Password and Bitwarden cannot reach their apps from Chorus.
+
+What the branch does:
+
+- Engine (`ChorusEngine/Sources/ChorusEngine/Extensions/`): `WebExtensionHost` (one controller, one context per extension, every service page and service tab a tab of one window), `WebExtensionLibrary` (JSON list plus copied packages; folder, .zip, .crx, .xpi), `SafariExtensionScanner` (reads app bundles, since PlugInKit will not list them), `WebExtensionPermissionText`. The pool attaches the controller only while an extension is on.
+- App: `ExtensionManager`, Settings > Extensions (add a Safari extension, add from a file, on/off, extension settings page, remove), toolbar buttons with popups, a prompt for permissions asked at run time. The list lives in `Application Support/Chorus(-debug)/Extensions`, outside SwiftData: no schema change.
+- Tests: 20 engine tests (one loads a real extension and checks its content script and background reply), 4 app tests.
+
+Not tried by hand yet: any of it in the Debug app. Check: add SponsorBlock from Safari extensions, see its controls on YouTube in a service; add Bitwarden's Chrome build from its release zip, sign in through its popup, fill a login; the Reload Pages button after the first extension; remove an extension and see its data gone.
+
+Known gaps: OAuth popups and in-app browser windows are not registered as tabs (content scripts run in popups, messaging from them fails); context-menu items from extensions are not shown; keyboard commands are not wired; no proxy for native messaging, and none is possible.
 
 ## Released: 1.5.37 on 2026-11-06, red counts back on the top corner
 

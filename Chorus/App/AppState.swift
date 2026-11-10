@@ -30,6 +30,8 @@ final class AppState {
     let badgeManager: BadgeManager
     /// Every download this session, for the toolbar's download list.
     let downloadCenter = DownloadCenter()
+    /// The user's web extensions and the host that runs them.
+    let extensions = ExtensionManager(library: WebExtensionLibrary(directory: ExtensionManager.defaultDirectory))
 
     /// Navigation state (back/forward/loading) for the active service's web view,
     /// shared so the top tab bar can host the nav buttons.
@@ -586,6 +588,7 @@ final class AppState {
         setupNetworkHandling()
         setupExternalLinkRouting()
         setupDownloads()
+        setupExtensions()
         setupMediaPermissions()
         setupTerminationRecording()
         let didSeedDefaults = seedDefaultDataIfNeeded()
@@ -671,6 +674,38 @@ final class AppState {
         startIdleHibernationTimer()
         AppLogger.dataStore.info("Imported a setup: \(summary.servicesAdded) services, \(summary.spacesAdded) new spaces")
         return summary
+    }
+
+    /// Gives the pool the extension host, routes what extensions open, and
+    /// starts the enabled extensions. Runs before any service page is built, so
+    /// those pages get the extension controller when an extension is on.
+    private func setupExtensions() {
+        webViewPool.extensionHost = extensions.hosting
+        guard #available(macOS 15.4, *), let host = extensions.host else { return }
+        host.onOpenURL = { [weak self] url in
+            self?.handleExternalLink(url, from: nil)
+        }
+        host.onActivateService = { [weak self] serviceID in
+            self?.navigateToServiceFromNotification(serviceID)
+        }
+        host.onPermissionPrompt = { name, lines in
+            ExtensionPermissionPrompt.ask(extensionName: name, lines: lines)
+        }
+        host.onGrantsChanged = { [weak self] id, permissions, patterns in
+            self?.extensions.updateGrants(id, permissions: permissions, matchPatterns: patterns)
+        }
+        Task { await extensions.startEnabled() }
+    }
+
+    /// Quits and reopens Chorus so pages that were open before the first
+    /// extension went on get it. Goes through the normal quit, which lets chat
+    /// pages finish their writes; rebuilding the pages in place would not.
+    func restartForExtensions() {
+        guard AppRelauncher.armRelaunch() else {
+            AppLogger.extensions.error("Could not arm the relaunch; quit and reopen Chorus by hand")
+            return
+        }
+        SheetQuit.quit(reason: .relaunch)
     }
 
     /// Hands the download list to the pool, which passes it to each service's

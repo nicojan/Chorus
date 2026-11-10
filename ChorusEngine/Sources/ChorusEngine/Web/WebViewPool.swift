@@ -164,6 +164,16 @@ public final class WebViewPool {
     public var serviceOwnsURL: ((URL, UUID?) -> Bool)?
     /// The app-wide download list. Passed to each coordinator.
     public var downloadCenter: DownloadCenter?
+    /// Runs web extensions in service pages and their tabs. Nil before macOS
+    /// 15.4, where WebKit has no extension support.
+    public var extensionHost: (any WebExtensionHosting)? {
+        didSet {
+            extensionHost?.displayedPage = { [weak self] in
+                guard let self, let id = self.activeServiceID else { return nil }
+                return self.displayedWebView(for: id)
+            }
+        }
+    }
 
     /// Wired up at AppState init and applied to every coordinator. Resolves a
     /// camera/microphone capture request to a WebKit decision from the persisted
@@ -269,6 +279,7 @@ public final class WebViewPool {
             lastAccessTimes[surface.id] = Date()
             wakeService(surface.id)
             syncParking()
+            extensionHost?.pageActivated(displayedWebView(for: surface.id) ?? existing)
             return existing
         }
 
@@ -289,6 +300,7 @@ public final class WebViewPool {
         webViews[surface.id] = webView
         lastAccessTimes[surface.id] = Date()
         observeCaptureState(webView, id: surface.id)
+        extensionHost?.pageOpened(webView, service: surface.id)
 
         // Restore the last-visited URL when waking from full hibernation
         // so the user lands back where they left off, not at the home URL.
@@ -302,6 +314,7 @@ public final class WebViewPool {
         }
 
         syncParking()
+        extensionHost?.pageActivated(webView)
 
         // Check eviction asynchronously (needs to query JS for active calls)
         Task {
@@ -338,6 +351,7 @@ public final class WebViewPool {
         webViews[surface.id] = webView
         lastAccessTimes[surface.id] = Date()
         observeCaptureState(webView, id: surface.id)
+        extensionHost?.pageOpened(webView, service: surface.id)
 
         // Register the hibernation-exemption flags now, not just on first
         // activation. A service preloaded but never clicked would otherwise be
@@ -702,6 +716,9 @@ public final class WebViewPool {
     /// check the tab is still open before touching state.
     private func watchTab(_ webView: WKWebView, service id: UUID) {
         let token = ObjectIdentifier(webView)
+        extensionHost?.pageOpened(webView, service: id)
+        // A new tab opens selected, so it is the page on screen.
+        if activeServiceID == id { extensionHost?.pageActivated(webView) }
         tabWatches[token] = TabWatch(
             serviceID: id,
             observations: [
@@ -729,6 +746,7 @@ public final class WebViewPool {
     /// the service's state.
     private func unwatchTab(_ webView: WKWebView, service id: UUID) {
         let token = ObjectIdentifier(webView)
+        extensionHost?.pageClosed(webView)
         guard let watch = tabWatches.removeValue(forKey: token) else { return }
         watch.observations.forEach { $0.invalidate() }
         watch.audio.invalidate()
@@ -779,6 +797,7 @@ public final class WebViewPool {
     private func teardownWebView(_ instanceID: UUID) {
         coordinators[instanceID]?.closeAllTabs()
         if let webView = webViews[instanceID] {
+            extensionHost?.pageClosed(webView)
             webView.configuration.userContentController.removeAllScriptMessageHandlers()
             webView.stopLoading()
             webView.navigationDelegate = nil
@@ -827,6 +846,12 @@ public final class WebViewPool {
         coordinator.onTabClosed = { [weak self] webView in
             self?.unwatchTab(webView, service: id)
         }
+        coordinator.onPopupOpened = { [weak self] webView in
+            self?.extensionHost?.pageOpened(webView, service: id)
+        }
+        coordinator.onPopupClosed = { [weak self] webView in
+            self?.extensionHost?.pageClosed(webView)
+        }
         coordinator.servicePage = { [weak self] in
             self?.webViews[id]
         }
@@ -872,6 +897,7 @@ public final class WebViewPool {
         }
 
         config.userContentController = controller
+        extensionHost?.attach(to: config)
 
         return config
     }
