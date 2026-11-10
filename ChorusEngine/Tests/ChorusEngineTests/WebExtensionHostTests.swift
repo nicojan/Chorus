@@ -216,7 +216,7 @@ final class WebExtensionHostTests: XCTestCase {
         webView.loadHTMLString("<html><body>page</body></html>", baseURL: URL(string: "https://example.com/")!)
 
         let reply = try await poll(webView, "document.documentElement.getAttribute('data-probe-bg')")
-        XCTAssertEqual(reply, #"{"pong":1,"closed":1006}"#, "the socket failed and the background still answered")
+        XCTAssertEqual(object(reply), ["pong": 1, "closed": 1006], "the socket failed and the background still answered: \(reply ?? "nil")")
 
         host.pageClosed(webView)
         host.unload(record.id)
@@ -242,7 +242,7 @@ final class WebExtensionHostTests: XCTestCase {
         webView.loadHTMLString("<html><body>page</body></html>", baseURL: URL(string: "https://example.com/")!)
 
         let reply = try await poll(webView, "document.documentElement.getAttribute('data-probe-bg')")
-        XCTAssertEqual(reply, #"{"dispose":"symbol","asyncDispose":"symbol"}"#, "the service worker has both symbols")
+        XCTAssertEqual(object(reply), ["dispose": "symbol", "asyncDispose": "symbol"], "the service worker has both symbols: \(reply ?? "nil")")
         let contentScript = try await poll(webView, "document.documentElement.getAttribute('data-probe-dispose')")
         XCTAssertEqual(contentScript, "symbol", "the content script has Symbol.dispose")
 
@@ -254,6 +254,12 @@ final class WebExtensionHostTests: XCTestCase {
 
         host.pageClosed(webView)
         host.unload(record.id)
+    }
+
+    /// A reply as a dictionary. WebKit on macOS 15 orders a reply's keys
+    /// differently from 26 and 27, so replies are compared as objects.
+    private func object(_ json: String?) -> NSDictionary? {
+        json.flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? NSDictionary }
     }
 
     private func poll(_ webView: WKWebView, _ script: String, timeout: TimeInterval = 15) async throws -> String? {
