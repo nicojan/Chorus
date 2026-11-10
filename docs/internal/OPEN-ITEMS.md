@@ -63,7 +63,7 @@ Two traps found on the way. WebKit drops the JavaScript wrapper of an API object
 Also from this session: extension buttons now draw bare at the end of the toolbar after a divider (Bitwarden's colored icon sat on a grey disc), and an idle or sleep lock waits for Chorus to come to the front before asking for Touch ID.
 
 Still open:
-- PRs: #52 for `feat/ferdium-gaps`, ready; #53 for `feat/web-extensions`, based on #52's branch.
+- PRs: #52 for `feat/ferdium-gaps` and #53 for `feat/web-extensions` (based on #52's branch), both ready for review since 2026-11-10, CI green on macOS 15 and 26 (`cf85f76`). Merge #52 first.
 - Adding a service straight after removing one that shared its store hung once (2026-11-10, Drive in every space, shared). WebKit refused to remove the old store three times ("not yet removable") while Chorus ran, and the add then waited in `prepareStore`. It worked after a relaunch and was not seen again. Something keeps a removed service's store in use while Chorus runs; the extension host holds its tabs' web views weakly, so look at the page pool and parking first.
 - Bitwarden still logs: "Notification clicked is not supported"; a duplicate `fido2-page-script-registration` from `scripting.registerContentScripts` (passkeys); `windows.update` not implemented for position and size; `action.setIcon` "Tab not found"; `"queryCommandSupported" in e.document` in the service worker, which may break the context menu's copy items; one "Unhandled error in angular" in the popup that was not traced. Filling worked through all of them.
 - Velja, Zotero and Downie were listed but not added or clicked.
