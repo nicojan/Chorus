@@ -64,6 +64,17 @@ final class WebExtensionHostTests: XCTestCase {
         // This page's store is non-persistent, which WebKit treats as private
         // browsing; service stores never are.
         host.contexts[record.id]?.hasAccessToPrivateData = true
+        // Diagnostics for CI, where the background has not answered.
+        if let context = host.contexts[record.id] {
+            do {
+                try await context.loadBackgroundContent()
+                print("EXTDIAG background loaded")
+            } catch {
+                print("EXTDIAG background error: \(error)")
+            }
+            print("EXTDIAG errors: \(context.errors.map(\.localizedDescription))")
+            print("EXTDIAG hasBackground=\(context.webExtension.hasBackgroundContent) persistent=\(context.webExtension.hasPersistentBackgroundContent)")
+        }
 
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
@@ -74,6 +85,9 @@ final class WebExtensionHostTests: XCTestCase {
         webView.loadHTMLString("<html><body>page</body></html>", baseURL: URL(string: "https://example.com/")!)
 
         let reply = try await poll(webView, "document.documentElement.getAttribute('data-probe-bg')")
+        if reply != #"{"pong":1}"#, let context = host.contexts[record.id] {
+            print("EXTDIAG after page: errors=\(context.errors.map(\.localizedDescription)) tabs=\(context.openTabs.count) probe=\(String(describing: try? await webView.evaluateJavaScript("document.documentElement.getAttribute('data-probe')")))")
+        }
         XCTAssertEqual(reply, #"{"pong":1}"#, "the content script ran and the background answered for a known tab")
 
         let items = host.toolbarItems(for: webView, order: [record.id])
