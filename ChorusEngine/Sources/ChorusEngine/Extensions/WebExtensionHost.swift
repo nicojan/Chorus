@@ -57,6 +57,9 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
     @ObservationIgnored private(set) lazy var window = WebExtensionWindow(host: self)
     @ObservationIgnored private var anchors: [UUID: WeakView] = [:]
     @ObservationIgnored private var notificationTokens: [NSObjectProtocol] = []
+    /// Each extension's stand-in for Chrome's offscreen document, kept until
+    /// the extension stops. See `ExtensionCompatibility`.
+    @ObservationIgnored private(set) var offscreenPages: [UUID: WKWebView] = [:]
 
     /// Bumped when an extension changes its button (icon, badge, title), so
     /// SwiftUI views that read `toolbarItems` draw again.
@@ -227,6 +230,7 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         }
         loadedIDs = loadedIDs.subtracting([id])
         anchors.removeValue(forKey: id)
+        offscreenPages.removeValue(forKey: id)
         actionRevision += 1
     }
 
@@ -540,6 +544,10 @@ extension WebExtensionHost: WKWebExtensionControllerDelegate {
 
     private func openRequestedPage(_ url: URL?, context: WKWebExtensionContext) {
         guard let url else { return }
+        if url.fragment == Self.offscreenMarker, url.scheme == context.baseURL.scheme, url.host == context.baseURL.host {
+            openOffscreenPage(url, context: context)
+            return
+        }
         // An extension's own page (a welcome or settings page) can only load
         // with the extension's configuration, so it gets a window of its own.
         if url.scheme == context.baseURL.scheme, let configuration = context.webViewConfiguration {
@@ -547,6 +555,32 @@ extension WebExtensionHost: WKWebExtensionControllerDelegate {
             return
         }
         onOpenURL?(url)
+    }
+
+    /// The fragment `ExtensionCompatibility`'s `chrome.offscreen` puts on the
+    /// page it asks for.
+    static let offscreenMarker = "chorus-offscreen"
+
+    /// Loads an extension's offscreen document in a view no window shows.
+    /// Chrome lets that page write the clipboard without a click when the
+    /// extension holds `clipboardWrite`; WebKit only through a preference,
+    /// set here on this page alone. Reading stays off: WebKit drops Chrome's
+    /// `clipboardRead`, so nobody agreed to it.
+    private func openOffscreenPage(_ url: URL, context: WKWebExtensionContext) {
+        guard let id = recordID(of: context), offscreenPages[id] == nil,
+              let base = context.webViewConfiguration,
+              let configuration = base.copy() as? WKWebViewConfiguration,
+              let preferences = base.preferences.copy() as? WKPreferences else { return }
+        if context.hasPermission(.clipboardWrite) {
+            preferences.setValue(true, forKey: "javaScriptCanAccessClipboard")
+        }
+        configuration.preferences = preferences
+        let page = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
+        #if DEBUG
+        page.isInspectable = true
+        #endif
+        page.load(URLRequest(url: url))
+        offscreenPages[id] = page
     }
 
     private func ask(_ context: WKWebExtensionContext, lines: [String], completion: @escaping (Bool) -> Void) {

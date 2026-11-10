@@ -28,7 +28,7 @@ final class WebExtensionHostTests: XCTestCase {
     /// `opensSocket` makes the background open a WebSocket to a closed port
     /// and answer when it closes.
     private func makeProbe(extraPermissions: [String] = [], asksForAgent: Bool = false, opensSocket: Bool = false,
-                           asksForDispose: Bool = false, injects: Bool = false) throws -> String {
+                           asksForDispose: Bool = false, injects: Bool = false, copies: String? = nil) throws -> String {
         let folder = root.appending(path: "probe", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let permissions = (["storage"] + extraPermissions).map { "\"\($0)\"" }.joined(separator: ", ")
@@ -64,6 +64,20 @@ final class WebExtensionHostTests: XCTestCase {
             for (let i = 0; i < 300; i++) { const chunk = new Array(100000).fill(i); keep += chunk.length; }
             return send({churned: keep > 0});
           }
+          if (msg.copy) {
+            // Bitwarden's way: an offscreen document does the copy, since a
+            // service worker has no document.
+            (async () => {
+              if (!chrome.offscreen) return 'no offscreen';
+              if (!(await chrome.offscreen.hasDocument())) {
+                await chrome.offscreen.createDocument({url: 'offscreen.html', reasons: [chrome.offscreen.Reason.CLIPBOARD], justification: 'Write text to the clipboard.'});
+              }
+              const answer = await chrome.runtime.sendMessage({offscreenCopy: msg.copy});
+              await chrome.offscreen.closeDocument();
+              return answer;
+            })().then((r) => send({copy: r}), (e) => send({copy: 'err ' + e.message}));
+            return true;
+          }
           if (msg.world) return send({world: typeof (chrome.scripting && chrome.scripting.ExecutionWorld), contains: chrome.permissions.contains.name});
           if (msg.dispose) return send({dispose: typeof Symbol.dispose, asyncDispose: typeof Symbol.asyncDispose});
           send(msg.ua ? {ua: navigator.userAgent} : {pong: 1});
@@ -76,7 +90,7 @@ final class WebExtensionHostTests: XCTestCase {
           .then(r => document.documentElement.setAttribute('data-probe-churn', JSON.stringify(r))));
         document.addEventListener('probe-ask-world', () => browser.runtime.sendMessage({world: 1})
           .then(r => document.documentElement.setAttribute('data-probe-world', JSON.stringify(r))));
-        browser.runtime.sendMessage(\(asksForAgent ? "{ua: 1}" : asksForDispose ? "{dispose: 1}" : injects ? "{inject: 1}" : "{ping: 1}"))
+        browser.runtime.sendMessage(\(asksForAgent ? "{ua: 1}" : asksForDispose ? "{dispose: 1}" : injects ? "{inject: 1}" : copies.map { "{copy: '\($0)'}" } ?? "{ping: 1}"))
           .then(r => document.documentElement.setAttribute('data-probe-bg', r === undefined ? 'no reply' : JSON.stringify(r)))
           .catch(e => document.documentElement.setAttribute('data-probe-bg', 'err ' + e));
         """.utf8).write(to: folder.appending(path: "cs.js"))
@@ -86,6 +100,22 @@ final class WebExtensionHostTests: XCTestCase {
             .write(to: folder.appending(path: "inject.js"))
         try Data(#"<!doctype html><html><head><script src="page.js"></script></head><body></body></html>"#.utf8)
             .write(to: folder.appending(path: "page.html"))
+        try Data(#"<!doctype html><html><head><script src="offscreen.js"></script></head><body></body></html>"#.utf8)
+            .write(to: folder.appending(path: "offscreen.html"))
+        // Bitwarden's offscreen page: the clipboard API, then execCommand.
+        try Data("""
+        chrome.runtime.onMessage.addListener((msg, sender, send) => {
+          if (!msg.offscreenCopy) return;
+          navigator.clipboard.writeText(msg.offscreenCopy).then(() => send('api'), () => {
+            const area = document.createElement('textarea');
+            area.textContent = msg.offscreenCopy;
+            document.body.appendChild(area);
+            area.select();
+            send(document.execCommand('copy') ? 'legacy' : 'refused');
+          });
+          return true;
+        });
+        """.utf8).write(to: folder.appending(path: "offscreen.js"))
         try Data("""
         document.title = typeof Symbol.dispose;
         window.permissionAnswers = Promise.all(['privacy', 'nativeMessaging', 'storage', 'tabs'].map(name =>
@@ -363,6 +393,57 @@ final class WebExtensionHostTests: XCTestCase {
 
         host.pageClosed(webView)
         host.unload(record.id)
+    }
+
+    /// Bitwarden copies from its service worker (the right-click items, a
+    /// code after a fill) through `chrome.offscreen`, which WebKit lacks; its
+    /// fallback reaches for a `document` the worker does not have. Chorus
+    /// stands in with a hidden extension page that may write the clipboard.
+    func testServiceWorkerCopiesThroughAnOffscreenDocument() async throws {
+        let text = "chorus-copy-\(UUID().uuidString)"
+        let result = try await copyFromWorker(text, granted: ["storage", "clipboardWrite"])
+        XCTAssertEqual(object(result.reply), ["copy": "api"], result.reply ?? "nil")
+        XCTAssertEqual(result.pasteboard, text)
+    }
+
+    /// Without `clipboardWrite` the page loads but may not write.
+    func testOffscreenDocumentNeedsClipboardWrite() async throws {
+        let result = try await copyFromWorker("chorus-copy-\(UUID().uuidString)", granted: ["storage"])
+        XCTAssertEqual(object(result.reply), ["copy": "refused"], result.reply ?? "nil")
+        XCTAssertEqual(result.pasteboard, "before")
+    }
+
+    /// Asks the probe's worker to copy `text`, keeping whatever was on the
+    /// clipboard before the test.
+    private func copyFromWorker(_ text: String, granted: [String]) async throws -> (reply: String?, pasteboard: String?) {
+        guard #available(macOS 15.4, *) else { throw XCTSkip("Web extensions need macOS 15.4") }
+        let saved = NSPasteboard.general.string(forType: .string)
+        defer {
+            NSPasteboard.general.clearContents()
+            if let saved { NSPasteboard.general.setString(saved, forType: .string) }
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("before", forType: .string)
+
+        let host = WebExtensionHost(storageIdentifier: nil)
+        host.isActive = true
+        let record = WebExtensionRecord(source: .package(folder: try makeProbe(extraPermissions: ["clipboardWrite", "offscreen"], copies: text)),
+                                        name: "Probe", grantedPermissions: granted, grantedMatchPatterns: ["<all_urls>"])
+        try await host.load(record, library: library)
+        host.contexts[record.id]?.hasAccessToPrivateData = true
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        host.attach(to: configuration)
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
+        host.pageOpened(webView, service: UUID())
+        host.pageActivated(webView)
+        webView.loadHTMLString("<html><body>page</body></html>", baseURL: URL(string: "https://example.com/")!)
+
+        let reply = try await poll(webView, "document.documentElement.getAttribute('data-probe-bg')", timeout: 20)
+        let pasteboard = NSPasteboard.general.string(forType: .string)
+        host.pageClosed(webView)
+        host.unload(record.id)
+        return (reply, pasteboard)
     }
 
     /// A reply as a dictionary. WebKit on macOS 15 orders a reply's keys

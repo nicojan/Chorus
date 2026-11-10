@@ -29,6 +29,14 @@ import Foundation
 /// builds a new one on the next read, so the script holds every object it
 /// changes; without that the additions vanished after a garbage collection.
 ///
+/// 5. WebKit has no `chrome.offscreen`, the hidden page a Chrome extension
+///    opens to do what a service worker cannot, such as copy text. Bitwarden
+///    copies through one from its right-click items, and its fallback asked
+///    the worker for a `document` it does not have. For an extension that
+///    asks for `offscreen`, the script defines it: the page opens through a
+///    marked `tabs.create` that `WebExtensionHost` turns into a hidden view,
+///    and it answers a ping once it is listening.
+///
 /// The script loads first in the service worker (through a new entry file),
 /// in every HTML page, in background scripts and ahead of each content script.
 /// Safari extensions inside an app are signed and left alone.
@@ -179,11 +187,55 @@ enum ExtensionCompatibility {
         } catch (error) {}
       }
 
+      // WebKit has no `chrome.offscreen`. Chorus opens the page in a hidden
+      // view when asked for a tab with this marker, and the page answers a
+      // ping once it is up.
+      const offscreenMarker = "chorus-offscreen";
+      const runtime = globalThis.chrome && globalThis.chrome.runtime;
+      const isWorker = typeof ServiceWorkerGlobalScope !== "undefined" && self instanceof ServiceWorkerGlobalScope;
+      if (!isWorker && runtime && runtime.onMessage && typeof location !== "undefined"
+          && location.hash === "#" + offscreenMarker && location.origin === new URL(runtime.getURL("/")).origin) {
+        runtime.onMessage.addListener((message, sender, sendResponse) => {
+          if (message && message.__chorusOffscreen === "ping") sendResponse(true);
+        });
+      }
+      const manifest = runtime && typeof runtime.getManifest === "function" ? runtime.getManifest() : null;
+      const wantsOffscreen = isWorker && manifest && (manifest.permissions || []).includes("offscreen");
+      for (const api of wantsOffscreen ? [globalThis.chrome, globalThis.browser] : []) {
+        if (!api || api.offscreen || !api.runtime || !api.tabs) continue;
+        const ping = () => api.runtime.sendMessage({ __chorusOffscreen: "ping" }).then((answer) => answer === true, () => false);
+        const offscreen = {
+          Reason: Object.freeze(Object.fromEntries([
+            "TESTING", "AUDIO_PLAYBACK", "IFRAME_SCRIPTING", "DOM_SCRAPING", "BLOBS", "DOM_PARSER", "USER_MEDIA",
+            "DISPLAY_MEDIA", "WEB_RTC", "CLIPBOARD", "LOCAL_STORAGE", "WORKERS", "BATTERY_STATUS", "MATCH_MEDIA", "GEOLOCATION"
+          ].map((reason) => [reason, reason]))),
+          async hasDocument() { return ping(); },
+          async createDocument(parameters) {
+            if (await ping()) throw new Error("Only a single offscreen document may be created.");
+            const url = new URL(parameters.url, api.runtime.getURL("/"));
+            url.hash = offscreenMarker;
+            try { await api.tabs.create({ url: url.href, active: false }); } catch (error) {}
+            for (let tries = 0; tries < 100; tries++) {
+              if (await ping()) return;
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+            throw new Error("The offscreen document did not load.");
+          },
+          // Chorus keeps the page until the extension stops, so a close and
+          // the create that follows it cannot race.
+          async closeDocument() {}
+        };
+        held.push(api);
+        try {
+          Object.defineProperty(api, "offscreen", { value: offscreen, configurable: true });
+        } catch (error) {}
+      }
+
       // WebKit runs an extension's service worker on its process's main thread,
       // where opening a WebSocket waits on that same thread for good and stops
       // every page of the extension. This WebSocket fails the way a refused
       // connection does instead.
-      if (typeof ServiceWorkerGlobalScope === "undefined" || !(self instanceof ServiceWorkerGlobalScope)) return;
+      if (!isWorker) return;
       const states = { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 };
       class WebSocket extends EventTarget {
         constructor(url, protocols) {
