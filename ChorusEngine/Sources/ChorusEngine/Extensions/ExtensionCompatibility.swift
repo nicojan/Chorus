@@ -25,6 +25,10 @@ import Foundation
 ///    it injects its fill scripts, so every injection failed. The script adds
 ///    it.
 ///
+/// WebKit drops the JavaScript wrapper of an API object nothing refers to and
+/// builds a new one on the next read, so the script holds every object it
+/// changes; without that the additions vanished after a garbage collection.
+///
 /// The script loads first in the service worker (through a new entry file),
 /// in every HTML page, in background scripts and ahead of each content script.
 /// Safari extensions inside an app are signed and left alone.
@@ -128,11 +132,18 @@ enum ExtensionCompatibility {
         }
       }
 
+      // WebKit drops the wrapper of an API object nothing refers to and builds
+      // a new one on the next read, without what was added below. Holding
+      // each patched object keeps its wrapper, and the additions, alive.
+      const held = [];
+      Object.defineProperty(globalThis, "__chorusCompatibilityObjects", { value: held });
+
       // WebKit takes "ISOLATED" and "MAIN" as a script's world but has no
       // `scripting.ExecutionWorld` to name them, which Chrome builds read.
       for (const api of [globalThis.chrome, globalThis.browser]) {
         const scripting = api && api.scripting;
         if (!scripting || scripting.ExecutionWorld) continue;
+        held.push(api, scripting);
         try {
           Object.defineProperty(scripting, "ExecutionWorld", {
             value: Object.freeze({ ISOLATED: "ISOLATED", MAIN: "MAIN" }), configurable: true
@@ -147,6 +158,7 @@ enum ExtensionCompatibility {
         const permissions = api && api.permissions;
         if (!permissions || typeof permissions.contains !== "function" || wrapped.has(permissions)) continue;
         wrapped.add(permissions);
+        held.push(api, permissions);
         const contains = permissions.contains.bind(permissions);
         const answer = function (details, callback) {
           try {

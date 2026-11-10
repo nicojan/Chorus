@@ -56,6 +56,14 @@ final class WebExtensionHostTests: XCTestCase {
               .then((parts) => send({inject: parts.join(' | ')}));
             return true;
           }
+          if (msg.churn) {
+            // Enough garbage for several collections, so a wrapper nothing
+            // holds would be rebuilt.
+            let keep = 0;
+            for (let i = 0; i < 300; i++) { const chunk = new Array(100000).fill(i); keep += chunk.length; }
+            return send({churned: keep > 0});
+          }
+          if (msg.world) return send({world: typeof (chrome.scripting && chrome.scripting.ExecutionWorld), contains: chrome.permissions.contains.name});
           if (msg.dispose) return send({dispose: typeof Symbol.dispose, asyncDispose: typeof Symbol.asyncDispose});
           send(msg.ua ? {ua: navigator.userAgent} : {pong: 1});
         });
@@ -63,6 +71,10 @@ final class WebExtensionHostTests: XCTestCase {
         try Data("""
         document.documentElement.setAttribute('data-probe', 'ran');
         document.documentElement.setAttribute('data-probe-dispose', typeof Symbol.dispose);
+        document.addEventListener('probe-churn', () => browser.runtime.sendMessage({churn: 1})
+          .then(r => document.documentElement.setAttribute('data-probe-churn', JSON.stringify(r))));
+        document.addEventListener('probe-ask-world', () => browser.runtime.sendMessage({world: 1})
+          .then(r => document.documentElement.setAttribute('data-probe-world', JSON.stringify(r))));
         browser.runtime.sendMessage(\(asksForAgent ? "{ua: 1}" : asksForDispose ? "{dispose: 1}" : injects ? "{inject: 1}" : "{ping: 1}"))
           .then(r => document.documentElement.setAttribute('data-probe-bg', r === undefined ? 'no reply' : JSON.stringify(r)))
           .catch(e => document.documentElement.setAttribute('data-probe-bg', 'err ' + e));
@@ -301,6 +313,45 @@ final class WebExtensionHostTests: XCTestCase {
         XCTAssertEqual(object(reply), ["inject": "enum | ok | ok"], reply ?? "nil")
         let injected = try await poll(webView, "document.documentElement.getAttribute('data-injected')")
         XCTAssertEqual(injected, "xx", "both scripts ran")
+
+        host.pageClosed(webView)
+        host.unload(record.id)
+    }
+
+    /// WebKit drops the JavaScript wrapper of an API object nothing refers to
+    /// and builds a new one on the next read, without what the compatibility
+    /// script added. Bitwarden's popup threw on `privacy` again, and its fill
+    /// scripts lost `ExecutionWorld`, once a collection had run.
+    func testCompatibilityOutlivesGarbageCollection() async throws {
+        guard #available(macOS 15.4, *) else { throw XCTSkip("Web extensions need macOS 15.4") }
+        let host = WebExtensionHost(storageIdentifier: nil)
+        host.isActive = true
+        let record = WebExtensionRecord(source: .package(folder: try makeProbe(extraPermissions: ["scripting", "tabs"])),
+                                        name: "Probe", grantedPermissions: ["storage", "scripting"], grantedMatchPatterns: ["<all_urls>"])
+        try await host.load(record, library: library)
+        let context = try XCTUnwrap(host.contexts[record.id])
+        context.hasAccessToPrivateData = true
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        host.attach(to: configuration)
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
+        host.pageOpened(webView, service: UUID())
+        host.pageActivated(webView)
+        webView.loadHTMLString("<html><body>page</body></html>", baseURL: URL(string: "https://example.com/")!)
+        _ = try await poll(webView, "document.documentElement.getAttribute('data-probe-bg')")
+
+        func askWorld() async throws -> String? {
+            _ = try await webView.evaluateJavaScript("document.documentElement.removeAttribute('data-probe-world'); document.dispatchEvent(new Event('probe-ask-world')); 1")
+            return try await poll(webView, "document.documentElement.getAttribute('data-probe-world')")
+        }
+        let before = try await askWorld()
+        XCTAssertEqual(object(before), ["world": "object", "contains": "answer"], before ?? "nil")
+
+        _ = try await webView.evaluateJavaScript("document.dispatchEvent(new Event('probe-churn')); 1")
+        let churned = try await poll(webView, "document.documentElement.getAttribute('data-probe-churn')", timeout: 60)
+        XCTAssertEqual(object(churned), ["churned": true])
+        let after = try await askWorld()
+        XCTAssertEqual(object(after), ["world": "object", "contains": "answer"], after ?? "nil")
 
         host.pageClosed(webView)
         host.unload(record.id)
