@@ -127,6 +127,8 @@ See `release/DISTRIBUTION.md`. In short: the notarized, stapled `Chorus.app` is 
 the repo root; package a DMG with `hdiutil`, cut a `gh release`, then sign and
 regenerate `docs/appcast.xml`.
 
+Every release must also attach an unversioned copy, `Chorus.dmg`, next to `Chorus-X.Y.Z.dmg` (step 6 there). The README's Download button links to `releases/latest/download/Chorus.dmg`, so a release without it serves the previous version.
+
 Every release also needs the Homebrew cask bumped (step 9 there): put the new
 version and the stapled DMG's sha256 into `release/homebrew/chorus.rb`, copy it to
 `Casks/chorus.rb` in the `nicojan/homebrew-tap` repo, and check it with
