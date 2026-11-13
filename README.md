@@ -1,5 +1,9 @@
 # Chorus
 
+<p align="center">
+  <a href="https://github.com/nicojan/Chorus/releases/latest/download/Chorus.dmg"><img src="https://img.shields.io/github/v/release/nicojan/Chorus?label=Download%20for%20macOS&style=for-the-badge&logo=apple&color=0A84FF" alt="Download Chorus for macOS" height="40"></a>
+</p>
+
 A native macOS app that unifies your web services (Gmail, Slack, Discord,
 Notion, ChatGPT, and more) into one window, each with its own fully isolated
 session. A lightweight, WebKit-based alternative to Chromium apps like Rambox

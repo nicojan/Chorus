@@ -167,7 +167,8 @@ Test the build at the repo root, not the one in the Dock. The Dock opens `/Appli
 6. **Push `main` first, then publish the DMG as a GitHub Release** (the DMG host):
    ```sh
    git push origin main                      # do this BEFORE the next command
-   gh release create vX.Y.Z build/Chorus-X.Y.Z.dmg \
+   cp build/Chorus-X.Y.Z.dmg build/Chorus.dmg  # stable name: the README's Download button points at releases/latest/download/Chorus.dmg
+   gh release create vX.Y.Z build/Chorus-X.Y.Z.dmg build/Chorus.dmg \
      --repo nicojan/Chorus --title "Chorus X.Y.Z" --notes "Release notes…"
    ```
    **The push has to come first.** `gh release create` tags the *remote*

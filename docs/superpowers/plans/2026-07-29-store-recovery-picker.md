@@ -2167,7 +2167,7 @@ Write it as a warning never to run the suite with `-configuration Release`, and 
 
 - [ ] **Step 4: Update the handoff note**
 
-The handoff note is **git-ignored** (`.gitignore:23` ignores `.remember/`) and it does **not** exist inside this worktree — it lives only in the main checkout. So write to the absolute path `/Users/nicojan/dev/Chorus/.remember/remember.md`, and do **not** create a `.remember/` directory inside the worktree; that would be a stray ignored copy nobody reads.
+The handoff note is **git-ignored** (`.gitignore:23` ignores `.remember/`) and it does **not** exist inside this worktree — it lives only in the main checkout. So write to the absolute path `~/dev/Chorus/.remember/remember.md`, and do **not** create a `.remember/` directory inside the worktree; that would be a stray ignored copy nobody reads.
 
 Record where this landed, what is verified by test versus what still needs a hand pass, that the shared store path remains the open suspect for loss with no update involved, and that `.superpowers/sdd/2026-07-29-store-recovery-picker/progress.md` holds every ruling and deferred finding and is git-ignored scratch, so it should be read before the branch is deleted.
 
