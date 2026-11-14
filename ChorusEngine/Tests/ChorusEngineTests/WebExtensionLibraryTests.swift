@@ -49,6 +49,59 @@ final class WebExtensionLibraryTests: XCTestCase {
         XCTAssertTrue(names.contains { $0.hasPrefix("extensions.unreadable-") }, "the damaged file is kept to look at")
     }
 
+    /// A list that exists but cannot be read is not the same as no list: it
+    /// is moved aside, so the launch sweep leaves every package alone.
+    func testListThatCannotBeReadIsMovedAside() throws {
+        let kept = try importedPackage()
+        let record = WebExtensionRecord(source: .package(folder: kept), name: "A", grantedPermissions: [], grantedMatchPatterns: [])
+        try library.saveRecords([record])
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: library.recordsFile.path)
+        defer { restorePermissions() }
+        XCTAssertEqual(library.loadRecords(), [])
+        let names = try FileManager.default.contentsOfDirectory(atPath: library.directory.path)
+        XCTAssertFalse(names.contains("extensions.json"))
+        XCTAssertTrue(names.contains { $0.hasPrefix("extensions.unreadable-") }, "the list is kept to look at")
+        library.removeUnusedPackages(keeping: [])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: library.packageURL(folder: kept).path),
+                      "an unreadable list may name every package")
+    }
+
+    /// When the unreadable list cannot even be moved, the sweep still waits.
+    func testSweepWaitsWhenTheListCannotBeReadOrMoved() throws {
+        let kept = try importedPackage()
+        try library.saveRecords([])
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: library.recordsFile.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: library.directory.path)
+        defer { restorePermissions() }
+        XCTAssertEqual(library.loadRecords(), [])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: library.recordsFile.path), "precondition: the move failed")
+        library.removeUnusedPackages(keeping: [])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: library.packageURL(folder: kept).path))
+    }
+
+    func testMissingListMovesNothingAside() throws {
+        try FileManager.default.createDirectory(at: library.directory, withIntermediateDirectories: true)
+        XCTAssertEqual(library.loadRecords(), [])
+        let names = try FileManager.default.contentsOfDirectory(atPath: library.directory.path)
+        XCTAssertFalse(names.contains { $0.hasPrefix("extensions.unreadable-") })
+    }
+
+    private func importedPackage() throws -> String {
+        let folder = root.appending(path: "src-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data(#"{"manifest_version": 3, "name": "A", "version": "1.0"}"#.utf8).write(to: folder.appending(path: "manifest.json"))
+        return try library.importPackage(from: folder)
+    }
+
+    private func restorePermissions() {
+        let fm = FileManager.default
+        try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: library.directory.path)
+        let names = (try? fm.contentsOfDirectory(atPath: library.directory.path)) ?? []
+        for name in names where name.hasPrefix("extensions") {
+            try? fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: library.directory.appending(path: name).path)
+        }
+    }
+
     func testRecordChangesReturnNewRecords() {
         let record = WebExtensionRecord(source: .package(folder: "x"), name: "X", grantedPermissions: ["b", "a"], grantedMatchPatterns: [])
         let off = record.enabled(false)
@@ -204,6 +257,57 @@ final class WebExtensionLibraryTests: XCTestCase {
         library.removeUnusedPackages(keeping: [])
         XCTAssertTrue(FileManager.default.fileExists(atPath: library.packageURL(folder: folder).path),
                       "the moved-aside list may still name this package")
+    }
+
+    private func importProbe(_ name: String) throws -> String {
+        let source = root.appending(path: name, directoryHint: .isDirectory)
+        try makeExtensionFolder(at: source)
+        return try library.importPackage(from: source)
+    }
+
+    private func packageExists(_ folder: String) -> Bool {
+        FileManager.default.fileExists(atPath: library.packageURL(folder: folder).path)
+    }
+
+    func testRemovePackagesDeletesOnlyReleasedFolders() throws {
+        let oldCurrent = try importProbe("p1")
+        let oldStaged = try importProbe("p2")
+        let sharedCurrent = try importProbe("p3")
+        let otherStaged = try importProbe("p4")
+        let imported = try importProbe("p5")
+
+        func staged(_ folder: String) -> WebExtensionRecord.StagedUpdate {
+            WebExtensionRecord.StagedUpdate(folder: folder, version: "2.0", newPermissions: [], newMatchPatterns: [])
+        }
+        let a = WebExtensionRecord(source: .package(folder: oldCurrent), name: "A", grantedPermissions: [], grantedMatchPatterns: [])
+            .staging(staged(oldStaged))
+        let b = WebExtensionRecord(source: .package(folder: sharedCurrent), name: "B", grantedPermissions: [], grantedMatchPatterns: [])
+            .staging(staged(otherStaged))
+        // A no longer names either of its folders; B still names both of its
+        // own, and the new list also names one of A's old folders through B.
+        let bNow = b.droppingStagedUpdate(skipping: false).staging(staged(oldStaged))
+        let before = [a, b]
+        let after = [bNow]
+
+        library.removePackages(releasedFrom: before, to: after)
+
+        XCTAssertFalse(packageExists(oldCurrent), "named before, not after")
+        XCTAssertFalse(packageExists(otherStaged), "B's old staged folder is released")
+        XCTAssertTrue(packageExists(oldStaged), "still staged by another record")
+        XCTAssertTrue(packageExists(sharedCurrent), "still current")
+        XCTAssertTrue(packageExists(imported), "a folder no record named, such as one waiting at Add, is left alone")
+    }
+
+    func testSweepKeepsStagedFolders() throws {
+        let current = try importProbe("s1")
+        let staged = try importProbe("s2")
+        let stray = try importProbe("s3")
+        let record = WebExtensionRecord(source: .package(folder: current), name: "S", grantedPermissions: [], grantedMatchPatterns: [])
+            .staging(WebExtensionRecord.StagedUpdate(folder: staged, version: "2.0", newPermissions: [], newMatchPatterns: []))
+        library.removeUnusedPackages(keeping: Set([record].flatMap(\.packageFolders)))
+        XCTAssertTrue(packageExists(current))
+        XCTAssertTrue(packageExists(staged), "a staged update's folder survives the launch sweep")
+        XCTAssertFalse(packageExists(stray))
     }
 
     private func zipFolder(_ folder: URL, to zip: URL, keepParent: Bool) throws {

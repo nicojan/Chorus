@@ -31,6 +31,14 @@ Never the Chrome Web Store: Google offers no supported download for other browse
 
 Extension data has to survive an update. WebKit keys it by the context's `uniqueIdentifier` and `baseURL`, which both come from the record id, so keep the id. Check this with a test before relying on it.
 
+`testDataSurvivesAVersionSwap` checks this in one process: after the swap, version 2.0 reads what 1.0 wrote through `chrome.storage.local`, `localStorage` and IndexedDB, and a record with a new id reads none of it. Whether the data reaches disk across a relaunch is left to the by-hand pass.
+
+**What rollback catches.** A trial rolls back when WebKit cannot read the manifest or the load fails. A staged folder that is gone at launch, swept by an older Chorus or deleted by hand, drops the update without skipping its version, before any trial. Rollback does not catch a background that fails to start. On macOS 27.2, WebKit never answers `loadBackgroundContent` for a service worker that throws, has a syntax error or names a missing file; the load goes on after the 10 s limit and the broken version stays running. WebKit lists the failure in the context's `errors`, but Chorus does not read those as a failure, since Raindrop and DeArrow run fine with errors listed. `testBrokenBackgroundIsNotDetected` pins this; CI shows whether macOS 15 and 26 act the same. The rollback code for a failed background still has tests: `testBackgroundFailureRollsBack` makes the start fail through a test hook on the host.
+
+**A swap is an update to the extension.** The record keeps its id, so the new version starts with the old one's data and, as WebKit is built, gets `runtime.onInstalled` with reason "update". Nobody has checked that event in Chorus yet. A rollback is a second change of version, and anything the new version rewrote in its storage before it failed stays rewritten for the old one.
+
+**Grants during a trial.** The running context during a trial is the new version. Grant changes it reports are held until the trial ends: they replace the record's grants if the update lands, and are dropped if it rolls back or stops, so the old version keeps the grants it had.
+
 A toggle, "Update extensions automatically", on by default. With it off, the row shows "Update available" and a button.
 
 **What the checks prove.** The sha256 comes from the same publisher as the file (GitHub computes it at upload; AMO reports its own), so it proves the download arrived whole and unchanged, not who made it. A publisher whose account is taken over can ship a bad version with a matching checksum. Chorus does not check Mozilla's signature on an `.xpi`. The real line of defence is step 2's permission comparison: an update that asks for more waits for the user.
@@ -118,7 +126,7 @@ Leave out Dark Reader: Chorus already offers Dark Reader per service, and two co
 ## Build order
 
 1. Done on `feat/extension-catalog`: `WebExtensionSource` (github, amo), `WebExtensionFetcher` (latest release; download plus verify plus import), with recorded API answers and no network in the tests.
-2. Engine: record fields, staged swap at load, rollback, the permission comparison. A test that data survives a version swap.
+2. Done on `feat/extension-catalog`: record fields, the staged swap at load, rollback, the permission comparison, and `testDataSurvivesAVersionSwap`. `ExtensionManager` applies a ready update when it starts an extension.
 3. App: the catalog JSON, a "Get extensions" section in Settings, the update toggle, "Update needs your OK", the "Suggest an extension" link and its issue form.
 4. Compatibility stub for Proton Pass, with a probe test that fails first.
 5. By hand in a Debug build: install, update (point an entry at an older tag first), refused update, rollback.

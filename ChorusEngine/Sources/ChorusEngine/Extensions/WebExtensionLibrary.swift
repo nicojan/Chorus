@@ -52,19 +52,43 @@ public struct WebExtensionLibrary: Sendable {
 
     // MARK: - Records
 
-    /// The saved records, or none when there is no file yet. A file that will
-    /// not decode is moved aside rather than overwritten by the next save, so a
-    /// newer format or a damaged file can still be looked at.
+    /// The saved records, or none when there is no file yet. A file that
+    /// cannot be read or will not decode is moved aside rather than
+    /// overwritten by the next save, so a newer format or a damaged file can
+    /// still be looked at, and the launch sweep leaves the packages alone.
     public func loadRecords() -> [WebExtensionRecord] {
-        guard let data = try? Data(contentsOf: recordsFile) else { return [] }
+        let data: Data
+        do {
+            data = try Data(contentsOf: recordsFile)
+        } catch {
+            if Self.isMissingFile(error) { return [] }
+            setListAside(error)
+            return []
+        }
         do {
             return try JSONDecoder.library.decode([WebExtensionRecord].self, from: data)
         } catch {
-            let aside = directory.appending(path: "extensions.unreadable-\(Int(Date().timeIntervalSince1970)).json")
-            try? FileManager.default.moveItem(at: recordsFile, to: aside)
-            AppLogger.extensions.error("Extension list unreadable, moved aside: \(error.localizedDescription, privacy: .public)")
+            setListAside(error)
             return []
         }
+    }
+
+    private func setListAside(_ error: Error) {
+        let aside = directory.appending(path: "extensions.unreadable-\(Int(Date().timeIntervalSince1970)).json")
+        do {
+            try FileManager.default.moveItem(at: recordsFile, to: aside)
+            AppLogger.extensions.error("Extension list unreadable, moved aside: \(error.localizedDescription, privacy: .public)")
+        } catch let moveError {
+            AppLogger.extensions.error("Extension list unreadable (\(error.localizedDescription, privacy: .public)) and not moved aside: \(moveError.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// No file there, as opposed to a file that would not read.
+    private static func isMissingFile(_ error: Error) -> Bool {
+        let error = error as NSError
+        if error.domain == NSCocoaErrorDomain, error.code == NSFileReadNoSuchFileError { return true }
+        if error.domain == NSPOSIXErrorDomain, error.code == Int(ENOENT) { return true }
+        return false
     }
 
     public func saveRecords(_ records: [WebExtensionRecord]) throws {
@@ -114,13 +138,28 @@ public struct WebExtensionLibrary: Sendable {
     }
 
     /// Deletes package folders no record names. Does nothing while an
-    /// unreadable list sits in the folder: its records may name them.
+    /// unreadable list sits in the folder, moved aside or not: its records
+    /// may name them.
     public func removeUnusedPackages(keeping folders: Set<String>) {
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        let fm = FileManager.default
+        let names = (try? fm.contentsOfDirectory(atPath: directory.path)) ?? []
         guard !names.contains(where: { $0.hasPrefix("extensions.unreadable-") }) else { return }
+        guard !fm.fileExists(atPath: recordsFile.path) || fm.isReadableFile(atPath: recordsFile.path) else { return }
         let present = (try? FileManager.default.contentsOfDirectory(atPath: packagesDirectory.path)) ?? []
         for name in present where !folders.contains(name) {
             removePackage(folder: name)
+        }
+    }
+
+    /// Deletes the package folders `old` named and `new` does not, once
+    /// `new` is saved. The one way to delete a folder during a session:
+    /// `removeUnusedPackages` would also take a package waiting at the Add
+    /// confirmation, which no record names yet.
+    public func removePackages(releasedFrom old: [WebExtensionRecord], to new: [WebExtensionRecord]) {
+        let kept = Set(new.flatMap(\.packageFolders))
+        let released = Set(old.flatMap(\.packageFolders)).subtracting(kept)
+        for folder in released {
+            removePackage(folder: folder)
         }
     }
 

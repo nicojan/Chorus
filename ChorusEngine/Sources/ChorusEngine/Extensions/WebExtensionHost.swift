@@ -51,9 +51,17 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
     @ObservationIgnored private var loading: Set<UUID> = []
     @ObservationIgnored private var cancelledLoads: Set<UUID> = []
     /// Loads waiting for an extension's background to start.
-    @ObservationIgnored private var backgroundWaits: [UUID: (token: UUID, continuation: CheckedContinuation<Void, Never>)] = [:]
+    /// Each resumes with the background's failure text, or nil when it
+    /// started, timed out or was unloaded.
+    @ObservationIgnored private var backgroundWaits: [UUID: (token: UUID, continuation: CheckedContinuation<String?, Never>)] = [:]
     /// How long a load waits for a background before going on without it.
     static let backgroundStartLimit: Duration = .seconds(10)
+    /// Starts a context's background. A seam for tests: WebKit on macOS 27.2
+    /// never reports a broken worker, so only a test that swaps this in can
+    /// reach the trial's rollback on a failed background.
+    @ObservationIgnored var startBackgroundContent: @MainActor (WKWebExtensionContext) async throws -> Void = {
+        try await $0.loadBackgroundContent()
+    }
     @ObservationIgnored private(set) lazy var window = WebExtensionWindow(host: self)
     @ObservationIgnored private var anchors: [UUID: WeakView] = [:]
     @ObservationIgnored private var notificationTokens: [NSObjectProtocol] = []
@@ -94,9 +102,19 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
 
     /// `storageIdentifier` names where extensions keep their settings and
     /// data; nil keeps nothing on disk, for tests.
-    public init(storageIdentifier: UUID?) {
+    public convenience init(storageIdentifier: UUID?) {
+        self.init(storageIdentifier: storageIdentifier, websiteDataStore: nil)
+    }
+
+    /// `websiteDataStore`, when given, holds the site data of extension
+    /// pages, such as their IndexedDB and local storage. Tests pass a store of
+    /// their own; nil leaves WebKit's choice.
+    init(storageIdentifier: UUID?, websiteDataStore: WKWebsiteDataStore?) {
         let configuration = storageIdentifier.map { WKWebExtensionController.Configuration(identifier: $0) }
             ?? .nonPersistent()
+        if let websiteDataStore {
+            configuration.defaultWebsiteDataStore = websiteDataStore
+        }
         // Extensions pick a code path from the user agent of their own pages.
         // A Safari path talks to the vendor's Mac app, which only Safari can
         // reach, so extension pages claim Chrome and take the path that works
@@ -136,26 +154,94 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         )
     }
 
-    /// Starts an extension with the grants in its record.
+    /// Starts an extension with the grants in its record. A background that
+    /// fails to start is only logged: the extension still runs.
     public func load(_ record: WebExtensionRecord, library: WebExtensionLibrary) async throws {
         try await load(record, library: library, grantingAccess: true)
+    }
+
+    /// Reads a downloaded version in `folder` and works out what it asks for
+    /// beyond the record's grants. `version` is the release's, since the
+    /// manifest's display version can be a name such as "1.2 beta". Throws
+    /// when WebKit cannot read the package; the caller then deletes it.
+    public func reviewUpdate(
+        folder: String,
+        version: String,
+        for record: WebExtensionRecord,
+        library: WebExtensionLibrary
+    ) async throws -> WebExtensionRecord.StagedUpdate {
+        let summary = try await inspect(.package(folder: folder), library: library)
+        let asks = WebExtensionUpdateReview.newRequests(
+            permissions: summary.permissions,
+            matchPatterns: summary.matchPatterns,
+            grantedPermissions: record.grantedPermissions,
+            grantedMatchPatterns: record.grantedMatchPatterns
+        )
+        return WebExtensionRecord.StagedUpdate(
+            folder: folder, version: version,
+            newPermissions: asks.permissions, newMatchPatterns: asks.matchPatterns
+        )
+    }
+
+    /// Tries the record's staged update: loads the new version under the
+    /// record's id, so it keeps the old version's data. The caller saves
+    /// `record.startingUpdateAttempt()` before calling, and applies the result
+    /// with `settling(_:)` on its current record. A version whose manifest,
+    /// load or background fails is not left running, and the caller then
+    /// loads the old one. A timed-out background and the errors WebKit lists
+    /// for a running extension do not count as failures: extensions such as
+    /// Raindrop and DeArrow run fine with some.
+    public func loadStagedUpdate(of record: WebExtensionRecord, library: WebExtensionLibrary) async -> WebExtensionUpdateTrial {
+        guard let staged = record.stagedUpdate, let candidate = record.applyingStagedUpdate(),
+              contexts[record.id] == nil, !loading.contains(record.id),
+              staged.attempts >= 1 else { return .notAttempted }
+        guard staged.attempts <= WebExtensionRecord.StagedUpdate.maxAttempts else {
+            let reason = "interrupted \(staged.attempts - 1) times"
+            logRollback(of: record, to: staged.version, reason: reason)
+            return .rolledBack(folder: staged.folder, version: staged.version, reason: reason)
+        }
+        do {
+            let started = try await load(candidate, library: library, grantingAccess: true, requireBackground: true)
+            guard started else { return .cancelled(folder: staged.folder) }
+            AppLogger.extensions.info("Updated \(record.name, privacy: .public) to \(staged.version, privacy: .public)")
+            return .updated(folder: staged.folder, version: staged.version)
+        } catch {
+            let reason = (error as? BackgroundFailure)?.reason ?? error.localizedDescription
+            logRollback(of: record, to: staged.version, reason: reason)
+            return .rolledBack(folder: staged.folder, version: staged.version, reason: reason)
+        }
+    }
+
+    private func logRollback(of record: WebExtensionRecord, to version: String, reason: String) {
+        let kept = record.installedVersion ?? "?"
+        AppLogger.extensions.error("Update of \(record.name, privacy: .public) to \(version, privacy: .public) would not start, kept \(kept, privacy: .public): \(reason, privacy: .public)")
+    }
+
+    /// A background that failed to start, for a load that requires it.
+    struct BackgroundFailure: Error {
+        let reason: String
     }
 
     /// Starts a background and waits until it is up, the extension is
     /// unloaded, or the time limit passes. WebKit never answers a start whose
     /// context was unloaded meanwhile, so waiting on it alone hung forever
-    /// and left the extension marked as loading for good.
-    private func startBackground(of context: WKWebExtensionContext, id: UUID, name: String) async {
+    /// and left the extension marked as loading for good. Returns WebKit's
+    /// failure text when the start failed, and nil otherwise, a timeout and
+    /// an unload included.
+    private func startBackground(of context: WKWebExtensionContext, id: UUID, name: String) async -> String? {
         let token = UUID()
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        let start = startBackgroundContent
+        return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
             backgroundWaits[id] = (token, continuation)
             Task { @MainActor [weak self] in
+                var failure: String?
                 do {
-                    try await context.loadBackgroundContent()
+                    try await start(context)
                 } catch {
+                    failure = error.localizedDescription
                     AppLogger.extensions.error("Background of \(name, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
                 }
-                self?.endBackgroundWait(id, token: token)
+                self?.endBackgroundWait(id, token: token, failure: failure)
             }
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: Self.backgroundStartLimit)
@@ -166,16 +252,26 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
 
     /// Ends the wait for `id`; with a token, only that wait, so a late answer
     /// from an earlier load cannot cut a newer one short.
-    private func endBackgroundWait(_ id: UUID, token: UUID? = nil) {
+    private func endBackgroundWait(_ id: UUID, token: UUID? = nil, failure: String? = nil) {
         guard let wait = backgroundWaits[id], token == nil || wait.token == token else { return }
         backgroundWaits.removeValue(forKey: id)
-        wait.continuation.resume()
+        wait.continuation.resume(returning: failure)
     }
 
     /// `grantingAccess` false loads the extension with no permissions or
     /// sites, so it can reach no page: for finding its stored data to delete.
-    private func load(_ record: WebExtensionRecord, library: WebExtensionLibrary, grantingAccess: Bool) async throws {
-        guard contexts[record.id] == nil, !loading.contains(record.id) else { return }
+    /// With `requireBackground`, a background that fails to start unloads the
+    /// extension and throws `BackgroundFailure`. Returns true when this call
+    /// left the extension running, and false when it was already running or
+    /// loading, or was turned off meanwhile.
+    @discardableResult
+    private func load(
+        _ record: WebExtensionRecord,
+        library: WebExtensionLibrary,
+        grantingAccess: Bool,
+        requireBackground: Bool = false
+    ) async throws -> Bool {
+        guard contexts[record.id] == nil, !loading.contains(record.id) else { return false }
         loading.insert(record.id)
         cancelledLoads.remove(record.id)
         defer { loading.remove(record.id) }
@@ -184,7 +280,7 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         // call in the meantime.
         guard !cancelledLoads.contains(record.id), contexts[record.id] == nil else {
             cancelledLoads.remove(record.id)
-            return
+            return false
         }
         let context = WKWebExtensionContext(for: webExtension)
         context.uniqueIdentifier = record.id.uuidString
@@ -212,10 +308,18 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         // 26, WebKit drops a content script's message that arrives while the
         // background is still starting (macOS 27 queues it); CI caught this.
         // Callers that build pages after `load` returns are then safe.
-        if grantingAccess, webExtension.hasBackgroundContent {
-            await startBackground(of: context, id: record.id, name: record.name)
+        if grantingAccess, webExtension.hasBackgroundContent,
+           let failure = await startBackground(of: context, id: record.id, name: record.name),
+           requireBackground, contexts[record.id] === context {
+            // Unloading inside a load is safe: it marks the id cancelled, but
+            // every later load clears that mark first, and the defer above
+            // clears `loading`.
+            unload(record.id)
+            throw BackgroundFailure(reason: failure)
         }
+        guard contexts[record.id] === context else { return false }
         AppLogger.extensions.info("Loaded extension \(record.name, privacy: .public)")
+        return true
     }
 
     public func unload(_ id: UUID) {
@@ -242,7 +346,7 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
     public func removeStoredData(for record: WebExtensionRecord, library: WebExtensionLibrary) async -> Bool {
         let wasRunning = contexts[record.id] != nil
         if !wasRunning {
-            try? await load(record, library: library, grantingAccess: false)
+            _ = try? await load(record, library: library, grantingAccess: false)
         }
         var reached = false
         if let context = contexts[record.id] {
