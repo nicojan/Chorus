@@ -114,9 +114,8 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         observeGrantChanges()
     }
 
-    /// The tail of an extension page's user agent. Chrome 134 is the oldest
-    /// that Bitwarden's Chrome build accepts.
-    static let extensionApplicationName = "Chrome/134.0.0.0 Safari/605.1.15"
+    /// The tail of an extension page's user agent.
+    static let extensionApplicationName = ExtensionCompatibility.chromeApplicationName
 
     // MARK: - Loading
 
