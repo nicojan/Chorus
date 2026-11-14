@@ -18,6 +18,7 @@ extension ServiceInstance {
             dataStore: .persistent(dataStoreIdentifier),
             userAgent: userAgent,
             css: ServiceCSSDefaults.effectiveCSS(instanceCSS: customCSS, catalogID: catalogEntryID),
+            customJS: customJS,
             darkThemed: darkMode == .on,
             // The effective policy, not the legacy `neverHibernate` flag.
             keepsLoaded: hibernationPolicyEffective == .never,

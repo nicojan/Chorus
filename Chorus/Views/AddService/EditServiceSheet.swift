@@ -22,7 +22,8 @@ struct EditServiceSheet: View {
     @State private var url: String = ""
     @State private var hibernationPolicy: HibernationPolicy = .followGlobal
     @State private var hibernateAfterMinutes: Int = 10
-    @State private var mobileView: Bool = false
+    @State private var userAgentChoice: UserAgentChoice = .standard
+    @State private var customUserAgent: String = ""
     /// The service's own outside-link choice; nil follows the Settings default.
     @State private var openLinksInApp: Bool? = nil
     @AppStorage(OutsideLinkDefault.defaultsKey) private var linksOpenInChorusByDefault = false
@@ -32,6 +33,7 @@ struct EditServiceSheet: View {
     @State private var osNotify: Bool = true
     @State private var badge: Bool = true
     @State private var customCSS: String = ""
+    @State private var customJS: String = ""
     @State private var cameraPolicy: MediaPermissionPolicy = .ask
     @State private var microphonePolicy: MediaPermissionPolicy = .ask
     // The effective values the pickers opened at, so save only pins a policy the
@@ -199,8 +201,7 @@ struct EditServiceSheet: View {
             }
         }
 
-        Toggle("Mobile view", isOn: $mobileView)
-            .help("Loads this service as if on an iPhone, so it serves its mobile web layout. Applied on save.")
+        userAgentSection
 
         Picker("Open outside links in", selection: $openLinksInApp) {
             Text(linksOpenInChorusByDefault ? "Follow global setting (Chorus window)" : "Follow global setting (browser)").tag(Bool?.none)
@@ -239,6 +240,10 @@ struct EditServiceSheet: View {
         Divider()
 
         customCSSSection
+
+        Divider()
+
+        customJSSection
 
         Divider()
 
@@ -372,8 +377,11 @@ struct EditServiceSheet: View {
         url = service.url
         hibernationPolicy = service.hibernationPolicyEffective
         hibernateAfterMinutes = service.hibernateAfterMinutesEffective
-        mobileView = service.userAgent == UserAgentProvider.mobileSafari
+        let agent = UserAgentChoice.resolving(stored: service.userAgent)
+        userAgentChoice = agent.choice
+        customUserAgent = agent.customText
         initialUserAgent = service.userAgent
+        customJS = service.customJS ?? ""
         openLinksInApp = service.openExternalLinksInApp
         stayActive = service.staysActiveInBackgroundEffective
         darkMode = service.darkMode
@@ -449,20 +457,60 @@ struct EditServiceSheet: View {
     }
 
     @ViewBuilder
+    private var userAgentSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Picker("Browser identity", selection: $userAgentChoice) {
+                ForEach(UserAgentChoice.allCases) { choice in
+                    Text(choice.title).tag(choice)
+                }
+            }
+            .help("The browser this service says it is. iPhone loads its mobile web layout. Takes effect when you save.")
+
+            if userAgentChoice == .custom {
+                TextField("User agent", text: $customUserAgent)
+                    .font(.system(.caption, design: .monospaced))
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Custom user agent")
+                Text("Leave blank to use the default Safari.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var customJSSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Custom JavaScript")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            CodeTextEditor(text: $customJS, label: "Custom JavaScript")
+                .frame(height: 120)
+                .overlay(
+                    RoundedRectangle(cornerRadius: ChorusRadius.control)
+                        .stroke(Color(nsColor: .separatorColor))
+                )
+
+            Text("Runs in this service's page, with your signed-in session. Paste only code you trust. Exported setups leave it out. Saving reloads the page.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
     private var customCSSSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Custom CSS")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            TextEditor(text: $customCSS)
-                .font(.system(.caption, design: .monospaced))
+            CodeTextEditor(text: $customCSS, label: "Custom CSS")
                 .frame(height: 120)
                 .overlay(
                     RoundedRectangle(cornerRadius: ChorusRadius.control)
                         .stroke(Color(nsColor: .separatorColor))
                 )
-                .accessibilityLabel("Custom CSS")
 
             HStack {
                 Spacer()
@@ -504,12 +552,17 @@ struct EditServiceSheet: View {
             let darkModeChanged = service.darkMode != darkMode
             let cssChanged = (service.customCSS ?? "") != (newCSS ?? "")
 
-            // Only the Mobile-view toggle drives the UA here. Rewrite it only when
-            // that toggle actually changed, so a custom (non-mobile) user-agent set
-            // elsewhere — e.g. a future catalog default — isn't wiped by an
+            // Rewrite the UA only when the resulting value differs from the one
+            // the sheet opened with, so a catalog default isn't wiped by an
             // unrelated edit. Mirrors the camera/mic initial-value guards below.
-            let wasMobile = initialUserAgent == UserAgentProvider.mobileSafari
-            let userAgentChanged = mobileView != wasMobile
+            let newUserAgent = UserAgentChoice.storedValue(choice: userAgentChoice, customText: customUserAgent)
+            let userAgentChanged = newUserAgent != initialUserAgent
+
+            // Custom JavaScript runs when the page loads, so a change rebuilds
+            // the web view, as a CSS change does.
+            let trimmedJS = customJS.trimmingCharacters(in: .whitespacesAndNewlines)
+            let newJS: String? = trimmedJS.isEmpty ? nil : customJS
+            let customJSChanged = newJS != service.customJS
 
             // Notification changes: mute and badge affect the dock/rail badge, so
             // they need an explicit refresh below — applyServiceEdits doesn't.
@@ -532,8 +585,9 @@ struct EditServiceSheet: View {
             service.darkModeRaw = darkMode.rawValue
             service.forceDarkMode = nil          // retire the legacy flag
             if userAgentChanged {
-                service.userAgent = mobileView ? UserAgentProvider.mobileSafari : nil
+                service.userAgent = newUserAgent
             }
+            service.customJS = newJS
             service.isMuted = muted
             service.osNotificationsEnabled = osNotify
             service.showBadge = badge
@@ -550,7 +604,7 @@ struct EditServiceSheet: View {
             appState.applyServiceEdits(
                 serviceID: service.id,
                 urlChanged: urlChanged,
-                cssChanged: cssChanged,
+                cssChanged: cssChanged || customJSChanged,
                 userAgentChanged: userAgentChanged,
                 darkModeChanged: darkModeChanged,
                 presenceChanged: presenceChanged

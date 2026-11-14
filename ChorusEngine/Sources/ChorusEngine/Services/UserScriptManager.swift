@@ -21,6 +21,10 @@ public final class UserScriptManager {
     /// The service's label, shown on each notification it posts.
     public var serviceLabel: (@Sendable (UUID) -> String?)?
     public var autoDismissCookieBanners: Bool = true
+    /// Show only the service's name and a fixed line in each notification, not
+    /// the page's title and text. Read when each notification arrives, so a
+    /// change applies to every page at once.
+    public var hidesNotificationText = false
     /// Gets each IndexedDB event a page's main frame reports (see
     /// `PageStorageEvent`), with the service it came from. Called on the main
     /// thread. Nil drops them.
@@ -31,6 +35,7 @@ public final class UserScriptManager {
     func configureScripts(
         for serviceID: UUID,
         customCSS: String?,
+        customJS: String? = nil,
         darkInjection: DarkReaderSupport.DarkInjection,
         stayActiveInBackground: Bool,
         on controller: WKUserContentController
@@ -39,6 +44,7 @@ public final class UserScriptManager {
         installUserScripts(
             for: serviceID,
             customCSS: customCSS,
+            customJS: customJS,
             darkInjection: darkInjection,
             stayActiveInBackground: stayActiveInBackground,
             on: controller
@@ -53,6 +59,9 @@ public final class UserScriptManager {
         let notifyOSCheck = isServiceNotifyingOS
         let dndCheck = isDoNotDisturbActive
         let labelLookup = serviceLabel
+        let hideTextCheck: @Sendable () -> Bool = { [weak self] in
+            MainActor.assumeIsolated { self?.hidesNotificationText ?? false }
+        }
         let handler = NotificationMessageHandler(
             serviceID: serviceID,
             labelLookup: { id in
@@ -66,7 +75,8 @@ public final class UserScriptManager {
             },
             isDoNotDisturbCheck: {
                 dndCheck?() ?? false
-            }
+            },
+            hideTextCheck: hideTextCheck
         )
         controller.add(handler, name: "chorusNotification")
 
@@ -84,6 +94,7 @@ public final class UserScriptManager {
     func installUserScripts(
         for serviceID: UUID,
         customCSS: String?,
+        customJS: String? = nil,
         darkInjection: DarkReaderSupport.DarkInjection,
         stayActiveInBackground: Bool,
         on controller: WKUserContentController
@@ -169,6 +180,12 @@ public final class UserScriptManager {
             controller.addUserScript(cssScript)
         }
 
+        // Per-service custom JavaScript, after the page has loaded. Left out
+        // when blank.
+        if let customJSScript = Self.makeCustomJSUserScript(customJS) {
+            controller.addUserScript(customJSScript)
+        }
+
         // Dark theming. `.themed` injects Dark Reader into an ISOLATED world so
         // its window.chrome stub and DarkReader global never reach the site (the
         // shared DOM means the theme it injects still applies), with an anti-flash
@@ -196,6 +213,33 @@ public final class UserScriptManager {
                 in: DarkReaderSupport.world
             ))
         }
+    }
+
+    /// The user script for a service's custom JavaScript, or nil when `js` is
+    /// nil or blank. Runs at document end in the main frame, in the page's own
+    /// content world so it can see the page's globals.
+    nonisolated static func makeCustomJSUserScript(_ js: String?) -> WKUserScript? {
+        guard let js, !js.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return WKUserScript(
+            source: makeCustomJSSource(js),
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: true,
+            in: .page
+        )
+    }
+
+    /// Wraps the user's code so an error in it is logged to the page console and
+    /// does not reach Chorus's own scripts.
+    nonisolated static func makeCustomJSSource(_ js: String) -> String {
+        return """
+        (function() {
+            try {
+        \(js)
+            } catch (error) {
+                console.error('Chorus custom JavaScript failed:', error);
+            }
+        })();
+        """
     }
 
     /// Builds a script that injects `css` into the page as a `<style>` element.
@@ -606,6 +650,28 @@ public final class NotificationMessageHandler: NSObject, WKScriptMessageHandler,
     let isMutedCheck: @Sendable (UUID) -> Bool
     let notifyOSCheck: @Sendable (UUID) -> Bool
     let isDoNotDisturbCheck: @Sendable () -> Bool
+    let hideTextCheck: @Sendable () -> Bool
+
+    /// The body of a notification whose text is hidden.
+    static let hiddenBody = "New notification"
+
+    /// What a notification shows. Normally the page's title and body, with the
+    /// service's name as the subtitle (the page writes the title and body, so
+    /// it could claim to be any service; the subtitle is the app's own). With
+    /// `hideText` on, the title is the service's name, the body is a fixed
+    /// line, and nothing the page wrote is kept.
+    static func notificationText(
+        pageTitle: String, pageBody: String, serviceLabel: String?, hideText: Bool
+    ) -> (title: String, body: String, subtitle: String) {
+        if hideText {
+            return (title: serviceLabel ?? "Notification", body: hiddenBody, subtitle: "")
+        }
+        return (
+            title: String(pageTitle.prefix(maxTitleLength)),
+            body: String(pageBody.prefix(maxBodyLength)),
+            subtitle: serviceLabel ?? ""
+        )
+    }
 
     /// The last notification posted and when. A service's tab runs the same
     /// interception script as its page, so a chat open in both fires each
@@ -647,13 +713,15 @@ public final class NotificationMessageHandler: NSObject, WKScriptMessageHandler,
         labelLookup: @escaping @Sendable (UUID) -> String?,
         isMutedCheck: @escaping @Sendable (UUID) -> Bool,
         notifyOSCheck: @escaping @Sendable (UUID) -> Bool,
-        isDoNotDisturbCheck: @escaping @Sendable () -> Bool
+        isDoNotDisturbCheck: @escaping @Sendable () -> Bool,
+        hideTextCheck: @escaping @Sendable () -> Bool = { false }
     ) {
         self.serviceID = serviceID
         self.labelLookup = labelLookup
         self.isMutedCheck = isMutedCheck
         self.notifyOSCheck = notifyOSCheck
         self.isDoNotDisturbCheck = isDoNotDisturbCheck
+        self.hideTextCheck = hideTextCheck
         super.init()
     }
 
@@ -719,11 +787,15 @@ public final class NotificationMessageHandler: NSObject, WKScriptMessageHandler,
         recentPosts = recentPosts.filter { now.timeIntervalSince($0) < Self.rateWindow } + [now]
 
         let content = UNMutableNotificationContent()
-        content.title = String(payload.title.prefix(Self.maxTitleLength))
-        content.body = String(payload.body.prefix(Self.maxBodyLength))
-        // The page writes the title and body, so it could claim to be any
-        // service. The subtitle is Chorus's own: the service it came from.
-        content.subtitle = labelLookup(serviceID) ?? ""
+        let text = Self.notificationText(
+            pageTitle: payload.title,
+            pageBody: payload.body,
+            serviceLabel: labelLookup(serviceID),
+            hideText: hideTextCheck()
+        )
+        content.title = text.title
+        content.body = text.body
+        content.subtitle = text.subtitle
         content.threadIdentifier = serviceID.uuidString
         content.userInfo = ["serviceID": serviceID.uuidString]
         content.sound = .default

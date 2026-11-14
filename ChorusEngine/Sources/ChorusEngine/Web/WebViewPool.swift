@@ -858,6 +858,7 @@ public final class WebViewPool {
         userScriptManager.configureScripts(
             for: surface.id,
             customCSS: effectiveCSS(for: surface),
+            customJS: surface.customJS,
             darkInjection: injection,
             stayActiveInBackground: surface.staysActiveInBackground,
             on: controller
@@ -949,6 +950,7 @@ public final class WebViewPool {
         userScriptManager.installUserScripts(
             for: surface.id,
             customCSS: effectiveCSS(for: surface),
+            customJS: surface.customJS,
             darkInjection: injection,
             stayActiveInBackground: surface.staysActiveInBackground,
             on: controller

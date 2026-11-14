@@ -137,8 +137,8 @@ enum ChorusSchemaV1_5_11: VersionedSchema {
     }
 
     // `AppPreferences` has no relationships and is byte-identical from 1.5.11
-    // through the current shape, so this ONE frozen copy is shared by every
-    // historical version (V1.5.12 references it too). It is frozen rather than
+    // through 1.5.30, so this ONE frozen copy is shared by every version up to
+    // and including 1.5.29 (V1.5.12 references it too). V1.5.30 has its own copy. It is frozen rather than
     // pointing at the live `AppPreferences` on purpose: referencing the live type
     // would mean a future field added to app settings silently changes the
     // *declared* 1.5.11/1.5.12 schema, so a real old store would stop matching
@@ -624,7 +624,194 @@ enum ChorusSchemaV1_5_29: VersionedSchema {
     }
 }
 
-// MARK: - Current (1.5.30: service groups)
+// MARK: - V1.5.30 (the shape before custom JavaScript and the two settings)
+//
+// Frozen on 2026-11-09. This is what 1.5.37 shipped: the 1.5.29 shape plus
+// `SpaceServiceLink.groupID` and the `ServiceGroup` entity. The current version
+// adds `ServiceInstance.customJS` and `AppPreferences.lockAfterIdleMinutes` and
+// `.hideNotificationText`, all optional.
+
+enum ChorusSchemaV1_5_30: VersionedSchema {
+    nonisolated(unsafe) static let versionIdentifier = Schema.Version(1, 5, 30)
+
+    // The triangle is this namespace's own so the relationships point at THIS
+    // ServiceInstance. AppPreferences is frozen here too, because the live
+    // model gains two fields in the next version.
+    static var models: [any PersistentModel.Type] {
+        [
+            ServiceInstance.self, Space.self, SpaceServiceLink.self,
+            AppPreferences.self, RailDivider.self, ServiceGroup.self,
+        ]
+    }
+
+    @Model
+    final class ServiceInstance {
+        @Attribute(.unique) var id: UUID
+        var label: String
+        var url: String
+        var customIconData: Data?
+        var fetchedIconData: Data?
+        var faviconFetchedAt: Date?
+        var catalogEntryID: String?
+        var isMuted: Bool
+        var showBadge: Bool
+        var neverHibernate: Bool
+        var userAgent: String?
+        var dataStoreIdentifier: UUID
+        var pageZoom: Double?
+        var osNotificationsEnabled: Bool?
+        var customCSS: String?
+        var forceDarkMode: Bool?
+        var darkModeRaw: String?
+        var cameraPolicyRaw: String?
+        var microphonePolicyRaw: String?
+        var openExternalLinksInApp: Bool?
+        var stayActiveInBackground: Bool?
+        var hasSeenPasskeyNotice: Bool?
+        var hibernationPolicyRaw: String?
+        var hibernateAfterMinutes: Int?
+        var isGlobal: Bool?
+        var globalSortOrder: Int?
+
+        @Relationship(deleteRule: .cascade, inverse: \SpaceServiceLink.service)
+        var spaceLinks: [SpaceServiceLink]
+
+        var createdAt: Date
+        var lastAccessedAt: Date
+
+        init(id: UUID = UUID(), label: String = "", url: String = "") {
+            self.id = id
+            self.label = label
+            self.url = url
+            self.isMuted = false
+            self.showBadge = true
+            self.neverHibernate = false
+            self.dataStoreIdentifier = UUID()
+            self.spaceLinks = []
+            self.createdAt = Date()
+            self.lastAccessedAt = Date()
+        }
+    }
+
+    @Model
+    final class Space {
+        @Attribute(.unique) var id: UUID
+        var name: String
+        var emoji: String
+        var sortOrder: Int
+        var isMuted: Bool?
+
+        @Relationship(deleteRule: .cascade, inverse: \SpaceServiceLink.space)
+        var serviceLinks: [SpaceServiceLink]
+
+        var createdAt: Date
+
+        init(id: UUID = UUID(), name: String = "", emoji: String = "", sortOrder: Int = 0) {
+            self.id = id
+            self.name = name
+            self.emoji = emoji
+            self.sortOrder = sortOrder
+            self.serviceLinks = []
+            self.createdAt = Date()
+        }
+    }
+
+    @Model
+    final class SpaceServiceLink {
+        @Attribute(.unique) var id: UUID
+        var sortOrder: Int
+        var groupID: UUID?
+
+        @Relationship var space: Space?
+        @Relationship var service: ServiceInstance?
+
+        init(id: UUID = UUID(), sortOrder: Int = 0, space: Space, service: ServiceInstance) {
+            self.id = id
+            self.sortOrder = sortOrder
+            self.space = space
+            self.service = service
+        }
+    }
+
+    @Model
+    final class RailDivider {
+        @Attribute(.unique) var id: UUID
+        var kindRaw: String
+        var spaceID: UUID?
+        var sortOrder: Int
+        var createdAt: Date
+
+        init(
+            id: UUID = UUID(),
+            kindRaw: String,
+            spaceID: UUID? = nil,
+            sortOrder: Int = 0,
+            createdAt: Date = Date()
+        ) {
+            self.id = id
+            self.kindRaw = kindRaw
+            self.spaceID = spaceID
+            self.sortOrder = sortOrder
+            self.createdAt = createdAt
+        }
+    }
+
+    @Model
+    final class ServiceGroup {
+        @Attribute(.unique) var id: UUID
+        var spaceID: UUID
+        var name: String?
+        var createdAt: Date
+
+        init(id: UUID = UUID(), spaceID: UUID, name: String? = nil, createdAt: Date = Date()) {
+            self.id = id
+            self.spaceID = spaceID
+            self.name = name
+            self.createdAt = createdAt
+        }
+    }
+
+    // Frozen copy of the live AppPreferences as 1.5.37 shipped it. Same stored
+    // attributes as `ChorusSchemaV1_5_11.AppPreferences`.
+    @Model
+    final class AppPreferences {
+        @Attribute(.unique) var id: UUID
+        var appPresenceMode: AppPresenceMode
+        var launchAtLogin: Bool
+        var globalKeyboardShortcutsEnabled: Bool
+        var showBadgeCountInDock: Bool
+        var autoDismissCookieBanners: Bool
+        var selectedSpaceID: UUID?
+        var selectedServiceID: UUID?
+        var defaultZoom: Double?
+        var scheduledDNDEnabled: Bool?
+        var dndStartMinutes: Int?
+        var dndEndMinutes: Int?
+        var appLockEnabled: Bool?
+        var lockOnLaunch: Bool?
+        var lockOnSleep: Bool?
+        var railLayoutRaw: String?
+        var appearanceModeRaw: String?
+        var contentBlockingEnabled: Bool?
+        var annoyanceBlockingEnabled: Bool?
+        var defaultCameraPolicyRaw: String?
+        var defaultMicrophonePolicyRaw: String?
+        var googleFaviconFallbackEnabled: Bool?
+        var autoHibernateIdleEnabled: Bool?
+        var autoHibernateIdleMinutes: Int?
+
+        init(id: UUID = UUID()) {
+            self.id = id
+            self.appPresenceMode = .dock
+            self.launchAtLogin = false
+            self.globalKeyboardShortcutsEnabled = true
+            self.showBadgeCountInDock = true
+            self.autoDismissCookieBanners = true
+        }
+    }
+}
+
+// MARK: - Current (1.5.38: custom JavaScript, idle lock, private notifications)
 //
 // Reuses the live top-level model types — today's model files are the single
 // source of truth for the shipping shape. When a stored property changes, freeze
@@ -635,11 +822,11 @@ enum ChorusSchemaVCurrent: VersionedSchema {
     // NOTE: `versionIdentifier` is a schema-SHAPE label, not the app's marketing
     // version. Bump it only when the stored shape changes — and to a value not
     // already used by a different shape (do not blindly mint the next marketing
-    // number). (1,5,29) now belongs to the frozen `ChorusSchemaV1_5_29`, the
-    // shape with global services and rail dividers; this one is (1,5,30)
-    // because `SpaceServiceLink.groupID` and the `ServiceGroup` entity first
-    // ship there.
-    nonisolated(unsafe) static let versionIdentifier = Schema.Version(1, 5, 30)
+    // number). (1,5,30) now belongs to the frozen `ChorusSchemaV1_5_30`, the
+    // shape with service groups; this one is (1,5,38) because
+    // `ServiceInstance.customJS`, `AppPreferences.lockAfterIdleMinutes` and
+    // `AppPreferences.hideNotificationText` first ship there.
+    nonisolated(unsafe) static let versionIdentifier = Schema.Version(1, 5, 38)
 
     static var models: [any PersistentModel.Type] {
         [
@@ -655,7 +842,8 @@ enum ChorusMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
         [
             ChorusSchemaV1_5_11.self, ChorusSchemaV1_5_12.self, ChorusSchemaV1_5_13.self,
-            ChorusSchemaV1_5_19.self, ChorusSchemaV1_5_29.self, ChorusSchemaVCurrent.self,
+            ChorusSchemaV1_5_19.self, ChorusSchemaV1_5_29.self, ChorusSchemaV1_5_30.self,
+            ChorusSchemaVCurrent.self,
         ]
     }
 
@@ -675,10 +863,14 @@ enum ChorusMigrationPlan: SchemaMigrationPlan {
             // new RailDivider entity that starts empty. Nothing existing is
             // reshaped.
             .lightweight(fromVersion: ChorusSchemaV1_5_19.self, toVersion: ChorusSchemaV1_5_29.self),
-            // 1.5.29 → current: adds SpaceServiceLink.groupID (optional, nil on
+            // 1.5.29 → 1.5.30: adds SpaceServiceLink.groupID (optional, nil on
             // every existing row) and a new ServiceGroup entity that starts
             // empty. Nothing existing is reshaped.
-            .lightweight(fromVersion: ChorusSchemaV1_5_29.self, toVersion: ChorusSchemaVCurrent.self),
+            .lightweight(fromVersion: ChorusSchemaV1_5_29.self, toVersion: ChorusSchemaV1_5_30.self),
+            // 1.5.30 → current: adds ServiceInstance.customJS and
+            // AppPreferences.lockAfterIdleMinutes and .hideNotificationText (all
+            // optional, nil on every existing row). Nothing existing is reshaped.
+            .lightweight(fromVersion: ChorusSchemaV1_5_30.self, toVersion: ChorusSchemaVCurrent.self),
         ]
     }
 }

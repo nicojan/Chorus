@@ -93,6 +93,14 @@ final class AppPreferences {
     var lockOnLaunch: Bool?
     var lockOnSleep: Bool?
 
+    /// Lock after this many minutes with no keyboard or mouse use. Optional for
+    /// SwiftData lightweight migration; nil or 0 is off.
+    var lockAfterIdleMinutes: Int?
+
+    /// Show only the service name and a fixed line in notifications, not the
+    /// message text. Optional for SwiftData lightweight migration; nil is off.
+    var hideNotificationText: Bool?
+
     /// Rail layout. Optional so SwiftData lightweight migration succeeds on
     /// existing rows; nil or an unknown value resolves to `.sidebar`. Read via
     /// `railLayout`.
@@ -155,6 +163,8 @@ final class AppPreferences {
         appLockEnabled: Bool? = nil,
         lockOnLaunch: Bool? = nil,
         lockOnSleep: Bool? = nil,
+        lockAfterIdleMinutes: Int? = nil,
+        hideNotificationText: Bool? = nil,
         railLayoutRaw: String? = nil,
         appearanceModeRaw: String? = nil,
         contentBlockingEnabled: Bool? = nil,
@@ -180,6 +190,8 @@ final class AppPreferences {
         self.appLockEnabled = appLockEnabled
         self.lockOnLaunch = lockOnLaunch
         self.lockOnSleep = lockOnSleep
+        self.lockAfterIdleMinutes = lockAfterIdleMinutes
+        self.hideNotificationText = hideNotificationText
         self.railLayoutRaw = railLayoutRaw
         self.appearanceModeRaw = appearanceModeRaw
         self.contentBlockingEnabled = contentBlockingEnabled
