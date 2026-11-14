@@ -32,6 +32,9 @@ final class AppState {
     let downloadCenter = DownloadCenter()
     /// The user's web extensions and the host that runs them.
     let extensions = ExtensionManager(library: WebExtensionLibrary(directory: ExtensionManager.defaultDirectory))
+    /// Get Extensions and the daily update check. Lazy because it is built
+    /// from `extensions`, which a stored property's initializer cannot read.
+    @ObservationIgnored private(set) lazy var extensionCatalog = ExtensionCatalogController(manager: extensions)
 
     /// Navigation state (back/forward/loading) for the active service's web view,
     /// shared so the top tab bar can host the nav buttons.
@@ -3052,13 +3055,17 @@ final class AppState {
     /// pages must not load before its background is up: on macOS 15 and 26 a
     /// content script's first message would go unanswered. With none on,
     /// preloading starts at once, as it always has.
+    /// The daily extension update check starts once the enabled extensions
+    /// have, in both branches, so it never restages one while it loads.
     private func preloadAfterExtensions() {
         guard !extensions.enabledIDs.isEmpty else {
             preloadActiveSpaceServices()
+            extensionCatalog.launchFinished()
             return
         }
         Task {
             await extensions.startEnabled()
+            extensionCatalog.launchFinished()
             preloadActiveSpaceServices()
         }
     }

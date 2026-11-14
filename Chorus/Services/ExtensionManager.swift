@@ -37,6 +37,17 @@ final class ExtensionManager {
     /// The latest grants reported during a record's trial. They belong to
     /// the new version, so they land only if it does.
     @ObservationIgnored private var grantsDuringTrial: [UUID: Grants] = [:]
+    /// Starts in progress per id, trial and plain load both. A count, because
+    /// two starts can overlap for one id.
+    @ObservationIgnored private var startsInProgress: [UUID: Int] = [:]
+    /// What the last trial of each record came to this session, for its row.
+    /// Memory only.
+    private(set) var lastTrials: [UUID: WebExtensionUpdateTrial] = [:]
+    /// Records whose new version runs from the staged folder while the saved
+    /// list still names it only as staged, because the trial's result did
+    /// not save. Restaging would delete the folder the running version uses.
+    /// Memory only: the next launch tries the update again.
+    @ObservationIgnored private var unsavedTrials: Set<UUID> = []
 
     private struct Grants {
         let permissions: [String]
@@ -108,6 +119,13 @@ final class ExtensionManager {
 
     var enabledIDs: [UUID] { records.filter(\.isEnabled).map(\.id) }
 
+    /// True while a start (trial or load) for `id` is running, or while its
+    /// new version runs from a staged folder the list did not save. The
+    /// update check never restages such a record.
+    func isBusy(_ id: UUID) -> Bool {
+        startsInProgress[id, default: 0] > 0 || trialsRunning.contains(id) || unsavedTrials.contains(id)
+    }
+
     func isRunning(_ id: UUID) -> Bool {
         guard #available(macOS 15.4, *), let host else { return false }
         return host.loadedIDs.contains(id)
@@ -128,6 +146,8 @@ final class ExtensionManager {
     /// when one is ready.
     private func start(_ record: WebExtensionRecord) async {
         guard #available(macOS 15.4, *), let host else { return }
+        startsInProgress = startsInProgress.merging([record.id: 1], uniquingKeysWith: +)
+        defer { endStart(record.id) }
         await tryStagedUpdate(of: record.id, host: host)
         // The current record, not the parameter: the trial may have moved it
         // to the new folder, or dropped the update. When the trial left the
@@ -147,6 +167,14 @@ final class ExtensionManager {
             failures = failures.merging([record.id: Self.describe(error)]) { $1 }
             AppLogger.extensions.error("Could not start \(record.name, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    /// Counts one start of `id` as finished, dropping the key at zero.
+    private func endStart(_ id: UUID) {
+        let left = startsInProgress[id, default: 0] - 1
+        startsInProgress = left > 0
+            ? startsInProgress.merging([id: left]) { $1 }
+            : startsInProgress.filter { $0.key != id }
     }
 
     /// Tries a ready staged update, with two saves in this order: the
@@ -171,7 +199,15 @@ final class ExtensionManager {
         // trial ran, so take back the attempt saved for it, or the count
         // drifts up until a healthy version is rolled back as crashing.
         let result = trial == .notAttempted ? .cancelled(folder: folder) : trial
-        commit(records.map { $0.id == id ? Self.settle($0, with: result, grants: grants) : $0 })
+        let saved = commit(records.map { $0.id == id ? Self.settle($0, with: result, grants: grants) : $0 })
+        switch (result, saved) {
+        case (.updated, true), (.rolledBack, true):
+            lastTrials = lastTrials.merging([id: result]) { $1 }
+        case (.updated, false):
+            unsavedTrials = unsavedTrials.union([id])
+        default:
+            break
+        }
     }
 
     /// The trial's result on the current record. Grants reported during the
@@ -213,17 +249,31 @@ final class ExtensionManager {
     }
 
     /// Adds an extension the user agreed to, granting what it asked for up
-    /// front except talking to its Mac app, which Chorus cannot do.
+    /// front except talking to its Mac app, which Chorus cannot do. A catalog
+    /// entry already in the list is not added twice: the new copy is
+    /// discarded and the existing record returned. Nil when the list could
+    /// not be saved: the copy is discarded and nothing starts; the caller
+    /// shows `ExtensionError.listNotSaved`.
     @discardableResult
-    func add(_ source: WebExtensionRecord.Source, summary: WebExtensionSummary) async -> WebExtensionRecord {
+    func add(_ source: WebExtensionRecord.Source, summary: WebExtensionSummary,
+             catalogID: String? = nil, installedVersion: String? = nil) async -> WebExtensionRecord? {
+        if let catalogID, let existing = records.first(where: { $0.catalogID == catalogID }) {
+            discard(source)
+            return existing
+        }
         let record = WebExtensionRecord(
             source: source,
             name: summary.name,
             grantedPermissions: summary.permissions.filter { $0 != WebExtensionPermissionText.nativeMessaging },
-            grantedMatchPatterns: summary.matchPatterns
+            grantedMatchPatterns: summary.matchPatterns,
+            catalogID: catalogID,
+            installedVersion: installedVersion
         )
-        records = records + [record]
-        save()
+        guard commit(records + [record]) else {
+            discard(source)
+            AppLogger.extensions.error("Could not save the extension list, so \(record.name, privacy: .public) was not added")
+            return nil
+        }
         activateIfFirst()
         await start(record)
         return record
@@ -253,6 +303,8 @@ final class ExtensionManager {
         // Out of the list first, so a load still in flight sees it gone.
         records = records.filter { $0.id != id }
         failures = failures.filter { $0.key != id }
+        lastTrials = lastTrials.filter { $0.key != id }
+        unsavedTrials = unsavedTrials.subtracting([id])
         let saved = save()
         var dataRemoved = true
         if #available(macOS 15.4, *), let host {
@@ -306,8 +358,10 @@ final class ExtensionManager {
     /// deleting nothing and keeping the list as it was, when the save failed,
     /// so memory never holds a change the disk lacks for a later save to
     /// write out.
+    ///
+    /// Called only from this file and ExtensionManager+Catalog.swift.
     @discardableResult
-    private func commit(_ updated: [WebExtensionRecord]) -> Bool {
+    func commit(_ updated: [WebExtensionRecord]) -> Bool {
         let before = records
         records = updated
         guard save() else {
@@ -323,11 +377,16 @@ final class ExtensionManager {
         return text.isEmpty ? "Chorus couldn't start this extension." : text
     }
 
-    enum ExtensionError: LocalizedError {
+    enum ExtensionError: LocalizedError, Equatable {
         case unsupported
+        /// `add` could not save the list, so the extension was not added.
+        case listNotSaved(name: String)
 
         var errorDescription: String? {
-            "Extensions need macOS 15.4 or later."
+            switch self {
+            case .unsupported: return "Extensions need macOS 15.4 or later."
+            case .listNotSaved(let name): return "Chorus couldn't save its list of extensions, so it didn't add \(name)."
+            }
         }
     }
 }

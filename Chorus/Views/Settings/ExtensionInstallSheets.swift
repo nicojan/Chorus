@@ -74,6 +74,15 @@ struct ExtensionConfirmSheet: View {
         return (site.map { [$0] } ?? []) + WebExtensionPermissionText.lines(forPermissions: summary.permissions)
     }
 
+    /// For one got from the catalog, the release version and where it came
+    /// from; otherwise the manifest's version.
+    private var versionLine: String? {
+        if let pick = pending.catalog {
+            return "Version \(pick.version) \u{00B7} \(pick.entry.publisherLine)"
+        }
+        return summary.version.map { "Version \($0)" }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
@@ -87,8 +96,8 @@ struct ExtensionConfirmSheet: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Add \(summary.name)?").font(.headline)
-                    if let version = summary.version {
-                        Text("Version \(version)").font(.caption).foregroundStyle(.secondary)
+                    if let versionLine {
+                        Text(versionLine).font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -105,6 +114,12 @@ struct ExtensionConfirmSheet: View {
                             .labelStyle(.titleAndIcon)
                     }
                 }
+            }
+
+            if let gap = pending.catalog?.entry.knownGaps {
+                Label(gap, systemImage: "info.circle")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if summary.needsNativeApp {

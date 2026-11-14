@@ -38,16 +38,7 @@ final class ExtensionManagerTests: XCTestCase {
 
     private func makeExtensionFolder(permissions: [String] = ["storage"], version: String = "2.1",
                                      background: Bool = false) throws -> URL {
-        let folder = root.appending(path: "ext-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let list = permissions.map { "\"\($0)\"" }.joined(separator: ", ")
-        let worker = background ? #", "background": {"service_worker": "bg.js"}"# : ""
-        let manifest = #"{"manifest_version": 3, "name": "Probe", "version": "\#(version)", "permissions": [\#(list)], "action": {}\#(worker)}"#
-        try Data(manifest.utf8).write(to: folder.appending(path: "manifest.json"))
-        if background {
-            try Data("self.started = true;".utf8).write(to: folder.appending(path: "bg.js"))
-        }
-        return folder
+        try ExtensionFixtures.folder(in: root, version: version, permissions: permissions, background: background)
     }
 
     func testAddSwitchOffAndRemove() async throws {
@@ -58,7 +49,8 @@ final class ExtensionManagerTests: XCTestCase {
         let source = try await manager.importPackage(at: makeExtensionFolder(permissions: ["storage", "nativeMessaging"]))
         let summary = try await manager.inspect(source)
         XCTAssertTrue(summary.needsNativeApp)
-        let record = await manager.add(source, summary: summary)
+        let added = await manager.add(source, summary: summary)
+        let record = try XCTUnwrap(added)
 
         XCTAssertEqual(record.grantedPermissions, ["storage"], "talking to the Mac app is never granted")
         XCTAssertTrue(manager.isRunning(record.id))
@@ -362,34 +354,5 @@ final class ExtensionManagerTests: XCTestCase {
         XCTAssertNil(savedRecord?.stagedUpdate, "the fixed list is saved")
         XCTAssertNil(savedRecord?.skippedVersion)
         XCTAssertTrue(exists(current))
-    }
-}
-
-/// Holds every extension background start until the test opens it, through
-/// the host's test seam. Once open, it lets later starts through at once,
-/// with the same result.
-@available(macOS 15.4, *)
-@MainActor
-private final class BackgroundGate {
-    private(set) var starts = 0
-    private var waiting: [CheckedContinuation<Void, Error>] = []
-    private var result: Result<Void, Error>?
-
-    func install(on host: WebExtensionHost) {
-        host.startBackgroundContent = { [self] _ in try await self.pass() }
-    }
-
-    func open(failing failure: Error? = nil) {
-        let outcome: Result<Void, Error> = failure.map { .failure($0) } ?? .success(())
-        result = outcome
-        let held = waiting
-        waiting = []
-        held.forEach { $0.resume(with: outcome) }
-    }
-
-    private func pass() async throws {
-        starts += 1
-        if let result { return try result.get() }
-        try await withCheckedThrowingContinuation { waiting.append($0) }
     }
 }
