@@ -308,18 +308,34 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         // 26, WebKit drops a content script's message that arrives while the
         // background is still starting (macOS 27 queues it); CI caught this.
         // Callers that build pages after `load` returns are then safe.
-        if grantingAccess, webExtension.hasBackgroundContent,
-           let failure = await startBackground(of: context, id: record.id, name: record.name),
-           requireBackground, contexts[record.id] === context {
-            // Unloading inside a load is safe: it marks the id cancelled, but
-            // every later load clears that mark first, and the defer above
-            // clears `loading`.
-            unload(record.id)
-            throw BackgroundFailure(reason: failure)
+        if grantingAccess, webExtension.hasBackgroundContent {
+            let answered = await startBackground(of: context, id: record.id, name: record.name)
+            // On macOS 15 and 26 WebKit does not answer the start of a worker
+            // that throws, but it records backgroundContentFailedToLoad in the
+            // context's errors (CI, 2026-11-14). That one code is a failure;
+            // other errors are not, since extensions run fine with some listed.
+            if requireBackground, contexts[record.id] === context,
+               let failure = answered ?? Self.backgroundLoadFailure(in: context) {
+                // Unloading inside a load is safe: it marks the id cancelled,
+                // but every later load clears that mark first, and the defer
+                // above clears `loading`.
+                unload(record.id)
+                throw BackgroundFailure(reason: failure)
+            }
         }
         guard contexts[record.id] === context else { return false }
         AppLogger.extensions.info("Loaded extension \(record.name, privacy: .public)")
         return true
+    }
+
+    /// The text of WebKit's "background content failed to load" error in the
+    /// context, if it recorded one.
+    static func backgroundLoadFailure(in context: WKWebExtensionContext) -> String? {
+        context.errors.first { error in
+            let error = error as NSError
+            return error.domain == WKWebExtensionContext.errorDomain
+                && error.code == WKWebExtensionContext.Error.Code.backgroundContentFailedToLoad.rawValue
+        }?.localizedDescription
     }
 
     public func unload(_ id: UUID) {

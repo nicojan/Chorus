@@ -223,31 +223,27 @@ final class WebExtensionUpdateTests: XCTestCase {
         try await assertOldVersionRuns(current.settling(trial), host: host)
     }
 
-    /// WebKit does not report a service worker that throws while it starts:
-    /// `loadBackgroundContent` never calls back, and the load goes on after
-    /// the time limit, so the broken version stays running. WebKit lists the
-    /// failure in `errors`, but extensions such as Raindrop and DeArrow run
-    /// fine with errors listed, so Chorus does not read them as a failure.
-    /// Rollback covers a manifest WebKit cannot read and a failed load, not a
-    /// broken background. Pinned on macOS 27.2; a syntax error and a missing
-    /// worker file behave the same there. If this fails on CI because the
-    /// trial rolled back, WebKit reports the failure on that version.
-    func testBrokenBackgroundIsNotDetected() async throws {
+    /// WebKit never answers `loadBackgroundContent` for a service worker
+    /// that throws while it starts, so the host's wait ends at its time
+    /// limit. WebKit does record backgroundContentFailedToLoad in the
+    /// context's errors (seen on macOS 15, 26 and 27.2), and the trial rolls
+    /// back on that one code. Other listed errors are not failures: Raindrop
+    /// and DeArrow run fine with errors listed.
+    func testBrokenBackgroundRollsBack() async throws {
         guard #available(macOS 15.4, *) else { throw XCTSkip("Web extensions need macOS 15.4") }
         let host = WebExtensionHost(storageIdentifier: nil)
         let staged = try makeProbe(version: "2.0", brokenBackground: true)
         let current = markedRecord(current: try makeProbe(version: "1.0"), staged: staged)
         let trial = await host.loadStagedUpdate(of: current, library: library)
-        XCTAssertEqual(trial, .updated(folder: staged, version: "2.0"), "problems: \(host.problems(for: current.id))")
-        XCTAssertEqual(host.details(for: current.id)?.version, "2.0", "the broken version runs")
-        XCTAssertTrue(host.problems(for: current.id).contains { $0.contains("boom") },
-                      "WebKit lists the error: \(host.problems(for: current.id))")
-        host.unload(current.id)
+        guard case .rolledBack(let folder, _, let reason) = trial else { return XCTFail("got \(trial)") }
+        XCTAssertEqual(folder, staged)
+        XCTAssertTrue(reason.localizedCaseInsensitiveContains("background"), reason)
+        XCTAssertTrue(host.loadedIDs.isEmpty)
+        try await assertOldVersionRuns(current.settling(trial), host: host)
     }
 
-    /// WebKit 27.2 never reports a broken worker (see above), so this makes
-    /// the start fail through the host's seam, as WebKit would on a version
-    /// that reports it.
+    /// This makes the start itself fail through the host's seam, the other
+    /// way a background can fail.
     func testBackgroundFailureRollsBack() async throws {
         guard #available(macOS 15.4, *) else { throw XCTSkip("Web extensions need macOS 15.4") }
         let host = WebExtensionHost(storageIdentifier: nil)
