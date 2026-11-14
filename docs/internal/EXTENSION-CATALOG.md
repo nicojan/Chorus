@@ -1,6 +1,6 @@
 # Extension catalog: design and survey
 
-Status: design, not built. Written 2026-11-13 on `feat/web-extensions` after #53 went green. Build it on its own branch once #52 and #53 merge.
+Status: being built on `feat/extension-catalog`, from `main` after #52 and #53 merged on 2026-11-13. Design written 2026-11-13; Nico's answers are under "Decided with Nico".
 
 ## The problem
 
@@ -80,21 +80,22 @@ Tested clean, in order of how useful they are in Chorus:
 6. SponsorBlock, DeArrow, Return YouTube Dislike (for people who keep YouTube in Chorus)
 7. Read Aloud (once speech is tried)
 
-Add after a fix in `ExtensionCompatibility`, which already has the pattern: Proton Pass (stub `runtime.onUpdateAvailable`), Violentmonkey if wanted (stub `notifications.onClicked`, which also quiets Bitwarden's "Notification clicked is not supported"), Raindrop.io (check the bookmark button works despite the manifest warning).
+Add after a fix in `ExtensionCompatibility`, which already has the pattern: Proton Pass (stub `runtime.onUpdateAvailable`), Raindrop.io (check the bookmark button works despite the manifest warning). Violentmonkey stays out, and so does its `notifications.onClicked` stub (Nico, 2026-11-13).
 
 Leave out Dark Reader: Chorus already offers Dark Reader per service, and two copies would fight.
 
-## Questions for Nico
+## Decided with Nico, 2026-11-13
 
-- Is the list above right, and should YouTube helpers be in it at all? Most people use Chorus for messaging and mail.
-- Chrome build or Safari build of uBOL? Both load. The Safari one targets WebKit, but extension pages tell extensions they are in Chrome.
-- Automatic updates on by default?
-- Does the catalog need a "suggest an extension" link to GitHub issues?
+- The first catalog is the list above. The YouTube helpers stay in, listed last under their own category.
+- uBlock Origin Lite comes from its Chrome build (`uBOLite_*.chromium.zip`), not the Safari one.
+- "Update extensions automatically" is on by default. An update that asks for more still waits for the user's OK.
+- The catalog gets a "Suggest an extension" link to a GitHub issue form that asks for the extension's name and its source.
+- No Violentmonkey and no `notifications.onClicked` stub.
 
 ## Build order
 
 1. Engine: `WebExtensionSource` (github, amo), a fetcher that returns version, URL and sha256, and download plus verify plus import. Tests with recorded API answers, no network.
 2. Engine: record fields, staged swap at load, rollback, the permission comparison. A test that data survives a version swap.
-3. App: the catalog JSON, a "Get extensions" section in Settings, the update toggle, "Update needs your OK".
-4. Compatibility stubs for Proton Pass and Violentmonkey, each with a probe test that fails first.
+3. App: the catalog JSON, a "Get extensions" section in Settings, the update toggle, "Update needs your OK", the "Suggest an extension" link and its issue form.
+4. Compatibility stub for Proton Pass, with a probe test that fails first.
 5. By hand in a Debug build: install, update (point an entry at an older tag first), refused update, rollback.
