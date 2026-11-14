@@ -37,10 +37,25 @@ import Foundation
 ///    marked `tabs.create` that `WebExtensionHost` turns into a hidden view,
 ///    and it answers a ping once it is listening.
 ///
+/// 6. WebKit gives a service worker the user agent of whichever page in the
+///    app last set one (`WebProcessPool::updateRemoteWorkerUserAgent`), not
+///    the agent of the extension's own configuration. On macOS 26 the worker
+///    came up with no browser named at all, which in Bitwarden's Chrome build
+///    stops its background from starting, and a service with a custom agent
+///    could hand it that agent instead. In the service worker the script pins
+///    `navigator.userAgent` and `appVersion` to what extension pages report.
+///
 /// The script loads first in the service worker (through a new entry file),
 /// in every HTML page, in background scripts and ahead of each content script.
 /// Safari extensions inside an app are signed and left alone.
 enum ExtensionCompatibility {
+    /// The tail of an extension page's user agent. Chrome 134 is the oldest
+    /// that Bitwarden's Chrome build accepts.
+    static let chromeApplicationName = "Chrome/134.0.0.0 Safari/605.1.15"
+    /// What an extension's service worker reports as its user agent: WebKit's
+    /// frozen Mac agent with the same tail.
+    static let backgroundUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) "
+        + chromeApplicationName
     static let scriptFile = "__chorus_compat.js"
     static let workerFile = "__chorus_service_worker.js"
     private static let scriptTag = "<script src=\"/\(scriptFile)\"></script>"
@@ -130,7 +145,9 @@ enum ExtensionCompatibility {
         return String(String(decoding: data, as: UTF8.self).dropFirst().dropLast())
     }
 
-    static let script = """
+    static let script = scriptTemplate.replacingOccurrences(of: "__CHORUS_BACKGROUND_AGENT__", with: quoted(backgroundUserAgent))
+
+    private static let scriptTemplate = """
     // Added by Chorus to fill gaps between WebKit and Chrome.
     (() => {
       // Chrome 134 has these and TypeScript's `using` needs them.
@@ -228,6 +245,17 @@ enum ExtensionCompatibility {
         held.push(api);
         try {
           Object.defineProperty(api, "offscreen", { value: offscreen, configurable: true });
+        } catch (error) {}
+      }
+
+      // WebKit gives a service worker the agent of the last page in the app
+      // that set one, not the extension's. Report what extension pages do.
+      if (isWorker) {
+        const agent = __CHORUS_BACKGROUND_AGENT__;
+        const navigatorPrototype = Object.getPrototypeOf(self.navigator);
+        try {
+          Object.defineProperty(navigatorPrototype, "userAgent", { get: () => agent, configurable: true, enumerable: true });
+          Object.defineProperty(navigatorPrototype, "appVersion", { get: () => agent.slice("Mozilla/".length), configurable: true, enumerable: true });
         } catch (error) {}
       }
 

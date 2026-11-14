@@ -80,7 +80,7 @@ final class WebExtensionHostTests: XCTestCase {
           }
           if (msg.world) return send({world: typeof (chrome.scripting && chrome.scripting.ExecutionWorld), contains: chrome.permissions.contains.name});
           if (msg.dispose) return send({dispose: typeof Symbol.dispose, asyncDispose: typeof Symbol.asyncDispose});
-          send(msg.ua ? {ua: navigator.userAgent} : {pong: 1});
+          send(msg.ua ? {ua: navigator.userAgent, pinned: String(!/\\[native code\\]/.test(String(Object.getOwnPropertyDescriptor(Object.getPrototypeOf(navigator), "userAgent").get)))} : {pong: 1});
         });
         """.utf8).write(to: folder.appending(path: "bg.js"))
         try Data("""
@@ -247,10 +247,14 @@ final class WebExtensionHostTests: XCTestCase {
         webView.loadHTMLString("<html><body>page</body></html>", baseURL: URL(string: "https://example.com/")!)
 
         let reply = try await poll(webView, "document.documentElement.getAttribute('data-probe-bg')")
-        let agent = try XCTUnwrap(reply.flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: String] }?["ua"],
-                                  "the background answered with its user agent: \(reply ?? "nil")")
+        let answer = reply.flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: String] }
+        let agent = try XCTUnwrap(answer?["ua"], "the background answered with its user agent: \(reply ?? "nil")")
+        // Pinned by the compatibility script, so a page elsewhere in the app
+        // cannot change it; WebKit's own getter would follow the last page.
+        XCTAssertEqual(answer?["pinned"], "true", "navigator.userAgent is WebKit's own getter")
         XCTAssertTrue(agent.contains(" Chrome/"), agent)
         XCTAssertTrue(agent.contains(" Safari/"), agent)
+        XCTAssertEqual(agent, ExtensionCompatibility.backgroundUserAgent)
 
         host.pageClosed(webView)
         host.unload(record.id)
