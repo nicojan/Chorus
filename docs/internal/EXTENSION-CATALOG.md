@@ -33,7 +33,30 @@ Extension data has to survive an update. WebKit keys it by the context's `unique
 
 A toggle, "Update extensions automatically", on by default. With it off, the row shows "Update available" and a button.
 
+**What the checks prove.** The sha256 comes from the same publisher as the file (GitHub computes it at upload; AMO reports its own), so it proves the download arrived whole and unchanged, not who made it. A publisher whose account is taken over can ship a bad version with a matching checksum. Chorus does not check Mozilla's signature on an `.xpi`. The real line of defence is step 2's permission comparison: an update that asks for more waits for the user.
+
+**Limits.** A download over 100 MB is refused, before fetching when the publisher reports the size. An archive that says it unpacks to more than 500 MB is refused before `ditto` runs; this also covers "Add from file". A version must be one to six dot-separated whole numbers, so a tag like `2.1.0-rc1` that the publisher forgot to mark as a prerelease is skipped, and the tag must equal the manifest's `version` or the import is undone. GitHub lists releases by date, so the fetcher takes the highest version on the first page of 100, and skips a release with more than one asset matching the pattern.
+
 **Privacy.** The checks reveal to GitHub and Mozilla which catalog extensions someone uses, the same as any browser's updater. Send no identifier and a plain user agent. GitHub allows 60 unauthenticated calls an hour, far more than a daily check needs.
+
+## Sources, checked end to end 2026-11-13
+
+Each went through `WebExtensionFetcher` against the live servers: latest release, download, size, sha256, manifest version, import. All passed.
+
+| Extension | Source | Version |
+|---|---|---|
+| Bitwarden | github `bitwarden/clients`, `dist-chrome-*.zip`, prefix `browser-v` | 2026.10.2 |
+| uBlock Origin Lite | github `uBlockOrigin/uBOL-home`, `uBOLite_*.chromium.zip` | 2026.1110.1816 |
+| Consent-O-Matic | github `cavi-au/Consent-O-Matic`, `consent-o-matic-v*-unpacked-release-chromium.zip` | 1.1.5 |
+| Obsidian Web Clipper | github `obsidianmd/obsidian-clipper`, `obsidian-web-clipper-*-chrome.zip` | 1.7.1 |
+| SponsorBlock | github `ajayyy/SponsorBlock`, `ChromeExtension.zip` | 6.1.7 |
+| DeArrow | github `ajayyy/DeArrow`, `ChromeExtension.zip` | 2.3.10 |
+| Return YouTube Dislike | github `Anarios/return-youtube-dislike`, `return-youtube-dislike-chrome-*.zip` | 4.1.7 |
+| Simple Translate | amo `simple-translate` | 3.1.0 |
+| To DeepL | amo `to-deepl` | 0.9.3 |
+| Read Aloud | amo `read-aloud` | 1.84.1 |
+| Proton Pass | amo `proton-pass` | 1.43.1 |
+| Raindrop.io | amo `raindropio` | 6.6.91 |
 
 ## Survey, 2026-11-13
 
@@ -94,7 +117,7 @@ Leave out Dark Reader: Chorus already offers Dark Reader per service, and two co
 
 ## Build order
 
-1. Engine: `WebExtensionSource` (github, amo), a fetcher that returns version, URL and sha256, and download plus verify plus import. Tests with recorded API answers, no network.
+1. Done on `feat/extension-catalog`: `WebExtensionSource` (github, amo), `WebExtensionFetcher` (latest release; download plus verify plus import), with recorded API answers and no network in the tests.
 2. Engine: record fields, staged swap at load, rollback, the permission comparison. A test that data survives a version swap.
 3. App: the catalog JSON, a "Get extensions" section in Settings, the update toggle, "Update needs your OK", the "Suggest an extension" link and its issue form.
 4. Compatibility stub for Proton Pass, with a probe test that fails first.

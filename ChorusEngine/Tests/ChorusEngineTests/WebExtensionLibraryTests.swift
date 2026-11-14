@@ -94,6 +94,17 @@ final class WebExtensionLibraryTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: library.packageURL(folder: folder).appending(path: "manifest.json").path))
     }
 
+    func testReadsAZipsUnpackedSize() throws {
+        let staging = root.appending(path: "sizesrc", directoryHint: .isDirectory)
+        try makeExtensionFolder(at: staging)
+        try Data(repeating: 0x41, count: 10_000).write(to: staging.appending(path: "big.js"))
+        let zip = root.appending(path: "size.zip")
+        try zipFolder(staging, to: zip, keepParent: false)
+        let size = try WebExtensionLibrary.unpackedSize(ofZip: zip)
+        XCTAssertGreaterThan(size, 10_000)
+        XCTAssertLessThan(size, 11_000)
+    }
+
     func testImportsACRX3() throws {
         let staging = root.appending(path: "crxsrc", directoryHint: .isDirectory)
         try makeExtensionFolder(at: staging)

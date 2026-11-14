@@ -15,6 +15,7 @@ public struct WebExtensionLibrary: Sendable {
         case unsupportedArchive
         case extractionFailed(String)
         case containsLinks
+        case tooLarge
 
         public var errorDescription: String? {
             switch self {
@@ -30,11 +31,17 @@ public struct WebExtensionLibrary: Sendable {
                 return "Chorus couldn't unpack the archive. \(detail)"
             case .containsLinks:
                 return "The extension contains links to files outside it, which Chorus doesn't allow."
+            case .tooLarge:
+                return "The extension would take more than 500 MB unpacked. Chorus didn't open it."
             }
         }
     }
 
     public let directory: URL
+
+    /// The most an archive may unpack to. The largest extension Chorus has
+    /// seen, Bitwarden, is under a fifth of this.
+    public static let maxUnpackedBytes = 500_000_000
 
     public init(directory: URL) {
         self.directory = directory
@@ -187,29 +194,50 @@ public struct WebExtensionLibrary: Sendable {
         default:
             throw ImportError.unsupportedArchive
         }
+        guard try unpackedSize(ofZip: zip) <= maxUnpackedBytes else { throw ImportError.tooLarge }
         try runDitto(zip: zip, destination: destination)
     }
 
+    /// The total the zip's directory says its files unpack to, from
+    /// `zipinfo -t` ("12 files, 3456 bytes uncompressed, …"). A crafted zip can
+    /// understate this, so it stops an honest mistake or a crude bomb, not a
+    /// determined one.
+    static func unpackedSize(ofZip zip: URL) throws -> Int {
+        let output = try run("/usr/bin/zipinfo", ["-t", zip.path])
+        guard let match = output.firstMatch(of: /(\d+) bytes uncompressed/), let bytes = Int(match.1) else {
+            throw ImportError.extractionFailed("Chorus couldn't read the archive's contents list.")
+        }
+        return bytes
+    }
+
     private static func runDitto(zip: URL, destination: URL) throws {
+        _ = try run("/usr/bin/ditto", ["-x", "-k", zip.path, destination.path])
+    }
+
+    /// Runs a tool and returns what it printed. Errors share the pipe, so a
+    /// tool that fails reports its complaint and one pipe never sits full
+    /// while this waits on the other.
+    private static func run(_ tool: String, _ arguments: [String]) throws -> String {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        process.arguments = ["-x", "-k", zip.path, destination.path]
-        let errors = Pipe()
-        process.standardError = errors
-        process.standardOutput = FileHandle.nullDevice
+        process.executableURL = URL(fileURLWithPath: tool)
+        process.arguments = arguments
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
         do {
             try process.run()
         } catch {
             throw ImportError.extractionFailed(error.localizedDescription)
         }
         // Read to the end before waiting: a full pipe would otherwise stop
-        // ditto mid-write while this waits for it to exit.
-        let errorOutput = errors.fileHandleForReading.readDataToEndOfFile()
+        // the tool mid-write while this waits for it to exit.
+        let data = output.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
+        let text = String(data: data, encoding: .utf8) ?? ""
         guard process.terminationStatus == 0 else {
-            let detail = String(data: errorOutput, encoding: .utf8) ?? ""
-            throw ImportError.extractionFailed(detail.trimmingCharacters(in: .whitespacesAndNewlines))
+            throw ImportError.extractionFailed(text.trimmingCharacters(in: .whitespacesAndNewlines))
         }
+        return text
     }
 
     /// The zip inside a Chrome .crx: a "Cr24" header, a version, then either a
