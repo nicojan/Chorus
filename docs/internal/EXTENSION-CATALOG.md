@@ -1,6 +1,6 @@
 # Extension catalog: design and survey
 
-Status: being built on `feat/extension-catalog`, from `main` after #52 and #53 merged on 2026-11-13. Design written 2026-11-13; Nico's answers are under "Decided with Nico".
+Status: built on `feat/extension-catalog`, from `main` after #52 and #53 merged on 2026-11-13; all five steps of the build order are done (2026-11-14). Design written 2026-11-13; Nico's answers are under "Decided with Nico".
 
 ## The problem
 
@@ -129,6 +129,12 @@ Leave out Dark Reader: Chorus already offers Dark Reader per service, and two co
 
 1. Done on `feat/extension-catalog`: `WebExtensionSource` (github, amo), `WebExtensionFetcher` (latest release; download plus verify plus import), with recorded API answers and no network in the tests.
 2. Done on `feat/extension-catalog`: record fields, the staged swap at load, rollback, the permission comparison, and `testDataSurvivesAVersionSwap`. `ExtensionManager` applies a ready update when it starts an extension.
-3. App: the catalog JSON, a "Get extensions" section in Settings, the update toggle, "Update needs your OK", the "Suggest an extension" link and its issue form.
+3. Done on `feat/extension-catalog` (`7ad2ef4`): the catalog JSON, a "Get Extensions" section in Settings, the update toggle, "Update needs your OK", the "Suggest an Extension" link and its issue form. `ExtensionCatalogController` runs the check after `startEnabled` and every 24 hours; staging never runs while a start for the record is in progress, and re-checks `wantsUpdate(to:)` on the current record after every await.
 4. Done on `feat/extension-catalog`: `ExtensionCompatibility` adds `runtime.onUpdateAvailable`, and Proton Pass 1.43.1 now loads with no errors.
-5. By hand in a Debug build: install, update (point an entry at an older tag first), refused update, rollback.
+5. Done by hand on 2026-11-14 in a Debug build, with Consent-O-Matic, driven through Accessibility:
+   - Install: Get downloaded 1.1.5 from GitHub, the confirm sheet named the version and the publisher, and the record saved `catalogID` and `installedVersion`.
+   - Update: the record was pointed at the real 1.1.3 files. The launch check staged 1.1.5 ("installs when Chorus restarts"), the next launch swapped it in ("Updated to version 1.1.5"), and a setting changed under 1.1.3 still read as changed in 1.1.5 after that launch and after one more. Consent-O-Matic did not reopen its first-run page, which it shows only when its storage is empty.
+   - Refused update: with `tabs` taken out of the grants, 1.1.5 staged as "needs your OK", the review sheet listed the one new ask, and Skip This Version saved `skippedVersion` and deleted the staged folder.
+   - Rollback: a staged 1.1.5 whose worker throws rolled back, and the row said so. This pass found that the old version then ran with no background for the rest of that session; fixed in `27c219a` (see "After a rollback the old version waits 12 s").
+   - Remove deleted the record, its folder and its stored data.
+   Not covered by hand: Proton Pass filling, uBlock Origin Lite blocking, Read Aloud's speech and Raindrop's bookmark button. This doc already lists those as open. Unit tests cover the rest that the pass skipped: the Update button with automatic updates off, Allow Update in the review sheet, and the alerts for a list that fails to save.
