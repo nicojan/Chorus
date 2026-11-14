@@ -56,9 +56,19 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
     @ObservationIgnored private var backgroundWaits: [UUID: (token: UUID, continuation: CheckedContinuation<String?, Never>)] = [:]
     /// How long a load waits for a background before going on without it.
     static let backgroundStartLimit: Duration = .seconds(10)
-    /// Starts a context's background. A seam for tests: WebKit on macOS 27.2
-    /// never reports a broken worker, so only a test that swaps this in can
-    /// reach the trial's rollback on a failed background.
+    /// When an extension whose background failed to start was unloaded,
+    /// WebKit keeps that origin's service worker process for 10 s more
+    /// (`SWServer::defaultTerminationDelay`), and a worker started on the
+    /// origin meanwhile fails in it, then holds it another 10 s. So a load of
+    /// that id waits until this long after the unload. Measured 2026-11-14:
+    /// 9.5 s after the unload the old version's worker never answered, from
+    /// 10.5 s it did. Two seconds spare, for a slow machine.
+    static let failedWorkerReleaseDelay: Duration = .seconds(12)
+    /// Ids unloaded with a failed background, and when their origin is free.
+    @ObservationIgnored private var failedWorkerReleases: [UUID: ContinuousClock.Instant] = [:]
+    /// Starts a context's background. A seam for tests of a start that fails
+    /// outright. A worker that throws needs no seam: WebKit records
+    /// backgroundContentFailedToLoad for it on macOS 15, 26 and 27.2.
     @ObservationIgnored var startBackgroundContent: @MainActor (WKWebExtensionContext) async throws -> Void = {
         try await $0.loadBackgroundContent()
     }
@@ -222,17 +232,34 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         let reason: String
     }
 
-    /// Starts a background and waits until it is up, the extension is
+    /// Starts a background and waits until it is up, fails, the extension is
     /// unloaded, or the time limit passes. WebKit never answers a start whose
     /// context was unloaded meanwhile, so waiting on it alone hung forever
-    /// and left the extension marked as loading for good. Returns WebKit's
-    /// failure text when the start failed, and nil otherwise, a timeout and
-    /// an unload included.
+    /// and left the extension marked as loading for good. Nor does it answer
+    /// a worker that throws, but it records backgroundContentFailedToLoad
+    /// within half a second, so the wait ends there. Returns WebKit's failure
+    /// text when the start failed, and nil otherwise, a timeout and an unload
+    /// included.
     private func startBackground(of context: WKWebExtensionContext, id: UUID, name: String) async -> String? {
         let token = UUID()
         let start = startBackgroundContent
+        let observer = NotificationCenter.default.addObserver(
+            forName: WKWebExtensionContext.errorsDidUpdateNotification, object: context, queue: .main
+        ) { [weak self] note in
+            let context = note.object as? WKWebExtensionContext
+            MainActor.assumeIsolated {
+                guard let context, let failure = Self.backgroundLoadFailure(in: context) else { return }
+                self?.endBackgroundWait(id, token: token, failure: failure)
+            }
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
         return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
             backgroundWaits[id] = (token, continuation)
+            // WebKit starts the background as the context loads, so it may
+            // have failed already.
+            if let failure = Self.backgroundLoadFailure(in: context) {
+                endBackgroundWait(id, token: token, failure: failure)
+            }
             Task { @MainActor [weak self] in
                 var failure: String?
                 do {
@@ -271,6 +298,11 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         grantingAccess: Bool,
         requireBackground: Bool = false
     ) async throws -> Bool {
+        // Before anything else, so the wait holds nothing: a second load, a
+        // turn-off or a removal during it acts as if no load were running,
+        // and this one then reads the package as it is and runs the guards.
+        // Only a load that starts the background waits.
+        if grantingAccess { await waitForFailedWorkerRelease(record.id) }
         guard contexts[record.id] == nil, !loading.contains(record.id) else { return false }
         loading.insert(record.id)
         cancelledLoads.remove(record.id)
@@ -338,14 +370,33 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         }?.localizedDescription
     }
 
+    /// Waits until WebKit has let go of the worker of an earlier context of
+    /// `id` whose background failed; see `failedWorkerReleaseDelay`. Without
+    /// this, the old version loaded right after a rollback ran with no
+    /// background for the rest of the session.
+    private func waitForFailedWorkerRelease(_ id: UUID) async {
+        guard let releasedAt = failedWorkerReleases[id] else { return }
+        if releasedAt > .now {
+            AppLogger.extensions.info("Waiting for WebKit to release the failed background of \(id.uuidString, privacy: .public)")
+            try? await Task.sleep(until: releasedAt, clock: .continuous)
+        }
+        if failedWorkerReleases[id] == releasedAt {
+            failedWorkerReleases = failedWorkerReleases.filter { $0.key != id }
+        }
+    }
+
     public func unload(_ id: UUID) {
         if loading.contains(id) { cancelledLoads.insert(id) }
         endBackgroundWait(id)
         guard let context = contexts.removeValue(forKey: id) else { return }
+        let backgroundFailed = Self.backgroundLoadFailure(in: context) != nil
         do {
             try controller.unload(context)
         } catch {
             AppLogger.extensions.error("Unloading an extension failed: \(error.localizedDescription, privacy: .public)")
+        }
+        if backgroundFailed {
+            failedWorkerReleases = failedWorkerReleases.merging([id: .now + Self.failedWorkerReleaseDelay]) { $1 }
         }
         loadedIDs = loadedIDs.subtracting([id])
         anchors.removeValue(forKey: id)
@@ -378,6 +429,8 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
             }
         }
         if !wasRunning { unload(record.id) }
+        // The extension is going, and its id with it.
+        failedWorkerReleases = failedWorkerReleases.filter { $0.key != record.id }
         await removeSiteData(for: record)
         return reached
     }

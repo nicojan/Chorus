@@ -224,11 +224,12 @@ final class WebExtensionUpdateTests: XCTestCase {
     }
 
     /// WebKit never answers `loadBackgroundContent` for a service worker
-    /// that throws while it starts, so the host's wait ends at its time
-    /// limit. WebKit does record backgroundContentFailedToLoad in the
-    /// context's errors (seen on macOS 15, 26 and 27.2), and the trial rolls
-    /// back on that one code. Other listed errors are not failures: Raindrop
-    /// and DeArrow run fine with errors listed.
+    /// that throws while it starts. It does record backgroundContentFailedToLoad
+    /// in the context's errors (seen on macOS 15, 26 and 27.2); the host's
+    /// wait ends there, and the trial rolls back on that one code. Other
+    /// listed errors are not failures: Raindrop and DeArrow run fine with
+    /// errors listed. `WebExtensionRollbackTests` checks the old version's
+    /// background then runs.
     func testBrokenBackgroundRollsBack() async throws {
         guard #available(macOS 15.4, *) else { throw XCTSkip("Web extensions need macOS 15.4") }
         let host = WebExtensionHost(storageIdentifier: nil)
