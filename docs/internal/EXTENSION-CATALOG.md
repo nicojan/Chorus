@@ -84,7 +84,7 @@ Each package was imported through the real library and loaded by a throwaway eng
 | Read Aloud | AMO | GPL-3.0 | 230,453 | No errors; speech not tried |
 | DeArrow | GitHub Chrome zip | LGPL-3.0 | 34,530 | Works; one harmless error from messaging SponsorBlock |
 | Raindrop.io | AMO | MPL-2.0 | 43,774 | Loads; WebKit rejects a keyboard command in its manifest |
-| Proton Pass | AMO | GPL-3.0 | 197,273 | Background stops: no `runtime.onUpdateAvailable` |
+| Proton Pass | AMO | GPL-3.0 | 197,273 | No errors since Chorus added `runtime.onUpdateAvailable` (2026-11-14); filling not tried |
 | Violentmonkey | AMO | MIT | 207,380 | Background stops: no `notifications.onClicked` |
 | LanguageTool | AMO | proprietary | 316,419 | Background fails to parse in JavaScriptCore (`¶` at line 26); no `storage.managed` |
 | Grammarly | AMO | proprietary | 527,807 | Background errors and asks to talk to its Mac app |
@@ -128,5 +128,5 @@ Leave out Dark Reader: Chorus already offers Dark Reader per service, and two co
 1. Done on `feat/extension-catalog`: `WebExtensionSource` (github, amo), `WebExtensionFetcher` (latest release; download plus verify plus import), with recorded API answers and no network in the tests.
 2. Done on `feat/extension-catalog`: record fields, the staged swap at load, rollback, the permission comparison, and `testDataSurvivesAVersionSwap`. `ExtensionManager` applies a ready update when it starts an extension.
 3. App: the catalog JSON, a "Get extensions" section in Settings, the update toggle, "Update needs your OK", the "Suggest an extension" link and its issue form.
-4. Compatibility stub for Proton Pass, with a probe test that fails first.
+4. Done on `feat/extension-catalog`: `ExtensionCompatibility` adds `runtime.onUpdateAvailable`, and Proton Pass 1.43.1 now loads with no errors.
 5. By hand in a Debug build: install, update (point an entry at an older tag first), refused update, rollback.

@@ -45,6 +45,14 @@ import Foundation
 ///    could hand it that agent instead. In the service worker the script pins
 ///    `navigator.userAgent` and `appVersion` to what extension pages report.
 ///
+/// 7. WebKit has no `runtime.onUpdateAvailable`, in the service worker or in
+///    extension pages. Proton Pass listens to it as its background starts, so
+///    the call threw and the background stopped. Chorus updates extensions
+///    itself, so from an extension's side an update never waits: the script
+///    adds an event that takes listeners and never fires. It goes in the
+///    service worker and extension pages, where Chrome has it, and not in
+///    content scripts, where Chrome does not.
+///
 /// The script loads first in the service worker (through a new entry file),
 /// in every HTML page, in background scripts and ahead of each content script.
 /// Safari extensions inside an app are signed and left alone.
@@ -201,6 +209,32 @@ enum ExtensionCompatibility {
         };
         try {
           Object.defineProperty(permissions, "contains", { value: answer, writable: true, configurable: true });
+        } catch (error) {}
+      }
+
+      // WebKit has no `runtime.onUpdateAvailable`. Chorus updates extensions
+      // itself, so this event takes listeners and never fires. Chrome has it
+      // in the service worker and extension pages, not in content scripts.
+      const isExtensionContext = (api) => {
+        try {
+          return typeof location !== "undefined" && String(location.href).startsWith(api.runtime.getURL("/"));
+        } catch (error) {
+          return false;
+        }
+      };
+      const updateListeners = new Set();
+      const onUpdateAvailable = Object.freeze({
+        addListener(listener) { updateListeners.add(listener); },
+        removeListener(listener) { updateListeners.delete(listener); },
+        hasListener(listener) { return updateListeners.has(listener); },
+        hasListeners() { return updateListeners.size > 0; }
+      });
+      for (const api of [globalThis.chrome, globalThis.browser]) {
+        const runtime = api && api.runtime;
+        if (!runtime || runtime.onUpdateAvailable || typeof runtime.getURL !== "function" || !isExtensionContext(api)) continue;
+        held.push(api, runtime);
+        try {
+          Object.defineProperty(runtime, "onUpdateAvailable", { value: onUpdateAvailable, configurable: true, enumerable: true });
         } catch (error) {}
       }
 

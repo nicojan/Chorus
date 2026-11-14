@@ -5,7 +5,6 @@
   "source":{"github":{"owner":"bitwarden","repo":"clients","assetPattern":"dist-chrome-*.zip","tagPrefix":"browser-v"}}},
  {"id":"proton-pass","name":"Proton Pass","category":"passwords","licence":"GPL-3.0","testedVersion":"1.43.1",
   "summary":"Fills in passwords from your Proton Pass vault and saves new ones.",
-  "knownGaps":"It doesn't start in this build of Chorus yet.",
   "source":{"amo":{"slug":"proton-pass"}}},
  {"id":"ublock-origin-lite","name":"uBlock Origin Lite","category":"privacy","licence":"GPL-3.0","testedVersion":"2026.1110.1816",
   "summary":"Blocks ads and trackers, on top of Chorus's own blocklist.",
