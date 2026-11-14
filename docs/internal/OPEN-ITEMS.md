@@ -1,17 +1,18 @@
 # Open items
 
-## Open: following Ferdium (#49), four features built on `feat/ferdium-gaps`
+## Open: following Ferdium (#49), four features on `feat/ferdium-gaps` and web extensions on `feat/web-extensions`
 
 A user asked Chorus to do what Ferdium does without Electron's weight (#49). Nico replied on 2026-11-09 that he would look into it. A survey of Ferdium's settings, source and issue tracker ranked the gaps. Chorus already has spaces, the quick switcher, hibernation, quiet hours, the Touch ID lock, custom CSS, dark mode and zoom per service, downloads, the menu bar item and launch at login.
 
-Built on `feat/ferdium-gaps` (`94cb01b`, pushed, CI green on macOS 15 and 26, 515 tests pass locally). No PR yet.
+Built on `feat/ferdium-gaps` (`c8d6d27`, pushed, CI green on macOS 15 and 26, 516 tests pass locally). No PR yet. Web extensions are on `feat/web-extensions`, branched from it (see below); open this branch's PR first.
 
 - Edit Service: a Browser identity picker with Default Safari, iPhone, or a custom user agent. It replaces the Mobile view switch. The field was already stored.
 - Custom JavaScript per service. It runs at document end in the page's own world, main frame only, inside a try/catch. Setup files never export or import it.
 - Lock after no activity: 1 to 60 minutes of system idle time, read with `CGEventSource`, checked every 30 s.
 - Hide message text in notifications: the banner shows the service name and "New notification".
 - Schema 1.5.30 to 1.5.38, lightweight, three optional fields. A copy of the real store migrated intact (3 spaces, 19 services, 16 links).
-- Not tried in the running app: a custom user agent reaching a site, a script running, the idle lock firing, a hidden-text banner.
+- Checked by hand on 2026-11-10 in a Debug build, driven through Accessibility. A custom user agent reached httpbin.org as "ChorusCheck/1.0". The lock fired after a minute with no input. The hidden-text setting saves; the code that builds the banner reads it, but no banner can show on this Mac, so that one is unverified live.
+- The check found one bug: Custom JavaScript and Custom CSS were SwiftUI TextEditors, which follow the Mac's typing settings. A typed ' became a curly quote and two hyphens became a dash, so a typed script failed to parse and never ran. Both fields are now a plain NSTextView with every substitution off (`CodeTextEditor`, `c8d6d27`). After the fix the script ran and drew its heading. It went in through Accessibility, not typed keys: the Mac's input source was Chinese Pinyin, which eats '. The test types through the text view and has a control that proves typing that way does curl quotes.
 
 ### Ranked gaps still open
 
@@ -24,18 +25,53 @@ Built on `feat/ferdium-gaps` (`94cb01b`, pushed, CI green on macOS 15 and 26, 51
 
 Where Ferdium is weak and Chorus wins: it needs its account server to load services (#2005, #2176, #2369); it is heavy (#647, #1013, #2248); and it trails Chromium versions (#2465). Measured memory and CPU next to Ferdium would answer #49 best; nobody has measured them.
 
-### Password managers and web extensions
+### Web extensions, built on `feat/web-extensions` (off `feat/ferdium-gaps`)
 
-Research on 2026-11-09, plus a probe.
+Nico chose on 2026-11-09 to build extension support without a Bitwarden fill test first, and to test everything by hand before a release.
 
-- Closed: Apple Passwords autofill. From macOS 15.5 only browsers on Apple's list may use it, and joining takes a macOS update. Passkeys need an entitlement Apple is slow to grant.
-- Likely: Bitwarden and Proton Pass. They work on their own with their own login. Another WebKit browser, "Search", runs Bitwarden's Chrome build through `WKWebExtension`.
-- Likely: 1Password. Orion runs its Chrome build, and the user adds Orion under 1Password > Settings > Browser. Chorus would have to connect the extension to the 1Password app itself (`connectUsing`); nobody documents that link.
-- Probe (`/Volumes/n1TB/Personal/Projects/dev/chorus-extprobe`, outside the repo, built with `swiftc -O -parse-as-library`): a plain, non-sandboxed process with no bundle loaded four installed Safari extensions from other vendors with `WKWebExtension(appExtensionBundle:)`: SponsorBlock, Velja, Zotero Connector and Downie. All loaded with no errors and their background pages started. A small extension of its own loaded from a folder too.
-- Not yet seen: a content script running. The probe's own extension marks the page from its content script, and the mark never appeared on example.com, with or without a tab and window registered with the controller. Next to rule out: a real app bundle with a bundle id, a persistent data store, the web view on screen, and creating the web view after the context loads.
-- Probe gotchas: a relative `resourceBaseURL` killed the process (exit 137); pass an absolute directory URL. Rebuild to a new file name; overwriting the binary in place also got it killed.
-- 1Password 8.12.44 is installed from brew for testing. Its Safari extension comes from the Mac App Store and is not installed.
-- Engine fit: `WebViewPool.swift:840` and `InAppBrowserWindow.swift:43` build every configuration, so one `WKWebExtensionController` can go on each. It needs `#available(macOS 15.4, *)`. Services would map to the extension's tabs and windows. Rough size: two to three weeks, plus a week for 1Password's app link.
+Probe results (2026-11-09, `/Volumes/n1TB/Personal/Projects/dev/chorus-extprobe`, outside the repo):
+
+- Content scripts never ran in the first probe because its pages used a non-persistent store. WebKit treats that as private browsing and skips content scripts unless the context has `hasAccessToPrivateData`. A persistent store, or that flag, fixes it. The web view being on screen made no difference, and URL access was already granted. Every Chorus service store is persistent.
+- Installed Safari extensions from other vendors run in full. SponsorBlock drew its sponsor-segment controls in the YouTube player. Content-to-background messaging works once the page is registered with the controller as a tab; without that it fails with "Tab not found".
+- Extension background pages have no "Safari" in their user agent unless the host sets `applicationNameForUserAgent`. Velja then took its Chrome path (`tabs.update` to a `velja:` URL).
+- Native messaging to a vendor's Mac app is closed. Without the delegate methods WebKit answers "Native messaging is not supported". Forwarding by hand fails too: PlugInKit refuses the lookup ("the host does not have the com.apple.private.can-load-any-content-blocker entitlement"). So the Safari builds of 1Password and Bitwarden cannot reach their apps from Chorus.
+
+What the branch does:
+
+- Engine (`ChorusEngine/Sources/ChorusEngine/Extensions/`): `WebExtensionHost` (one controller, one context per extension, every service page and service tab a tab of one window), `WebExtensionLibrary` (JSON list plus copied packages; folder, .zip, .crx, .xpi), `SafariExtensionScanner` (reads app bundles, since PlugInKit will not list them), `WebExtensionPermissionText`. The pool attaches the controller only while an extension is on.
+- App: `ExtensionManager`, Settings > Extensions (add a Safari extension, add from a file, on/off, extension settings page, remove), toolbar buttons with popups, a prompt for permissions asked at run time. The list lives in `Application Support/Chorus(-debug)/Extensions`, outside SwiftData: no schema change.
+- Tests: 26 engine tests (one loads a real extension and checks its content script and background reply; others pin the active tab, a load cancelled by turning off, and symlink rejection), 4 app tests.
+- A review (qa-reviewer, 2026-11-09) led to: a restart through the quit path instead of rebuilding open pages in place (which skipped chat pages' save handshake and dropped calls); the active tab worked out from the page on screen; load/unload race guards; sign-in popups registered as tabs; site data under the extension's origin deleted on removal; archive import off the main thread; packages with symbolic links refused; unused packages swept at launch (never while an unreadable list is set aside).
+
+- CI found (2026-11-09, `cdf5078`): on macOS 15 and 26, WebKit drops a content script's message that arrives while the extension's background is still starting; macOS 27 queues it, so the dev machine never showed it. The host now waits for the background (bounded at 10 s, and ended by an unload, because WebKit never answers a start whose context was unloaded) and launch preloads services only after enabled extensions start. CI green on macOS 15 and 26 at `cdf5078`.
+
+Checked by hand on 2026-11-10 in a Debug build (`a756ab9`): the Safari extension list, adding SponsorBlock (sheet, version, the Restart Chorus banner), Restart Chorus (new process), SponsorBlock's controls in the YouTube player and its popup, adding Bitwarden's Chrome build from its release zip (2026.10.2), its popup reaching the Log in screen, turning SponsorBlock off and on, removing it. Its stored data went; WebKit's 1.3 KB State.plist stays in its folder.
+
+The pass also turned up a bug in the host, fixed in `a756ab9`. Extension pages claimed Safari in their user agent, so Bitwarden's Chrome build took its Safari path, which talks to the Bitwarden Mac app. Its background read `browser.runtime.sendNativeMessage` in a loop that never yielded: 100% CPU, 1.4 GB, and the popup page, in the same process, never loaded. With no browser named it found no device and its background failed to start. Extension pages now end in "Chrome/134.0.0.0 Safari/605.1.15"; service pages still claim Safari. SponsorBlock still drew its controls and opened its popup. One controller serves every page, so the agent cannot differ per extension.
+
+Bitwarden signs in and fills (checked by Nico in a Debug build, 2026-11-10, `b6f408c`). Four gaps between WebKit and Chrome stopped it. Each was found in the Debug app with temporary logging and Bitwarden's source maps, then pinned by a test that failed first:
+
+1. The sign-in hang. WebKit runs an extension's service worker on its process's main thread (`workerThreadMode` in WebKit's `SWServerWorker` picks `UseMainThread` for a service worker page). A worker's WebSocket goes through `WorkerThreadableWebSocketChannel`, whose bridge posts to the main thread and waits on a semaphore: the thread waits on itself. Bitwarden opens a SignalR socket to its notifications server right after sign-in, so the process stopped for good and the popup, in the same process, spun. A `sample` showed the main thread in `constructJSWebSocket1` → `WorkerThreadableWebSocketChannel` → `waitWithSTWParticipation`. Once the stuck sign-in had stored an account, every launch hung the same way and the popup never opened. A probe extension shows it only with an allowed port: WebKit refuses port 9 before it builds a channel.
+2. No `Symbol.dispose` or `Symbol.asyncDispose` in JavaScriptCore. TypeScript's `using` throws without them, and Bitwarden unlocks and decrypts with it.
+3. `permissions.contains` throws for a permission WebKit does not know, such as Chrome's `privacy`, where Chrome answers false. Bitwarden's start screen asks, so the popup drew blank after logging out.
+4. No `scripting.ExecutionWorld`. WebKit takes "ISOLATED" and "MAIN" as strings, but Bitwarden reads the enum on every fill injection.
+
+The fix is `ExtensionCompatibility` in the engine. Each time Chorus loads a package it copied in, it writes `__chorus_compat.js` there and loads it first: in a new service worker entry file, in every HTML page, in background scripts and ahead of each content script. The script defines the two symbols, answers false for unknown permissions, adds `ExecutionWorld`, and in a service worker swaps `WebSocket` for one that fails like a refused connection (error, then close 1006). Bitwarden retries every few minutes, so it gets no live updates from its server. Safari extensions inside an app are signed and left alone.
+
+Two traps found on the way. WebKit drops the JavaScript wrapper of an API object nothing refers to and builds a new one on the next read, without what a script added: the patches vanished after a garbage collection, so fills worked only sometimes. The script now holds every object it changes (`testCompatibilityOutlivesGarbageCollection` churns memory to show it). And WebKit caches an extension's files when it loads, so a change to an installed package needs a relaunch.
+
+Also from this session: extension buttons now draw bare at the end of the toolbar after a divider (Bitwarden's colored icon sat on a grey disc), and an idle or sleep lock waits for Chorus to come to the front before asking for Touch ID.
+
+Still open:
+- PRs: #52 for `feat/ferdium-gaps` and #53 for `feat/web-extensions` (based on #52's branch), both ready for review since 2026-11-10, CI green on macOS 15 and 26 (`eeec695`). Merge #52 first.
+- Fixed on 2026-11-10 (`feat/web-extensions` `88c8cae`, test timing `d7a39b3`): adding a service straight after removing one that shared its store hung once. The 12:16 log showed the cause. Drive's web content process stopped answering at 12:16:32. Chorus tore Drive down at 12:16:50, but a badge read was still waiting on that page, and the wait held the web view, so WebKit kept the global store in use. The Add then cleared the store, and WebKit waited on the stuck process, which never replied. A test showed that freeing the view is not enough: the stuck process kept the store in use for 90 s and more, and `_killWebContentProcess` did not end it. A SIGKILL to its pid did. Fix: `PageScript` (reads that don't hold the view), the pool kills a torn-down page's process when it doesn't answer in 2 s, and `prepareStore` stops waiting on the clear after 5 s (`StuckPageTests`, 7 tests). Why Drive's page got stuck in the first place is unknown; the log shows no cause. Checked live the same day in a throwaway space: a service whose Custom JavaScript spins the page after 4 s, deleted, logged "A torn-down page stopped answering; ending its web content process", its process went, and a service added back straight away loaded within seconds.
+- Bitwarden still logs: "Notification clicked is not supported"; a duplicate `fido2-page-script-registration` from `scripting.registerContentScripts` (passkeys); `windows.update` not implemented for position and size; `action.setIcon` "Tab not found"; one "Unhandled error in angular" in the popup that was not traced. Filling worked through all of them.
+- Bitwarden's service worker copies (the right-click items, a code after a fill) through `chrome.offscreen`, which WebKit lacks; its fallback threw `"queryCommandSupported" in e.document`. Fixed on 2026-11-10 by point 5 of `ExtensionCompatibility`: for an extension whose manifest asks for `offscreen`, the worker gets a stand-in that opens the page through `tabs.create` with a `#chorus-offscreen` fragment. `WebExtensionHost` loads that page in a view no window shows, with WebKit's `javaScriptCanAccessClipboard` preference on when the extension holds `clipboardWrite`. A probe showed a hidden page can then write with no click; without it both the clipboard API and `execCommand` are refused. Reading stays off (WebKit drops `clipboardRead`, so the user never agreed to it), which means Bitwarden's clear-clipboard timer never clears: it reads first and clears only on a match. `closeDocument` does nothing; the page stays until the extension stops. Tests: `testServiceWorkerCopiesThroughAnOffscreenDocument`, `testOffscreenDocumentNeedsClipboardWrite`. Checked live by Nico on 2026-11-13 in a Debug build of `29bf841`: a right-click Copy item put the value on the clipboard. Bitwarden's backup state storage also goes through the offscreen page now, where before it threw on `hasDocument`.
+- Velja, Zotero and Downie were listed but not added or clicked.
+- Next feature, designed 2026-11-13, not built: an in-app catalog of tested extensions, downloaded from GitHub releases or addons.mozilla.org and updated daily. Design, the survey of 16 extensions and the build order are in `docs/internal/EXTENSION-CATALOG.md`; its open questions wait on Nico. Build on its own branch after #52 and #53 merge.
+- SponsorBlock logged one TypeError ("e is not an Object") after its popup closed.
+
+Known gaps: in-app browser windows get no extensions (their store is private); `tabs.create` returns no tab object; keyboard commands are not wired; no proxy for native messaging, and none is possible. Extension context-menu items do show (Bitwarden's appeared in the page's menu), so that line is gone from this list.
 
 ## Released: 1.5.37 on 2026-11-06, red counts back on the top corner
 

@@ -10,4 +10,5 @@ public enum AppLogger {
     public static let favicon = Logger(subsystem: subsystem, category: "Favicon")
     public static let badges = Logger(subsystem: subsystem, category: "Badges")
     public static let ui = Logger(subsystem: subsystem, category: "UI")
+    public static let extensions = Logger(subsystem: subsystem, category: "Extensions")
 }

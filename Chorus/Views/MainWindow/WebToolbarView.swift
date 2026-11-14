@@ -78,6 +78,7 @@ struct WebNavButtons: View {
             .accessibilityLabel(didCopy ? "Link copied" : "Share this page")
 
             DownloadsButton()
+            ExtensionButtons(webView: webViewState.webView)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Navigation")

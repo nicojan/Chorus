@@ -256,6 +256,9 @@ final class TransientBadgeFetcher {
         // also tends to fail an outstanding evaluateJavaScript, unsticking the
         // abandoned settle task so its own reference releases too.
         webView.stopLoading()
+        // A read the watchdog gave up on would otherwise hold the view, and
+        // the store, until the page answers.
+        PageScript.abandonPending(for: webView)
 
         noteAuthWallOutcome(for: target.id, requestedHost: url.host, landedURL: landedURL, badge: best)
 
@@ -387,14 +390,14 @@ final class TransientBadgeFetcher {
             // with a selector never reads the title, so a title count for another
             // view can't inflate the badge.
             if let js = target.badgeJS {
-                if let result = try? await webView.evaluateJavaScript(js) {
+                if let result = try? await PageScript.evaluate(js, in: webView) {
                     if let intResult = result as? Int {
                         best = max(best, intResult)
                     } else if let stringResult = result as? String, let parsed = Int(stringResult) {
                         best = max(best, parsed)
                     }
                 }
-            } else if let title = (try? await webView.evaluateJavaScript("document.title")) as? String {
+            } else if let title = (try? await PageScript.evaluate("document.title", in: webView)) as? String {
                 best = max(best, NotificationManager.extractBadgeCount(from: title))
             }
 

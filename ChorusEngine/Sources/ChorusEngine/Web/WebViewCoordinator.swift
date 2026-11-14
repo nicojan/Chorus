@@ -17,6 +17,10 @@ public final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
     /// camera, microphone and sound. Set by `WebViewPool`.
     var onTabOpened: ((WKWebView) -> Void)?
     var onTabClosed: ((WKWebView) -> Void)?
+    /// The same for popups, such as a sign-in window. They share the
+    /// service's configuration, so extensions run in them and must know them.
+    var onPopupOpened: ((WKWebView) -> Void)?
+    var onPopupClosed: ((WKWebView) -> Void)?
 
     /// Tabs the user closed, held for a moment while their pages save. See
     /// `closeTab(_:)`.
@@ -730,6 +734,7 @@ public final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
             reloadsOpener: !openedByTab
         )
         popups.append(entry)
+        onPopupOpened?(popup)
 
         // Mirror the page's <title> into the NSWindow title bar so the user
         // sees what's actually loaded (e.g. "Google Drive — Sign in") rather
@@ -964,6 +969,7 @@ public final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
             popup.titleObservation = nil
             popup.webView.navigationDelegate = nil
             popup.webView.uiDelegate = nil
+            onPopupClosed?(popup.webView)
             popup.window.close()
         }
         popups.removeSubrange(range)

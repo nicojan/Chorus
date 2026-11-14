@@ -16,9 +16,11 @@
 		074FE22389F3BF8A951A80CA /* SetupArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB2C3D766E33A238E3561B34 /* SetupArchive.swift */; };
 		08325D59D0DA278497FDA446 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 33B60E7DE1B2CCE732C55AF9 /* LICENSE */; };
 		091825995DF2FD9C4A7BC86F /* KeyboardShortcutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2AC7E996360A4BC660FD194 /* KeyboardShortcutManager.swift */; };
+		0FC391341700AECCC5314406 /* ExtensionsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B83288702B2872FF2E575430 /* ExtensionsSettingsView.swift */; };
 		1C5CD1937EFECD06DA479F86 /* Space.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC9767949C165F7DCD9A281 /* Space.swift */; };
 		1CC3A629AEC1BBF9ACDC5FB0 /* SpaceHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52D93229EEC510DC0850005E /* SpaceHeaderView.swift */; };
 		1E297395FC835B4863BD77B5 /* ChorusEngine in Frameworks */ = {isa = PBXBuildFile; productRef = FE624AB3D9955080B15829B1 /* ChorusEngine */; };
+		1E4A3B46BFD11E994FCBECC2 /* ExtensionButtons.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B60AB8AD79494144B7A24ED /* ExtensionButtons.swift */; };
 		2060383BBB7763440315E22D /* QuitRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4816C0A63A37D82D52C3A8D4 /* QuitRecord.swift */; };
 		230144499E6BE9FD41C03338 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7458024AA17BF508D4807018 /* ContentView.swift */; };
 		27E1865FA1BB65766DBDB808 /* WhatsNew.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464C332182D96B75A17F363C /* WhatsNew.swift */; };
@@ -63,6 +65,7 @@
 		8DEAA301843C94622A4061F4 /* ServiceTabStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD2B240CAC6C5AD94A056FA8 /* ServiceTabStrip.swift */; };
 		8F6E2C62BD277E5577FBE480 /* WebContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA4617D503719C1701307F28 /* WebContentView.swift */; };
 		92BF212550953DD2E21A12E7 /* EmojiPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01EC3720B49A4D8B953CDA90 /* EmojiPickerView.swift */; };
+		946503C9D9D2089636EBB23C /* ExtensionManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98D6477E92C87920116ECA9F /* ExtensionManagerTests.swift */; };
 		96AB65EE0864CCD84279C86D /* RailItems.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8D1ECB45C649A2DC43CECD5 /* RailItems.swift */; };
 		9912BDFEE290E93DC57ED3C7 /* DemoControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42C2BEF1C847F26AD98EABF0 /* DemoControl.swift */; };
 		9A0520E87ACAE8A56BC23625 /* WebSurfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7F6622E313027CCFE7EA483 /* WebSurfaceTests.swift */; };
@@ -74,6 +77,7 @@
 		A96CBF7ECCEC4F44B5A6351E /* OutsideLinkDefault.swift in Sources */ = {isa = PBXBuildFile; fileRef = A81455BBBD65D1115E9A8DA3 /* OutsideLinkDefault.swift */; };
 		AD626D3375822E9E5BC358BE /* FaviconFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ACFB877AD2138035F9E3EAE /* FaviconFetcher.swift */; };
 		B095E6333D67F97829F12E97 /* ChorusSchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = 311EEF2D99711EA929371A79 /* ChorusSchema.swift */; };
+		B38213E2F7A905BC31FE8120 /* ExtensionInstallSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6CCFAE0F53BA8609148D7DE /* ExtensionInstallSheets.swift */; };
 		BA1476755637D56C12D39BC0 /* RailTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9685F17CCE71FDC093EBA783 /* RailTests.swift */; };
 		BAEE46A4791ABB6963914A5D /* NativeAppSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06F91EDD3C2858890FA0B343 /* NativeAppSupport.swift */; };
 		BBA02EFA2A776B5823246AC4 /* CodeTextEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2B4BE7419A06A9B6BF953BD /* CodeTextEditor.swift */; };
@@ -101,12 +105,14 @@
 		DFF3C2C6D2BD8785482FDAD1 /* RailDivider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A83F5BC25BB6A8A26F8439DA /* RailDivider.swift */; };
 		E17903CD1F33C670CA1E1011 /* WebViewPool+Services.swift in Sources */ = {isa = PBXBuildFile; fileRef = E260C0CED95B2BE5B2F1D133 /* WebViewPool+Services.swift */; };
 		E2BFB66EDC3B4F7CD92A1836 /* TrafficLights.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6161E11C236922FC7AEFB3DF /* TrafficLights.swift */; };
+		E7FBCF675DB31FA5D89A3827 /* ExtensionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9192053D387F927DD8039028 /* ExtensionManager.swift */; };
 		E80A466D432A4BF3B9A928ED /* QuitRecordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07521B53363878D0066BEA7F /* QuitRecordTests.swift */; };
 		E8288CD202E937B4B6087D67 /* RailOrder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7264BBC99612EDA5183912E7 /* RailOrder.swift */; };
 		F1E3E4A757954012789BD79D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = F63EF11A2754495AEB09C97E /* Sparkle */; };
 		F369648B855D9C624FE11F7C /* FerdiumGapsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25154F5D22DA7EE91EE5629A /* FerdiumGapsTests.swift */; };
 		F485F694BEA64C6EDA2CD167 /* SheetQuit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29C26C37D627ADE04B904988 /* SheetQuit.swift */; };
 		F709F5524B2146C260A0BCB0 /* BadgeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 706D85D3C09C182826CD4EBA /* BadgeManager.swift */; };
+		F830D462B91D7D7291512AE1 /* ExtensionPermissionPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69440138A0D3BA9EE846094B /* ExtensionPermissionPrompt.swift */; };
 		F91A02313DC1AA39BDF7A40E /* CountPulse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90B192B469204BF505EDAA7E /* CountPulse.swift */; };
 		FA1D896C41D6CA79990ECDD9 /* GroupRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1837F8880FC36D4FAC3DA51D /* GroupRules.swift */; };
 		FC24793EEE444C3F48F17559 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BEC6FCF1B60E1B9CD89A3A2 /* NotificationManager.swift */; };
@@ -131,6 +137,7 @@
 		06F91EDD3C2858890FA0B343 /* NativeAppSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAppSupport.swift; sourceTree = "<group>"; };
 		07521B53363878D0066BEA7F /* QuitRecordTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuitRecordTests.swift; sourceTree = "<group>"; };
 		09F8BC3392C6945D38F1AEA7 /* FeatureTips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureTips.swift; sourceTree = "<group>"; };
+		0B60AB8AD79494144B7A24ED /* ExtensionButtons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionButtons.swift; sourceTree = "<group>"; };
 		0DC16234E82B88C1DB338A49 /* StoreRepair.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreRepair.swift; sourceTree = "<group>"; };
 		0F2F565F064A603E639DC26E /* ServiceCatalog.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = ServiceCatalog.json; sourceTree = "<group>"; };
 		132D2C07876ECAB3E3073872 /* SetupTransferSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupTransferSection.swift; sourceTree = "<group>"; };
@@ -169,6 +176,7 @@
 		61D8B069E893E608C90E82EF /* GlobalPlacement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalPlacement.swift; sourceTree = "<group>"; };
 		63600DD5EE558B052FFC8073 /* DownloadsButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsButton.swift; sourceTree = "<group>"; };
 		67FC16493C168FFB5B6C7385 /* StoreInventory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreInventory.swift; sourceTree = "<group>"; };
+		69440138A0D3BA9EE846094B /* ExtensionPermissionPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionPermissionPrompt.swift; sourceTree = "<group>"; };
 		706D85D3C09C182826CD4EBA /* BadgeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeManager.swift; sourceTree = "<group>"; };
 		706EC146008C486ECEF91C1E /* AppState+SignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+SignIn.swift"; sourceTree = "<group>"; };
 		7264BBC99612EDA5183912E7 /* RailOrder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailOrder.swift; sourceTree = "<group>"; };
@@ -183,13 +191,16 @@
 		88C307C75776869CE8A82618 /* AppPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreferences.swift; sourceTree = "<group>"; };
 		8F17BFF4DCC563429E130A13 /* CatalogGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogGridView.swift; sourceTree = "<group>"; };
 		90B192B469204BF505EDAA7E /* CountPulse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountPulse.swift; sourceTree = "<group>"; };
+		9192053D387F927DD8039028 /* ExtensionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionManager.swift; sourceTree = "<group>"; };
 		94326A5DEE01135F945E9DF3 /* Chorus.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Chorus.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9685F17CCE71FDC093EBA783 /* RailTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailTests.swift; sourceTree = "<group>"; };
+		98D6477E92C87920116ECA9F /* ExtensionManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionManagerTests.swift; sourceTree = "<group>"; };
 		9D811CC9D75730152E17859C /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		9DD5F8F7C2450C88FA1A3886 /* EditServiceSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditServiceSheet.swift; sourceTree = "<group>"; };
 		9EDCAF66B6DD05BA3A244E9E /* EmojiData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiData.swift; sourceTree = "<group>"; };
 		A18DC8BE4A80CCF628333913 /* SpinningArcTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpinningArcTests.swift; sourceTree = "<group>"; };
 		A57E5D591EBF1C07CB81460D /* CountPulseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountPulseTests.swift; sourceTree = "<group>"; };
+		A6CCFAE0F53BA8609148D7DE /* ExtensionInstallSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionInstallSheets.swift; sourceTree = "<group>"; };
 		A81455BBBD65D1115E9A8DA3 /* OutsideLinkDefault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutsideLinkDefault.swift; sourceTree = "<group>"; };
 		A83F5BC25BB6A8A26F8439DA /* RailDivider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailDivider.swift; sourceTree = "<group>"; };
 		A8A7E8CC060D732C04B951B8 /* UserAgentChoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAgentChoice.swift; sourceTree = "<group>"; };
@@ -200,6 +211,7 @@
 		B5AEA5DCBB5AB96E2C962A90 /* WindowBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowBackdrop.swift; sourceTree = "<group>"; };
 		B71CC3F7D7BD76E4100BC126 /* StoreRelocation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreRelocation.swift; sourceTree = "<group>"; };
 		B71EE82DCC8428040B3FCA57 /* AddServicePlacementPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddServicePlacementPage.swift; sourceTree = "<group>"; };
+		B83288702B2872FF2E575430 /* ExtensionsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionsSettingsView.swift; sourceTree = "<group>"; };
 		CA55A0E026084DC20071FBCE /* QuickSwitcherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickSwitcherView.swift; sourceTree = "<group>"; };
 		CA77C4C73BEB532F6AC1C339 /* AppRelauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRelauncher.swift; sourceTree = "<group>"; };
 		D01CC2330887CF5293843BF3 /* IconThumbnail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconThumbnail.swift; sourceTree = "<group>"; };
@@ -279,6 +291,8 @@
 				5A1D24379DD182D4A7B6DD11 /* AppPresenceManager.swift */,
 				706D85D3C09C182826CD4EBA /* BadgeManager.swift */,
 				0693A705E1552F5809BA3399 /* CatalogIconCache.swift */,
+				9192053D387F927DD8039028 /* ExtensionManager.swift */,
+				69440138A0D3BA9EE846094B /* ExtensionPermissionPrompt.swift */,
 				24EE83C0600AFD4A12914883 /* HibernatedBadgePoller.swift */,
 				D2AC7E996360A4BC660FD194 /* KeyboardShortcutManager.swift */,
 				06F91EDD3C2858890FA0B343 /* NativeAppSupport.swift */,
@@ -324,6 +338,8 @@
 		7E4310DD7A9D95A50DC0F075 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				A6CCFAE0F53BA8609148D7DE /* ExtensionInstallSheets.swift */,
+				B83288702B2872FF2E575430 /* ExtensionsSettingsView.swift */,
 				1D9D707C0F9A04B5E0744F59 /* SettingsView.swift */,
 				132D2C07876ECAB3E3073872 /* SetupTransferSection.swift */,
 			);
@@ -390,6 +406,7 @@
 				7458024AA17BF508D4807018 /* ContentView.swift */,
 				90B192B469204BF505EDAA7E /* CountPulse.swift */,
 				63600DD5EE558B052FFC8073 /* DownloadsButton.swift */,
+				0B60AB8AD79494144B7A24ED /* ExtensionButtons.swift */,
 				76865DDEE671C34CC88CF4D8 /* FindInPageBar.swift */,
 				E110F19271457C83B3A2282E /* GlobalBoxView.swift */,
 				D0C165770A657F8FF9DB4274 /* GroupBox.swift */,
@@ -494,6 +511,7 @@
 			children = (
 				FBA2B8A19B41207F66E51CC3 /* ChorusTests.swift */,
 				A57E5D591EBF1C07CB81460D /* CountPulseTests.swift */,
+				98D6477E92C87920116ECA9F /* ExtensionManagerTests.swift */,
 				25154F5D22DA7EE91EE5629A /* FerdiumGapsTests.swift */,
 				4878D7EAAB3DCB48557A9984 /* GlobalPlacementTests.swift */,
 				FF1B76F1DCF6AD0DC9CD9FEB /* GroupTests.swift */,
@@ -629,6 +647,11 @@
 				9EDF307D989D199DE994D432 /* EditServiceSheet.swift in Sources */,
 				4B199EBC47BA21CE22ECC893 /* EmojiData.swift in Sources */,
 				92BF212550953DD2E21A12E7 /* EmojiPickerView.swift in Sources */,
+				1E4A3B46BFD11E994FCBECC2 /* ExtensionButtons.swift in Sources */,
+				B38213E2F7A905BC31FE8120 /* ExtensionInstallSheets.swift in Sources */,
+				E7FBCF675DB31FA5D89A3827 /* ExtensionManager.swift in Sources */,
+				F830D462B91D7D7291512AE1 /* ExtensionPermissionPrompt.swift in Sources */,
+				0FC391341700AECCC5314406 /* ExtensionsSettingsView.swift in Sources */,
 				AD626D3375822E9E5BC358BE /* FaviconFetcher.swift in Sources */,
 				0413EB0C08636424F9362A1C /* FeatureTips.swift in Sources */,
 				3DEA98A98656EE981A29A71D /* FindInPageBar.swift in Sources */,
@@ -698,6 +721,7 @@
 			files = (
 				C4ADA7C24E806E00FF4709D1 /* ChorusTests.swift in Sources */,
 				3047D7319F96D9895287FB49 /* CountPulseTests.swift in Sources */,
+				946503C9D9D2089636EBB23C /* ExtensionManagerTests.swift in Sources */,
 				F369648B855D9C624FE11F7C /* FerdiumGapsTests.swift in Sources */,
 				DA30DDBA2100841126D77F95 /* GlobalPlacementTests.swift in Sources */,
 				30F2487A1BC701C49D19A237 /* GroupTests.swift in Sources */,

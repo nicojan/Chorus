@@ -168,6 +168,21 @@ final class FerdiumGapsTests: XCTestCase {
         XCTAssertNil(imported.first?.customJS)
     }
 
+    // MARK: - Unlock prompt
+
+    /// An idle or sleep lock happens while Chorus is in the background. Touch
+    /// ID asked at once and pulled Chorus to the front; it waits for the user
+    /// to bring Chorus forward instead, and never stacks a second prompt.
+    func testUnlockPromptWaitsForChorusToBeActive() {
+        func rule(locked: Bool = true, active: Bool = true, prompting: Bool = false) -> Bool {
+            AppState.shouldPromptForUnlock(isLocked: locked, appIsActive: active, isPrompting: prompting)
+        }
+        XCTAssertTrue(rule())
+        XCTAssertFalse(rule(active: false), "Chorus in the background: wait")
+        XCTAssertFalse(rule(prompting: true), "a prompt is already up")
+        XCTAssertFalse(rule(locked: false), "nothing to unlock")
+    }
+
     // MARK: - Idle lock rule
 
     func testShouldLockForIdle() {

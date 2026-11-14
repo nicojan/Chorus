@@ -30,6 +30,8 @@ final class AppState {
     let badgeManager: BadgeManager
     /// Every download this session, for the toolbar's download list.
     let downloadCenter = DownloadCenter()
+    /// The user's web extensions and the host that runs them.
+    let extensions = ExtensionManager(library: WebExtensionLibrary(directory: ExtensionManager.defaultDirectory))
 
     /// Navigation state (back/forward/loading) for the active service's web view,
     /// shared so the top tab bar can host the nav buttons.
@@ -274,6 +276,10 @@ final class AppState {
     }
     /// Windows `lock()` hid, and the observer that drops any of them closed
     /// while locked so unlocking doesn't bring back a window that is gone.
+    /// The Touch ID prompt is up, and the observer that shows it once Chorus
+    /// comes to the front after a lock in the background.
+    @ObservationIgnored private var isPromptingForUnlock = false
+    @ObservationIgnored private var unlockOnActivateObserver: NSObjectProtocol?
     @ObservationIgnored private var windowsHiddenForLock: [NSWindow] = []
     @ObservationIgnored private var lockCloseObserver: NSObjectProtocol?
 
@@ -586,6 +592,7 @@ final class AppState {
         setupNetworkHandling()
         setupExternalLinkRouting()
         setupDownloads()
+        setupExtensions()
         setupMediaPermissions()
         setupTerminationRecording()
         let didSeedDefaults = seedDefaultDataIfNeeded()
@@ -607,7 +614,7 @@ final class AppState {
         let didUpdate = Self.recordLaunchVersionAndCheckUpdate()
         fetchMissingAndStaleFavicons(force: didUpdate)
         fetchCatalogIcons(force: didUpdate)
-        preloadActiveSpaceServices()
+        preloadAfterExtensions()
         startTransientBadgeFetcher()
         startNativeAppBadgeReader()
         FeatureTips.configure()
@@ -671,6 +678,37 @@ final class AppState {
         startIdleHibernationTimer()
         AppLogger.dataStore.info("Imported a setup: \(summary.servicesAdded) services, \(summary.spacesAdded) new spaces")
         return summary
+    }
+
+    /// Gives the pool the extension host, routes what extensions open, and
+    /// starts the enabled extensions. Runs before any service page is built, so
+    /// those pages get the extension controller when an extension is on.
+    private func setupExtensions() {
+        webViewPool.extensionHost = extensions.hosting
+        guard #available(macOS 15.4, *), let host = extensions.host else { return }
+        host.onOpenURL = { [weak self] url in
+            self?.handleExternalLink(url, from: nil)
+        }
+        host.onActivateService = { [weak self] serviceID in
+            self?.navigateToServiceFromNotification(serviceID)
+        }
+        host.onPermissionPrompt = { name, lines in
+            ExtensionPermissionPrompt.ask(extensionName: name, lines: lines)
+        }
+        host.onGrantsChanged = { [weak self] id, permissions, patterns in
+            self?.extensions.updateGrants(id, permissions: permissions, matchPatterns: patterns)
+        }
+    }
+
+    /// Quits and reopens Chorus so pages that were open before the first
+    /// extension went on get it. Goes through the normal quit, which lets chat
+    /// pages finish their writes; rebuilding the pages in place would not.
+    func restartForExtensions() {
+        guard AppRelauncher.armRelaunch() else {
+            AppLogger.extensions.error("Could not arm the relaunch; quit and reopen Chorus by hand")
+            return
+        }
+        SheetQuit.quit(reason: .relaunch)
     }
 
     /// Hands the download list to the pool, which passes it to each service's
@@ -1726,10 +1764,41 @@ final class AppState {
         windows.forEach { $0.orderFront(nil) }
     }
 
+    /// Whether to ask for Touch ID now. An idle or sleep lock happens while
+    /// Chorus is in the background, and the prompt pulled Chorus to the front;
+    /// it waits until the user brings Chorus forward, and never stacks.
+    nonisolated static func shouldPromptForUnlock(isLocked: Bool, appIsActive: Bool, isPrompting: Bool) -> Bool {
+        isLocked && appIsActive && !isPrompting
+    }
+
+    /// Asks for Touch ID if Chorus is in front; otherwise waits until it is.
+    /// The lock screen calls this when it appears.
+    func authenticateWhenActive() {
+        guard isLocked else { return }
+        if NSApp.isActive {
+            authenticate()
+            return
+        }
+        guard unlockOnActivateObserver == nil else { return }
+        unlockOnActivateObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if let observer = self.unlockOnActivateObserver {
+                    NotificationCenter.default.removeObserver(observer)
+                }
+                self.unlockOnActivateObserver = nil
+                self.authenticate()
+            }
+        }
+    }
+
     /// Prompts for Touch ID (with the login password as fallback) and unlocks on
     /// success. If the device can't evaluate the policy at all (no password set),
     /// unlock rather than trap the user out of their app.
     func authenticate() {
+        guard Self.shouldPromptForUnlock(isLocked: isLocked, appIsActive: NSApp.isActive, isPrompting: isPromptingForUnlock) else { return }
         let context = LAContext()
         context.localizedFallbackTitle = "Enter Password"
         var policyError: NSError?
@@ -1738,9 +1807,11 @@ final class AppState {
             isLocked = false
             return
         }
+        isPromptingForUnlock = true
         context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Unlock Chorus") { [weak self] success, error in
             Task { @MainActor in
                 guard let self else { return }
+                self.isPromptingForUnlock = false
                 if success {
                     self.isLocked = false
                 } else {
@@ -2809,8 +2880,13 @@ final class AppState {
         if tombstones.contains(identifier) {
             Self.saveOrphanedIdentifiers(tombstones.subtracting([identifier]))
         }
-        let store = dataStoreManager.dataStore(forIdentifier: identifier)
-        await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
+        // WebKit waits on every process using the store, and one that has
+        // stopped answering never replies: Add Service waited for good on
+        // 2026-11-10. The pool ends a removed page's stuck process, so this
+        // limit is the backstop. A clear that gives up still runs on.
+        if await !dataStoreManager.clearAllData(identifier: identifier, within: 5) {
+            AppLogger.dataStore.warning("Clearing data store \(identifier) did not finish in 5 s; adding the service anyway")
+        }
         // A removal may have started during the clear; wait for it too, and
         // drop the handle it may have made stale.
         await waitOutRemoval(of: identifier)
@@ -2972,6 +3048,21 @@ final class AppState {
     /// Preloads web views for all services in the currently selected space.
     /// Runs after window state is restored so `selectedSpaceID` is already set.
     /// The selected service (if any) loads first, then the rest stagger at 500ms intervals.
+    /// Starts the enabled extensions, then preloads. With an extension on,
+    /// pages must not load before its background is up: on macOS 15 and 26 a
+    /// content script's first message would go unanswered. With none on,
+    /// preloading starts at once, as it always has.
+    private func preloadAfterExtensions() {
+        guard !extensions.enabledIDs.isEmpty else {
+            preloadActiveSpaceServices()
+            return
+        }
+        Task {
+            await extensions.startEnabled()
+            preloadActiveSpaceServices()
+        }
+    }
+
     private func preloadActiveSpaceServices() {
         guard let spaceID = selectedSpaceID else { return }
         let services = railServices(forSpace: spaceID)
