@@ -90,7 +90,7 @@ Each package was imported through the real library and loaded by a throwaway eng
 | Read Aloud | AMO | GPL-3.0 | 230,453 | Speaks, checked by hand (see below) |
 | DeArrow | GitHub Chrome zip | LGPL-3.0 | 34,530 | Works; one harmless error from messaging SponsorBlock |
 | Raindrop.io | AMO | MPL-2.0 | 43,774 | Loads; WebKit rejects a keyboard command in its manifest |
-| Proton Pass | AMO | GPL-3.0 | 197,273 | No errors since Chorus added `runtime.onUpdateAvailable` (2026-11-14); filling not tried |
+| Proton Pass | AMO | GPL-3.0 | 197,273 | Starts since Chorus added `runtime.onUpdateAvailable` (2026-11-14); its popup reached sign-in in a test host once Chorus kept the API globals (2026-11-16); filling not tried |
 | Violentmonkey | AMO | MIT | 207,380 | Background stops: no `notifications.onClicked` |
 | LanguageTool | AMO | proprietary | 316,419 | Background fails to parse in JavaScriptCore (`¶` at line 26); no `storage.managed` |
 | Grammarly | AMO | proprietary | 527,807 | Background errors and asks to talk to its Mac app |
@@ -134,7 +134,7 @@ Leave out Dark Reader: Chorus already offers Dark Reader per service, and two co
 1. Done on `feat/extension-catalog`: `WebExtensionSource` (github, amo), `WebExtensionFetcher` (latest release; download plus verify plus import), with recorded API answers and no network in the tests.
 2. Done on `feat/extension-catalog`: record fields, the staged swap at load, rollback, the permission comparison, and `testDataSurvivesAVersionSwap`. `ExtensionManager` applies a ready update when it starts an extension.
 3. Done on `feat/extension-catalog` (`7ad2ef4`): the catalog JSON, a "Get Extensions" section in Settings, the update toggle, "Update needs your OK", the "Suggest an Extension" link and its issue form. `ExtensionCatalogController` runs the check after `startEnabled` and every 24 hours; staging never runs while a start for the record is in progress, and re-checks `wantsUpdate(to:)` on the current record after every await.
-4. Done on `feat/extension-catalog`: `ExtensionCompatibility` adds `runtime.onUpdateAvailable`, and Proton Pass 1.43.1 now loads with no errors.
+4. Done on `feat/extension-catalog`: `ExtensionCompatibility` adds `runtime.onUpdateAvailable`, and Proton Pass 1.43.1 now loads with no errors. On 2026-11-16 its popup still said "Your browser is having difficulties activating Proton Pass". Its background and popup replace the global `chrome` and `browser` with Proxies just after they start. WebKit finds the page to hand an event to through those two globals (`enumerateFramesAndNamespaceObjects`), so the background never heard the popup. The compatibility script now keeps both names on WebKit's object in extension worlds and ignores writes to them (`WebExtensionHiddenAPITests`).
 5. Done by hand on 2026-11-14 in a Debug build, with Consent-O-Matic, driven through Accessibility:
    - Install: Get downloaded 1.1.5 from GitHub, the confirm sheet named the version and the publisher, and the record saved `catalogID` and `installedVersion`.
    - Update: the record was pointed at the real 1.1.3 files. The launch check staged 1.1.5 ("installs when Chorus restarts"), the next launch swapped it in ("Updated to version 1.1.5"), and a setting changed under 1.1.3 still read as changed in 1.1.5 after that launch and after one more. Consent-O-Matic did not reopen its first-run page, which it shows only when its storage is empty.

@@ -53,6 +53,18 @@ import Foundation
 ///    service worker and extension pages, where Chrome has it, and not in
 ///    content scripts, where Chrome does not.
 ///
+/// 8. WebKit finds a page to hand an event to by reading the page's `browser`
+///    global, then `chrome` (`enumerateFramesAndNamespaceObjects`), and skips
+///    the page when neither is its own API object. Proton Pass replaces both
+///    with Proxies just after it starts and keeps its own reference, which
+///    works in Chrome and Firefox; in WebKit its background then never heard
+///    its popup, and the popup said Proton Pass could not start. In every
+///    extension world the script keeps both names on WebKit's object and
+///    makes writes to them do nothing. A site's own main world, where a
+///    MAIN-world content script also runs the script, keeps its globals.
+///    This turns off Proton's own lock in Chorus: other code in its pages
+///    can read the API again. Its own code is unchanged.
+///
 /// The script loads first in the service worker (through a new entry file),
 /// in every HTML page, in background scripts and ahead of each content script.
 /// Safari extensions inside an app are signed and left alone.
@@ -172,6 +184,34 @@ enum ExtensionCompatibility {
       if (globalThis.__chorusCompatibilityObjects) return;
       const held = [];
       Object.defineProperty(globalThis, "__chorusCompatibilityObjects", { value: held });
+
+      // WebKit hands each event to a page by reading the page's `browser`
+      // global, then `chrome`, and skips the page when neither is its own API
+      // object. Proton Pass swaps both for Proxies just after it starts and
+      // keeps a reference of its own, so its background never heard its
+      // popup. In an extension world both names keep WebKit's object, and
+      // writes to them do nothing, without throwing in strict code. A site's
+      // main world, where a MAIN-world content script runs this, is left
+      // alone: its `browser`, if any, has no `runtime.getURL` that names the
+      // extension.
+      try {
+        const own = globalThis.browser;
+        const runtime = own && own.runtime;
+        if (runtime && typeof runtime.getURL === "function"
+            && String(runtime.getURL("/")).startsWith("webkit-extension:")) {
+          for (const name of ["browser", "chrome"]) {
+            if (globalThis[name] !== own) continue;
+            const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
+            if (descriptor && !descriptor.configurable) continue;
+            Object.defineProperty(globalThis, name, {
+              get() { return own; },
+              set(value) {},
+              enumerable: descriptor ? descriptor.enumerable : true,
+              configurable: true
+            });
+          }
+        }
+      } catch (error) {}
 
       // WebKit takes "ISOLATED" and "MAIN" as a script's world but has no
       // `scripting.ExecutionWorld` to name them, which Chrome builds read.
