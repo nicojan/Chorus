@@ -134,9 +134,11 @@ final class WebExtensionInstallEventTests: XCTestCase {
     }
 
     /// Past the 5 s, WebKit sends "install" for an unchanged version, though
-    /// the extension was installed at the launch before. Chorus loads
-    /// extensions one at a time at launch, and an extension turned off and on
-    /// loads again, so either can hear "install" again. If this fails because
+    /// the extension was installed at the launch before. Chorus starts every
+    /// extension together at launch, but one turned off and on loads again
+    /// after the 5 s and hears "install" again. (The old version reloaded
+    /// after a rollback also loads late; with its storage on disk it hears
+    /// "update" from the failed version.) If this fails because
     /// WebKit sends nothing or `onStartup`, it changed this behaviour.
     func testUnchangedVersionLoadedAfterStartupWindowHearsInstall() async throws {
         guard #available(macOS 15.4, *) else { throw XCTSkip("Web extensions need macOS 15.4") }

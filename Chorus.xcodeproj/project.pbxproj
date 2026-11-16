@@ -68,6 +68,7 @@
 		7AB0D5E58637925AFCAD2276 /* ExtensionCatalogSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00FCAAE94EF0362F39C66DE /* ExtensionCatalogSection.swift */; };
 		7AC2ADDF366CF435BDB65C3E /* RailRuns.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2200EDE680C15FBE00601E12 /* RailRuns.swift */; };
 		817A70A10923352BBAC3F63E /* CatalogIconCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0693A705E1552F5809BA3399 /* CatalogIconCache.swift */; };
+		82D6FDD5898997D70B6BF484 /* ExtensionLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BF65E92CC692B9A2A8EBDF5 /* ExtensionLaunchTests.swift */; };
 		8325C3DEC3242E7E2C19EB07 /* SpacePaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03E9D5B98CFDDD0B2E7FD42C /* SpacePaletteView.swift */; };
 		863BAA64BC341E5286D8915E /* UnifiedRailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D2B28970B7AEF9B0EB53AFD /* UnifiedRailView.swift */; };
 		89606D5178F21DDE4744211E /* UserAgentChoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8A7E8CC060D732C04B951B8 /* UserAgentChoice.swift */; };
@@ -155,6 +156,7 @@
 		07521B53363878D0066BEA7F /* QuitRecordTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuitRecordTests.swift; sourceTree = "<group>"; };
 		09F8BC3392C6945D38F1AEA7 /* FeatureTips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureTips.swift; sourceTree = "<group>"; };
 		0B60AB8AD79494144B7A24ED /* ExtensionButtons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionButtons.swift; sourceTree = "<group>"; };
+		0BF65E92CC692B9A2A8EBDF5 /* ExtensionLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionLaunchTests.swift; sourceTree = "<group>"; };
 		0DC16234E82B88C1DB338A49 /* StoreRepair.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreRepair.swift; sourceTree = "<group>"; };
 		0F2F565F064A603E639DC26E /* ServiceCatalog.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = ServiceCatalog.json; sourceTree = "<group>"; };
 		132D2C07876ECAB3E3073872 /* SetupTransferSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupTransferSection.swift; sourceTree = "<group>"; };
@@ -558,6 +560,7 @@
 				D99D428139619162317CF0BE /* ExtensionCatalogControllerTests.swift */,
 				EA09EFB0553446E21A75E512 /* ExtensionCatalogTests.swift */,
 				2CC700D9960754C60F6B6106 /* ExtensionHandAddedCopyTests.swift */,
+				0BF65E92CC692B9A2A8EBDF5 /* ExtensionLaunchTests.swift */,
 				98D6477E92C87920116ECA9F /* ExtensionManagerTests.swift */,
 				5F435F75DBE8806EEB5EDA31 /* ExtensionRowStatusTests.swift */,
 				9525DEA55F86581C17A6E1AE /* ExtensionStagingTests.swift */,
@@ -785,6 +788,7 @@
 				A9B9D9D7721E44E3E3BA863A /* ExtensionCatalogControllerTests.swift in Sources */,
 				3942E43905D03A8C912BED41 /* ExtensionCatalogTests.swift in Sources */,
 				5338BD1AF788A3EC8DBB526C /* ExtensionHandAddedCopyTests.swift in Sources */,
+				82D6FDD5898997D70B6BF484 /* ExtensionLaunchTests.swift in Sources */,
 				946503C9D9D2089636EBB23C /* ExtensionManagerTests.swift in Sources */,
 				574D2E066D5F6F08667BDA8C /* ExtensionRowStatusTests.swift in Sources */,
 				B3CAE679F056ABF3139FCCBF /* ExtensionStagingTests.swift in Sources */,

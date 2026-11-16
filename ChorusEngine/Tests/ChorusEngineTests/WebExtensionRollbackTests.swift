@@ -122,6 +122,33 @@ final class WebExtensionRollbackTests: XCTestCase {
         host.unload(settled.id)
     }
 
+    /// A load started in a task that is cancelled at once must still wait
+    /// for WebKit to let go of the failed worker. A cancelled sleep returns
+    /// at once, and the old version then ran with no background.
+    func testCancelledLoadStillWaitsForTheRelease() async throws {
+        guard #available(macOS 15.4, *) else { throw XCTSkip("Web extensions need macOS 15.4") }
+        let host = WebExtensionHost(storageIdentifier: nil)
+        host.isActive = true
+        // The release time is set when the failed version unloads, inside
+        // the trial, so it falls at least this long after the trial began.
+        let trialStart = ContinuousClock.now
+        let settled = try await rolledBack(host)
+        let library = library
+        let load = Task { @MainActor in try await host.load(settled, library: library) }
+        load.cancel()
+        var loadedAfter: Duration?
+        let deadline = ContinuousClock.now + .seconds(20)
+        while loadedAfter == nil, ContinuousClock.now < deadline {
+            if host.loadedIDs.contains(settled.id) { loadedAfter = ContinuousClock.now - trialStart }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        _ = try? await load.value
+        print("ROLLBACK-PROBE cancelled load reached WebKit \(String(describing: loadedAfter)) after the trial began")
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(loadedAfter, "the load never ran"), WebExtensionHost.failedWorkerReleaseDelay,
+                                    "the cancelled load went to WebKit before the failed worker was released")
+        host.unload(settled.id)
+    }
+
     /// Removing the extension while its load waits must reach its data
     /// at once, not give up because the id is loading, and must not wait out
     /// the release itself: removal starts no background.

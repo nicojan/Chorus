@@ -64,6 +64,8 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
     /// 9.5 s after the unload the old version's worker never answered, from
     /// 10.5 s it did. Two seconds spare, for a slow machine.
     static let failedWorkerReleaseDelay: Duration = .seconds(12)
+    /// Loads later than this after the controller log no timing.
+    private static let loadTimingLimit: Duration = .seconds(60)
     /// Ids unloaded with a failed background, and when their origin is free.
     @ObservationIgnored private var failedWorkerReleases: [UUID: ContinuousClock.Instant] = [:]
     /// Starts a context's background. A seam for tests of a start that fails
@@ -78,6 +80,9 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
     /// Each extension's stand-in for Chrome's offscreen document, kept until
     /// the extension stops. See `ExtensionCompatibility`.
     @ObservationIgnored private(set) var offscreenPages: [UUID: WKWebView] = [:]
+    /// When the controller was made. WebKit treats a load in its first 5 s as
+    /// the browser starting; the load log says how far past that each came.
+    @ObservationIgnored private let controllerCreatedAt: ContinuousClock.Instant
 
     /// Bumped when an extension changes its button (icon, badge, title), so
     /// SwiftUI views that read `toolbarItems` draw again.
@@ -135,6 +140,7 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         pageConfiguration.applicationNameForUserAgent = Self.extensionApplicationName
         configuration.webViewConfiguration = pageConfiguration
         controller = WKWebExtensionController(configuration: configuration)
+        controllerCreatedAt = .now
         super.init()
         controller.delegate = self
         controller.didOpenWindow(window)
@@ -332,8 +338,14 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
                 context.setPermissionStatus(.grantedExplicitly, for: matchPattern)
             }
         }
+        // So no closed page is announced below.
+        dropTabsWithoutPages()
         try controller.load(context)
         contexts[record.id] = context
+        // No await between the load and this, or a page opened in between is
+        // announced twice or never.
+        if grantingAccess { announceOpenTabs(to: context) }
+        let sinceController = ContinuousClock.now - controllerCreatedAt
         loadedIDs = loadedIDs.union([record.id])
         actionRevision += 1
         // Wait for the background to start before returning. On macOS 15 and
@@ -356,8 +368,29 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
             }
         }
         guard contexts[record.id] === context else { return false }
-        AppLogger.extensions.info("Loaded extension \(record.name, privacy: .public)")
+        // How far into WebKit's 5 s startup window it reached WebKit; left
+        // out for a load long after launch.
+        let timing = sinceController < Self.loadTimingLimit ? ", \(sinceController) after the controller" : ""
+        AppLogger.extensions.info("Loaded extension \(record.name, privacy: .public)\(timing, privacy: .public)")
         return true
+    }
+
+    /// Tells a new context about the pages already open. WebKit 27.2 gives a
+    /// context loaded later every tab of the window only when the window
+    /// names an active tab; with none on screen (a Mac app in front) the
+    /// context knows no tab, and its content scripts, which WebKit still
+    /// injects, fail every message with "Tab not found" until a relaunch
+    /// (probe 2026-11-16). Tabs it already knows are skipped, so none is
+    /// announced twice, and the active tab is reported only when it was
+    /// announced here: the one the other contexts were last told about.
+    private func announceOpenTabs(to context: WKWebExtensionContext) {
+        let known = context.openTabs
+        // Defensive: WebKit 27.2 ignores a repeat didOpenTab, but 15 and 26 are untested.
+        let unknown = orderedTabs.filter { tab in !known.contains { ($0 as AnyObject) === tab } }
+        unknown.forEach { context.didOpenTab($0) }
+        if let active = reportedActiveTab, unknown.contains(where: { $0 === active }) {
+            context.didActivateTab(active, previousActiveTab: nil)
+        }
     }
 
     /// The text of WebKit's "background content failed to load" error in the
@@ -378,7 +411,9 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         guard let releasedAt = failedWorkerReleases[id] else { return }
         if releasedAt > .now {
             AppLogger.extensions.info("Waiting for WebKit to release the failed background of \(id.uuidString, privacy: .public)")
-            try? await Task.sleep(until: releasedAt, clock: .continuous)
+            // In a task of its own, so a cancelled caller still waits: a
+            // cancelled sleep returns at once.
+            await Task { try? await Task.sleep(until: releasedAt, clock: .continuous) }.value
         }
         if failedWorkerReleases[id] == releasedAt {
             failedWorkerReleases = failedWorkerReleases.filter { $0.key != id }

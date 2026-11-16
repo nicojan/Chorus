@@ -40,6 +40,12 @@ final class ExtensionManager {
     /// Starts in progress per id, trial and plain load both. A count, because
     /// two starts can overlap for one id.
     @ObservationIgnored private var startsInProgress: [UUID: Int] = [:]
+    /// Ids whose start owns a queued or running trial. Another start of the
+    /// id ends at once; the owner loads the new or the old version.
+    @ObservationIgnored private var trialPending: Set<UUID> = []
+    /// The last trial queued. Trials run one at a time, so when Chorus
+    /// crashes the attempt marker blames only the version on trial.
+    @ObservationIgnored private var trialTail: Task<Void, Never>?
     /// What the last trial of each record came to this session, for its row.
     /// Memory only.
     private(set) var lastTrials: [UUID: WebExtensionUpdateTrial] = [:]
@@ -133,39 +139,73 @@ final class ExtensionManager {
 
     // MARK: - Launch
 
+    /// Starts every enabled extension at once, so one slow background does
+    /// not push the others past WebKit's 5 s startup window. Update trials
+    /// still run one at a time. The host's wait for a failed worker to be
+    /// released holds even if the task running this is cancelled.
     func startEnabled() async {
         // App-hosted tests build an AppState; they must not run the
         // developer's own extensions.
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil || isTestLibrary else { return }
-        for record in records where record.isEnabled {
-            await start(record)
+        let ids = enabledIDs
+        // Every id busy before the first await, so the update check never
+        // restages one that has not begun.
+        ids.forEach(beginStart)
+        let began = ContinuousClock.now
+        await withDiscardingTaskGroup { group in
+            // A main-actor operation is queued on the main actor as it is
+            // added, so the starts begin in list order and the first update
+            // takes the trial lock. A `{ @MainActor in }` literal here trips
+            // the compiler's region checker (Xcode with the 27.2 SDK).
+            for id in ids {
+                group.addTask(operation: startOperation(id))
+            }
         }
+        let elapsed = String(describing: ContinuousClock.now - began)
+        let notRunning = ids.filter { !isRunning($0) }.count
+        AppLogger.extensions.info("Started \(ids.count) extensions in \(elapsed, privacy: .public); \(notRunning) not running")
     }
 
-    /// Starts the current copy of `record`, trying its staged update first
-    /// when one is ready.
+    /// `runStart(id)` as a main-actor closure, for the launch's task group.
+    private func startOperation(_ id: UUID) -> @MainActor @Sendable () async -> Void {
+        { await self.runStart(id) }
+    }
+
+    private func beginStart(_ id: UUID) {
+        startsInProgress = startsInProgress.merging([id: 1], uniquingKeysWith: +)
+    }
+
+    /// Starts one record, for an add or a turn-on.
     private func start(_ record: WebExtensionRecord) async {
-        guard #available(macOS 15.4, *), let host else { return }
-        startsInProgress = startsInProgress.merging([record.id: 1], uniquingKeysWith: +)
-        defer { endStart(record.id) }
-        await tryStagedUpdate(of: record.id, host: host)
-        // The current record, not the parameter: the trial may have moved it
-        // to the new folder, or dropped the update. When the trial left the
-        // new version running, this load does nothing. Turned off or removed
-        // during the trial: the trial used up the cancellation, so stop here
-        // rather than load the old version.
-        guard let current = records.first(where: { $0.id == record.id }), current.isEnabled else { return }
+        beginStart(record.id)
+        await runStart(record.id)
+    }
+
+    /// Starts the current copy of the record, trying its staged update first
+    /// when one is ready. Ends the start `beginStart` counted.
+    private func runStart(_ id: UUID) async {
+        // Before the availability guard, so the count balances on any OS.
+        defer { endStart(id) }
+        // A start that owns this id's trial will load it.
+        guard #available(macOS 15.4, *), let host,
+              record(id)?.isEnabled == true, !trialPending.contains(id) else { return }
+        await tryStagedUpdate(of: id, host: host)
+        // The current record: the trial may have moved it to the new folder,
+        // or dropped the update. When the trial left the new version running,
+        // this load does nothing. Turned off or removed during the trial: the
+        // trial used up the cancellation, so stop rather than load the old one.
+        guard let current = record(id), current.isEnabled else { return }
         do {
             try await host.load(current, library: library)
-            failures = failures.filter { $0.key != record.id }
+            failures = failures.filter { $0.key != id }
             // Turned off or removed while it loaded.
-            if records.first(where: { $0.id == record.id })?.isEnabled != true {
-                host.unload(record.id)
+            if record(id)?.isEnabled != true {
+                host.unload(id)
             }
         } catch {
-            guard records.first(where: { $0.id == record.id })?.isEnabled == true else { return }
-            failures = failures.merging([record.id: Self.describe(error)]) { $1 }
-            AppLogger.extensions.error("Could not start \(record.name, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            guard record(id)?.isEnabled == true else { return }
+            failures = failures.merging([id: Self.describe(error)]) { $1 }
+            AppLogger.extensions.error("Could not start \(current.name, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -177,16 +217,39 @@ final class ExtensionManager {
             : startsInProgress.filter { $0.key != id }
     }
 
+    /// Queues a ready staged update's trial behind any other, and waits for
+    /// it. Only the trial is serialized: after a rollback, the old version's
+    /// load and its wait for the failed worker run in `runStart`, so the next
+    /// trial need not wait for them.
+    @available(macOS 15.4, *)
+    private func tryStagedUpdate(of id: UUID, host: WebExtensionHost) async {
+        guard let queued = record(id), queued.isEnabled, queued.applyingStagedUpdate() != nil else { return }
+        trialPending = trialPending.union([id])
+        defer { trialPending = trialPending.subtracting([id]) }
+        if trialTail != nil {
+            AppLogger.extensions.info("\(queued.name, privacy: .public) waits for another update trial")
+        }
+        let previous = trialTail
+        let mine = Task { @MainActor in
+            await previous?.value
+            await self.runTrial(of: id, host: host)
+        }
+        trialTail = mine
+        await mine.value
+        if trialTail == mine { trialTail = nil }
+    }
+
     /// Tries a ready staged update, with two saves in this order: the
     /// attempt marker before the trial, so a version that crashes the app at
     /// load is given up after `maxAttempts`, then the result, applied to the
-    /// current record. Folders go only after a save succeeds.
+    /// current record. Folders go only after a save succeeds. Reads the
+    /// record again, since it may have changed while the trial was queued.
     @available(macOS 15.4, *)
-    private func tryStagedUpdate(of id: UUID, host: WebExtensionHost) async {
-        guard let current = records.first(where: { $0.id == id }),
+    private func runTrial(of id: UUID, host: WebExtensionHost) async {
+        guard let current = record(id), current.isEnabled,
               current.applyingStagedUpdate() != nil else { return }
         guard commit(records.map { $0.id == id ? $0.startingUpdateAttempt() : $0 }),
-              let marked = records.first(where: { $0.id == id }),
+              let marked = record(id),
               let folder = marked.stagedUpdate?.folder else {
             AppLogger.extensions.error("Could not save the update attempt for \(current.name, privacy: .public), so it was not tried")
             return
