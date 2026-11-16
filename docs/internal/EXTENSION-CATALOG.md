@@ -1,6 +1,6 @@
 # Extension catalog: design and survey
 
-Status: built on `feat/extension-catalog`, from `main` after #52 and #53 merged on 2026-11-13; all five steps of the build order are done (2026-11-14). Design written 2026-11-13; Nico's answers are under "Decided with Nico".
+Status: built on `feat/extension-catalog`, from `main` after #52 and #53 merged on 2026-11-13; all five steps of the build order are done (2026-11-14), and the checks left open passed by hand on 2026-11-15 (step 6). Design written 2026-11-13; Nico's answers are under "Decided with Nico".
 
 ## The problem
 
@@ -37,9 +37,11 @@ Extension data has to survive an update. WebKit keys it by the context's `unique
 
 **After a rollback the old version waits 12 s.** When the failed version unloads, WebKit keeps its origin's service worker process for 10 s more (`defaultTerminationDelay` in `SWServer`). A worker started on that origin in that time fails too, and holds the process another 10 s. The old version used to load at once, so it ran with no background for the rest of the session. Now the host notes when a context whose background failed unloads, and the next load of that id waits until 12 s after it; the extension keeps its id, and so its data. The wait holds nothing: turning the extension off and on during it leaves it running, and removing it reaches its data at once, since removal starts no background. A broken update costs its user about 12 s at the launch that tries it, and pages wait that long too, since they wait for `startEnabled`. WebKit offers no public way to end this sooner: removing the store's service worker data does not free the origin and stops every other extension's worker, and asking for the background again fails the same way. `testOldVersionsBackgroundRunsAfterRollback` checks that the old worker answers a content script.
 
-**A swap is an update to the extension.** The record keeps its id, so the new version starts with the old one's data and, as WebKit is built, gets `runtime.onInstalled` with reason "update". Nobody has checked that event in Chorus yet. A rollback is a second change of version, and anything the new version rewrote in its storage before it failed stays rewritten for the old one.
+**A swap is an update to the extension.** The record keeps its id, so the new version starts with the old one's data and gets `runtime.onInstalled` with reason "update" and the old version as `previousVersion`. `WebExtensionInstallEventTests` pins this across three launches, and CI passes it on macOS 15 and 26. WebKit picks the reason as it loads a context (`determineInstallReasonDuringLoad`). A changed version always gets "update". For 5 s after the controller is made (`freshlyCreatedTimeout`), any other load counts as the browser starting and gets `runtime.onStartup`. After those 5 s, a load whose version did not change gets "install", even for an extension installed long ago. Chorus makes its controller at launch, and on 2026-11-15 Bitwarden and Consent-O-Matic loaded within 2 s of it, so they got `onStartup`. An extension loaded later hears "install" again: one that waits on a slow background or on a rollback, or one turned off and on. Bitwarden shows its welcome page only once, behind a flag in its storage, so a repeated "install" does no visible harm there; other extensions may differ. Whether to load every extension inside the 5 s is Nico's call (OPEN-ITEMS). A rollback is a second change of version, and anything the new version rewrote in its storage before it failed stays rewritten for the old one.
 
 **Grants during a trial.** The running context during a trial is the new version. Grant changes it reports are held until the trial ends: they replace the record's grants if the update lands, and are dropped if it rolls back or stops, so the old version keeps the grants it had.
+
+**A copy added by hand.** A record with no catalog id whose whole name, trimmed and case ignored, matches an entry's name or one in its `alsoNamed` list counts as a copy of that entry. Its row shows Added and "You added your own copy, so Chorus won't update it." Get refuses before it downloads, after the download, and at the confirm sheet. The copy keeps no catalog id and never updates, and no saved record changes. A record's name is WebKit's display name, which follows the extension's own translations, so Bitwarden's `alsoNamed` holds the 54 names in the `_locales` of 2026.10.2. The other entries match on their catalog name until someone reads their builds; a copy saved under another name still gets Get. Adding from a file next to the catalog's copy is still allowed.
 
 A toggle, "Update extensions automatically", on by default. With it off, the row shows "Update available" and a button.
 
@@ -78,12 +80,12 @@ Each package was imported through the real library and loaded by a throwaway eng
 | SponsorBlock | GitHub Chrome zip | LGPL-3.0 | 824,045 | Works, checked by hand |
 | Dark Reader | GitHub Chrome MV3 zip | MIT | 1,359,539 | Darkened the page; no errors |
 | Return YouTube Dislike | GitHub Chrome zip | GPL-3.0 | 883,929 | No errors |
-| uBlock Origin Lite | GitHub Chromium and Safari zips | GPL-3.0 | 22,311 | No errors; blocking not shown (see below) |
+| uBlock Origin Lite | GitHub Chromium and Safari zips | GPL-3.0 | 22,311 | Blocks requests and hides elements, checked by hand (see below) |
 | Consent-O-Matic | GitHub Chromium zip | MIT | 136,299 | No errors |
 | Obsidian Web Clipper | GitHub Chrome zip | MIT | 68,656 | No errors |
 | Simple Translate | AMO | MPL-2.0 | 249,839 | No errors |
 | To DeepL | AMO | MIT | 12,312 | No errors |
-| Read Aloud | AMO | GPL-3.0 | 230,453 | No errors; speech not tried |
+| Read Aloud | AMO | GPL-3.0 | 230,453 | Speaks, checked by hand (see below) |
 | DeArrow | GitHub Chrome zip | LGPL-3.0 | 34,530 | Works; one harmless error from messaging SponsorBlock |
 | Raindrop.io | AMO | MPL-2.0 | 43,774 | Loads; WebKit rejects a keyboard command in its manifest |
 | Proton Pass | AMO | GPL-3.0 | 197,273 | No errors since Chorus added `runtime.onUpdateAvailable` (2026-11-14); filling not tried |
@@ -91,7 +93,7 @@ Each package was imported through the real library and loaded by a throwaway eng
 | LanguageTool | AMO | proprietary | 316,419 | Background fails to parse in JavaScriptCore (`¶` at line 26); no `storage.managed` |
 | Grammarly | AMO | proprietary | 527,807 | Background errors and asks to talk to its Mac app |
 
-uBlock Origin Lite's blocking could not be shown on this Mac: something outside WebKit already refuses the ad and tag-manager hosts (curl fails on them too), so the control without uBOL was blocked as well. Try it on a Mac without that filter, or with a test page whose blocked host this Mac lets through.
+Both open checks passed in a Debug build on 2026-11-15, after a run in a test host. For uBlock Origin Lite, a page served from 127.0.0.1 fetched `c.wired.com`, a tracker in its default `easyprivacy` list that this Mac's network filter lets through, and `example.org` as a control. Without uBOL both loaded, with Chorus's own blocklist on. Seconds after Get, the tracker failed and the control still loaded, with no reload. In its default Optimal mode uBOL hides elements only on sites its lists name, so the page's ad elements stayed. In Complete mode, after a reload, it hid `#AD_300`, `.advertembed` and an `<ad-slot>` element, and the control element stayed. A test host could not show the hiding: uBOL applies it from `requestAnimationFrame`, and WebKit runs none for a page that is not on screen. Read Aloud's Firefox build has no `tts` permission. It speaks with `speechSynthesis` in its background page, in an offline system voice (Samantha on this Mac), and falls back to Google Translate voices played as audio. On the same page, pressing its button made Core Audio report the Chorus process playing sound for about 8 s; nothing else that was playing changed. The probes and the page are in `.remember/tmp/extension-probes/`, not committed.
 
 **Ruled out:**
 
@@ -106,12 +108,12 @@ uBlock Origin Lite's blocking could not be shown on this Mac: something outside 
 Tested clean, in order of how useful they are in Chorus:
 
 1. Bitwarden (passwords)
-2. uBlock Origin Lite (blocking and cosmetic filtering, beyond Chorus's own list), once blocking is shown
+2. uBlock Origin Lite (blocking and cosmetic filtering, beyond Chorus's own list)
 3. Consent-O-Matic (answers cookie banners)
 4. Simple Translate and To DeepL (translate a message in Slack, WhatsApp or Gmail)
 5. Obsidian Web Clipper (save a page or message to a vault)
 6. SponsorBlock, DeArrow, Return YouTube Dislike (for people who keep YouTube in Chorus)
-7. Read Aloud (once speech is tried)
+7. Read Aloud
 
 Add after a fix in `ExtensionCompatibility`, which already has the pattern: Proton Pass (stub `runtime.onUpdateAvailable`), Raindrop.io (check the bookmark button works despite the manifest warning). Violentmonkey stays out, and so does its `notifications.onClicked` stub (Nico, 2026-11-13).
 
@@ -137,4 +139,5 @@ Leave out Dark Reader: Chorus already offers Dark Reader per service, and two co
    - Refused update: with `tabs` taken out of the grants, 1.1.5 staged as "needs your OK", the review sheet listed the one new ask, and Skip This Version saved `skippedVersion` and deleted the staged folder.
    - Rollback: a staged 1.1.5 whose worker throws rolled back, and the row said so. This pass found that the old version then ran with no background for the rest of that session; fixed in `27c219a` (see "After a rollback the old version waits 12 s").
    - Remove deleted the record, its folder and its stored data.
-   Not covered by hand: Proton Pass filling, uBlock Origin Lite blocking, Read Aloud's speech and Raindrop's bookmark button. This doc already lists those as open. Unit tests cover the rest that the pass skipped: the Update button with automatic updates off, Allow Update in the review sheet, and the alerts for a list that fails to save.
+   Step 6 covers what this pass left.
+6. Checked by hand on 2026-11-15 in a Debug build, driven through Accessibility. With automatic updates off, the row showed "Version 1.1.5 is available" and Update; Update staged it, and the next launch swapped it in. With `tabs` taken out of the grants, Allow Update in the review sheet saved the OK, and the next launch installed 1.1.5 with `tabs` granted. With the list's folder read-only, Get showed "Chorus couldn't save its list of extensions, so it didn't add Proton Pass" and left the list and Packages as they were. The Bitwarden row showed Added and its caption, and the hand-added Bitwarden record did not change. uBlock Origin Lite's blocking and Read Aloud's speech are under the survey above. Only unit tests cover the alerts for a failed save in the review sheet and in Update Now. Proton Pass filling and Raindrop's bookmark button need real accounts and were not tried.
