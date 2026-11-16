@@ -77,6 +77,21 @@ final class ExtensionHandAddedCopyTests: XCTestCase {
         XCTAssertEqual(Set(bundled.alsoNamed ?? []).count, 54)
     }
 
+    /// The other entries' names, read from their tested builds by
+    /// `scripts/catalog_extension_names.py`: an AMO build and a GitHub build,
+    /// each with its English name and a French one, and Proton Pass's AMO
+    /// build, which has only an English one.
+    func testBundledEntriesKnowTheirBuildNames() throws {
+        let readAloud = try XCTUnwrap(ExtensionCatalog.bundled.entry(id: "read-aloud"))
+        XCTAssertTrue(readAloud.isNamed("Read Aloud: A Text to Speech Voice Reader"))
+        XCTAssertTrue(readAloud.isNamed("Read Aloud: Lecteur vocal de texte"))
+        let sponsorBlock = try XCTUnwrap(ExtensionCatalog.bundled.entry(id: "sponsorblock"))
+        XCTAssertTrue(sponsorBlock.isNamed("SponsorBlock for YouTube - Skip Sponsorships"))
+        XCTAssertTrue(sponsorBlock.isNamed("SponsorBlock pour YouTube - Supprime les publicités intégrées"))
+        let protonPass = try XCTUnwrap(ExtensionCatalog.bundled.entry(id: "proton-pass"))
+        XCTAssertTrue(protonPass.isNamed("Proton Pass: Free Password Manager"))
+    }
+
     func testEntryWithoutAlsoNamedStillDecodes() {
         let json = #"[{"id":"x","name":"X","summary":"S.","category":"privacy","licence":"MIT","testedVersion":"1.0","source":{"amo":{"slug":"x"}}}]"#
         let decoded = ExtensionCatalog.decode(Data(json.utf8))
@@ -84,14 +99,26 @@ final class ExtensionHandAddedCopyTests: XCTestCase {
         XCTAssertNil(decoded.entries.first?.alsoNamed)
     }
 
-    /// Two rows claiming one record would both hide Get for it.
+    /// Two rows claiming one record would both hide Get for it. Checked with
+    /// `isNamed` itself, so the comparison is the one the rows use.
     func testNoNameBelongsToTwoEntries() {
-        var owner: [String: String] = [:]
-        for entry in ExtensionCatalog.bundled.entries {
-            for name in Set(([entry.name] + (entry.alsoNamed ?? [])).map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }) {
-                XCTAssertNil(owner[name], "\(name) is on \(owner[name] ?? "") and \(entry.id)")
-                owner[name] = entry.id
+        let entries = ExtensionCatalog.bundled.entries
+        for entry in entries {
+            for name in [entry.name] + (entry.alsoNamed ?? []) {
+                let owners = entries.filter { $0.isNamed(name) }.map(\.id)
+                XCTAssertEqual(owners, [entry.id], "\(name) belongs to \(owners)")
             }
+        }
+    }
+
+    /// `alsoNamed` comes from the builds of one version. Bumping an entry's
+    /// `testedVersion` fails here until the names are read again with
+    /// `python3 -I scripts/catalog_extension_names.py` and `namesReadFrom`
+    /// is set to the new version.
+    func testNamesWereReadFromTheTestedVersion() {
+        for entry in ExtensionCatalog.bundled.entries {
+            XCTAssertEqual(entry.namesReadFrom, entry.testedVersion,
+                           "\(entry.id): rerun scripts/catalog_extension_names.py for \(entry.testedVersion)")
         }
     }
 

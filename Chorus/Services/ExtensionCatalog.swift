@@ -39,6 +39,10 @@ struct ExtensionCatalogEntry: Codable, Identifiable, Sendable, Equatable {
     /// real package. A `var` with a default so the decoder reads it and
     /// entries without it still load.
     var alsoNamed: [String]? = nil
+    /// The version whose builds `alsoNamed` was read from, by
+    /// `scripts/catalog_extension_names.py`. A test holds it equal to
+    /// `testedVersion`, so a bump fails until someone reads the new builds.
+    var namesReadFrom: String? = nil
 
     /// Whether `name` is one this entry's builds use: the whole name, trimmed,
     /// case ignored. Never a prefix: "Bitwarden Authenticator" is another
