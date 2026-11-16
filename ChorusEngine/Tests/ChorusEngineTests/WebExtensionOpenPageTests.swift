@@ -144,7 +144,15 @@ final class WebExtensionOpenPageTests: XCTestCase {
         let reloaded = try await answerAfterReload(page)
         print("OPEN-PAGE-PROBE opened during the hold, after reload: \(reloaded ?? "nil")")
         XCTAssertEqual(pong(reloaded), 1, "the page reaches the background")
-        XCTAssertEqual(field("created", reloaded), 1, "one page, one tabs.onCreated")
+        // Never announced twice. macOS 27 queues the tabs.onCreated sent while
+        // the worker was held and delivers it; 15 and 26 drop it (CI,
+        // 2026-11-16), as they drop a message to a background still starting.
+        let created = try XCTUnwrap(field("created", reloaded))
+        if #available(macOS 27, *) {
+            XCTAssertEqual(created, 1, "one page, one tabs.onCreated")
+        } else {
+            XCTAssertLessThanOrEqual(created, 1, "one page, at most one tabs.onCreated")
+        }
         host.pageClosed(page)
         host.unload(record.id)
     }
