@@ -34,6 +34,19 @@ extension ExtensionManager {
         records.contains { $0.catalogID == catalogID }
     }
 
+    /// A record the user added by hand under one of `entry`'s names, on or
+    /// off, from a file or a Mac app. Never adopted: it keeps no catalog id,
+    /// so it never updates.
+    func handAddedCopy(of entry: ExtensionCatalogEntry) -> WebExtensionRecord? {
+        records.first { $0.catalogID == nil && entry.isNamed($0.name) }
+    }
+
+    /// The catalog's copy of `entry`, or one added by hand, is in the list,
+    /// so Get must not add another.
+    func isAdded(_ entry: ExtensionCatalogEntry) -> Bool {
+        isAdded(catalogID: entry.id) || handAddedCopy(of: entry) != nil
+    }
+
     /// What a downloaded version asks for beyond `record`'s grants. Throws
     /// `ExtensionError.unsupported` below macOS 15.4.
     func reviewUpdate(folder: String, version: String,

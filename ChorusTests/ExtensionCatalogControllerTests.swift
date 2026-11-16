@@ -389,6 +389,83 @@ final class ExtensionCatalogControllerTests: XCTestCase {
         XCTAssertNil(controller.pendingInstall)
     }
 
+    // MARK: - A copy added by hand
+
+    /// `saveRecords` names its records "Probe", the catalog entry's name, so a
+    /// record with no catalog id is a copy the user added by hand.
+    func testGetRefusesWhenAHandAddedCopyExists() async throws {
+        _ = try saveRecords([(nil, true)])
+        let network = StubNetwork(scratch: root)
+        try publish("2.0", on: network)
+        let controller = makeController(makeManager(), network: network)
+
+        try await controller.get(probe)
+
+        XCTAssertTrue(network.requests.isEmpty, "nothing is downloaded")
+        XCTAssertNil(controller.pendingInstall)
+        XCTAssertNil(controller.gettingID)
+    }
+
+    func testGetDiscardsTheDownloadWhenACopyIsAddedMeanwhile() async throws {
+        try requireExtensions()
+        let gate = DownloadGate()
+        let network = StubNetwork(scratch: root, downloadGate: gate)
+        try publish("2.0", on: network)
+        let manager = makeManager()
+        let controller = makeController(manager, network: network)
+
+        let getting = Task { try await controller.get(probe) }
+        try await gate.waitForArrivals(1)
+        let copy = try await addByHand(manager)
+        await gate.open()
+        try await getting.value
+
+        XCTAssertNil(controller.pendingInstall)
+        XCTAssertEqual(library.loadRecords().map(\.id), [copy.id])
+        XCTAssertEqual(packages, namedFolders, "the download is deleted, the copy's folder kept")
+    }
+
+    func testFinishInstallDropsTheDownloadWhenACopyAppeared() async throws {
+        try requireExtensions()
+        let network = StubNetwork(scratch: root)
+        try publish("2.0", on: network)
+        let manager = makeManager()
+        let controller = makeController(manager, network: network)
+
+        try await controller.get(probe)
+        XCTAssertNotNil(controller.pendingInstall, "precondition: the download waits at the sheet")
+        let copy = try await addByHand(manager)
+        try await controller.finishInstall(agreed: true)
+
+        XCTAssertEqual(library.loadRecords().map(\.id), [copy.id], "no second copy is added")
+        XCTAssertEqual(packages, namedFolders, "the download is deleted, the copy's folder kept")
+    }
+
+    /// The copy is not adopted: Get and the daily pass leave its record as
+    /// saved, with no catalog id and no update.
+    func testHandAddedCopyIsNeverCheckedOrAdopted() async throws {
+        let saved = try saveRecords([(nil, true)])
+        let network = StubNetwork(scratch: root)
+        try publish("2.0", on: network)
+        let controller = makeController(makeManager(), network: network)
+
+        try await controller.get(probe)
+        let outcome = await controller.runPass()
+
+        XCTAssertEqual(outcome, .complete)
+        XCTAssertTrue(network.requests.isEmpty)
+        XCTAssertEqual(library.loadRecords(), saved)
+    }
+
+    /// Adds a "Probe" from a file, as Add from a Folder or File does.
+    private func addByHand(_ manager: ExtensionManager) async throws -> WebExtensionRecord {
+        let source = WebExtensionRecord.Source.package(folder: try makePackage(version: "1.0"))
+        let summary = WebExtensionSummary(name: "Probe", version: "1.0", summary: nil, icon: nil, permissions: ["storage"],
+                                          matchPatterns: [], needsNativeApp: false, problems: [])
+        let added = await manager.add(source, summary: summary)
+        return try XCTUnwrap(added)
+    }
+
     // MARK: - Review fixes
 
     /// R2 runs after the review's await: the toggle turned off while WebKit

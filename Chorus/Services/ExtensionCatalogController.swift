@@ -338,7 +338,7 @@ final class ExtensionCatalogController {
     /// Downloads and reads the latest release of `entry`, then asks the user
     /// through `pendingInstall`. Throws to the view, which shows an alert.
     func get(_ entry: ExtensionCatalogEntry) async throws {
-        guard gettingID == nil, pendingInstall == nil, !manager.isAdded(catalogID: entry.id) else { return }
+        guard gettingID == nil, pendingInstall == nil, !manager.isAdded(entry) else { return }
         gettingID = entry.id
         defer { gettingID = nil }
 
@@ -352,7 +352,7 @@ final class ExtensionCatalogController {
             manager.discard(source)
             throw error
         }
-        guard !manager.isAdded(catalogID: entry.id), pendingInstall == nil else {
+        guard !manager.isAdded(entry), pendingInstall == nil else {
             manager.discard(source)
             return
         }
@@ -366,6 +366,11 @@ final class ExtensionCatalogController {
         guard let pending = pendingInstall else { return }
         pendingInstall = nil
         guard agreed else {
+            manager.discard(pending.source)
+            return
+        }
+        // A copy added by hand while the sheet was up: no second one.
+        if let entry = pending.catalog?.entry, manager.handAddedCopy(of: entry) != nil {
             manager.discard(pending.source)
             return
         }

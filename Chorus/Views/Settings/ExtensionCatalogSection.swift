@@ -75,6 +75,10 @@ struct ExtensionCatalogRow: View {
                 Text(entry.name)
                 Text(entry.summary).font(.caption).foregroundStyle(.secondary)
                 Text("\(entry.publisherLine) \u{00B7} \(entry.licence)").font(.caption2).foregroundStyle(.tertiary)
+                if hasHandAddedCopy {
+                    Text("You added your own copy, so Chorus won't update it.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
                 if let gap = entry.knownGaps {
                     Text(gap).font(.caption2).foregroundStyle(.secondary)
                 }
@@ -84,9 +88,15 @@ struct ExtensionCatalogRow: View {
         }
     }
 
+    /// The user added this extension themselves, from a file or a Mac app.
+    private var hasHandAddedCopy: Bool {
+        appState.extensions.handAddedCopy(of: entry) != nil
+    }
+
     @ViewBuilder
     private var trailing: some View {
-        if appState.extensions.isAdded(catalogID: entry.id) {
+        // The same check Get makes, so the row never offers what Get refuses.
+        if appState.extensions.isAdded(entry) {
             Text("Added").foregroundStyle(.secondary)
         } else if controller.gettingID == entry.id {
             HStack(spacing: 4) {

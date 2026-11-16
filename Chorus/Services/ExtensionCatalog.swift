@@ -34,6 +34,22 @@ struct ExtensionCatalogEntry: Codable, Identifiable, Sendable, Equatable {
     /// One sentence on what does not work in Chorus, shown on the row and in
     /// the confirm sheet.
     let knownGaps: String?
+    /// Other names this entry's builds give themselves (WebKit's display
+    /// name), so a copy the user added by hand is known. Fill only from a
+    /// real package. A `var` with a default so the decoder reads it and
+    /// entries without it still load.
+    var alsoNamed: [String]? = nil
+
+    /// Whether `name` is one this entry's builds use: the whole name, trimmed,
+    /// case ignored. Never a prefix: "Bitwarden Authenticator" is another
+    /// product.
+    func isNamed(_ name: String) -> Bool {
+        let key = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return false }
+        return ([self.name] + (alsoNamed ?? [])).contains {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(key) == .orderedSame
+        }
+    }
 
     /// Where the download comes from, in words.
     var publisherLine: String {

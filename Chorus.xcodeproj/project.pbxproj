@@ -42,6 +42,7 @@
 		3DEA98A98656EE981A29A71D /* FindInPageBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76865DDEE671C34CC88CF4D8 /* FindInPageBar.swift */; };
 		4B199EBC47BA21CE22ECC893 /* EmojiData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EDCAF66B6DD05BA3A244E9E /* EmojiData.swift */; };
 		4C95B602B3097401742080B7 /* GlobalPlacement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61D8B069E893E608C90E82EF /* GlobalPlacement.swift */; };
+		5338BD1AF788A3EC8DBB526C /* ExtensionHandAddedCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CC700D9960754C60F6B6106 /* ExtensionHandAddedCopyTests.swift */; };
 		53C0B5A438EDC6C98FE081AB /* QuickSwitcherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA55A0E026084DC20071FBCE /* QuickSwitcherView.swift */; };
 		55EB9803E173D7403440FE75 /* WebViewParkingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 066EC81D9428BF77729C8F2C /* WebViewParkingTests.swift */; };
 		574D2E066D5F6F08667BDA8C /* ExtensionRowStatusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F435F75DBE8806EEB5EDA31 /* ExtensionRowStatusTests.swift */; };
@@ -168,6 +169,7 @@
 		27EB375EFD53279743961EC0 /* ExtensionTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionTestSupport.swift; sourceTree = "<group>"; };
 		288DEBD3535A7B48F3D5D841 /* ServiceCSSDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceCSSDefaults.swift; sourceTree = "<group>"; };
 		29C26C37D627ADE04B904988 /* SheetQuit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SheetQuit.swift; sourceTree = "<group>"; };
+		2CC700D9960754C60F6B6106 /* ExtensionHandAddedCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionHandAddedCopyTests.swift; sourceTree = "<group>"; };
 		311EEF2D99711EA929371A79 /* ChorusSchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChorusSchema.swift; sourceTree = "<group>"; };
 		312995FF05808961FD519D76 /* SpaceServiceLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceServiceLink.swift; sourceTree = "<group>"; };
 		313680424148829FCBEAA9BC /* ModelContext+Save.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ModelContext+Save.swift"; sourceTree = "<group>"; };
@@ -555,6 +557,7 @@
 				A57E5D591EBF1C07CB81460D /* CountPulseTests.swift */,
 				D99D428139619162317CF0BE /* ExtensionCatalogControllerTests.swift */,
 				EA09EFB0553446E21A75E512 /* ExtensionCatalogTests.swift */,
+				2CC700D9960754C60F6B6106 /* ExtensionHandAddedCopyTests.swift */,
 				98D6477E92C87920116ECA9F /* ExtensionManagerTests.swift */,
 				5F435F75DBE8806EEB5EDA31 /* ExtensionRowStatusTests.swift */,
 				9525DEA55F86581C17A6E1AE /* ExtensionStagingTests.swift */,
@@ -781,6 +784,7 @@
 				3047D7319F96D9895287FB49 /* CountPulseTests.swift in Sources */,
 				A9B9D9D7721E44E3E3BA863A /* ExtensionCatalogControllerTests.swift in Sources */,
 				3942E43905D03A8C912BED41 /* ExtensionCatalogTests.swift in Sources */,
+				5338BD1AF788A3EC8DBB526C /* ExtensionHandAddedCopyTests.swift in Sources */,
 				946503C9D9D2089636EBB23C /* ExtensionManagerTests.swift in Sources */,
 				574D2E066D5F6F08667BDA8C /* ExtensionRowStatusTests.swift in Sources */,
 				B3CAE679F056ABF3139FCCBF /* ExtensionStagingTests.swift in Sources */,
