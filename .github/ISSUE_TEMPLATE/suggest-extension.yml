@@ -1,0 +1,31 @@
+name: Suggest an extension
+description: Ask for an extension to join the list in Settings > Extensions.
+title: "Extension: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Chorus can list an extension only when its publisher posts it on GitHub, as a release with a Chrome build, or on addons.mozilla.org. Chorus can't use the Chrome Web Store.
+  - type: input
+    id: name
+    attributes:
+      label: Extension name
+      placeholder: Bitwarden
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Where the publisher posts it
+      description: A link to its GitHub releases page or its addons.mozilla.org page.
+      placeholder: https://github.com/bitwarden/clients/releases
+    validations:
+      required: true
+  - type: textarea
+    id: use
+    attributes:
+      label: What you would use it for
+      description: Optional. Which services would you use it with? We'll try it with those.
+    validations:
+      required: false

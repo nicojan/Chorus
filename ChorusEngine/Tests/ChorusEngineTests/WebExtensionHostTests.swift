@@ -26,9 +26,11 @@ final class WebExtensionHostTests: XCTestCase {
     /// background for a reply, and a toolbar button. `asksForAgent` makes the
     /// content script ask for the background's user agent instead;
     /// `opensSocket` makes the background open a WebSocket to a closed port
-    /// and answer when it closes.
+    /// and answer when it closes; `listensForUpdates` makes the background
+    /// listen to `runtime.onUpdateAvailable` as it starts, as Proton Pass does.
     private func makeProbe(extraPermissions: [String] = [], asksForAgent: Bool = false, opensSocket: Bool = false,
-                           asksForDispose: Bool = false, injects: Bool = false, copies: String? = nil) throws -> String {
+                           asksForDispose: Bool = false, injects: Bool = false, copies: String? = nil,
+                           listensForUpdates: Bool = false) throws -> String {
         let folder = root.appending(path: "probe", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let permissions = (["storage"] + extraPermissions).map { "\"\($0)\"" }.joined(separator: ", ")
@@ -43,7 +45,18 @@ final class WebExtensionHostTests: XCTestCase {
         """
         try Data(manifest.utf8).write(to: folder.appending(path: "manifest.json"))
         try Data("""
+        const onUpdate = () => {};
+        if (\(listensForUpdates)) {
+          chrome.runtime.onUpdateAvailable.addListener(onUpdate);
+          browser.runtime.onUpdateAvailable.addListener(onUpdate);
+        }
         browser.runtime.onMessage.addListener((msg, sender, send) => {
+          if (msg.updates) {
+            const events = [chrome.runtime.onUpdateAvailable, browser.runtime.onUpdateAvailable];
+            const listening = events.every((event) => event.hasListener(onUpdate) && event.hasListeners());
+            events.forEach((event) => event.removeListener(onUpdate));
+            return send({listening, removed: events.every((event) => !event.hasListener(onUpdate) && !event.hasListeners())});
+          }
           if (\(opensSocket)) {
             const socket = new WebSocket('wss://127.0.0.1:44301/');
             socket.onclose = (event) => send({pong: 1, closed: event.code});
@@ -78,7 +91,7 @@ final class WebExtensionHostTests: XCTestCase {
             })().then((r) => send({copy: r}), (e) => send({copy: 'err ' + e.message}));
             return true;
           }
-          if (msg.world) return send({world: typeof (chrome.scripting && chrome.scripting.ExecutionWorld), contains: chrome.permissions.contains.name});
+          if (msg.world) return send({world: typeof (chrome.scripting && chrome.scripting.ExecutionWorld), contains: chrome.permissions.contains.name, update: typeof (chrome.runtime.onUpdateAvailable && chrome.runtime.onUpdateAvailable.addListener)});
           if (msg.dispose) return send({dispose: typeof Symbol.dispose, asyncDispose: typeof Symbol.asyncDispose});
           send(msg.ua ? {ua: navigator.userAgent, pinned: String(!/\\[native code\\]/.test(String(Object.getOwnPropertyDescriptor(Object.getPrototypeOf(navigator), "userAgent").get)))} : {pong: 1});
         });
@@ -86,11 +99,12 @@ final class WebExtensionHostTests: XCTestCase {
         try Data("""
         document.documentElement.setAttribute('data-probe', 'ran');
         document.documentElement.setAttribute('data-probe-dispose', typeof Symbol.dispose);
+        document.documentElement.setAttribute('data-probe-update-event', typeof browser.runtime.onUpdateAvailable + ',' + typeof chrome.runtime.onUpdateAvailable);
         document.addEventListener('probe-churn', () => browser.runtime.sendMessage({churn: 1})
           .then(r => document.documentElement.setAttribute('data-probe-churn', JSON.stringify(r))));
         document.addEventListener('probe-ask-world', () => browser.runtime.sendMessage({world: 1})
           .then(r => document.documentElement.setAttribute('data-probe-world', JSON.stringify(r))));
-        browser.runtime.sendMessage(\(asksForAgent ? "{ua: 1}" : asksForDispose ? "{dispose: 1}" : injects ? "{inject: 1}" : copies.map { "{copy: '\($0)'}" } ?? "{ping: 1}"))
+        browser.runtime.sendMessage(\(asksForAgent ? "{ua: 1}" : asksForDispose ? "{dispose: 1}" : injects ? "{inject: 1}" : listensForUpdates ? "{updates: 1}" : copies.map { "{copy: '\($0)'}" } ?? "{ping: 1}"))
           .then(r => document.documentElement.setAttribute('data-probe-bg', r === undefined ? 'no reply' : JSON.stringify(r)))
           .catch(e => document.documentElement.setAttribute('data-probe-bg', 'err ' + e));
         """.utf8).write(to: folder.appending(path: "cs.js"))
@@ -118,6 +132,9 @@ final class WebExtensionHostTests: XCTestCase {
         """.utf8).write(to: folder.appending(path: "offscreen.js"))
         try Data("""
         document.title = typeof Symbol.dispose;
+        window.updateEvent = [chrome.runtime.onUpdateAvailable, browser.runtime.onUpdateAvailable]
+          .map(event => event ? ['addListener', 'removeListener', 'hasListener', 'hasListeners'].map(name => typeof event[name]).join(',') : 'missing')
+          .join(' | ');
         window.permissionAnswers = Promise.all(['privacy', 'nativeMessaging', 'storage', 'tabs'].map(name =>
           new Promise(resolve => {
             try { chrome.permissions.contains({permissions: [name]}, r => resolve(name + '=' + r)); }
@@ -332,6 +349,42 @@ final class WebExtensionHostTests: XCTestCase {
         host.unload(record.id)
     }
 
+    /// Proton Pass listens to `runtime.onUpdateAvailable` as its background
+    /// starts. WebKit has no such event, so the call threw and the background
+    /// stopped. Chorus updates extensions itself, so the event never fires;
+    /// extension pages have it too, as in Chrome, and content scripts do not.
+    func testBackgroundCanListenForUpdates() async throws {
+        guard #available(macOS 15.4, *) else { throw XCTSkip("Web extensions need macOS 15.4") }
+        let host = WebExtensionHost(storageIdentifier: nil)
+        host.isActive = true
+        let record = record(folder: try makeProbe(listensForUpdates: true))
+        try await host.load(record, library: library)
+        host.contexts[record.id]?.hasAccessToPrivateData = true
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        host.attach(to: configuration)
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
+        host.pageOpened(webView, service: UUID())
+        host.pageActivated(webView)
+        webView.loadHTMLString("<html><body>page</body></html>", baseURL: URL(string: "https://example.com/")!)
+
+        let reply = try await poll(webView, "document.documentElement.getAttribute('data-probe-bg')")
+        XCTAssertEqual(object(reply), ["listening": true, "removed": true],
+                       "the background started and its listener came and went: \(reply ?? "nil"); errors: \(host.problems(for: record.id))")
+        let contentScript = try await poll(webView, "document.documentElement.getAttribute('data-probe-update-event')")
+        XCTAssertEqual(contentScript, "undefined,undefined", "content scripts do not get the event on browser or chrome, as in Chrome")
+
+        let context = try XCTUnwrap(host.contexts[record.id])
+        let extensionPage = WKWebView(frame: .zero, configuration: try XCTUnwrap(context.webViewConfiguration))
+        extensionPage.load(URLRequest(url: context.baseURL.appending(path: "page.html")))
+        let pageResult = try await poll(extensionPage, "location.href.endsWith('page.html') && document.readyState === 'complete' ? window.updateEvent : null")
+        let functions = "function,function,function,function"
+        XCTAssertEqual(pageResult, "\(functions) | \(functions)", "an extension page has the event on chrome and browser")
+
+        host.pageClosed(webView)
+        host.unload(record.id)
+    }
+
     /// Bitwarden fills a login by injecting its scripts with
     /// `chrome.scripting.executeScript`, naming the world through
     /// `chrome.scripting.ExecutionWorld`, which WebKit does not define.
@@ -387,13 +440,13 @@ final class WebExtensionHostTests: XCTestCase {
             return try await poll(webView, "document.documentElement.getAttribute('data-probe-world')")
         }
         let before = try await askWorld()
-        XCTAssertEqual(object(before), ["world": "object", "contains": "answer"], before ?? "nil")
+        XCTAssertEqual(object(before), ["world": "object", "contains": "answer", "update": "function"], before ?? "nil")
 
         _ = try await webView.evaluateJavaScript("document.dispatchEvent(new Event('probe-churn')); 1")
         let churned = try await poll(webView, "document.documentElement.getAttribute('data-probe-churn')", timeout: 60)
         XCTAssertEqual(object(churned), ["churned": true])
         let after = try await askWorld()
-        XCTAssertEqual(object(after), ["world": "object", "contains": "answer"], after ?? "nil")
+        XCTAssertEqual(object(after), ["world": "object", "contains": "answer", "update": "function"], after ?? "nil")
 
         host.pageClosed(webView)
         host.unload(record.id)

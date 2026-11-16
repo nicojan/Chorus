@@ -15,6 +15,7 @@ public struct WebExtensionLibrary: Sendable {
         case unsupportedArchive
         case extractionFailed(String)
         case containsLinks
+        case tooLarge
 
         public var errorDescription: String? {
             switch self {
@@ -30,11 +31,17 @@ public struct WebExtensionLibrary: Sendable {
                 return "Chorus couldn't unpack the archive. \(detail)"
             case .containsLinks:
                 return "The extension contains links to files outside it, which Chorus doesn't allow."
+            case .tooLarge:
+                return "The extension would take more than 500 MB unpacked. Chorus didn't open it."
             }
         }
     }
 
     public let directory: URL
+
+    /// The most an archive may unpack to. The largest extension Chorus has
+    /// seen, Bitwarden, is under a fifth of this.
+    public static let maxUnpackedBytes = 500_000_000
 
     public init(directory: URL) {
         self.directory = directory
@@ -45,19 +52,43 @@ public struct WebExtensionLibrary: Sendable {
 
     // MARK: - Records
 
-    /// The saved records, or none when there is no file yet. A file that will
-    /// not decode is moved aside rather than overwritten by the next save, so a
-    /// newer format or a damaged file can still be looked at.
+    /// The saved records, or none when there is no file yet. A file that
+    /// cannot be read or will not decode is moved aside rather than
+    /// overwritten by the next save, so a newer format or a damaged file can
+    /// still be looked at, and the launch sweep leaves the packages alone.
     public func loadRecords() -> [WebExtensionRecord] {
-        guard let data = try? Data(contentsOf: recordsFile) else { return [] }
+        let data: Data
+        do {
+            data = try Data(contentsOf: recordsFile)
+        } catch {
+            if Self.isMissingFile(error) { return [] }
+            setListAside(error)
+            return []
+        }
         do {
             return try JSONDecoder.library.decode([WebExtensionRecord].self, from: data)
         } catch {
-            let aside = directory.appending(path: "extensions.unreadable-\(Int(Date().timeIntervalSince1970)).json")
-            try? FileManager.default.moveItem(at: recordsFile, to: aside)
-            AppLogger.extensions.error("Extension list unreadable, moved aside: \(error.localizedDescription, privacy: .public)")
+            setListAside(error)
             return []
         }
+    }
+
+    private func setListAside(_ error: Error) {
+        let aside = directory.appending(path: "extensions.unreadable-\(Int(Date().timeIntervalSince1970)).json")
+        do {
+            try FileManager.default.moveItem(at: recordsFile, to: aside)
+            AppLogger.extensions.error("Extension list unreadable, moved aside: \(error.localizedDescription, privacy: .public)")
+        } catch let moveError {
+            AppLogger.extensions.error("Extension list unreadable (\(error.localizedDescription, privacy: .public)) and not moved aside: \(moveError.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// No file there, as opposed to a file that would not read.
+    private static func isMissingFile(_ error: Error) -> Bool {
+        let error = error as NSError
+        if error.domain == NSCocoaErrorDomain, error.code == NSFileReadNoSuchFileError { return true }
+        if error.domain == NSPOSIXErrorDomain, error.code == Int(ENOENT) { return true }
+        return false
     }
 
     public func saveRecords(_ records: [WebExtensionRecord]) throws {
@@ -107,13 +138,28 @@ public struct WebExtensionLibrary: Sendable {
     }
 
     /// Deletes package folders no record names. Does nothing while an
-    /// unreadable list sits in the folder: its records may name them.
+    /// unreadable list sits in the folder, moved aside or not: its records
+    /// may name them.
     public func removeUnusedPackages(keeping folders: Set<String>) {
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        let fm = FileManager.default
+        let names = (try? fm.contentsOfDirectory(atPath: directory.path)) ?? []
         guard !names.contains(where: { $0.hasPrefix("extensions.unreadable-") }) else { return }
+        guard !fm.fileExists(atPath: recordsFile.path) || fm.isReadableFile(atPath: recordsFile.path) else { return }
         let present = (try? FileManager.default.contentsOfDirectory(atPath: packagesDirectory.path)) ?? []
         for name in present where !folders.contains(name) {
             removePackage(folder: name)
+        }
+    }
+
+    /// Deletes the package folders `old` named and `new` does not, once
+    /// `new` is saved. The one way to delete a folder during a session:
+    /// `removeUnusedPackages` would also take a package waiting at the Add
+    /// confirmation, which no record names yet.
+    public func removePackages(releasedFrom old: [WebExtensionRecord], to new: [WebExtensionRecord]) {
+        let kept = Set(new.flatMap(\.packageFolders))
+        let released = Set(old.flatMap(\.packageFolders)).subtracting(kept)
+        for folder in released {
+            removePackage(folder: folder)
         }
     }
 
@@ -187,29 +233,50 @@ public struct WebExtensionLibrary: Sendable {
         default:
             throw ImportError.unsupportedArchive
         }
+        guard try unpackedSize(ofZip: zip) <= maxUnpackedBytes else { throw ImportError.tooLarge }
         try runDitto(zip: zip, destination: destination)
     }
 
+    /// The total the zip's directory says its files unpack to, from
+    /// `zipinfo -t` ("12 files, 3456 bytes uncompressed, …"). A crafted zip can
+    /// understate this, so it stops an honest mistake or a crude bomb, not a
+    /// determined one.
+    static func unpackedSize(ofZip zip: URL) throws -> Int {
+        let output = try run("/usr/bin/zipinfo", ["-t", zip.path])
+        guard let match = output.firstMatch(of: /(\d+) bytes uncompressed/), let bytes = Int(match.1) else {
+            throw ImportError.extractionFailed("Chorus couldn't read the archive's contents list.")
+        }
+        return bytes
+    }
+
     private static func runDitto(zip: URL, destination: URL) throws {
+        _ = try run("/usr/bin/ditto", ["-x", "-k", zip.path, destination.path])
+    }
+
+    /// Runs a tool and returns what it printed. Errors share the pipe, so a
+    /// tool that fails reports its complaint and one pipe never sits full
+    /// while this waits on the other.
+    private static func run(_ tool: String, _ arguments: [String]) throws -> String {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        process.arguments = ["-x", "-k", zip.path, destination.path]
-        let errors = Pipe()
-        process.standardError = errors
-        process.standardOutput = FileHandle.nullDevice
+        process.executableURL = URL(fileURLWithPath: tool)
+        process.arguments = arguments
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
         do {
             try process.run()
         } catch {
             throw ImportError.extractionFailed(error.localizedDescription)
         }
         // Read to the end before waiting: a full pipe would otherwise stop
-        // ditto mid-write while this waits for it to exit.
-        let errorOutput = errors.fileHandleForReading.readDataToEndOfFile()
+        // the tool mid-write while this waits for it to exit.
+        let data = output.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
+        let text = String(data: data, encoding: .utf8) ?? ""
         guard process.terminationStatus == 0 else {
-            let detail = String(data: errorOutput, encoding: .utf8) ?? ""
-            throw ImportError.extractionFailed(detail.trimmingCharacters(in: .whitespacesAndNewlines))
+            throw ImportError.extractionFailed(text.trimmingCharacters(in: .whitespacesAndNewlines))
         }
+        return text
     }
 
     /// The zip inside a Chrome .crx: a "Cr24" header, a version, then either a
