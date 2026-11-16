@@ -65,6 +65,15 @@ import Foundation
 ///    This turns off Proton's own lock in Chorus: other code in its pages
 ///    can read the API again. Its own code is unchanged.
 ///
+/// 9. WKWebView leaves `requestIdleCallback` off, and Chrome and Firefox
+///    have it. Proton Pass's page script waits on it before it looks for
+///    login forms, so the call threw and it never looked. In extension
+///    windows the script adds a stand-in built on `setTimeout`, with
+///    `cancelIdleCallback`; a site's own world and workers are left alone.
+///    A script the extension injects by code shares its content scripts'
+///    world, so it gets the stand-in once a manifest content script ran
+///    there, as Proton Pass's does.
+///
 /// The script loads first in the service worker (through a new entry file),
 /// in every HTML page, in background scripts and ahead of each content script.
 /// Safari extensions inside an app are signed and left alone.
@@ -185,31 +194,67 @@ enum ExtensionCompatibility {
       const held = [];
       Object.defineProperty(globalThis, "__chorusCompatibilityObjects", { value: held });
 
+      // WebKit's API object when this world belongs to the extension: its
+      // pages, its background and its isolated content scripts. Null in a
+      // site's own world, where a MAIN-world content script also runs this
+      // and `browser`, if any, has no `runtime.getURL` naming the extension.
+      const extensionAPI = (() => {
+        try {
+          const api = globalThis.browser;
+          const runtime = api && api.runtime;
+          const named = runtime && typeof runtime.getURL === "function"
+            && String(runtime.getURL("/")).startsWith("webkit-extension:");
+          return named ? api : null;
+        } catch (error) {
+          return null;
+        }
+      })();
+
       // WebKit hands each event to a page by reading the page's `browser`
       // global, then `chrome`, and skips the page when neither is its own API
       // object. Proton Pass swaps both for Proxies just after it starts and
       // keeps a reference of its own, so its background never heard its
       // popup. In an extension world both names keep WebKit's object, and
-      // writes to them do nothing, without throwing in strict code. A site's
-      // main world, where a MAIN-world content script runs this, is left
-      // alone: its `browser`, if any, has no `runtime.getURL` that names the
-      // extension.
+      // writes to them do nothing, without throwing in strict code.
       try {
-        const own = globalThis.browser;
-        const runtime = own && own.runtime;
-        if (runtime && typeof runtime.getURL === "function"
-            && String(runtime.getURL("/")).startsWith("webkit-extension:")) {
-          for (const name of ["browser", "chrome"]) {
-            if (globalThis[name] !== own) continue;
-            const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
-            if (descriptor && !descriptor.configurable) continue;
-            Object.defineProperty(globalThis, name, {
-              get() { return own; },
-              set(value) {},
-              enumerable: descriptor ? descriptor.enumerable : true,
-              configurable: true
-            });
-          }
+        for (const name of extensionAPI ? ["browser", "chrome"] : []) {
+          if (globalThis[name] !== extensionAPI) continue;
+          const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
+          if (descriptor && !descriptor.configurable) continue;
+          Object.defineProperty(globalThis, name, {
+            get() { return extensionAPI; },
+            set(value) {},
+            enumerable: descriptor ? descriptor.enumerable : true,
+            configurable: true
+          });
+        }
+      } catch (error) {}
+
+      // WKWebView leaves `requestIdleCallback` off; Chrome and Firefox have
+      // it in every window. Proton Pass's page script waits on it before it
+      // looks for login forms, so it threw and never looked. Added in an
+      // extension world that has a window, and in no worker. A script the
+      // extension injects by code gets it when a manifest content script ran
+      // in that world first, as Proton Pass's does. Each callback runs on the
+      // next timer turn with up to 50 ms to work in, in the order asked.
+      try {
+        if (extensionAPI && typeof window !== "undefined" && typeof globalThis.requestIdleCallback !== "function") {
+          const idleBudget = 50;
+          const requestIdleCallback = function requestIdleCallback(callback, options) {
+            if (typeof callback !== "function") {
+              throw new TypeError("requestIdleCallback needs a function");
+            }
+            return setTimeout(() => {
+              const start = performance.now();
+              callback({
+                didTimeout: false,
+                timeRemaining() { return Math.max(0, idleBudget - (performance.now() - start)); }
+              });
+            }, 1);
+          };
+          const cancelIdleCallback = function cancelIdleCallback(handle) { clearTimeout(handle); };
+          Object.defineProperty(globalThis, "requestIdleCallback", { value: requestIdleCallback, writable: true, configurable: true });
+          Object.defineProperty(globalThis, "cancelIdleCallback", { value: cancelIdleCallback, writable: true, configurable: true });
         }
       } catch (error) {}
 
