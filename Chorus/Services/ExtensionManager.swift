@@ -176,14 +176,14 @@ final class ExtensionManager {
     }
 
     /// Starts one record, for an add or a turn-on.
-    private func start(_ record: WebExtensionRecord) async {
+    private func start(_ record: WebExtensionRecord, isNewlyAdded: Bool = false) async {
         beginStart(record.id)
-        await runStart(record.id)
+        await runStart(record.id, isNewlyAdded: isNewlyAdded)
     }
 
     /// Starts the current copy of the record, trying its staged update first
     /// when one is ready. Ends the start `beginStart` counted.
-    private func runStart(_ id: UUID) async {
+    private func runStart(_ id: UUID, isNewlyAdded: Bool = false) async {
         // Before the availability guard, so the count balances on any OS.
         defer { endStart(id) }
         // A start that owns this id's trial will load it.
@@ -196,7 +196,7 @@ final class ExtensionManager {
         // trial used up the cancellation, so stop rather than load the old one.
         guard let current = record(id), current.isEnabled else { return }
         do {
-            try await host.load(current, library: library)
+            try await host.load(current, library: library, isNewlyAdded: isNewlyAdded)
             failures = failures.filter { $0.key != id }
             // Turned off or removed while it loaded.
             if record(id)?.isEnabled != true {
@@ -338,7 +338,7 @@ final class ExtensionManager {
             return nil
         }
         activateIfFirst()
-        await start(record)
+        await start(record, isNewlyAdded: true)
         return record
     }
 

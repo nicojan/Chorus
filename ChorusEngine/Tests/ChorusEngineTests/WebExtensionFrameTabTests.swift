@@ -85,16 +85,14 @@ final class WebExtensionFrameTabTests: XCTestCase {
         host.isActive = true
         let record = try makeRecord()
         try await host.load(record, library: library)
-        // The test pages use a private store.
-        host.contexts[record.id]?.hasAccessToPrivateData = true
         let webView = openPage(in: host, onScreen: true)
         try assertHeardTheTabAddress(try await answers(in: webView))
         host.pageClosed(webView)
         host.unload(record.id)
     }
 
-    /// The extension loads while the page is open and none is on screen, as
-    /// when it is added mid-session with a Mac app in front. Its content
+    /// The extension is added while the page is open and none is on screen,
+    /// as with a Mac app in front. Its content
     /// script reaches the open frame through WebKit and asks at once.
     func testSubframeOpenBeforeTheLoadHearsTheTabAddress() async throws {
         guard #available(macOS 15.4, *) else { throw XCTSkip("Web extensions need macOS 15.4") }
@@ -104,22 +102,22 @@ final class WebExtensionFrameTabTests: XCTestCase {
         let loaded = try await poll(webView, "document.readyState === 'complete' && frames.length === 1 ? 'yes' : null", timeout: 10)
         XCTAssertEqual(loaded, "yes", "the page and its frame loaded")
         let record = try makeRecord()
-        try await host.load(record, library: library)
-        // The test pages use a private store.
-        host.contexts[record.id]?.hasAccessToPrivateData = true
+        try await host.load(record, library: library, isNewlyAdded: true)
         let heard = try await answers(in: webView)
         print("FRAME-TAB-PROBE loaded while open: \(heard ?? "nil")")
-        if #available(macOS 27, *) {
-            try assertHeardTheTabAddress(heard)
-        }
+        try assertHeardTheTabAddress(heard)
         host.pageClosed(webView)
         host.unload(record.id)
     }
 
     @available(macOS 15.4, *)
     private func openPage(in host: WebExtensionHost, onScreen: Bool) -> WKWebView {
+        // A store of the test's own, persistent as every service store is:
+        // extensions get no private pages.
+        let storeID = UUID()
+        addTeardownBlock { @MainActor in await Self.removeStore(storeID) }
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
+        configuration.websiteDataStore = WKWebsiteDataStore(forIdentifier: storeID)
         host.attach(to: configuration)
         let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
         host.displayedPage = { [weak webView] in onScreen ? webView : nil }
@@ -139,6 +137,16 @@ final class WebExtensionFrameTabTests: XCTestCase {
         XCTAssertEqual(list.count, 1, "the frame asked once", line: line)
         XCTAssertEqual(list.first?["tabURL"] as? String, "https://example.com/", "\(list)", line: line)
         XCTAssertTrue(list.first?["error"] is NSNull, "\(list)", line: line)
+    }
+
+    /// Main actor on purpose: removal off the main thread crashes. WebKit
+    /// refuses while a page still holds the store, so it retries.
+    private static func removeStore(_ id: UUID) async {
+        for _ in 0..<20 {
+            if (try? await WKWebsiteDataStore.remove(forIdentifier: id)) != nil { return }
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+        print("Test store \(id) not removed")
     }
 
     private func poll(_ webView: WKWebView, _ script: String, timeout: TimeInterval) async throws -> String? {
