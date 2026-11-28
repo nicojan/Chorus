@@ -45,6 +45,10 @@ public final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
     /// Timestamps of recent WebContent terminations, used to break a crash →
     /// reload → crash loop. Accessed only from main-thread delegate callbacks.
     private var crashTimestamps: [Date] = []
+
+    /// Web views whose process Chorus ended on purpose after a Reload or Stop
+    /// found it stuck. Their next termination is not a crash.
+    private var deliberatelyEnded: Set<ObjectIdentifier> = []
     // nonisolated so the nonisolated `shouldAutoReload` can use them as default
     // argument values — they're immutable Sendable constants.
     private nonisolated static let maxCrashesInWindow = 3
@@ -300,6 +304,9 @@ public final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
     // deterministically would reload-crash forever, so back off after a few
     // crashes in a short window and show a recovery page instead.
     public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        // A process Chorus ended because a Reload found it stuck is not the
+        // page's fault, and must not push it toward the crash page.
+        let endedOnPurpose = deliberatelyEnded.remove(ObjectIdentifier(webView)) != nil
         // The OAuth/sign-in popup shares this coordinator as its delegate.
         // Don't apply the service's crash recovery (fallbackURL + home page) to
         // it — that would reload the popup on the service's home URL, not the
@@ -309,7 +316,7 @@ public final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
         if let index = popupIndex(of: webView) {
             let popup = popups[index]
             let now = Date()
-            popup.crashTimestamps.append(now)
+            if !endedOnPurpose { popup.crashTimestamps.append(now) }
             popup.crashTimestamps = popup.crashTimestamps.filter { now.timeIntervalSince($0) <= Self.crashWindow }
             guard Self.shouldAutoReload(
                 crashTimestamps: popup.crashTimestamps,
@@ -327,7 +334,7 @@ public final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
 
         if let tab = tabs.tab(for: webView) {
             let now = Date()
-            tab.crashTimestamps = tab.crashTimestamps.filter { now.timeIntervalSince($0) <= Self.crashWindow } + [now]
+            tab.crashTimestamps = tab.crashTimestamps.filter { now.timeIntervalSince($0) <= Self.crashWindow } + (endedOnPurpose ? [] : [now])
             guard Self.shouldAutoReload(
                 crashTimestamps: tab.crashTimestamps,
                 now: now,
@@ -350,7 +357,7 @@ public final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
         cancelActiveDownloads()
 
         let now = Date()
-        crashTimestamps.append(now)
+        if !endedOnPurpose { crashTimestamps.append(now) }
         crashTimestamps = crashTimestamps.filter { now.timeIntervalSince($0) <= Self.crashWindow }
 
         let retryURL = errorPageRetryURL ?? webView.url ?? fallbackURL
@@ -483,13 +490,52 @@ public final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
     ///
     /// On Chorus's own error page it retries the address that failed: reloading
     /// the error page itself would only show it again.
+    ///
+    /// A page whose process has stopped answering never reads the reload. On
+    /// 2026-11-27 WebKit's graphics process hung, and WhatsApp's page sat blank
+    /// for hours, waiting on it, while Reload did nothing. So each reload also
+    /// checks that the page answers; see `endProcessIfUnresponsive`.
     public static func reload(_ webView: WKWebView, fallbackURL: URL?) {
+        endProcessIfUnresponsive(webView)
         if let retry = (webView.navigationDelegate as? WebViewCoordinator)?.errorPageRetryURL(for: webView) {
             webView.load(URLRequest(url: retry))
             return
         }
         if webView.reload() == nil, let fallbackURL {
             webView.load(URLRequest(url: fallbackURL))
+        }
+    }
+
+    /// Stops a page's load, as the toolbar's Stop button does. A page stuck
+    /// mid-load never reads the stop and the button stays Stop for good, so
+    /// this runs the same check as `reload`.
+    public static func stopLoading(_ webView: WKWebView) {
+        endProcessIfUnresponsive(webView)
+        webView.stopLoading()
+    }
+
+    /// How long a page has to answer after Reload or Stop before its process
+    /// is ended. Longer than teardown's limit: a page someone reloads may be
+    /// slow, not stuck (a heavy app still loading, a Mac short of memory), and
+    /// ending a live page costs an unclean exit mid-write. A page stuck in the
+    /// 2026-11-27 hang answered nothing for hours.
+    static let reloadStuckTimeout: Double = 5
+
+    /// Checks that a page answers, and ends its process if not. The crash
+    /// recovery in `webViewWebContentProcessDidTerminate` then loads the page
+    /// in a new process, and does not count it as a crash: three would show
+    /// "This page keeps crashing", and the hang that prompted this came back
+    /// seven times in an hour.
+    ///
+    /// A page showing a JavaScript alert, confirm or prompt cannot answer
+    /// either, since WebKit holds its script until the dialog is answered, so
+    /// a Reload ends it too. It could not have read the reload anyway, and a
+    /// dialog on a page parked off screen can never be answered at all.
+    private static func endProcessIfUnresponsive(_ webView: WKWebView) {
+        let coordinator = webView.navigationDelegate as? WebViewCoordinator
+        WebViewPool.endProcessIfStuck(webView, timeout: reloadStuckTimeout, oncePerView: true) { [weak coordinator, weak webView] in
+            guard let webView else { return }
+            coordinator?.deliberatelyEnded.insert(ObjectIdentifier(webView))
         }
     }
 
