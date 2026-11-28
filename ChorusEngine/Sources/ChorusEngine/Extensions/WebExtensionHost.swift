@@ -74,6 +74,30 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
     @ObservationIgnored var startBackgroundContent: @MainActor (WKWebExtensionContext) async throws -> Void = {
         try await $0.loadBackgroundContent()
     }
+    /// Whether the first start of an extension just added, with pages open,
+    /// grants its sites only once its background has started, failed or timed
+    /// out. Before macOS 27, WebKit sends a content script's message at once
+    /// when it has seen the background register no listener, as with an
+    /// extension just added, so the scripts it injected into open pages at the
+    /// load lost their first message (CI, 2026-11-16 and 2026-11-25). WebKit
+    /// injects into open pages when a site is granted later (CI probe,
+    /// 2026-11-25), by then into a background that listens. macOS 27.2 holds
+    /// such a message until the background is up.
+    ///
+    /// Only for an add: a background that starts without its sites acts on
+    /// that. uBlock Origin Lite lowers its filtering mode and drops its
+    /// per-site choices, and saves both, so deferring at launch, a turn-on or
+    /// an update would undo a person's settings. A new extension has no
+    /// per-site choices yet, and it hears `permissions.onAdded` when the sites
+    /// arrive (tested), which uBOL answers by raising its default mode again.
+    /// That uBOL ends up in its usual mode after an add on macOS 15 or 26 has
+    /// not been checked. Tests set this to run the path on any macOS.
+    @ObservationIgnored var defersSitesUntilBackgroundStarts: Bool = {
+        if #available(macOS 27, *) { return false }
+        return true
+    }()
+    /// Extensions whose sites wait for their background; see `load`.
+    @ObservationIgnored private var sitesDeferred: Set<UUID> = []
     @ObservationIgnored private(set) lazy var window = WebExtensionWindow(host: self)
     @ObservationIgnored private var anchors: [UUID: WeakView] = [:]
     @ObservationIgnored private var notificationTokens: [NSObjectProtocol] = []
@@ -172,8 +196,10 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
 
     /// Starts an extension with the grants in its record. A background that
     /// fails to start is only logged: the extension still runs.
-    public func load(_ record: WebExtensionRecord, library: WebExtensionLibrary) async throws {
-        try await load(record, library: library, grantingAccess: true)
+    /// `isNewlyAdded` marks the first start of an extension just added; see
+    /// `defersSitesUntilBackgroundStarts`.
+    public func load(_ record: WebExtensionRecord, library: WebExtensionLibrary, isNewlyAdded: Bool = false) async throws {
+        try await load(record, library: library, grantingAccess: true, isNewlyAdded: isNewlyAdded)
     }
 
     /// Reads a downloaded version in `folder` and works out what it asks for
@@ -302,7 +328,8 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         _ record: WebExtensionRecord,
         library: WebExtensionLibrary,
         grantingAccess: Bool,
-        requireBackground: Bool = false
+        requireBackground: Bool = false,
+        isNewlyAdded: Bool = false
     ) async throws -> Bool {
         // Before anything else, so the wait holds nothing: a second load, a
         // turn-off or a removal during it acts as if no load were running,
@@ -329,17 +356,22 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         #if DEBUG
         context.isInspectable = true
         #endif
+        // So no closed page is announced below, nor counted as open here.
+        dropTabsWithoutPages()
+        // WebKit injects the content scripts into open pages as their sites
+        // are granted; see `defersSitesUntilBackgroundStarts`.
+        let defersSites = grantingAccess && isNewlyAdded && defersSitesUntilBackgroundStarts
+            && webExtension.hasBackgroundContent && !orderedTabs.isEmpty
+        // Until then the context's grants lack the sites; saving them would
+        // drop the sites from the record.
+        if defersSites { sitesDeferred.insert(record.id) }
+        defer { sitesDeferred.remove(record.id) }
         if grantingAccess {
             for permission in record.grantedPermissions {
                 context.setPermissionStatus(.grantedExplicitly, for: WKWebExtension.Permission(rawValue: permission))
             }
-            for pattern in record.grantedMatchPatterns {
-                guard let matchPattern = try? WKWebExtension.MatchPattern(string: pattern) else { continue }
-                context.setPermissionStatus(.grantedExplicitly, for: matchPattern)
-            }
+            if !defersSites { Self.grantSites(of: record, to: context) }
         }
-        // So no closed page is announced below.
-        dropTabsWithoutPages()
         try controller.load(context)
         contexts[record.id] = context
         // No await between the load and this, or a page opened in between is
@@ -349,9 +381,11 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         loadedIDs = loadedIDs.union([record.id])
         actionRevision += 1
         // Wait for the background to start before returning. On macOS 15 and
-        // 26, WebKit drops a content script's message that arrives while the
-        // background is still starting (macOS 27 queues it); CI caught this.
-        // Callers that build pages after `load` returns are then safe.
+        // 26, WebKit sends a content script's message that arrives while the
+        // background is still starting at once, to no listener (macOS 27.2
+        // holds it); CI caught this.
+        // Callers that build pages after `load` returns are then safe. With
+        // `defersSites`, pages already open get the scripts only after it.
         if grantingAccess, webExtension.hasBackgroundContent {
             let answered = await startBackground(of: context, id: record.id, name: record.name)
             // On macOS 15 and 26 WebKit does not answer the start of a worker
@@ -366,6 +400,12 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
                 unload(record.id)
                 throw BackgroundFailure(reason: failure)
             }
+            // Started, timed out, or failed where that is allowed. Not to a
+            // context unloaded or replaced meanwhile.
+            if defersSites, contexts[record.id] === context {
+                sitesDeferred.remove(record.id)
+                Self.grantSites(of: record, to: context)
+            }
         }
         guard contexts[record.id] === context else { return false }
         // How far into WebKit's 5 s startup window it reached WebKit; left
@@ -373,6 +413,14 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
         let timing = sinceController < Self.loadTimingLimit ? ", \(sinceController) after the controller" : ""
         AppLogger.extensions.info("Loaded extension \(record.name, privacy: .public)\(timing, privacy: .public)")
         return true
+    }
+
+    /// Grants the record's sites to `context`.
+    private static func grantSites(of record: WebExtensionRecord, to context: WKWebExtensionContext) {
+        for pattern in record.grantedMatchPatterns {
+            guard let matchPattern = try? WKWebExtension.MatchPattern(string: pattern) else { continue }
+            context.setPermissionStatus(.grantedExplicitly, for: matchPattern)
+        }
     }
 
     /// Tells a new context about the pages already open. WebKit 27.2 gives a
@@ -649,7 +697,7 @@ public final class WebExtensionHost: NSObject, WebExtensionHosting {
     }
 
     private func reportGrants(of context: WKWebExtensionContext) {
-        guard let id = recordID(of: context) else { return }
+        guard let id = recordID(of: context), !sitesDeferred.contains(id) else { return }
         let permissions = context.grantedPermissions.keys.map(\.rawValue)
         let patterns = context.grantedPermissionMatchPatterns.keys.map(\.string)
         onGrantsChanged?(id, permissions, patterns)

@@ -60,8 +60,7 @@ import Foundation
 ///    works in Chrome and Firefox; in WebKit its background then never heard
 ///    its popup, and the popup said Proton Pass could not start. In every
 ///    extension world the script keeps both names on WebKit's object and
-///    makes writes to them do nothing. A site's own main world, where a
-///    MAIN-world content script also runs the script, keeps its globals.
+///    makes writes to them do nothing.
 ///    This turns off Proton's own lock in Chorus: other code in its pages
 ///    can read the API again. Its own code is unchanged.
 ///
@@ -76,6 +75,12 @@ import Foundation
 ///
 /// The script loads first in the service worker (through a new entry file),
 /// in every HTML page, in background scripts and ahead of each content script.
+/// Ahead of a MAIN-world content script it runs in the site's own world, and
+/// there it stops before it changes anything, so the site's globals stay the
+/// site's. No catalog extension's MAIN-world code needs any of the above
+/// (checked 2026-11-25). A package added by hand might have MAIN-world code
+/// compiled from TypeScript's `using`; when those scripts name `Symbol.dispose`
+/// or `Symbol.asyncDispose`, the site's world gets those two symbols only.
 /// Safari extensions inside an app are signed and left alone.
 enum ExtensionCompatibility {
     /// The tail of an extension page's user agent. Chrome 134 is the oldest
@@ -93,7 +98,8 @@ enum ExtensionCompatibility {
     /// refreshes the script and leaves anything it already changed as it is.
     static func apply(to root: URL) throws {
         guard var manifest = WebExtensionLibrary.readManifest(at: root) else { return }
-        try Data(script.utf8).write(to: root.appending(path: scriptFile), options: .atomic)
+        let symbols = mainWorldNamesDisposeSymbols(manifest, root: root)
+        try Data(script(mainWorldDisposeSymbols: symbols).utf8).write(to: root.appending(path: scriptFile), options: .atomic)
 
         var changed = false
         if var background = manifest["background"] as? [String: Any] {
@@ -174,26 +180,39 @@ enum ExtensionCompatibility {
         return String(String(decoding: data, as: UTF8.self).dropFirst().dropLast())
     }
 
-    static let script = scriptTemplate.replacingOccurrences(of: "__CHORUS_BACKGROUND_AGENT__", with: quoted(backgroundUserAgent))
+    /// The script for a package whose MAIN-world scripts need no dispose symbols.
+    static let script = script(mainWorldDisposeSymbols: false)
+
+    /// The script, which in a site's own world defines `Symbol.dispose` and
+    /// `Symbol.asyncDispose` when `mainWorldDisposeSymbols` and adds nothing
+    /// otherwise.
+    static func script(mainWorldDisposeSymbols: Bool) -> String {
+        scriptTemplate
+            .replacingOccurrences(of: "__CHORUS_BACKGROUND_AGENT__", with: quoted(backgroundUserAgent))
+            .replacingOccurrences(of: "__CHORUS_MAIN_WORLD_SYMBOLS__", with: mainWorldDisposeSymbols ? "true" : "false")
+    }
+
+    /// Whether a MAIN-world content script in `manifest` names either dispose
+    /// symbol, as TypeScript's compiled `using` does. None in the catalog
+    /// does; a package added by hand might.
+    static func mainWorldNamesDisposeSymbols(_ manifest: [String: Any], root: URL) -> Bool {
+        let entries = manifest["content_scripts"] as? [[String: Any]] ?? []
+        let files = entries
+            .filter { ($0["world"] as? String)?.uppercased() == "MAIN" }
+            .flatMap { $0["js"] as? [String] ?? [] }
+            .filter { $0 != scriptFile }
+        return files.contains { file in
+            var relative = Substring(file)
+            while relative.hasPrefix("./") || relative.hasPrefix("/") { relative = relative.dropFirst(relative.hasPrefix("/") ? 1 : 2) }
+            // Bytes, not text: one byte that is not UTF-8 must not hide a match.
+            guard let data = try? Data(contentsOf: root.appending(path: String(relative))) else { return false }
+            return data.range(of: Data("Symbol.dispose".utf8)) != nil || data.range(of: Data("Symbol.asyncDispose".utf8)) != nil
+        }
+    }
 
     private static let scriptTemplate = """
     // Added by Chorus to fill gaps between WebKit and Chrome.
     (() => {
-      // Chrome 134 has these and TypeScript's `using` needs them.
-      for (const name of ["dispose", "asyncDispose"]) {
-        if (typeof Symbol[name] !== "symbol") {
-          Object.defineProperty(Symbol, name, { value: Symbol("Symbol." + name) });
-        }
-      }
-
-      // WebKit drops the wrapper of an API object nothing refers to and builds
-      // a new one on the next read, without what was added below. Holding
-      // each patched object keeps its wrapper, and the additions, alive.
-      // Two content script entries run this twice in one world; once is enough.
-      if (globalThis.__chorusCompatibilityObjects) return;
-      const held = [];
-      Object.defineProperty(globalThis, "__chorusCompatibilityObjects", { value: held });
-
       // WebKit's API object when this world belongs to the extension: its
       // pages, its background and its isolated content scripts. Null in a
       // site's own world, where a MAIN-world content script also runs this
@@ -209,6 +228,38 @@ enum ExtensionCompatibility {
           return null;
         }
       })();
+
+      // A site's own world is the site's: add nothing there, except the two
+      // symbols below when this package's MAIN-world code names them. An
+      // extension page with no API, such as a sandboxed one, still has the
+      // extension's address, so it keeps everything.
+      const extensionAddress = (() => {
+        try {
+          return String(globalThis.location && globalThis.location.href).startsWith("webkit-extension:");
+        } catch (error) {
+          return false;
+        }
+      })();
+      const siteWorld = !extensionAPI && !extensionAddress;
+      if (siteWorld && !__CHORUS_MAIN_WORLD_SYMBOLS__) return;
+
+      // Chrome 134 has these and TypeScript's `using` needs them.
+      for (const name of ["dispose", "asyncDispose"]) {
+        try {
+          if (typeof Symbol[name] !== "symbol") {
+            Object.defineProperty(Symbol, name, { value: Symbol("Symbol." + name) });
+          }
+        } catch (error) {}
+      }
+      if (siteWorld) return;
+
+      // WebKit drops the wrapper of an API object nothing refers to and builds
+      // a new one on the next read, without what was added below. Holding
+      // each patched object keeps its wrapper, and the additions, alive.
+      // Two content script entries run this twice in one world; once is enough.
+      if (globalThis.__chorusCompatibilityObjects) return;
+      const held = [];
+      Object.defineProperty(globalThis, "__chorusCompatibilityObjects", { value: held });
 
       // WebKit hands each event to a page by reading the page's `browser`
       // global, then `chrome`, and skips the page when neither is its own API

@@ -25,6 +25,10 @@ final class WebExtensionHiddenAPITests: XCTestCase {
         WebExtensionLibrary(directory: root.appending(path: "Library", directoryHint: .isDirectory))
     }
 
+    /// Marks the page from the site's own world: the attribute shows it ran,
+    /// and the page global shows it ran in the site's world, not an isolated one.
+    private static let mainScript = "window.__mainWorldRan = true; document.documentElement.setAttribute('data-main', 'ran');"
+
     /// Proton Pass's swap, run right after start: every global API name
     /// becomes a Proxy that answers nothing. `done` runs once it has.
     private static let hide = """
@@ -40,7 +44,7 @@ final class WebExtensionHiddenAPITests: XCTestCase {
     /// An extension whose background (a page or a service worker) and
     /// `hidden.html` both hide their API the way Proton Pass does, with a
     /// main-world content script and pages that assign the API globals.
-    private func makeHidingProbe(backgroundPage: Bool) throws -> String {
+    private func makeHidingProbe(backgroundPage: Bool, mainScript: String = WebExtensionHiddenAPITests.mainScript) throws -> String {
         let folder = root.appending(path: "hiding-probe", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let background = backgroundPage ? #"{ "scripts": ["bg.js"] }"# : #"{ "service_worker": "bg.js" }"#
@@ -116,12 +120,47 @@ final class WebExtensionHiddenAPITests: XCTestCase {
             try { window.assignResults.push(JSON.stringify(await globalThis.browser.runtime.sendMessage({ping: 1}))); } catch (error) { window.assignResults.push("err " + error.message); }
             window.assignDone = true;
             """,
-            "main.js": "document.documentElement.setAttribute('data-main', 'ran');",
+            "main.js": mainScript,
         ]
         for (name, text) in files {
             try Data(text.utf8).write(to: folder.appending(path: name))
         }
         return try library.importPackage(from: folder)
+    }
+
+    /// Loads a probe whose main-world content script is `mainScript`, opens
+    /// a site page whose own script records `Symbol.dispose` and
+    /// `Symbol.asyncDispose` before the content script runs, and returns what
+    /// the site's world holds afterwards.
+    @available(macOS 15.4, *)
+    private func siteWorldAfterMainScript(_ mainScript: String = WebExtensionHiddenAPITests.mainScript) async throws -> NSDictionary {
+        let host = WebExtensionHost(storageIdentifier: nil)
+        host.isActive = true
+        let record = record(folder: try makeHidingProbe(backgroundPage: false, mainScript: mainScript))
+        try await host.load(record, library: library)
+        host.contexts[record.id]?.hasAccessToPrivateData = true
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        host.attach(to: configuration)
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
+        host.pageOpened(webView, service: UUID())
+        host.pageActivated(webView)
+        let before = "<script>window.siteSaw = [String(Symbol.dispose), String(Symbol.asyncDispose)].join(',');</script>"
+        webView.loadHTMLString(before + "<body>page</body>", baseURL: URL(string: "https://example.com/")!)
+        let ran = try await poll(webView, "document.documentElement.getAttribute('data-main')")
+        XCTAssertEqual(ran, "ran", "the main-world content script ran")
+        let after = try await webView.evaluateJavaScript("""
+        JSON.stringify({
+          mainWorld: window.__mainWorldRan === true,
+          mainSymbols: window.__mainSymbols || null,
+          held: typeof globalThis.__chorusCompatibilityObjects,
+          symbols: [String(Symbol.dispose), String(Symbol.asyncDispose)].join(','),
+          saw: window.siteSaw
+        })
+        """) as? String
+        host.pageClosed(webView)
+        host.unload(record.id)
+        return try XCTUnwrap(object(after), after ?? "nil")
     }
 
     private func record(folder: String) -> WebExtensionRecord {
@@ -209,6 +248,35 @@ final class WebExtensionHiddenAPITests: XCTestCase {
         XCTAssertEqual(globals, "site,site")
         host.pageClosed(webView)
         host.unload(record.id)
+    }
+
+    /// The compatibility script also runs ahead of a main-world content
+    /// script, in the site's own world. There it adds nothing: no
+    /// `__chorusCompatibilityObjects`, and `Symbol.dispose` stays as the site
+    /// saw it before the content script ran (absent on WebKit versions that
+    /// lack it, native where WebKit has it).
+    func testMainWorldContentScriptAddsNothingToThePage() async throws {
+        guard #available(macOS 15.4, *) else { throw XCTSkip("Web extensions need macOS 15.4") }
+        let result = try await siteWorldAfterMainScript()
+        XCTAssertEqual(result["mainWorld"] as? Bool, true, "the content script ran in the site's world")
+        XCTAssertEqual(result["held"] as? String, "undefined")
+        XCTAssertEqual(result["symbols"] as? String, result["saw"] as? String)
+    }
+
+    /// An extension added by hand may have main-world code compiled from
+    /// TypeScript's `using`, which needs both symbols. When its main-world
+    /// scripts name them, the site's world gets the two symbols and nothing else.
+    func testMainWorldScriptThatNamesTheDisposeSymbolsGetsThem() async throws {
+        guard #available(macOS 15.4, *) else { throw XCTSkip("Web extensions need macOS 15.4") }
+        let usesDispose = "window.__mainSymbols = [typeof Symbol.dispose, typeof Symbol.asyncDispose].join(','); " + Self.mainScript
+        let result = try await siteWorldAfterMainScript(usesDispose)
+        guard result["saw"] as? String == "undefined,undefined" else {
+            throw XCTSkip("This WebKit has both symbols, so there is nothing to add: \(result["saw"] ?? "nil")")
+        }
+        XCTAssertEqual(result["mainWorld"] as? Bool, true, "the content script ran in the site's world")
+        XCTAssertEqual(result["mainSymbols"] as? String, "symbol,symbol", "the symbols exist before the extension's own code runs")
+        XCTAssertEqual(result["held"] as? String, "undefined")
+        XCTAssertEqual(result["symbols"] as? String, "Symbol(Symbol.dispose),Symbol(Symbol.asyncDispose)")
     }
 
     /// A reply as a dictionary; macOS 15 orders keys differently.

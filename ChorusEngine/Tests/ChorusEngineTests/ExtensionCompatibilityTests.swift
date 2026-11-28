@@ -80,6 +80,21 @@ final class ExtensionCompatibilityTests: XCTestCase {
         XCTAssertEqual(try text(ExtensionCompatibility.scriptFile), ExtensionCompatibility.script, "a later Chorus refreshes the script")
     }
 
+    /// The site's world gets the dispose symbols only from a package whose
+    /// main-world scripts name them; isolated scripts that name them do not count.
+    func testMainWorldDisposeSymbolsOnlyWhenAMainWorldScriptNamesThem() throws {
+        try writeManifest(#", "content_scripts": [{ "matches": ["<all_urls>"], "js": ["iso.js"] }, { "matches": ["<all_urls>"], "js": ["main.js"], "world": "MAIN" }]"#)
+        try Data("const s = Symbol.dispose;".utf8).write(to: root.appending(path: "iso.js"))
+        try Data("console.log(1);".utf8).write(to: root.appending(path: "main.js"))
+        try ExtensionCompatibility.apply(to: root)
+        XCTAssertEqual(try text(ExtensionCompatibility.scriptFile), ExtensionCompatibility.script(mainWorldDisposeSymbols: false))
+
+        try Data("var r = Symbol.asyncDispose;".utf8).write(to: root.appending(path: "main.js"))
+        try ExtensionCompatibility.apply(to: root)
+        XCTAssertEqual(try text(ExtensionCompatibility.scriptFile), ExtensionCompatibility.script(mainWorldDisposeSymbols: true))
+        XCTAssertNotEqual(ExtensionCompatibility.script(mainWorldDisposeSymbols: true), ExtensionCompatibility.script(mainWorldDisposeSymbols: false))
+    }
+
     func testManifestKeepsEverythingElse() throws {
         try writeManifest(#", "description": "D", "permissions": ["storage"], "background": { "service_worker": "bg.js" }"#)
         let before = try manifest()
