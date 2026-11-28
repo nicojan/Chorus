@@ -75,6 +75,34 @@ Still open:
 
 Known gaps: in-app browser windows get no extensions (their store is private); `tabs.create` returns no tab object; keyboard commands are not wired; no proxy for native messaging, and none is possible. Extension context-menu items do show (Bitwarden's appeared in the page's menu), so that line is gone from this list.
 
+## Fixed on `fix/reload-stuck-page`, not released: Reload did nothing on a page whose process had hung (2026-11-27)
+
+On 1.5.37, after 27 hours running, WhatsApp and Human stayed blank and Reload did nothing. Read from the unified log and two `sample` runs, before a relaunch fixed it:
+
+- At 20:22:09 WebKit's GPU process (shared by every page) stopped answering. WebKit killed it, started another, and the pages reconnected. The new one hung too, seven times between 20:22 and 21:12. The killed copy (14787) stayed alive and frozen: its main thread waited on a lock in `MediaPlayerPrivateAVFoundationObjC::asyncVideoPlaybackQualityMetrics`, and a CoreAudio HAL thread waited on a reply from coreaudiod (`HALC_Object_GetPropertyData`). coreaudiod had been turning the built-in mic's DSP on and off since 20:17. So a page playing media, plus an audio device change, most likely deadlocked the GPU process. That part is WebKit's and the system's, not Chorus's.
+- Several content processes never recovered. WhatsApp's (38447) main thread sat in `RemoteLayerTreeDrawingArea::updateRendering` → `RemoteGraphicsContextProxy::save` → `StreamClientConnectionBuffer::tryAcquire`, timing out every 15 s (`FailedToAcquireBufferSpan`, about 1,500 lines) and blocking again on the next draw call. Human's (30747) failed `markLayersVolatile` in a loop.
+- Reload at 21:59:50 reached WebKit, which logged `processDidBecomeUnresponsive` 3 s later; the page never started a load. Human's reload committed and finished but could not draw.
+- The 3½-minute bursts of new content processes in the same log are the badge fetcher's short-lived pages, not churn.
+
+Fix: `WebViewCoordinator.reload` (⌘R and the toolbar button) and the new `WebViewCoordinator.stopLoading` (the toolbar's Stop) run the same check the pool runs on a page it tears down. The page gets 5 s (`reloadStuckTimeout`) to evaluate `0`; with no answer, Chorus SIGKILLs its content process, and `webViewWebContentProcessDidTerminate` reloads the page in a new one. Two qa-reviewer passes went over it before commit. The first found these, all fixed:
+
+- The pid is read before the reload starts loading, and the kill happens only if the view still runs in that process when the time runs out.
+- Reload and Stop run one check per view at a time. A check whose wait is abandoned (another check ended the process, or the page was torn down) ends nothing; only a timeout does. Teardown's own check always runs.
+- 5 s for Reload, not teardown's 2 s, so a page that is only busy keeps its process.
+- A process ended this way is not counted toward "This page keeps crashing".
+
+The second pass found that the first version's fix for open dialogs could jam. It skipped the check while a JavaScript alert was open on the service, but a dialog on a page parked off screen opens a sheet on the invisible parking window. Nobody can answer that sheet, so the count never came back down and Reload stopped working for that service. The skip is gone: a page held by a dialog could not read a reload anyway. A check that times out after its page moved to a new process now ends its own wait instead of holding the view, and a WebKit without `_webProcessIdentifier` logs the warning once.
+
+Tests in `StuckPageTests`: a stuck page comes back after Reload (failed before the fix: same pid, no answer) and after Stop; three rounds of stick-and-reload never reach the crash page (failed before: the third round showed it); a page busy for 3 s keeps its process (failed with 2 s); a working page keeps its process; four quick Reloads on a stuck page bring it back; a tab that shares a stuck page's process survives three rounds. The last two passed before the fix as well and stay as guards. The tab survives because WebKit gives the tab and the page separate processes after the first kill, so the tab counts one crash at most. Engine 56 and app 521 tests pass locally on macOS 27.2.
+
+Still open:
+- The tests stall a page with a JavaScript loop, not a hung GPU process. Whether a new content process draws while the GPU process is still hung is not shown; on 2026-11-27 WebKit had already replaced the GPU process, so it likely would.
+- The dialog sheet on the parking window, described above, predates this branch: the page stays frozen until a Reload ends it. Showing the dialog when the page comes on screen would fix it.
+- A Reload that ends a stuck service page still cancels the service's downloads, as a crash does.
+- A page stuck in the background is not noticed until someone reloads it, and a stuck WhatsApp posts no notifications. A periodic check (the badge poll already reads every live page) could catch it, but must not kill a page that is only busy.
+- A process ended on purpose takes down any other page WebKit put in the same process (a service's tabs and sign-in pop-ups share their opener's). Those pages were stuck too, so this costs nothing for a real hang.
+- Samples kept at `$TMPDIR/gpu14787.txt` and `$TMPDIR/wc38447.txt` (gone after a reboot) in case the deadlock is worth reporting to WebKit.
+
 ## Released: 1.5.37 on 2026-11-06, red counts back on the top corner
 
 Published 2026-11-06 as `v1.5.37`, build 50, tag commit `8970b59` (PR #51, merged `824b851`). DMG 13,401,348 bytes, sha256 `784999cde69c2c8e41207c1798602240a7da5b222a79055e486f603b8d528bb2`, app and DMG notarized and stapled, Gatekeeper accepts both. Appcast `2ee717a`, both feeds serve 1.5.37. Cask `b4999ff`, tap `e89ffc6`; brew style, livecheck and audit clean.

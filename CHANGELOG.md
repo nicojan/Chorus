@@ -17,6 +17,7 @@ These four come from Ferdium, which a user asked Chorus to follow (#49).
 
 ### Fixed
 
+- A page that had stopped responding stayed blank, and Reload did nothing until you quit Chorus. It happened to WhatsApp after the part of WebKit that draws pages hung. Reload and Stop now check that the page answers, and if it hasn't answered after 5 seconds, Chorus starts it over.
 - Removing a service whose page had stopped responding, then adding a service straight away, could leave Add Service waiting for good. The stuck page kept running in the background, and while it ran, its sign-in data could not be removed or cleared. Chorus now ends a page that doesn't answer within two seconds of its service going. Add Service also gives up clearing old sign-in data after five seconds and adds the service anyway.
 - Bitwarden's right-click items can now copy a username, password or code. In Chrome, Bitwarden copies through a hidden page of its own, which WebKit doesn't offer, and the way it tried next failed. Chorus now opens that page for it, and the page may write to the clipboard only if you let the extension copy when you added it. It still can't read the clipboard, so Bitwarden's setting to clear the clipboard after a while does nothing in Chorus.
 - When Chorus locks while you work in another app, it no longer asks for Touch ID at once and pulls its window to the front. The lock screen covers the window as before, and Touch ID asks when you switch to Chorus.

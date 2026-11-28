@@ -827,10 +827,34 @@ public final class WebViewPool {
     }
 
     /// How long a page being torn down has to answer before its process is
-    /// taken as stuck. A working page answers in milliseconds.
+    /// taken as stuck. A working page answers in milliseconds, and a page on
+    /// its way out has nothing left to finish.
     static let stuckPageTimeout: Double = 2
 
-    /// Ends a torn-down page's process if the page no longer answers.
+    /// How a stuck-page check ended.
+    enum StuckCheckOutcome: Equatable {
+        /// The page ran the script, or reported an error, which is an answer too.
+        case answered
+        /// The wait was ended from outside: the page was torn down or another
+        /// check ended its process. Not evidence that the page is stuck.
+        case abandoned
+        /// No answer within the time allowed.
+        case timedOut
+    }
+
+    /// The web views with a Reload or Stop check running, so pressing Reload
+    /// again and again runs one check, not one per press. Teardown never joins
+    /// this set: its check must run even while a Reload check waits, or a
+    /// stuck process would keep the store in use.
+    private static var checksInFlight: Set<ObjectIdentifier> = []
+
+    /// Whether the missing-SPI warning has been logged, so a WebKit without
+    /// `_webProcessIdentifier` logs it once, not on every Reload.
+    private static var warnedNoProcessID = false
+
+    /// Ends a page's process if the page no longer answers within `timeout`.
+    /// Called for a page being torn down, and on Reload and Stop (see
+    /// `WebViewCoordinator.reload`).
     ///
     /// A process whose main thread is stuck never exits by itself, and WebKit's
     /// network process keeps that page's data store in use for as long as it
@@ -839,19 +863,55 @@ public final class WebViewPool {
     /// process for good. Measured on 2026-11-10: still in use after 90 s. A
     /// stuck process can serve no page, so ending it costs nothing.
     ///
-    /// Holds the view for the check, at most `stuckPageTimeout`, then lets it go.
-    private static func endProcessIfStuck(_ webView: WKWebView) {
-        Task { @MainActor in
-            let answered = await withDeadline(seconds: stuckPageTimeout, fallback: false) {
-                do { _ = try await PageScript.evaluate("0", in: webView) }
-                catch is CancellationError { return false }
-                catch { /* A script error is still an answer. */ }
-                return true
+    /// A live page whose process is ended this way is not lost: WebKit reports
+    /// the process gone, and the coordinator's crash recovery loads the page
+    /// again in a new one. `willEnd` runs just before the kill.
+    ///
+    /// The pid is read now, before the caller navigates, and the process is
+    /// ended only if the view still runs in it when the time runs out. A load
+    /// started meanwhile could otherwise have moved the page to a new, healthy
+    /// process, and the kill would land there.
+    ///
+    /// Holds the view for the check, at most `timeout`, then lets it go.
+    static func endProcessIfStuck(
+        _ webView: WKWebView,
+        timeout: Double = stuckPageTimeout,
+        oncePerView: Bool = false,
+        willEnd: (@MainActor () -> Void)? = nil
+    ) {
+        let key = ObjectIdentifier(webView)
+        if oncePerView, checksInFlight.contains(key) { return }
+        guard let pid = contentProcessID(of: webView) else {
+            if !warnedNoProcessID {
+                warnedNoProcessID = true
+                AppLogger.webView.warning("WebKit no longer offers _webProcessIdentifier; a stuck page's process stays until relaunch")
             }
-            guard !answered else { return }
-            killContentProcess(of: webView)
-            // The check's own wait ends with the process; end it here too, in
-            // case WebKit never calls back.
+            return
+        }
+        guard pid > 0, pid != getpid() else { return }
+        if oncePerView { checksInFlight.insert(key) }
+        Task { @MainActor in
+            let outcome = await withDeadline(seconds: timeout, fallback: StuckCheckOutcome.timedOut) {
+                do { _ = try await PageScript.evaluate("0", in: webView) }
+                catch is CancellationError { return .abandoned }
+                catch { /* A script error is still an answer. */ }
+                return .answered
+            }
+            if oncePerView { checksInFlight.remove(key) }
+            guard outcome == .timedOut else { return }
+            guard contentProcessID(of: webView) == pid else {
+                AppLogger.webView.info("A page that did not answer has moved to a new process; leaving it")
+                // The check's own wait is still parked on the old process and
+                // holds the view. End it; other reads on the page give up once
+                // and try again on their next round.
+                PageScript.abandonPending(for: webView)
+                return
+            }
+            AppLogger.webView.warning("A page stopped answering; ending its web content process")
+            willEnd?()
+            kill(pid, SIGKILL)
+            // The check's own wait ends with the process; end the others here
+            // too, in case WebKit never calls back.
             PageScript.abandonPending(for: webView)
         }
     }
@@ -866,17 +926,11 @@ public final class WebViewPool {
     /// removable a second after SIGKILL.
     private static let webProcessIdentifierSelector = Selector(("_webProcessIdentifier"))
 
-    private static func killContentProcess(of webView: WKWebView) {
-        guard webView.responds(to: webProcessIdentifierSelector) else {
-            AppLogger.webView.warning("A torn-down page stopped answering, and WebKit no longer offers _webProcessIdentifier; its store stays in use until relaunch")
-            return
-        }
-        // Read while the view still holds the process, so the pid cannot have
-        // been reused.
-        let pid = (webView.value(forKey: "_webProcessIdentifier") as? NSNumber)?.int32Value ?? 0
-        guard pid > 0, pid != getpid() else { return }
-        AppLogger.webView.warning("A torn-down page stopped answering; ending its web content process")
-        kill(pid, SIGKILL)
+    /// The pid of the content process the view runs in, 0 when it has none,
+    /// or nil when WebKit no longer offers the SPI.
+    private static func contentProcessID(of webView: WKWebView) -> Int32? {
+        guard webView.responds(to: webProcessIdentifierSelector) else { return nil }
+        return (webView.value(forKey: "_webProcessIdentifier") as? NSNumber)?.int32Value ?? 0
     }
 
     /// Builds a navigation/UI coordinator wired to this service. Shared by

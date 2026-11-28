@@ -29,7 +29,7 @@ struct WebNavButtons: View {
 
             Button {
                 if webViewState.isLoading {
-                    webViewState.webView?.stopLoading()
+                    if let webView = webViewState.webView { WebViewCoordinator.stopLoading(webView) }
                 } else if let webView = webViewState.webView {
                     WebViewCoordinator.reload(webView, fallbackURL: homeURL)
                 }
